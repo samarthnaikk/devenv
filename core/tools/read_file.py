@@ -1,24 +1,95 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass
+from mimetypes import guess_type
 from pathlib import Path
+from typing import Literal
 
 from .base import BaseTool, ToolResult
 
 
+ReadFileFeature = Literal["content", "metadata", "extension", "all"]
+
+
+@dataclass(frozen=True)
+class FileMetadata:
+    path: str
+    name: str
+    size_bytes: int
+    line_count: int | None
+    char_count: int | None
+
+
+@dataclass(frozen=True)
+class FileExtensionInfo:
+    suffix: str
+    extension: str
+    mime_type: str | None
+    kind: str
+
+
 class ReadFileTool(BaseTool):
     name = "read_file"
-    description = "Read a UTF-8 text file from disk and return its contents."
+    description = "Read a file and optionally return content, metadata, and file type in one call."
+
+    supported_features: tuple[str, ...] = ("content", "metadata", "extension", "all")
 
     def execute(self, **kwargs) -> ToolResult:
         path = kwargs.get("path")
+        features = kwargs.get("features")
+
         if not isinstance(path, str) or not path.strip():
-            return ToolResult(success=False, output="Missing required argument: path")
+            return ToolResult(success=False, output="Missing required argument: path", data={})
 
         try:
-            contents = read_file(path)
-            return ToolResult(success=True, output=contents)
-        except (FileNotFoundError, IsADirectoryError, UnicodeDecodeError, OSError) as exc:
-            return ToolResult(success=False, output=str(exc))
+            selected_features = self._normalize_features(features)
+            file_path = _resolve_file_path(path)
+
+            result: dict[str, object] = {}
+            if "content" in selected_features:
+                result["content"] = read_file(path)
+            if "metadata" in selected_features:
+                result["metadata"] = asdict(build_metadata(file_path))
+            if "extension" in selected_features:
+                result["extension"] = asdict(build_extension_info(file_path))
+
+            summary = ", ".join(selected_features)
+            return ToolResult(
+                success=True,
+                output=f"read_file completed with features: {summary}",
+                data=result,
+            )
+        except (FileNotFoundError, IsADirectoryError, UnicodeDecodeError, OSError, ValueError) as exc:
+            return ToolResult(success=False, output=str(exc), data={})
+
+    def _normalize_features(self, features: object) -> list[str]:
+        if features is None:
+            return ["content"]
+
+        if isinstance(features, str):
+            requested = [features]
+        elif isinstance(features, Iterable):
+            requested = [item for item in features if isinstance(item, str)]
+        else:
+            requested = []
+
+        if not requested:
+            return ["content"]
+
+        if "all" in requested:
+            return ["content", "metadata", "extension"]
+
+        invalid = [feature for feature in requested if feature not in self.supported_features]
+        if invalid:
+            raise ValueError(f"Unsupported feature(s): {', '.join(invalid)}")
+
+        ordered: list[str] = []
+        for feature in ("content", "metadata", "extension"):
+            if feature in requested and feature not in ordered:
+                ordered.append(feature)
+
+        return ordered
 
 
 def read_file(path: str) -> str:
@@ -46,3 +117,65 @@ def read_file(path: str) -> str:
         raise IsADirectoryError(f"Expected a file, got a directory: {file_path}")
 
     return file_path.read_text(encoding="utf-8")
+
+
+def _resolve_file_path(path: str) -> Path:
+    file_path = Path(path).expanduser().resolve()
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    if file_path.is_dir():
+        raise IsADirectoryError(f"Expected a file, got a directory: {file_path}")
+
+    return file_path
+
+
+def build_metadata(file_path: Path) -> FileMetadata:
+    size_bytes = file_path.stat().st_size
+    try:
+        contents = file_path.read_text(encoding="utf-8")
+        line_count = 0 if not contents else contents.count("\n") + (0 if contents.endswith("\n") else 1)
+        char_count = len(contents)
+    except UnicodeDecodeError:
+        line_count = None
+        char_count = None
+
+    return FileMetadata(
+        path=str(file_path),
+        name=file_path.name,
+        size_bytes=size_bytes,
+        line_count=line_count,
+        char_count=char_count,
+    )
+
+
+def build_extension_info(file_path: Path) -> FileExtensionInfo:
+    suffix = file_path.suffix.lower()
+    extension = suffix.lstrip(".")
+    mime_type, _ = guess_type(file_path.name)
+
+    kind_map = {
+        "txt": "text",
+        "md": "text",
+        "csv": "data",
+        "json": "data",
+        "yaml": "data",
+        "yml": "data",
+        "toml": "data",
+        "py": "code",
+        "js": "code",
+        "ts": "code",
+        "html": "markup",
+        "xml": "markup",
+        "pdf": "document",
+    }
+
+    kind = kind_map.get(extension, "unknown")
+
+    return FileExtensionInfo(
+        suffix=suffix,
+        extension=extension,
+        mime_type=mime_type,
+        kind=kind,
+    )
