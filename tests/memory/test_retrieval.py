@@ -68,6 +68,10 @@ class RetrievalFlowTest(unittest.TestCase):
         result = self.engine.retrieve_context("Let's draft a new login component view.", top_k=5)
 
         self.assertIn("functional React components", result.markdown_context)
+        candidate_relationships = {
+            candidate.node.node_id: candidate.relationship for candidate in result.trace.expanded_candidates
+        }
+        self.assertIn(candidate_relationships["pref_react_functional"], {"seed", "related"})
 
     def test_empty_index_returns_working_memory_only(self) -> None:
         tempdir = tempfile.TemporaryDirectory()
@@ -87,6 +91,18 @@ class RetrievalFlowTest(unittest.TestCase):
 
         self.assertIn("Working on the auth bug", result.markdown_context)
         self.assertNotIn("Retrieved Memory", result.markdown_context)
+
+    def test_trace_contains_normalized_scores(self) -> None:
+        result = self.engine.retrieve_context("How do I fix my django authentication errors?", top_k=5)
+
+        self.assertTrue(result.trace.expanded_candidates)
+        for candidate in result.trace.expanded_candidates:
+            self.assertGreaterEqual(candidate.similarity, 0.0)
+            self.assertLessEqual(candidate.similarity, 1.0)
+            self.assertGreaterEqual(candidate.frequency_score, 0.0)
+            self.assertLessEqual(candidate.frequency_score, 1.0)
+            self.assertGreaterEqual(candidate.recency_score, 0.0)
+            self.assertLessEqual(candidate.recency_score, 1.0)
 
 
 if __name__ == "__main__":

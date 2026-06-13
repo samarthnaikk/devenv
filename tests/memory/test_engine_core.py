@@ -62,6 +62,28 @@ class MemoryEngineCoreTest(unittest.TestCase):
         self.assertEqual(payload["user"], "Investigate auth bug")
         self.assertEqual(payload["metadata"]["command"], "pytest")
 
+    def test_update_associative_tree_refreshes_vector_summary(self) -> None:
+        self.engine.update_associative_tree(
+            {
+                "node_id": "proj_rxgpt",
+                "label": "Project: RxGPT",
+                "category": "project",
+                "summary": "Initial summary.",
+            }
+        )
+
+        self.engine.update_associative_tree(
+            {
+                "node_id": "proj_rxgpt",
+                "label": "Project: RxGPT",
+                "category": "project",
+                "summary": "Updated summary with Django auth details.",
+            }
+        )
+
+        text_chunk, _vector = self.engine.vector_index.records["proj_rxgpt"]
+        self.assertEqual(text_chunk, "Updated summary with Django auth details.")
+
 
 if __name__ == "__main__":
     unittest.main()
