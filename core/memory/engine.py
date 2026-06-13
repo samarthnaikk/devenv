@@ -19,6 +19,7 @@ from .models import (
 )
 from .storage import SQLiteMemoryStore
 from .vector_index import LanceDBVectorIndex, VectorIndex
+from .working_memory import WorkingMemoryManager
 
 
 class MemoryEngine(MemoryEngineInterface):
@@ -36,6 +37,7 @@ class MemoryEngine(MemoryEngineInterface):
         self.embedder = embedder or SentenceTransformerEmbedder()
         self.vector_index = vector_index or LanceDBVectorIndex(vector_dir=vector_dir, dimension=self.embedder.dimension)
         self.store = store or SQLiteMemoryStore(db_path)
+        self.working_memory = WorkingMemoryManager()
         self._last_trace = RetrievalTrace()
 
     def add_episodic_log(
@@ -89,7 +91,7 @@ class MemoryEngine(MemoryEngineInterface):
         return self._last_trace
 
     def record_working_memory(self, messages: list[dict[str, Any]], active_state: dict[str, Any]) -> None:
-        raise NotImplementedError
+        self.working_memory.record(messages=messages, active_state=active_state)
 
 
 def _coerce_payload(node_data: dict[str, Any]) -> NodeUpsertPayload:
