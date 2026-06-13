@@ -5,7 +5,9 @@ import time
 import uuid
 from typing import Any
 
+from .consolidation import ConsolidationService
 from .embeddings import Embedder, SentenceTransformerEmbedder
+from .extractors import ConsolidationExtractor
 from .interface import MemoryEngineInterface
 from .models import (
     ConsolidationResult,
@@ -32,6 +34,7 @@ class MemoryEngine(MemoryEngineInterface):
         embedder: Embedder | None = None,
         vector_index: VectorIndex | None = None,
         store: SQLiteMemoryStore | None = None,
+        extractor: ConsolidationExtractor | None = None,
     ):
         self.db_path = db_path
         self.vector_dir = vector_dir
@@ -44,6 +47,12 @@ class MemoryEngine(MemoryEngineInterface):
             vector_index=self.vector_index,
             embedder=self.embedder,
             working_memory=self.working_memory,
+        )
+        self.consolidation_service = ConsolidationService(
+            store=self.store,
+            vector_index=self.vector_index,
+            embedder=self.embedder,
+            extractor=extractor,
         )
         self._last_trace = RetrievalTrace()
 
@@ -91,7 +100,7 @@ class MemoryEngine(MemoryEngineInterface):
         return payload.node_id
 
     def run_consolidation(self, since: float | None = None) -> ConsolidationResult:
-        raise NotImplementedError
+        return self.consolidation_service.run(since=since)
 
     def forget_node(self, node_id: str, strategy: str = "prune") -> bool:
         existing = self.store.get_node(node_id)

@@ -1,4 +1,5 @@
 from .engine import MemoryEngine
+from .extractors import HeuristicConsolidationExtractor
 from .models import (
     ConsolidationEntity,
     ConsolidationExtraction,
@@ -23,6 +24,7 @@ __all__ = [
     "ConsolidationResult",
     "ConsolidationUpdate",
     "EpisodicLog",
+    "HeuristicConsolidationExtractor",
     "MemoryEngine",
     "MemoryNode",
     "NodeEdge",
@@ -35,4 +37,3 @@ __all__ = [
     "WorkingMemoryMessage",
     "WorkingMemorySnapshot",
 ]
-
