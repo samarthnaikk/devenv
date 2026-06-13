@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "devenv"
+version = "0.1.0"
+description = "Local-first coding agent foundations."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "lancedb>=0.16.0",
+    "sentence-transformers>=3.0.0",
+]
+
+[tool.setuptools]
+packages = ["core"]
+
+[tool.setuptools.package-dir]
+core = "core"
+
