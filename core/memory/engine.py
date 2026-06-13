@@ -18,6 +18,7 @@ from .models import (
     RetrievalTrace,
 )
 from .storage import SQLiteMemoryStore
+from .retrieval import RetrievalService
 from .vector_index import LanceDBVectorIndex, VectorIndex
 from .working_memory import WorkingMemoryManager
 
@@ -38,6 +39,12 @@ class MemoryEngine(MemoryEngineInterface):
         self.vector_index = vector_index or LanceDBVectorIndex(vector_dir=vector_dir, dimension=self.embedder.dimension)
         self.store = store or SQLiteMemoryStore(db_path)
         self.working_memory = WorkingMemoryManager()
+        self.retrieval_service = RetrievalService(
+            store=self.store,
+            vector_index=self.vector_index,
+            embedder=self.embedder,
+            working_memory=self.working_memory,
+        )
         self._last_trace = RetrievalTrace()
 
     def add_episodic_log(
@@ -60,7 +67,9 @@ class MemoryEngine(MemoryEngineInterface):
         return log_id
 
     def retrieve_context(self, current_prompt: str, top_k: int = 5) -> RetrievalResult:
-        raise NotImplementedError
+        result = self.retrieval_service.retrieve(current_prompt=current_prompt, top_k=top_k)
+        self._last_trace = result.trace
+        return result
 
     def update_associative_tree(self, node_data: dict[str, Any]) -> str:
         now = time.time()

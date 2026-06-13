@@ -253,6 +253,22 @@ class SQLiteMemoryStore:
             ).fetchall()
         return [_row_to_node(row) for row in rows]
 
+    def get_sibling_nodes(self, node_id: str, parent_id: str | None) -> list[MemoryNode]:
+        if parent_id is None:
+            return []
+
+        with self.transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT node_id, parent_id, label, category, summary, created_at, last_accessed, access_count
+                FROM memory_nodes
+                WHERE parent_id = ? AND node_id != ?
+                ORDER BY node_id
+                """,
+                (parent_id, node_id),
+            ).fetchall()
+        return [_row_to_node(row) for row in rows]
+
 
 def _row_to_node(row: sqlite3.Row) -> MemoryNode:
     return MemoryNode(
@@ -265,4 +281,3 @@ def _row_to_node(row: sqlite3.Row) -> MemoryNode:
         last_accessed=float(row["last_accessed"]),
         access_count=int(row["access_count"]),
     )
-
