@@ -13,9 +13,5 @@ dependencies = [
     "sentence-transformers>=3.0.0",
 ]
 
-[tool.setuptools]
-packages = ["core"]
-
-[tool.setuptools.package-dir]
-core = "core"
-
+[tool.setuptools.packages.find]
+include = ["core*"]
