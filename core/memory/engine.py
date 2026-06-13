@@ -94,7 +94,30 @@ class MemoryEngine(MemoryEngineInterface):
         raise NotImplementedError
 
     def forget_node(self, node_id: str, strategy: str = "prune") -> bool:
-        raise NotImplementedError
+        existing = self.store.get_node(node_id)
+        if existing is None:
+            return False
+
+        if strategy == "prune":
+            self.vector_index.delete(node_id)
+            return self.store.delete_node(node_id)
+
+        if strategy == "rewrite":
+            rewritten = MemoryNode(
+                node_id=existing.node_id,
+                parent_id=existing.parent_id,
+                label=existing.label,
+                category=existing.category,
+                summary="Memory intentionally cleared by user request.",
+                created_at=existing.created_at,
+                last_accessed=time.time(),
+                access_count=existing.access_count,
+            )
+            self.store.upsert_node(rewritten)
+            self.vector_index.upsert(node_id, rewritten.summary, self.embedder.embed(rewritten.summary))
+            return True
+
+        raise ValueError(f"Unsupported forget strategy: {strategy}")
 
     def get_context_trace(self) -> RetrievalTrace:
         return self._last_trace
