@@ -98,6 +98,8 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(ai.chat_calls[0]["memory_context"], "## Retrieved Memory\n- Prompt: Explain the repo")
         self.assertEqual(memory.logs[0][0], "Explain the repo")
         self.assertEqual(memory.logs[0][1], "Final answer")
+        self.assertTrue(result.ai_logs)
+        self.assertTrue(result.system_logs)
 
     def test_execute_turn_runs_registered_tool(self) -> None:
         memory = FakeMemory()

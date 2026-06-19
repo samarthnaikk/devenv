@@ -53,7 +53,7 @@ textarea {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr) 360px 360px;
+  grid-template-columns: 20% 60% 20%;
   gap: 20px;
 }
 
@@ -121,6 +121,25 @@ textarea {
   padding: 18px;
 }
 
+.left-column,
+.right-column,
+.main-column {
+  min-height: 0;
+}
+
+.left-column,
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.main-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .panel-label {
   margin-bottom: 12px;
   color: var(--muted);
@@ -129,18 +148,18 @@ textarea {
   letter-spacing: 0.12em;
 }
 
-.file-list {
+.tree-group {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
-.file-row {
+.tree-row {
   width: 100%;
   border: 0;
-  border-radius: 16px;
+  border-radius: 14px;
   background: var(--panel-muted);
   color: var(--text);
-  padding: 12px 14px;
+  padding: 10px 12px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -148,24 +167,51 @@ textarea {
   cursor: pointer;
 }
 
-.file-row.active {
+.tree-row.active {
   outline: 1px solid rgba(115, 224, 169, 0.4);
   background: rgba(49, 194, 124, 0.12);
 }
 
-.back-row {
-  margin-bottom: 10px;
+.tree-caret {
+  width: 12px;
+  color: var(--muted);
 }
 
-.file-icon {
+.tree-icon {
   color: var(--accent);
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.74rem;
 }
 
-.terminal-panel,
+.tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-button {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel-muted);
+  color: var(--text);
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.preview-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.terminal-panel {
+  min-height: 560px;
+  display: flex;
+  flex-direction: column;
+}
+
 .steps-panel {
-  min-height: 640px;
+  min-height: 0;
+  flex: 1;
   display: flex;
   flex-direction: column;
 }
@@ -244,6 +290,10 @@ textarea {
   background: var(--panel-muted);
 }
 
+.log-card {
+  padding: 12px 14px;
+}
+
 .markdown-body,
 .step-output,
 .preview-body {
@@ -312,12 +362,11 @@ textarea {
 
 @media (max-width: 1200px) {
   .app-shell {
-    grid-template-columns: 280px 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 
-  .steps-panel {
-    grid-column: 1 / -1;
-    min-height: 320px;
+  .right-column {
+    min-height: 480px;
   }
 }
 
