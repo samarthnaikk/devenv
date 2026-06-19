@@ -60,7 +60,7 @@ class DevenvKernel:
             final_response = ai_response.content
             if final_response is not None:
                 conversation.append({"role": "assistant", "content": final_response})
-            self.ephemeral_history = conversation
+            self._finalize_turn(user_prompt, final_response or "", conversation)
             return RuntimeTurnResult(final_response=final_response, steps=steps, total_usage=total_usage)
 
     def _execute_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
@@ -96,6 +96,18 @@ class DevenvKernel:
             output=result.output,
             success=result.success,
             is_sandboxed_violation=False,
+        )
+
+    def _finalize_turn(self, user_prompt: str, final_response: str, conversation: list[dict[str, Any]]) -> None:
+        self.ephemeral_history = conversation
+        self.memory.record_working_memory(
+            messages=self.ephemeral_history[-10:],
+            active_state={"workspace_path": self.workspace_path},
+        )
+        self.memory.add_episodic_log(
+            user_prompt,
+            final_response,
+            metadata={"workspace_path": self.workspace_path},
         )
 
 

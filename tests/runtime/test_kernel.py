@@ -18,12 +18,23 @@ class FakeRetrievalResult:
 class FakeMemory:
     def __init__(self) -> None:
         self.working_memory_calls: list[tuple[list[dict[str, Any]], dict[str, Any]]] = []
+        self.logs: list[tuple[str, str, dict[str, Any] | None]] = []
 
     def record_working_memory(self, messages: list[dict[str, Any]], active_state: dict[str, Any]) -> None:
         self.working_memory_calls.append((messages, active_state))
 
     def retrieve_context(self, current_prompt: str, top_k: int = 5) -> FakeRetrievalResult:
         return FakeRetrievalResult(markdown_context=f"## Retrieved Memory\n- Prompt: {current_prompt}")
+
+    def add_episodic_log(
+        self,
+        user_prompt: str,
+        agent_response: str,
+        node_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        self.logs.append((user_prompt, agent_response, metadata))
+        return "log-1"
 
 
 class FakeAI:
@@ -77,6 +88,8 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(result.final_response, "Final answer")
         self.assertEqual(result.total_usage["prompt_tokens"], 10)
         self.assertEqual(ai.chat_calls[0]["memory_context"], "## Retrieved Memory\n- Prompt: Explain the repo")
+        self.assertEqual(memory.logs[0][0], "Explain the repo")
+        self.assertEqual(memory.logs[0][1], "Final answer")
 
     def test_execute_turn_runs_registered_tool(self) -> None:
         memory = FakeMemory()
