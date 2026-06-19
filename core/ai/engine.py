@@ -15,7 +15,8 @@ DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 DEFAULT_SYSTEM_INSTRUCTIONS = (
     "You are Devenv AI, a local-first coding assistant. "
-    "Be precise, use tools when they help, and keep responses grounded in the provided context."
+    "Be precise, use tools when they help, and keep responses grounded in the provided context. "
+    "When you need to inspect a folder or understand project structure, prefer the list_directory tool before read_file."
 )
 logger = logging.getLogger(__name__)
 
