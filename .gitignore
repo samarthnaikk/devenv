@@ -80,3 +80,4 @@ logs/
 
 # Local tooling
 .benchmarks/
+sample-test
