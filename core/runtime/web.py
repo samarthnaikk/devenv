@@ -80,19 +80,24 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path == "/api/health":
-            self._write_json(HTTPStatus.OK, self.app.build_health_payload())
+        try:
+            if parsed.path == "/api/health":
+                self._write_json(HTTPStatus.OK, self.app.build_health_payload())
+                return
+            if parsed.path == "/api/files":
+                query = parse_qs(parsed.query)
+                relative_path = query.get("path", [""])[0]
+                self._write_json(HTTPStatus.OK, self.app.build_files_payload(relative_path))
+                return
+            if parsed.path == "/api/file":
+                query = parse_qs(parsed.query)
+                relative_path = query.get("path", [""])[0]
+                self._write_json(HTTPStatus.OK, self.app.build_file_payload(relative_path))
+                return
+        except (FileNotFoundError, IsADirectoryError, NotADirectoryError, PermissionError) as exc:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             return
-        if parsed.path == "/api/files":
-            query = parse_qs(parsed.query)
-            relative_path = query.get("path", [""])[0]
-            self._write_json(HTTPStatus.OK, self.app.build_files_payload(relative_path))
-            return
-        if parsed.path == "/api/file":
-            query = parse_qs(parsed.query)
-            relative_path = query.get("path", [""])[0]
-            self._write_json(HTTPStatus.OK, self.app.build_file_payload(relative_path))
-            return
+
         if parsed.path == "/":
             self.path = "/index.html"
         return super().do_GET()
@@ -114,7 +119,11 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": "max_consecutive_tools must be an integer"})
             return
 
-        result = self.app.run_turn(prompt=prompt, max_consecutive_tools=max_consecutive_tools)
+        try:
+            result = self.app.run_turn(prompt=prompt, max_consecutive_tools=max_consecutive_tools)
+        except RuntimeError as exc:
+            self._write_json(HTTPStatus.BAD_GATEWAY, {"error": str(exc)})
+            return
         self._write_json(HTTPStatus.OK, result)
 
     def log_message(self, format: str, *args) -> None:

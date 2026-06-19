@@ -93,6 +93,10 @@ class DevenvWebAppTest(unittest.TestCase):
             connection.request("GET", "/api/files")
             files = json.loads(connection.getresponse().read().decode("utf-8"))
 
+            connection.request("GET", "/api/file?path=../secrets.txt")
+            invalid_file_response = connection.getresponse()
+            invalid_file = json.loads(invalid_file_response.read().decode("utf-8"))
+
             connection.request("POST", "/api/turn", body=json.dumps({"prompt": "hello"}), headers={"Content-Type": "application/json"})
             turn = json.loads(connection.getresponse().read().decode("utf-8"))
 
@@ -100,6 +104,8 @@ class DevenvWebAppTest(unittest.TestCase):
 
         self.assertEqual(health["status"], "ok")
         self.assertEqual(files["entries"][0]["name"], "README.md")
+        self.assertEqual(invalid_file_response.status, 400)
+        self.assertIn("escapes workspace", invalid_file["error"])
         self.assertEqual(turn["final_response"], "Website response")
 
 
