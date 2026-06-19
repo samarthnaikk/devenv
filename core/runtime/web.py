@@ -60,6 +60,13 @@ class DevenvWebApp:
             "content": self.workspace.read_text_file(relative_path),
         }
 
+    def run_turn(self, prompt: str, max_consecutive_tools: int | None = None) -> dict[str, object]:
+        result = self.kernel.execute_turn(
+            prompt,
+            max_consecutive_tools=max_consecutive_tools or self.config.max_consecutive_tools,
+        )
+        return result.to_dict()
+
 
 class DevenvRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, app: DevenvWebApp, **kwargs):
@@ -85,6 +92,26 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             self.path = "/index.html"
         return super().do_GET()
 
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/turn":
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+
+        payload = self._read_json()
+        prompt = payload.get("prompt")
+        if not isinstance(prompt, str) or not prompt.strip():
+            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "Missing required field: prompt"})
+            return
+
+        max_consecutive_tools = payload.get("max_consecutive_tools")
+        if max_consecutive_tools is not None and not isinstance(max_consecutive_tools, int):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "max_consecutive_tools must be an integer"})
+            return
+
+        result = self.app.run_turn(prompt=prompt, max_consecutive_tools=max_consecutive_tools)
+        self._write_json(HTTPStatus.OK, result)
+
     def log_message(self, format: str, *args) -> None:
         logger.info("web request: " + format, *args)
 
@@ -95,6 +122,15 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _read_json(self) -> dict[str, object]:
+        content_length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(content_length) if content_length > 0 else b"{}"
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError:
+            return {}
+        return payload if isinstance(payload, dict) else {}
 
 
 def main() -> int:
