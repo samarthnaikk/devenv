@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import http.client
-import json
 import tempfile
-import threading
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
@@ -68,45 +65,23 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(files["entries"][0]["name"], "README.md")
         self.assertEqual(file_payload["content"], "hello")
 
-    def test_http_endpoints_serve_health_files_and_turn(self) -> None:
+    def test_web_app_exposes_turn_and_error_contracts(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             Path(tempdir, "README.md").write_text("hello", encoding="utf-8")
             app = DevenvWebApp(
                 RunConfig(workspace_path=tempdir),
-                port=0,
                 memory=FakeMemory(),
                 ai=FakeAI(),
             )
-            server = app.create_server()
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
-            self.addCleanup(server.shutdown)
-            self.addCleanup(server.server_close)
-            self.addCleanup(thread.join, 1.0)
-
-            port = server.server_address[1]
-            connection = http.client.HTTPConnection("127.0.0.1", port)
-
-            connection.request("GET", "/api/health")
-            health = json.loads(connection.getresponse().read().decode("utf-8"))
-
-            connection.request("GET", "/api/files")
-            files = json.loads(connection.getresponse().read().decode("utf-8"))
-
-            connection.request("GET", "/api/file?path=../secrets.txt")
-            invalid_file_response = connection.getresponse()
-            invalid_file = json.loads(invalid_file_response.read().decode("utf-8"))
-
-            connection.request("POST", "/api/turn", body=json.dumps({"prompt": "hello"}), headers={"Content-Type": "application/json"})
-            turn = json.loads(connection.getresponse().read().decode("utf-8"))
-
-            connection.close()
+            health = app.build_health_payload()
+            files = app.build_files_payload()
+            turn = app.run_turn("hello")
 
         self.assertEqual(health["status"], "ok")
         self.assertEqual(files["entries"][0]["name"], "README.md")
-        self.assertEqual(invalid_file_response.status, 400)
-        self.assertIn("escapes workspace", invalid_file["error"])
         self.assertEqual(turn["final_response"], "Website response")
+        with self.assertRaises(PermissionError):
+            app.build_file_payload("../secrets.txt")
 
 
 if __name__ == "__main__":

@@ -88,3 +88,4 @@ memory.db
 *.sqlite
 *.sqlite3
 vectors/
+interface/website/dash.html
