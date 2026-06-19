@@ -1,0 +1,44 @@
+import React from "https://esm.sh/react@18";
+
+export function TerminalPanel({ transcript, prompt, onPromptChange, onSubmit, isRunning }) {
+  const messages = transcript.map((item, index) =>
+    React.createElement(
+      "article",
+      {
+        key: `${item.role}-${index}`,
+        className: `terminal-bubble ${item.role}`,
+      },
+      React.createElement("div", { className: "bubble-role" }, item.role === "user" ? "You" : "Devenv"),
+      React.createElement("div", { className: "bubble-content" }, item.content)
+    )
+  );
+
+  return React.createElement(
+    "section",
+    { className: "content-panel terminal-panel" },
+    React.createElement("div", { className: "panel-label" }, "Runtime Terminal"),
+    React.createElement("div", { className: "terminal-log" }, messages),
+    React.createElement(
+      "form",
+      {
+        className: "terminal-form",
+        onSubmit: (event) => {
+          event.preventDefault();
+          onSubmit();
+        },
+      },
+      React.createElement("textarea", {
+        className: "terminal-input",
+        rows: 4,
+        value: prompt,
+        placeholder: "Ask Devenv to inspect the workspace...",
+        onChange: (event) => onPromptChange(event.target.value),
+      }),
+      React.createElement(
+        "button",
+        { className: "terminal-submit", type: "submit", disabled: isRunning || !prompt.trim() },
+        isRunning ? "Running..." : "Run Prompt"
+      )
+    )
+  );
+}
