@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class DevenvWebApp:
-    def __init__(self, config: RunConfig, port: int = 4173) -> None:
+    def __init__(self, config: RunConfig, port: int = 4173, *, memory=None, ai=None) -> None:
         self.config = config
         self.port = port
         self.static_root = Path("interface/website").resolve()
@@ -27,6 +27,8 @@ class DevenvWebApp:
             workspace_path=config.workspace_path,
             db_path=config.db_path,
             vector_dir=config.vector_dir,
+            memory=memory,
+            ai=ai,
         )
         self.kernel.register_tool(ReadFileTool())
         self.workspace = WorkspaceBrowser(config.workspace_path)
@@ -34,10 +36,13 @@ class DevenvWebApp:
     def create_handler(self):
         return partial(DevenvRequestHandler, app=self)
 
+    def create_server(self) -> ThreadingHTTPServer:
+        return ThreadingHTTPServer(("127.0.0.1", self.port), self.create_handler())
+
     def serve(self) -> None:
-        server = ThreadingHTTPServer(("127.0.0.1", self.port), self.create_handler())
+        server = self.create_server()
         logger.info("Starting Devenv web server: url=http://127.0.0.1:%s workspace=%s", self.port, self.config.workspace_path)
-        print(f"Devenv website running at http://127.0.0.1:{self.port}")
+        print(f"Devenv website running at http://127.0.0.1:{server.server_address[1]}")
         server.serve_forever()
 
     def build_health_payload(self) -> dict[str, object]:
