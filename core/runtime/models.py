@@ -19,3 +19,11 @@ class RuntimeTurnResult:
     final_response: str | None
     steps: list[ToolExecutionStep] = field(default_factory=list)
     total_usage: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RunConfig:
+    workspace_path: str
+    db_path: str = "memory.db"
+    vector_dir: str = "vectors"
+    max_consecutive_tools: int = 5
