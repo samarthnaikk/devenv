@@ -16,6 +16,7 @@ dependencies = [
 [project.scripts]
 devenv-run = "core.runtime.tui:main"
 devenv-smoke = "core.runtime.smoke:main"
+devenv-web = "core.runtime.web:main"
 
 [tool.setuptools.packages.find]
 include = ["core*"]
