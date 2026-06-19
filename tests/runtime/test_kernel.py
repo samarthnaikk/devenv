@@ -78,7 +78,7 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(result.total_usage["prompt_tokens"], 10)
         self.assertEqual(ai.chat_calls[0]["memory_context"], "## Retrieved Memory\n- Prompt: Explain the repo")
 
-    def test_execute_turn_intercepts_tool_calls_before_execution(self) -> None:
+    def test_execute_turn_runs_registered_tool(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
             [
@@ -98,12 +98,17 @@ class DevenvKernelTest(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tempdir:
+            note_path = f"{tempdir}/note.txt"
+            with open(note_path, "w", encoding="utf-8") as handle:
+                handle.write("hello runtime")
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ReadFileTool())
             result = kernel.execute_turn("Read note.txt")
 
         self.assertEqual(len(result.steps), 1)
         self.assertEqual(result.steps[0].tool_name, "read_file")
-        self.assertEqual(result.steps[0].output, "Tool call intercepted before execution.")
+        self.assertTrue(result.steps[0].success)
+        self.assertIn("read_file completed", result.steps[0].output)
 
     def test_execute_turn_flags_sandbox_violation(self) -> None:
         memory = FakeMemory()

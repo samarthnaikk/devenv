@@ -44,14 +44,17 @@ class DevenvKernel:
         memory_result = self.memory.retrieve_context(user_prompt)
         ai_response = self.ai.chat(messages=list(conversation), memory_context=memory_result.markdown_context)
         if ai_response.tool_calls:
-            return RuntimeTurnResult(final_response=None, steps=[self._intercept_tool_call(tool_call) for tool_call in ai_response.tool_calls])
+            return RuntimeTurnResult(
+                final_response=None,
+                steps=[self._execute_tool_call(tool_call) for tool_call in ai_response.tool_calls],
+            )
         final_response = ai_response.content
         if final_response is not None:
             conversation.append({"role": "assistant", "content": final_response})
         self.ephemeral_history = conversation
         return RuntimeTurnResult(final_response=final_response, total_usage=dict(ai_response.usage))
 
-    def _intercept_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
+    def _execute_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
         unsafe_argument = self.sandbox.find_unsafe_argument(tool_call.arguments)
         if unsafe_argument is not None:
             _key, value = unsafe_argument
@@ -63,11 +66,25 @@ class DevenvKernel:
                 success=False,
                 is_sandboxed_violation=True,
             )
+
+        tool = self.tools.get(tool_call.tool_name)
+        if tool is None:
+            return ToolExecutionStep(
+                step_id=tool_call.call_id,
+                tool_name=tool_call.tool_name,
+                arguments=tool_call.arguments,
+                output=f"Tool '{tool_call.tool_name}' is not registered in the runtime.",
+                success=False,
+                is_sandboxed_violation=False,
+            )
+
+        normalized_arguments = self.sandbox.normalize_arguments(tool_call.arguments)
+        result = tool.execute(**normalized_arguments)
         return ToolExecutionStep(
             step_id=tool_call.call_id,
             tool_name=tool_call.tool_name,
-            arguments=tool_call.arguments,
-            output="Tool call intercepted before execution.",
-            success=False,
+            arguments=normalized_arguments,
+            output=result.output,
+            success=result.success,
             is_sandboxed_violation=False,
         )
