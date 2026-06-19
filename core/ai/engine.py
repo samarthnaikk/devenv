@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from typing import Any
 from urllib import error, request
 
+from core.ai.models import AIResponse, ToolCallRequest
 from core.tools.base import BaseTool
 
 DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
@@ -47,7 +48,7 @@ class AICore:
         messages: list[dict[str, Any]],
         memory_context: str | None = None,
         temperature: float = 0.2,
-    ) -> dict[str, Any]:
+    ) -> AIResponse:
         payload = {
             "model": self.model,
             "messages": [
@@ -58,7 +59,8 @@ class AICore:
             "tool_choice": "auto",
             "temperature": temperature,
         }
-        return self._post_chat_completion(payload)
+        response_payload = self._post_chat_completion(payload)
+        return self._parse_response(response_payload)
 
     def _build_tool_definitions(self) -> list[dict[str, Any]]:
         definitions: list[dict[str, Any]] = []
@@ -124,3 +126,81 @@ class AICore:
             raise ValueError("Malformed response shape from Groq chat completions endpoint.")
 
         return payload_data
+
+    def _parse_response(self, payload: dict[str, Any]) -> AIResponse:
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise ValueError("Malformed response shape from Groq chat completions endpoint.")
+
+        choice = choices[0]
+        if not isinstance(choice, dict):
+            raise ValueError("Malformed response shape from Groq chat completions endpoint.")
+
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            raise ValueError("Malformed response shape from Groq chat completions endpoint.")
+
+        tool_calls = self._parse_tool_calls(message.get("tool_calls", []))
+        usage = self._parse_usage(payload.get("usage"))
+        finish_reason = choice.get("finish_reason")
+        if not isinstance(finish_reason, str):
+            raise ValueError("Malformed response shape from Groq chat completions endpoint.")
+
+        content = message.get("content")
+        if content is not None and not isinstance(content, str):
+            raise ValueError("Malformed response shape from Groq chat completions endpoint.")
+
+        return AIResponse(
+            content=content,
+            tool_calls=tool_calls,
+            finish_reason=finish_reason,
+            usage=usage,
+        )
+
+    def _parse_tool_calls(self, raw_tool_calls: Any) -> tuple[ToolCallRequest, ...]:
+        if raw_tool_calls is None:
+            return ()
+        if not isinstance(raw_tool_calls, list):
+            raise ValueError("Malformed response shape from Groq chat completions endpoint.")
+
+        parsed: list[ToolCallRequest] = []
+        for raw_call in raw_tool_calls:
+            if not isinstance(raw_call, dict):
+                raise ValueError("Malformed response shape from Groq chat completions endpoint.")
+            call_id = raw_call.get("id")
+            function_payload = raw_call.get("function")
+            if not isinstance(call_id, str) or not isinstance(function_payload, dict):
+                raise ValueError("Malformed response shape from Groq chat completions endpoint.")
+
+            tool_name = function_payload.get("name")
+            raw_arguments = function_payload.get("arguments")
+            if not isinstance(tool_name, str) or not isinstance(raw_arguments, str):
+                raise ValueError("Malformed response shape from Groq chat completions endpoint.")
+
+            try:
+                arguments = json.loads(raw_arguments)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Malformed tool-call arguments JSON for tool '{tool_name}'.") from exc
+            if not isinstance(arguments, dict):
+                raise ValueError(f"Malformed tool-call arguments JSON for tool '{tool_name}'.")
+
+            parsed.append(
+                ToolCallRequest(
+                    call_id=call_id,
+                    tool_name=tool_name,
+                    arguments=arguments,
+                )
+            )
+        return tuple(parsed)
+
+    def _parse_usage(self, raw_usage: Any) -> dict[str, int]:
+        if not isinstance(raw_usage, dict):
+            return {}
+
+        usage: dict[str, int] = {}
+        for key, value in raw_usage.items():
+            if isinstance(value, int):
+                usage[str(key)] = value
+            else:
+                usage[str(key)] = 0
+        return usage
