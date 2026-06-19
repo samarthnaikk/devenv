@@ -51,7 +51,7 @@ class AICore:
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": self.system_instructions},
+                {"role": "system", "content": self._compile_system_frame(memory_context)},
                 *messages,
             ],
             "tools": self._build_tool_definitions(),
@@ -75,6 +75,24 @@ class AICore:
                 }
             )
         return definitions
+
+    def _compile_system_frame(self, memory_context: str | None) -> str:
+        sections = [
+            "## System Core Instructions",
+            self.system_instructions,
+            "## Reconciled Tool Declarations",
+            json.dumps(self._build_tool_definitions(), indent=2, sort_keys=True),
+        ]
+
+        if memory_context and memory_context.strip():
+            sections.extend(
+                [
+                    "## Cognitive Memory Context",
+                    memory_context.strip(),
+                ]
+            )
+
+        return "\n\n".join(sections)
 
     def _post_chat_completion(self, payload: dict[str, Any]) -> dict[str, Any]:
         body = json.dumps(payload).encode("utf-8")
