@@ -20,7 +20,17 @@ export function TerminalPanel({ transcript, prompt, onPromptChange, onSubmit, is
   return React.createElement(
     "section",
     { className: "content-panel terminal-panel" },
-    React.createElement("div", { className: "panel-label" }, "Runtime Terminal"),
+    React.createElement(
+      "div",
+      { className: "terminal-header" },
+      React.createElement("div", { className: "panel-label" }, "Runtime Terminal"),
+      React.createElement("h2", { className: "terminal-title" }, "Ask the local agent about the workspace"),
+      React.createElement(
+        "p",
+        { className: "terminal-caption" },
+        "The center panel stays focused on the conversation. File preview opens below it only when you explicitly request it."
+      )
+    ),
     React.createElement("div", { className: "terminal-log" }, messages),
     React.createElement(
       "form",
@@ -35,7 +45,7 @@ export function TerminalPanel({ transcript, prompt, onPromptChange, onSubmit, is
         className: "terminal-input",
         rows: 4,
         value: prompt,
-        placeholder: "Ask Devenv to inspect the workspace...",
+        placeholder: "Ask Devenv to inspect the workspace, summarize architecture, or trace a bug...",
         onChange: (event) => onPromptChange(event.target.value),
       }),
       React.createElement(

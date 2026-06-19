@@ -8,6 +8,14 @@ export function FileTree({
   onSelectFile,
   depth = 0,
 }) {
+  if (!nodes.length) {
+    return React.createElement(
+      "div",
+      { className: "tree-empty" },
+      "No files found in this directory."
+    );
+  }
+
   return React.createElement(
     "div",
     { className: "tree-group" },
@@ -19,13 +27,24 @@ export function FileTree({
           "button",
           {
             className: `tree-row${selectedPath === node.path ? " active" : ""}`,
-            style: { paddingLeft: `${12 + depth * 16}px` },
+            style: { paddingLeft: `${12 + depth * 14}px` },
             type: "button",
             onClick: () => (node.is_dir ? onToggleDirectory(node.path) : onSelectFile(node.path)),
           },
           React.createElement("span", { className: "tree-caret" }, node.is_dir ? (expandedPaths.has(node.path) ? "▾" : "▸") : "·"),
-          React.createElement("span", { className: "tree-icon" }, node.is_dir ? "DIR" : "FILE"),
-          React.createElement("span", { className: "tree-name" }, node.name || node.path || "workspace")
+          React.createElement("span", { className: `tree-icon ${node.is_dir ? "directory" : "file"}` }, node.is_dir ? "DIR" : "FILE"),
+          React.createElement(
+            "span",
+            { className: "tree-name-wrap" },
+            React.createElement("span", { className: "tree-name" }, node.name || node.path || "workspace"),
+            node.is_dir && node.children
+              ? React.createElement(
+                  "span",
+                  { className: "tree-meta" },
+                  `${node.children.length} ${node.children.length === 1 ? "item" : "items"}`
+                )
+              : null
+          )
         ),
         node.is_dir && expandedPaths.has(node.path) && node.children
           ? React.createElement(FileTree, {
