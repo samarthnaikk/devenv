@@ -6,6 +6,7 @@ from typing import Any
 
 from core.ai import AICore
 from core.ai.models import AIResponse, ToolCallRequest
+from core.env import load_dotenv
 from core.memory import MemoryEngine
 from core.tools.base import BaseTool
 
@@ -24,6 +25,7 @@ class DevenvKernel:
         ai: AICore | Any | None = None,
     ):
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
+        load_dotenv(self.workspace_path)
         self.sandbox = PathSandbox(root_path=self.workspace_path)
         self.memory = memory or MemoryEngine(db_path=db_path, vector_dir=vector_dir)
         self.ai = ai or AICore()

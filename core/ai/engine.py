@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from typing import Any
 from urllib import error, request
 
+from core.env import load_dotenv
 from core.ai.models import AIResponse, ToolCallRequest
 from core.tools.base import BaseTool
 
@@ -27,6 +28,7 @@ class AICore:
         tools: Iterable[BaseTool] | None = None,
         system_instructions: str = DEFAULT_SYSTEM_INSTRUCTIONS,
     ) -> None:
+        load_dotenv()
         resolved_api_key = api_key or os.getenv("GROQ_API_KEY")
         if not resolved_api_key:
             raise ValueError("Missing Groq API key. Set GROQ_API_KEY or pass api_key explicitly.")

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import unittest
 from unittest.mock import patch
 from urllib import error
@@ -25,9 +27,15 @@ class FakeHTTPResponse:
 
 class AICoreTest(unittest.TestCase):
     def test_missing_api_key_raises_value_error(self) -> None:
-        with patch.dict("os.environ", {}, clear=True):
-            with self.assertRaises(ValueError):
-                AICore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(tempdir)
+                with patch.dict("os.environ", {}, clear=True):
+                    with self.assertRaises(ValueError):
+                        AICore()
+            finally:
+                os.chdir(original_cwd)
 
     def test_model_precedence_prefers_constructor_then_env_then_default(self) -> None:
         with patch.dict("os.environ", {"GROQ_API_KEY": "env-key", "GROQ_MODEL": "env-model"}, clear=True):
@@ -36,6 +44,24 @@ class AICoreTest(unittest.TestCase):
 
         with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
             self.assertEqual(AICore().model, "llama-3.3-70b-versatile")
+
+    def test_loads_groq_configuration_from_dotenv(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            env_path = os.path.join(tempdir, ".env")
+            with open(env_path, "w", encoding="utf-8") as handle:
+                handle.write("GROQ_API_KEY=dotenv-key\n")
+                handle.write("GROQ_MODEL=dotenv-model\n")
+
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(tempdir)
+                with patch.dict("os.environ", {}, clear=True):
+                    core = AICore()
+            finally:
+                os.chdir(original_cwd)
+
+        self.assertEqual(core.api_key, "dotenv-key")
+        self.assertEqual(core.model, "dotenv-model")
 
     def test_build_tool_definitions_matches_read_file_schema(self) -> None:
         with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
