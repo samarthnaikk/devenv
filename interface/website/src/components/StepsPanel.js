@@ -1,4 +1,5 @@
 import React from "https://esm.sh/react@18";
+import { renderMarkdown } from "../lib/markdown.js";
 
 export function StepsPanel({ steps, usage }) {
   const stepRows = steps.map((step) =>
@@ -12,7 +13,10 @@ export function StepsPanel({ steps, usage }) {
         React.createElement("span", { className: step.success ? "step-ok" : "step-fail" }, step.success ? "ok" : "fail")
       ),
       React.createElement("pre", { className: "step-block" }, JSON.stringify(step.arguments, null, 2)),
-      React.createElement("pre", { className: "step-block" }, step.output)
+      React.createElement("div", {
+        className: "markdown-body step-output",
+        dangerouslySetInnerHTML: { __html: renderMarkdown(step.output) },
+      })
     )
   );
 

@@ -1,4 +1,5 @@
 import React from "https://esm.sh/react@18";
+import { renderMarkdown } from "../lib/markdown.js";
 
 export function TerminalPanel({ transcript, prompt, onPromptChange, onSubmit, isRunning }) {
   const messages = transcript.map((item, index) =>
@@ -9,7 +10,10 @@ export function TerminalPanel({ transcript, prompt, onPromptChange, onSubmit, is
         className: `terminal-bubble ${item.role}`,
       },
       React.createElement("div", { className: "bubble-role" }, item.role === "user" ? "You" : "Devenv"),
-      React.createElement("div", { className: "bubble-content" }, item.content)
+      React.createElement("div", {
+        className: "bubble-content markdown-body",
+        dangerouslySetInnerHTML: { __html: renderMarkdown(item.content) },
+      })
     )
   );
 

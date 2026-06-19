@@ -1,6 +1,7 @@
 import React from "https://esm.sh/react@18";
-import { fetchFiles, fetchHealth, runTurn } from "./api.js";
+import { fetchFile, fetchFiles, fetchHealth, runTurn } from "./api.js";
 import { FileSidebar } from "./components/FileSidebar.js";
+import { FilePreviewPanel } from "./components/FilePreviewPanel.js";
 import { HeaderBar } from "./components/HeaderBar.js";
 import { StepsPanel } from "./components/StepsPanel.js";
 import { TerminalPanel } from "./components/TerminalPanel.js";
@@ -9,6 +10,7 @@ export function App() {
   const [health, setHealth] = React.useState(null);
   const [entries, setEntries] = React.useState([]);
   const [selectedPath, setSelectedPath] = React.useState("");
+  const [selectedContent, setSelectedContent] = React.useState("");
   const [currentPath, setCurrentPath] = React.useState("");
   const [prompt, setPrompt] = React.useState("Tell me about this project.");
   const [transcript, setTranscript] = React.useState([]);
@@ -39,7 +41,11 @@ export function App() {
       entries,
       activePath: selectedPath,
       currentPath,
-      onSelectFile: setSelectedPath,
+      onSelectFile: async (path) => {
+        setSelectedPath(path);
+        const filePayload = await fetchFile(path);
+        setSelectedContent(filePayload.content);
+      },
       onEnterDirectory: async (path) => {
         const filePayload = await fetchFiles(path);
         setEntries(filePayload.entries);
@@ -76,6 +82,10 @@ export function App() {
           setIsRunning(false);
         }
       },
+    }),
+    React.createElement(FilePreviewPanel, {
+      path: selectedPath,
+      content: selectedContent,
     }),
     React.createElement(StepsPanel, { steps, usage })
   );
