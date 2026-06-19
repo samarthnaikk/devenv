@@ -93,7 +93,13 @@ class DevenvKernelTest(unittest.TestCase):
                     ),
                     finish_reason="tool_calls",
                     usage={},
-                )
+                ),
+                AIResponse(
+                    content="I read the file.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
             ]
         )
 
@@ -105,10 +111,13 @@ class DevenvKernelTest(unittest.TestCase):
             kernel.register_tool(ReadFileTool())
             result = kernel.execute_turn("Read note.txt")
 
+        self.assertEqual(result.final_response, "I read the file.")
         self.assertEqual(len(result.steps), 1)
         self.assertEqual(result.steps[0].tool_name, "read_file")
         self.assertTrue(result.steps[0].success)
         self.assertIn("read_file completed", result.steps[0].output)
+        second_call_messages = ai.chat_calls[1]["messages"]
+        self.assertEqual(second_call_messages[-1]["role"], "tool")
 
     def test_execute_turn_flags_sandbox_violation(self) -> None:
         memory = FakeMemory()
