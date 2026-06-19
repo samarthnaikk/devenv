@@ -17,5 +17,9 @@ class BaseTool(ABC):
     description: str
 
     @abstractmethod
+    def input_schema(self) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
     def execute(self, **kwargs) -> ToolResult:
         raise NotImplementedError

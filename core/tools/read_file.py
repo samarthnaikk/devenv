@@ -35,6 +35,23 @@ class ReadFileTool(BaseTool):
 
     supported_features: tuple[str, ...] = ("content", "metadata", "extension", "all")
 
+    def input_schema(self) -> dict[str, object]:
+        return {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the target text file to inspect.",
+                },
+                "features": {
+                    "type": "string",
+                    "description": "Optional feature selection for the response payload.",
+                    "enum": list(self.supported_features),
+                },
+            },
+            "required": ["path"],
+        }
+
     def execute(self, **kwargs) -> ToolResult:
         path = kwargs.get("path")
         features = kwargs.get("features")
