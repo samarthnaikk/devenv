@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from core.ai import AICore
+from core.ai.models import AIResponse
 from core.memory import MemoryEngine
 from core.tools.base import BaseTool
 
@@ -33,4 +34,17 @@ class DevenvKernel:
         self.ai.register_tool(tool)
 
     def execute_turn(self, user_prompt: str, max_consecutive_tools: int = 5) -> RuntimeTurnResult:
-        return RuntimeTurnResult(final_response=None)
+        conversation = list(self.ephemeral_history)
+        conversation.append({"role": "user", "content": user_prompt})
+
+        self.memory.record_working_memory(
+            messages=conversation[-10:],
+            active_state={"workspace_path": self.workspace_path},
+        )
+        memory_result = self.memory.retrieve_context(user_prompt)
+        ai_response = self.ai.chat(messages=list(conversation), memory_context=memory_result.markdown_context)
+        final_response = ai_response.content
+        if final_response is not None:
+            conversation.append({"role": "assistant", "content": final_response})
+        self.ephemeral_history = conversation
+        return RuntimeTurnResult(final_response=final_response, total_usage=dict(ai_response.usage))
