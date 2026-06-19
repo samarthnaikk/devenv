@@ -105,13 +105,13 @@ class DevenvKernelTest(unittest.TestCase):
                         ),
                     ),
                     finish_reason="tool_calls",
-                    usage={},
+                    usage={"prompt_tokens": 7},
                 ),
                 AIResponse(
                     content="I read the file.",
                     tool_calls=(),
                     finish_reason="stop",
-                    usage={},
+                    usage={"completion_tokens": 4},
                 ),
             ]
         )
@@ -131,6 +131,8 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("read_file completed", result.steps[0].output)
         second_call_messages = ai.chat_calls[1]["messages"]
         self.assertEqual(second_call_messages[-1]["role"], "tool")
+        self.assertEqual(result.total_usage["prompt_tokens"], 7)
+        self.assertEqual(result.total_usage["completion_tokens"], 4)
 
     def test_execute_turn_flags_sandbox_violation(self) -> None:
         memory = FakeMemory()

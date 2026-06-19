@@ -48,7 +48,7 @@ class DevenvKernel:
 
         while True:
             ai_response = self.ai.chat(messages=list(conversation), memory_context=memory_result.markdown_context)
-            total_usage = dict(ai_response.usage)
+            _merge_usage(total_usage, ai_response.usage)
             if ai_response.tool_calls:
                 conversation.append(_assistant_tool_call_message(ai_response))
                 for tool_call in ai_response.tool_calls:
@@ -136,3 +136,8 @@ def _tool_message(call_id: str, tool_name: str, output: str) -> dict[str, Any]:
         "name": tool_name,
         "content": output,
     }
+
+
+def _merge_usage(total_usage: dict[str, int], usage: dict[str, int]) -> None:
+    for key, value in usage.items():
+        total_usage[key] = total_usage.get(key, 0) + value
