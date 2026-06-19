@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from mimetypes import guess_type
@@ -7,6 +8,8 @@ from pathlib import Path
 from typing import Literal
 
 from .base import BaseTool, ToolResult
+
+logger = logging.getLogger(__name__)
 
 
 ReadFileFeature = Literal["content", "metadata", "extension", "all"]
@@ -62,6 +65,7 @@ class ReadFileTool(BaseTool):
         try:
             selected_features = self._normalize_features(features)
             file_path = _resolve_file_path(path)
+            logger.info("Reading file: path=%s features=%s", file_path, selected_features)
 
             result: dict[str, object] = {}
             if "content" in selected_features:
@@ -78,6 +82,7 @@ class ReadFileTool(BaseTool):
                 data=result,
             )
         except (FileNotFoundError, IsADirectoryError, UnicodeDecodeError, OSError, ValueError) as exc:
+            logger.error("read_file failed: path=%s error=%s", path, exc)
             return ToolResult(success=False, output=str(exc), data={})
 
     def _normalize_features(self, features: object) -> list[str]:

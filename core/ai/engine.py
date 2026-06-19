@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import Iterable
 from typing import Any
@@ -16,6 +17,7 @@ DEFAULT_SYSTEM_INSTRUCTIONS = (
     "You are Devenv AI, a local-first coding assistant. "
     "Be precise, use tools when they help, and keep responses grounded in the provided context."
 )
+logger = logging.getLogger(__name__)
 
 
 class AICore:
@@ -61,6 +63,13 @@ class AICore:
             "tool_choice": "auto",
             "temperature": temperature,
         }
+        logger.info(
+            "Submitting Groq chat completion: model=%s message_count=%s tool_count=%s memory_chars=%s",
+            self.model,
+            len(payload["messages"]),
+            len(payload["tools"]),
+            len(memory_context or ""),
+        )
         response_payload = self._post_chat_completion(payload)
         return self._parse_response(response_payload)
 
@@ -106,17 +115,23 @@ class AICore:
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "devenv/0.1",
             },
             method="POST",
         )
 
         try:
+            logger.info("Opening Groq request: url=%s", req.full_url)
             with request.urlopen(req) as response:
                 raw = response.read().decode("utf-8")
+                logger.info("Groq request succeeded: status=%s bytes=%s", getattr(response, "status", "unknown"), len(raw))
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
+            logger.error("Groq request failed: http_status=%s detail=%s", exc.code, detail)
             raise RuntimeError(f"Groq chat completion failed with HTTP {exc.code}: {detail}") from exc
         except error.URLError as exc:
+            logger.error("Groq request failed: reason=%s", exc.reason)
             raise RuntimeError(f"Groq chat completion failed: {exc.reason}") from exc
 
         try:

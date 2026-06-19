@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,8 @@ from core.tools.base import BaseTool
 
 from .models import RuntimeTurnResult, ToolExecutionStep
 from .sandbox import PathSandbox
+
+logger = logging.getLogger(__name__)
 
 
 class DevenvKernel:
@@ -35,27 +38,34 @@ class DevenvKernel:
     def register_tool(self, tool: BaseTool) -> None:
         self.tools[tool.name] = tool
         self.ai.register_tool(tool)
+        logger.info("Registered tool with runtime and AI: tool=%s", tool.name)
 
     def execute_turn(self, user_prompt: str, max_consecutive_tools: int = 5) -> RuntimeTurnResult:
+        logger.info("Starting runtime turn: workspace=%s prompt=%s", self.workspace_path, user_prompt)
         conversation = list(self.ephemeral_history)
         conversation.append({"role": "user", "content": user_prompt})
 
-        self.memory.record_working_memory(
-            messages=conversation[-10:],
-            active_state={"workspace_path": self.workspace_path},
-        )
-        memory_result = self.memory.retrieve_context(user_prompt)
+        self._record_working_memory(conversation)
+        memory_context = self._retrieve_memory_context(user_prompt)
+        logger.info("Retrieved memory context: chars=%s", len(memory_context))
         steps: list[ToolExecutionStep] = []
         total_usage: dict[str, int] = {}
 
         while True:
-            ai_response = self.ai.chat(messages=list(conversation), memory_context=memory_result.markdown_context)
+            ai_response = self.ai.chat(messages=list(conversation), memory_context=memory_context)
             _merge_usage(total_usage, ai_response.usage)
+            logger.info(
+                "AI response received: finish_reason=%s tool_calls=%s usage=%s",
+                ai_response.finish_reason,
+                len(ai_response.tool_calls),
+                ai_response.usage,
+            )
             if ai_response.tool_calls:
                 conversation.append(_assistant_tool_call_message(ai_response))
                 for tool_call in ai_response.tool_calls:
                     if len(steps) >= max_consecutive_tools:
                         final_response = "Tool execution limit reached before the request could be completed."
+                        logger.warning("Tool limit reached: max_consecutive_tools=%s", max_consecutive_tools)
                         conversation.append({"role": "assistant", "content": final_response})
                         self._finalize_turn(user_prompt, final_response, conversation)
                         return RuntimeTurnResult(final_response=final_response, steps=steps, total_usage=total_usage)
@@ -67,13 +77,16 @@ class DevenvKernel:
             final_response = ai_response.content
             if final_response is not None:
                 conversation.append({"role": "assistant", "content": final_response})
+            logger.info("Finishing runtime turn: final_response_present=%s total_steps=%s", final_response is not None, len(steps))
             self._finalize_turn(user_prompt, final_response or "", conversation)
             return RuntimeTurnResult(final_response=final_response, steps=steps, total_usage=total_usage)
 
     def _execute_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
+        logger.info("Intercepted tool call: tool=%s arguments=%s", tool_call.tool_name, tool_call.arguments)
         unsafe_argument = self.sandbox.find_unsafe_argument(tool_call.arguments)
         if unsafe_argument is not None:
             _key, value = unsafe_argument
+            logger.warning("Sandbox violation detected: tool=%s path=%s", tool_call.tool_name, value)
             return ToolExecutionStep(
                 step_id=tool_call.call_id,
                 tool_name=tool_call.tool_name,
@@ -85,6 +98,7 @@ class DevenvKernel:
 
         tool = self.tools.get(tool_call.tool_name)
         if tool is None:
+            logger.error("Requested tool is not registered: tool=%s", tool_call.tool_name)
             return ToolExecutionStep(
                 step_id=tool_call.call_id,
                 tool_name=tool_call.tool_name,
@@ -95,7 +109,9 @@ class DevenvKernel:
             )
 
         normalized_arguments = self.sandbox.normalize_arguments(tool_call.arguments)
+        logger.info("Executing tool: tool=%s normalized_arguments=%s", tool_call.tool_name, normalized_arguments)
         result = tool.execute(**normalized_arguments)
+        logger.info("Tool finished: tool=%s success=%s", tool_call.tool_name, result.success)
         return ToolExecutionStep(
             step_id=tool_call.call_id,
             tool_name=tool_call.tool_name,
@@ -107,15 +123,32 @@ class DevenvKernel:
 
     def _finalize_turn(self, user_prompt: str, final_response: str, conversation: list[dict[str, Any]]) -> None:
         self.ephemeral_history = conversation
-        self.memory.record_working_memory(
-            messages=self.ephemeral_history[-10:],
-            active_state={"workspace_path": self.workspace_path},
-        )
-        self.memory.add_episodic_log(
-            user_prompt,
-            final_response,
-            metadata={"workspace_path": self.workspace_path},
-        )
+        self._record_working_memory(self.ephemeral_history)
+        logger.info("Recording episodic log for completed turn")
+        try:
+            self.memory.add_episodic_log(
+                user_prompt,
+                final_response,
+                metadata={"workspace_path": self.workspace_path},
+            )
+        except Exception as exc:
+            logger.warning("Failed to record episodic log; continuing without persisted memory: error=%s", exc)
+
+    def _record_working_memory(self, conversation: list[dict[str, Any]]) -> None:
+        try:
+            self.memory.record_working_memory(
+                messages=conversation[-10:],
+                active_state={"workspace_path": self.workspace_path},
+            )
+        except Exception as exc:
+            logger.warning("Failed to record working memory; continuing: error=%s", exc)
+
+    def _retrieve_memory_context(self, user_prompt: str) -> str:
+        try:
+            return self.memory.retrieve_context(user_prompt).markdown_context
+        except Exception as exc:
+            logger.warning("Memory retrieval failed; continuing without memory context: error=%s", exc)
+            return ""
 
 
 def _assistant_tool_call_message(ai_response: AIResponse) -> dict[str, Any]:

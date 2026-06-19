@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from core.logging_utils import configure_logging
 from core.tools.read_file import ReadFileTool
 
 from .kernel import DevenvKernel
@@ -67,8 +68,10 @@ def main() -> int:
     parser.add_argument("--db-path", default="memory.db")
     parser.add_argument("--vector-dir", default="vectors")
     parser.add_argument("--max-consecutive-tools", type=int, default=5)
+    parser.add_argument("--log-level", default=None)
     args = parser.parse_args()
 
+    configure_logging(args.log_level)
     config = RunConfig(
         workspace_path=str(Path(args.workspace).expanduser().resolve()),
         db_path=args.db_path,

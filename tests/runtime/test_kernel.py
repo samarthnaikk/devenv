@@ -37,6 +37,11 @@ class FakeMemory:
         return "log-1"
 
 
+class FailingMemory(FakeMemory):
+    def retrieve_context(self, current_prompt: str, top_k: int = 5) -> FakeRetrievalResult:
+        raise RuntimeError("memory offline")
+
+
 class FakeAI:
     def __init__(self, responses: list[AIResponse] | None = None) -> None:
         self.responses = list(responses or [])
@@ -197,6 +202,26 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(len(result.steps), 1)
         self.assertEqual(result.final_response, "Tool execution limit reached before the request could be completed.")
+
+    def test_execute_turn_continues_when_memory_retrieval_fails(self) -> None:
+        memory = FailingMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="Fallback answer",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 2},
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("Explain the repo")
+
+        self.assertEqual(result.final_response, "Fallback answer")
+        self.assertEqual(ai.chat_calls[0]["memory_context"], "")
 
 
 if __name__ == "__main__":

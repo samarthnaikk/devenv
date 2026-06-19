@@ -81,3 +81,5 @@ logs/
 # Local tooling
 .benchmarks/
 sample-test
+memory.db
+vectors/

@@ -1,0 +1,3 @@
+-e .
+lancedb>=0.16.0
+sentence-transformers>=3.0.0
