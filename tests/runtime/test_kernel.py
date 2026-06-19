@@ -7,6 +7,7 @@ from typing import Any
 
 from core.ai.models import AIResponse, ToolCallRequest
 from core.runtime import DevenvKernel
+from core.tools.list_directory import ListDirectoryTool
 from core.tools.read_file import ReadFileTool
 
 
@@ -69,9 +70,11 @@ class DevenvKernelTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
             kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
 
         self.assertIn("read_file", kernel.tools)
-        self.assertEqual(ai.registered_tools, ["read_file"])
+        self.assertIn("list_directory", kernel.tools)
+        self.assertEqual(ai.registered_tools, ["read_file", "list_directory"])
 
     def test_execute_turn_returns_direct_ai_response(self) -> None:
         memory = FakeMemory()

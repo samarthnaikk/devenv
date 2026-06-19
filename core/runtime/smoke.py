@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from core.logging_utils import configure_logging
+from core.tools.list_directory import ListDirectoryTool
 from core.tools.read_file import ReadFileTool
 
 from .kernel import DevenvKernel
@@ -27,6 +28,7 @@ def main() -> int:
         vector_dir=args.vector_dir,
     )
     kernel.register_tool(ReadFileTool())
+    kernel.register_tool(ListDirectoryTool())
     result = kernel.execute_turn(args.prompt, max_consecutive_tools=args.max_consecutive_tools)
     print(json.dumps(
         {

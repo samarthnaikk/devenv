@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from core.logging_utils import configure_logging
+from core.tools.list_directory import ListDirectoryTool
 from core.tools.read_file import ReadFileTool
 
 from .kernel import DevenvKernel
@@ -38,6 +39,7 @@ def run_tui(config: RunConfig) -> int:
         vector_dir=config.vector_dir,
     )
     kernel.register_tool(ReadFileTool())
+    kernel.register_tool(ListDirectoryTool())
     render_banner(config)
 
     while True:

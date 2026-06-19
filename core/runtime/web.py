@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from core.logging_utils import configure_logging
+from core.tools.list_directory import ListDirectoryTool
 from core.tools.read_file import ReadFileTool
 
 from .kernel import DevenvKernel
@@ -31,6 +32,7 @@ class DevenvWebApp:
             ai=ai,
         )
         self.kernel.register_tool(ReadFileTool())
+        self.kernel.register_tool(ListDirectoryTool())
         self.workspace = WorkspaceBrowser(config.workspace_path)
 
     def create_handler(self):
