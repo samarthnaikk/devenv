@@ -82,4 +82,7 @@ logs/
 .benchmarks/
 sample-test
 memory.db
+*.db
+*.sqlite
+*.sqlite3
 vectors/
