@@ -153,6 +153,10 @@ textarea {
   background: rgba(49, 194, 124, 0.12);
 }
 
+.back-row {
+  margin-bottom: 10px;
+}
+
 .file-icon {
   color: var(--accent);
   font-family: "IBM Plex Mono", monospace;

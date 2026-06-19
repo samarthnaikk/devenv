@@ -19,6 +19,24 @@ export function FileSidebar({ entries, activePath, onSelectFile, onEnterDirector
     "aside",
     { className: "sidebar-panel" },
     React.createElement("div", { className: "panel-label" }, currentPath || "workspace"),
+    currentPath
+      ? React.createElement(
+          "button",
+          {
+            className: "file-row back-row",
+            type: "button",
+            onClick: () => onEnterDirectory(parentPath(currentPath)),
+          },
+          React.createElement("span", { className: "file-icon" }, "UP"),
+          React.createElement("span", { className: "file-name" }, "..")
+        )
+      : null,
     React.createElement("div", { className: "file-list" }, rows)
   );
+}
+
+function parentPath(path) {
+  const parts = path.split("/").filter(Boolean);
+  parts.pop();
+  return parts.join("/");
 }

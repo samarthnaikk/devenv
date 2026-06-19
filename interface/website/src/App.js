@@ -17,14 +17,23 @@ export function App() {
   const [steps, setSteps] = React.useState([]);
   const [usage, setUsage] = React.useState({});
   const [isRunning, setIsRunning] = React.useState(false);
+  const [bootError, setBootError] = React.useState("");
 
   React.useEffect(() => {
-    Promise.all([fetchHealth(), fetchFiles("")]).then(([healthPayload, filePayload]) => {
-      setHealth(healthPayload);
-      setEntries(filePayload.entries);
-      setCurrentPath(filePayload.path);
-    });
+    Promise.all([fetchHealth(), fetchFiles("")])
+      .then(([healthPayload, filePayload]) => {
+        setHealth(healthPayload);
+        setEntries(filePayload.entries);
+        setCurrentPath(filePayload.path);
+      })
+      .catch((error) => {
+        setBootError(error.message);
+      });
   }, []);
+
+  if (bootError) {
+    return React.createElement("div", { className: "loading-shell" }, `Failed to load interface: ${bootError}`);
+  }
 
   if (!health) {
     return React.createElement("div", { className: "loading-shell" }, "Booting Devenv web interface...");
