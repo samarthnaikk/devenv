@@ -30,6 +30,7 @@ class DevenvKernel:
 
     def register_tool(self, tool: BaseTool) -> None:
         self.tools[tool.name] = tool
+        self.ai.register_tool(tool)
 
     def execute_turn(self, user_prompt: str, max_consecutive_tools: int = 5) -> RuntimeTurnResult:
         return RuntimeTurnResult(final_response=None)
