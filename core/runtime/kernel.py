@@ -52,6 +52,11 @@ class DevenvKernel:
             if ai_response.tool_calls:
                 conversation.append(_assistant_tool_call_message(ai_response))
                 for tool_call in ai_response.tool_calls:
+                    if len(steps) >= max_consecutive_tools:
+                        final_response = "Tool execution limit reached before the request could be completed."
+                        conversation.append({"role": "assistant", "content": final_response})
+                        self._finalize_turn(user_prompt, final_response, conversation)
+                        return RuntimeTurnResult(final_response=final_response, steps=steps, total_usage=total_usage)
                     step = self._execute_tool_call(tool_call)
                     steps.append(step)
                     conversation.append(_tool_message(tool_call.call_id, tool_call.tool_name, step.output))
@@ -93,7 +98,7 @@ class DevenvKernel:
             step_id=tool_call.call_id,
             tool_name=tool_call.tool_name,
             arguments=normalized_arguments,
-            output=result.output,
+            output=_format_tool_output(result.output, result.data),
             success=result.success,
             is_sandboxed_violation=False,
         )
@@ -136,6 +141,12 @@ def _tool_message(call_id: str, tool_name: str, output: str) -> dict[str, Any]:
         "name": tool_name,
         "content": output,
     }
+
+
+def _format_tool_output(output: str, data: dict[str, Any]) -> str:
+    if not data:
+        return output
+    return f"{output}\n{json.dumps(data, sort_keys=True)}"
 
 
 def _merge_usage(total_usage: dict[str, int], usage: dict[str, int]) -> None:

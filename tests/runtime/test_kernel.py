@@ -129,6 +129,7 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(result.steps[0].tool_name, "read_file")
         self.assertTrue(result.steps[0].success)
         self.assertIn("read_file completed", result.steps[0].output)
+        self.assertIn("hello runtime", result.steps[0].output)
         second_call_messages = ai.chat_calls[1]["messages"]
         self.assertEqual(second_call_messages[-1]["role"], "tool")
         self.assertEqual(result.total_usage["prompt_tokens"], 7)
@@ -149,7 +150,13 @@ class DevenvKernelTest(unittest.TestCase):
                     ),
                     finish_reason="tool_calls",
                     usage={},
-                )
+                ),
+                AIResponse(
+                    content="I could not access that path.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
             ]
         )
 
@@ -159,6 +166,37 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertTrue(result.steps[0].is_sandboxed_violation)
         self.assertIn("Sandbox violation", result.steps[0].output)
+        self.assertEqual(result.final_response, "I could not access that path.")
+
+    def test_execute_turn_caps_tool_iterations(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCallRequest(call_id="call_1", tool_name="missing_tool", arguments={}),
+                    ),
+                    finish_reason="tool_calls",
+                    usage={},
+                ),
+                AIResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCallRequest(call_id="call_2", tool_name="missing_tool", arguments={}),
+                    ),
+                    finish_reason="tool_calls",
+                    usage={},
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("Loop", max_consecutive_tools=1)
+
+        self.assertEqual(len(result.steps), 1)
+        self.assertEqual(result.final_response, "Tool execution limit reached before the request could be completed.")
 
 
 if __name__ == "__main__":
