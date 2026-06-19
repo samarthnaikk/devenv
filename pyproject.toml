@@ -13,5 +13,8 @@ dependencies = [
     "sentence-transformers>=3.0.0",
 ]
 
+[project.scripts]
+devenv-run = "core.runtime.tui:main"
+
 [tool.setuptools.packages.find]
 include = ["core*"]
