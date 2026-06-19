@@ -42,18 +42,24 @@ class DevenvKernel:
 
     def execute_turn(self, user_prompt: str, max_consecutive_tools: int = 5) -> RuntimeTurnResult:
         logger.info("Starting runtime turn: workspace=%s prompt=%s", self.workspace_path, user_prompt)
+        ai_logs = [f"Queued prompt: {user_prompt}"]
+        system_logs = [f"Workspace: {self.workspace_path}"]
         conversation = list(self.ephemeral_history)
         conversation.append({"role": "user", "content": user_prompt})
 
         self._record_working_memory(conversation)
         memory_context = self._retrieve_memory_context(user_prompt)
         logger.info("Retrieved memory context: chars=%s", len(memory_context))
+        system_logs.append(f"Memory context chars: {len(memory_context)}")
         steps: list[ToolExecutionStep] = []
         total_usage: dict[str, int] = {}
 
         while True:
             ai_response = self.ai.chat(messages=list(conversation), memory_context=memory_context)
             _merge_usage(total_usage, ai_response.usage)
+            ai_logs.append(
+                f"AI response: finish_reason={ai_response.finish_reason}, tool_calls={len(ai_response.tool_calls)}, total_tokens={ai_response.usage.get('total_tokens', 0)}"
+            )
             logger.info(
                 "AI response received: finish_reason=%s tool_calls=%s usage=%s",
                 ai_response.finish_reason,
@@ -66,20 +72,37 @@ class DevenvKernel:
                     if len(steps) >= max_consecutive_tools:
                         final_response = "Tool execution limit reached before the request could be completed."
                         logger.warning("Tool limit reached: max_consecutive_tools=%s", max_consecutive_tools)
+                        system_logs.append(f"Tool limit reached at {max_consecutive_tools} step(s)")
                         conversation.append({"role": "assistant", "content": final_response})
                         self._finalize_turn(user_prompt, final_response, conversation)
-                        return RuntimeTurnResult(final_response=final_response, steps=steps, total_usage=total_usage)
+                        return RuntimeTurnResult(
+                            final_response=final_response,
+                            steps=steps,
+                            total_usage=total_usage,
+                            ai_logs=ai_logs,
+                            system_logs=system_logs,
+                        )
                     step = self._execute_tool_call(tool_call)
                     steps.append(step)
+                    ai_logs.append(f"Tool requested: {tool_call.tool_name}")
+                    system_logs.append(f"Tool step {len(steps)}: {tool_call.tool_name} success={step.success}")
                     conversation.append(_tool_message(tool_call.call_id, tool_call.tool_name, step.output))
                 continue
 
             final_response = ai_response.content
             if final_response is not None:
                 conversation.append({"role": "assistant", "content": final_response})
+                ai_logs.append("Assistant produced final response")
             logger.info("Finishing runtime turn: final_response_present=%s total_steps=%s", final_response is not None, len(steps))
             self._finalize_turn(user_prompt, final_response or "", conversation)
-            return RuntimeTurnResult(final_response=final_response, steps=steps, total_usage=total_usage)
+            system_logs.append("Turn completed and stored in memory")
+            return RuntimeTurnResult(
+                final_response=final_response,
+                steps=steps,
+                total_usage=total_usage,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+            )
 
     def _execute_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
         logger.info("Intercepted tool call: tool=%s arguments=%s", tool_call.tool_name, tool_call.arguments)

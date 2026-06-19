@@ -29,12 +29,16 @@ class RuntimeTurnResult:
     final_response: str | None
     steps: list[ToolExecutionStep] = field(default_factory=list)
     total_usage: dict[str, int] = field(default_factory=dict)
+    ai_logs: list[str] = field(default_factory=list)
+    system_logs: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "final_response": self.final_response,
             "steps": [step.to_dict() for step in self.steps],
             "total_usage": dict(self.total_usage),
+            "ai_logs": list(self.ai_logs),
+            "system_logs": list(self.system_logs),
         }
 
 
