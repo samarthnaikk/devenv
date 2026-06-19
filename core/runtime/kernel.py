@@ -52,6 +52,17 @@ class DevenvKernel:
         return RuntimeTurnResult(final_response=final_response, total_usage=dict(ai_response.usage))
 
     def _intercept_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
+        unsafe_argument = self.sandbox.find_unsafe_argument(tool_call.arguments)
+        if unsafe_argument is not None:
+            _key, value = unsafe_argument
+            return ToolExecutionStep(
+                step_id=tool_call.call_id,
+                tool_name=tool_call.tool_name,
+                arguments=tool_call.arguments,
+                output=self.sandbox.violation_message(value),
+                success=False,
+                is_sandboxed_violation=True,
+            )
         return ToolExecutionStep(
             step_id=tool_call.call_id,
             tool_name=tool_call.tool_name,

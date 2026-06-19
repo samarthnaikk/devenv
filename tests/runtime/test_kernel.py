@@ -105,6 +105,32 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(result.steps[0].tool_name, "read_file")
         self.assertEqual(result.steps[0].output, "Tool call intercepted before execution.")
 
+    def test_execute_turn_flags_sandbox_violation(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCallRequest(
+                            call_id="call_unsafe",
+                            tool_name="read_file",
+                            arguments={"path": "../secrets.txt"},
+                        ),
+                    ),
+                    finish_reason="tool_calls",
+                    usage={},
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("Read ../secrets.txt")
+
+        self.assertTrue(result.steps[0].is_sandboxed_violation)
+        self.assertIn("Sandbox violation", result.steps[0].output)
+
 
 if __name__ == "__main__":
     unittest.main()
