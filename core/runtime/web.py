@@ -6,7 +6,7 @@ from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from core.logging_utils import configure_logging
 from core.tools.read_file import ReadFileTool
@@ -48,6 +48,18 @@ class DevenvWebApp:
             "status": "ok",
         }
 
+    def build_files_payload(self, relative_path: str = "") -> dict[str, object]:
+        return {
+            "path": relative_path,
+            "entries": [entry.to_dict() for entry in self.workspace.list_entries(relative_path)],
+        }
+
+    def build_file_payload(self, relative_path: str) -> dict[str, object]:
+        return {
+            "path": relative_path,
+            "content": self.workspace.read_text_file(relative_path),
+        }
+
 
 class DevenvRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, app: DevenvWebApp, **kwargs):
@@ -58,6 +70,16 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
             self._write_json(HTTPStatus.OK, self.app.build_health_payload())
+            return
+        if parsed.path == "/api/files":
+            query = parse_qs(parsed.query)
+            relative_path = query.get("path", [""])[0]
+            self._write_json(HTTPStatus.OK, self.app.build_files_payload(relative_path))
+            return
+        if parsed.path == "/api/file":
+            query = parse_qs(parsed.query)
+            relative_path = query.get("path", [""])[0]
+            self._write_json(HTTPStatus.OK, self.app.build_file_payload(relative_path))
             return
         if parsed.path == "/":
             self.path = "/index.html"
