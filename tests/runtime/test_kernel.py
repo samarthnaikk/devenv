@@ -5,7 +5,7 @@ import unittest
 from dataclasses import dataclass
 from typing import Any
 
-from core.ai.models import AIResponse
+from core.ai.models import AIResponse, ToolCallRequest
 from core.runtime import DevenvKernel
 from core.tools.read_file import ReadFileTool
 
@@ -77,6 +77,33 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(result.final_response, "Final answer")
         self.assertEqual(result.total_usage["prompt_tokens"], 10)
         self.assertEqual(ai.chat_calls[0]["memory_context"], "## Retrieved Memory\n- Prompt: Explain the repo")
+
+    def test_execute_turn_intercepts_tool_calls_before_execution(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCallRequest(
+                            call_id="call_1",
+                            tool_name="read_file",
+                            arguments={"path": "note.txt"},
+                        ),
+                    ),
+                    finish_reason="tool_calls",
+                    usage={},
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("Read note.txt")
+
+        self.assertEqual(len(result.steps), 1)
+        self.assertEqual(result.steps[0].tool_name, "read_file")
+        self.assertEqual(result.steps[0].output, "Tool call intercepted before execution.")
 
 
 if __name__ == "__main__":
