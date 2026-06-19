@@ -1,0 +1,52 @@
+:root {
+  color-scheme: dark;
+  --bg: #07111f;
+  --panel: rgba(12, 24, 40, 0.88);
+  --panel-strong: #101f33;
+  --panel-muted: #13263e;
+  --border: rgba(181, 201, 232, 0.14);
+  --text: #e4edf9;
+  --muted: #8da2c1;
+  --accent: #73e0a9;
+  --accent-strong: #31c27c;
+  --danger: #ff8d86;
+  --shadow: 0 24px 70px rgba(2, 8, 20, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: "IBM Plex Sans", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(49, 194, 124, 0.16), transparent 26%),
+    radial-gradient(circle at top right, rgba(84, 130, 255, 0.12), transparent 24%),
+    linear-gradient(180deg, #081120 0%, #050b15 100%);
+  color: var(--text);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.loading-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
