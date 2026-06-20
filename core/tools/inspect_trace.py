@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import asdict
 from typing import Any
@@ -46,6 +47,13 @@ class InspectTraceTool(BaseTool):
             if mode == "last_retrieval":
                 trace = self.memory.get_context_trace()
                 payload = asdict(trace)
+                if not any(payload.values()):
+                    store = getattr(self.memory, "store", None)
+                    raw = store.get_state("last_retrieval_trace") if store and hasattr(store, "get_state") else None
+                    if raw:
+                        decoded = json.loads(raw)
+                        if isinstance(decoded, dict):
+                            payload = decoded
                 logger.info("Inspected last retrieval trace")
                 return ToolResult(
                     success=True,

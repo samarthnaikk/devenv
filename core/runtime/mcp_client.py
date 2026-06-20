@@ -93,6 +93,7 @@ class MCPToolClient:
                 self._runner_future.result(timeout=30)
         self._loop.call_soon_threadsafe(self._loop.stop)
         self._thread.join(timeout=5)
+        self._loop.close()
         self._closed = True
 
     async def _session_runner(self) -> None:
