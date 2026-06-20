@@ -121,19 +121,21 @@ class DevenvWebAppTest(unittest.TestCase):
                 ai=FakeAI(),
             )
             captured: dict[str, object] = {}
-            app.kernel.execute_turn = lambda prompt, max_consecutive_tools=5, planning_mode=PlanningMode.AUTO, continue_plan=False: captured.update(
+            app.kernel.execute_turn = lambda prompt, max_consecutive_tools=5, planning_mode=PlanningMode.AUTO, continue_plan=False, local_only=False: captured.update(
                 {
                     "prompt": prompt,
                     "planning_mode": planning_mode,
                     "continue_plan": continue_plan,
+                    "local_only": local_only,
                 }
             ) or type("Result", (), {"to_dict": lambda self: {"final_response": "ok"}})()
-            result = app.run_turn("hello", planning_mode=PlanningMode.FORCE_PLAN, continue_plan=True)
+            result = app.run_turn("hello", planning_mode=PlanningMode.FORCE_PLAN, continue_plan=True, local_only=True)
 
         self.assertEqual(result["final_response"], "ok")
         self.assertEqual(captured["prompt"], "hello")
         self.assertEqual(captured["planning_mode"], PlanningMode.FORCE_PLAN)
         self.assertTrue(captured["continue_plan"])
+        self.assertTrue(captured["local_only"])
 
     def test_run_turn_preserves_partial_blueprint_when_execution_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -142,7 +144,7 @@ class DevenvWebAppTest(unittest.TestCase):
                 memory=FakeMemory(),
                 ai=FakeAI(),
             )
-            app.kernel.execute_turn = lambda prompt, max_consecutive_tools=5, planning_mode=PlanningMode.AUTO, continue_plan=False: type(
+            app.kernel.execute_turn = lambda prompt, max_consecutive_tools=5, planning_mode=PlanningMode.AUTO, continue_plan=False, local_only=False: type(
                 "Result",
                 (),
                 {

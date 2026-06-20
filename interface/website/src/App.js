@@ -34,6 +34,7 @@ export function App() {
   const [rateLimitInfo, setRateLimitInfo] = React.useState(null);
   const [clock, setClock] = React.useState(Date.now());
   const [planModeEnabled, setPlanModeEnabled] = React.useState(false);
+  const [localOnlyEnabled, setLocalOnlyEnabled] = React.useState(false);
   const [showThinking, setShowThinking] = React.useState(false);
   const dragStateRef = React.useRef(null);
 
@@ -108,18 +109,22 @@ export function App() {
     rightCollapsed ? "0px" : `${rightWidth}px`,
   ].join(" ");
   const contextBudget = buildContextBudget(usageWindow, rateLimitInfo, clock);
+  const activeProvider = localOnlyEnabled ? "Local" : healthMeta.provider;
+  const activeModel = localOnlyEnabled ? "heuristic-runtime" : healthMeta.model;
 
   return React.createElement(
     "div",
     { className: "app-shell", style: { gridTemplateColumns } },
     React.createElement(HeaderBar, {
       workspacePath: health.workspace_path,
-      provider: healthMeta.provider,
-      model: healthMeta.model,
+      provider: activeProvider,
+      model: activeModel,
       usage,
       contextBudget,
       planModeEnabled,
       onPlanModeChange: setPlanModeEnabled,
+      localOnlyEnabled,
+      onLocalOnlyChange: setLocalOnlyEnabled,
       showThinking,
       onShowThinkingChange: setShowThinking,
     }),
@@ -231,7 +236,7 @@ export function App() {
             do {
               while (true) {
                 try {
-                  result = await runTurn(nextPrompt, planningMode, continuePlan);
+                  result = await runTurn(nextPrompt, planningMode, continuePlan, localOnlyEnabled);
                   break;
                 } catch (error) {
                   const parsedRateLimit = parseRateLimitError(error.message);

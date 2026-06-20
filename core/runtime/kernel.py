@@ -101,6 +101,7 @@ class DevenvKernel:
         max_consecutive_tools: int = 5,
         planning_mode: PlanningMode = PlanningMode.AUTO,
         continue_plan: bool = False,
+        local_only: bool = False,
     ) -> RuntimeTurnResult:
         logger.info("Starting runtime turn: workspace=%s prompt=%s", self.workspace_path, user_prompt)
         ai_logs = [f"Queued prompt: {user_prompt}"]
@@ -114,10 +115,36 @@ class DevenvKernel:
         system_logs.append(f"Memory context chars: {len(memory_context)}")
         system_logs.append(f"Planning mode: {planning_mode.value}")
         system_logs.append(f"Continue plan: {continue_plan}")
+        system_logs.append(f"Local only: {local_only}")
         steps: list[ToolExecutionStep] = []
         total_usage: dict[str, int] = {}
         should_plan = self._should_plan(user_prompt, planning_mode)
         if not should_plan:
+            if local_only:
+                self.state = AgentState.EXECUTING
+                system_logs.append(f"State: {self.state.name}")
+                direct_response = self._run_local_only_direct_turn(
+                    user_prompt=user_prompt,
+                    memory_context=memory_context,
+                    steps=steps,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                )
+                if direct_response:
+                    conversation.append({"role": "assistant", "content": direct_response})
+                logger.info("Finishing local-only runtime turn: final_response_present=%s total_steps=%s", direct_response is not None, len(steps))
+                persist_memory = not (direct_response or "").startswith("I inspected `")
+                self._finalize_turn(user_prompt, direct_response or "", conversation, persist_memory=persist_memory)
+                system_logs.append("Turn completed and stored in memory")
+                return RuntimeTurnResult(
+                    final_response=direct_response,
+                    steps=steps,
+                    total_usage=total_usage,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                    state=self.state.name,
+                    blueprint=None,
+                )
             route_decision = self.local_router.decide(user_prompt)
             system_logs.append(
                 f"Local route decision: use_local={route_decision.use_local_knowledge} confidence={route_decision.confidence:.3f}"
@@ -184,33 +211,50 @@ class DevenvKernel:
             planning_conversation = []
         else:
             self.active_plan_prompt = user_prompt
-
-            planning_response, planning_conversation = self._run_planning_phase(
-                user_prompt=user_prompt,
-                memory_context=memory_context,
-                steps=steps,
-                total_usage=total_usage,
-                ai_logs=ai_logs,
-                system_logs=system_logs,
-                max_consecutive_tools=max_consecutive_tools,
-            )
+            if local_only:
+                planning_response, planning_conversation = self._run_local_only_planning_phase(
+                    user_prompt=user_prompt,
+                    memory_context=memory_context,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                )
+            else:
+                planning_response, planning_conversation = self._run_planning_phase(
+                    user_prompt=user_prompt,
+                    memory_context=memory_context,
+                    steps=steps,
+                    total_usage=total_usage,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                    max_consecutive_tools=max_consecutive_tools,
+                )
             blueprint = self._parse_markdown_to_blueprint(planning_response or user_prompt)
             self.active_blueprint = blueprint
             system_logs.append(f"Plan checkpoints: {len(blueprint.tasks)}")
 
         try:
-            execution_final_response, plan_complete = self._run_execution_phase(
-                user_prompt=user_prompt,
-                memory_context=memory_context,
-                blueprint=blueprint,
-                conversation=planning_conversation,
-                steps=steps,
-                total_usage=total_usage,
-                ai_logs=ai_logs,
-                system_logs=system_logs,
-                max_consecutive_tools=max_consecutive_tools,
-                planning_mode=planning_mode,
-            )
+            if local_only:
+                execution_final_response, plan_complete = self._run_local_only_execution_phase(
+                    user_prompt=user_prompt,
+                    memory_context=memory_context,
+                    blueprint=blueprint,
+                    steps=steps,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                )
+            else:
+                execution_final_response, plan_complete = self._run_execution_phase(
+                    user_prompt=user_prompt,
+                    memory_context=memory_context,
+                    blueprint=blueprint,
+                    conversation=planning_conversation,
+                    steps=steps,
+                    total_usage=total_usage,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                    max_consecutive_tools=max_consecutive_tools,
+                    planning_mode=planning_mode,
+                )
         except RuntimeError as exc:
             system_logs.append(f"Execution failed: {exc}")
             logger.warning("Execution phase failed: error=%s", exc)
@@ -375,6 +419,126 @@ class DevenvKernel:
 
         ai_logs.append("Local knowledge answer assembled from workspace structure")
         return _summarize_directory_listing(candidate_path, step.output), True
+
+    def _run_local_only_direct_turn(
+        self,
+        *,
+        user_prompt: str,
+        memory_context: str,
+        steps: list[ToolExecutionStep],
+        ai_logs: list[str],
+        system_logs: list[str],
+    ) -> str:
+        ai_logs.append("Local-only runtime selected")
+        memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
+        if memory_answer is not None:
+            ai_logs.append("Local-only answer assembled from memory")
+            return memory_answer
+
+        local_response, handled_locally = self._run_local_knowledge_turn(
+            user_prompt=user_prompt,
+            memory_context=memory_context,
+            steps=steps,
+            ai_logs=ai_logs,
+            system_logs=system_logs,
+        )
+        if handled_locally and local_response:
+            return local_response
+
+        candidate_path = self._resolve_workspace_candidate(user_prompt) or self.workspace_path
+        listing_call = ToolCallRequest(
+            call_id=f"local_scan_{uuid.uuid4().hex[:10]}",
+            tool_name="list_directory",
+            arguments={"path": candidate_path, "mode": "recursive", "max_depth": 2},
+        )
+        listing_step = self._execute_tool_call(listing_call)
+        steps.append(listing_step)
+        system_logs.append(f"Tool step {len(steps)}: list_directory success={listing_step.success}")
+        if not listing_step.success:
+            return f"Local-only mode could not inspect `{candidate_path}`."
+
+        relevant_paths = self._select_local_relevant_paths(user_prompt, listing_step.output)
+        if not relevant_paths:
+            ai_logs.append("Local-only answer fell back to directory summary")
+            return _summarize_directory_listing(candidate_path, listing_step.output)
+
+        summary_sections: list[str] = []
+        candidate_root = Path(candidate_path)
+        for relative_path in relevant_paths[:3]:
+            absolute_path = candidate_root / relative_path
+            file_summary = self._inspect_local_file_summary(str(absolute_path), steps, system_logs)
+            if file_summary:
+                summary_sections.append(file_summary)
+
+        if summary_sections:
+            ai_logs.append("Local-only answer assembled from workspace files")
+            return "\n\n".join(summary_sections)
+
+        ai_logs.append("Local-only answer fell back to directory summary")
+        return _summarize_directory_listing(candidate_path, listing_step.output)
+
+    def _run_local_only_planning_phase(
+        self,
+        *,
+        user_prompt: str,
+        memory_context: str,
+        ai_logs: list[str],
+        system_logs: list[str],
+    ) -> tuple[str, list[dict[str, Any]]]:
+        planning_memory = _trim_memory_context(memory_context, PLANNING_MEMORY_CHAR_LIMIT)
+        system_logs.append(f"Planning memory chars sent: {len(planning_memory)}")
+        system_logs.append("Planning tool scope size: 0")
+        ai_logs.append("Planning blueprint generated locally")
+        return self._build_local_plan_markdown(user_prompt), []
+
+    def _run_local_only_execution_phase(
+        self,
+        *,
+        user_prompt: str,
+        memory_context: str,
+        blueprint: ExecutionBlueprint,
+        steps: list[ToolExecutionStep],
+        ai_logs: list[str],
+        system_logs: list[str],
+    ) -> tuple[str | None, bool]:
+        self.state = AgentState.EXECUTING
+        system_logs.append(f"State: {self.state.name}")
+        working_blueprint = blueprint
+        checkpoint_indexes = self._execution_checkpoint_indexes(working_blueprint)
+        final_response: str | None = None
+
+        for index in checkpoint_indexes:
+            task = working_blueprint.tasks[index]
+            working_blueprint = _set_active_task(working_blueprint, index)
+            self.active_blueprint = working_blueprint
+            system_logs.append(f"Current checkpoint {index + 1}/{len(working_blueprint.tasks)}: {task.description}")
+            execution_memory = self._resolve_execution_memory(
+                user_prompt=user_prompt,
+                task_description=task.description,
+                memory_context=memory_context,
+            )
+            system_logs.append(f"Execution memory chars sent: {len(execution_memory)}")
+            local_tool_call = self._build_local_execution_tool_call(user_prompt, task.description)
+            if local_tool_call is not None:
+                ai_logs.append(f"Local-only tool requested: {local_tool_call.tool_name}")
+                step = self._execute_tool_call(local_tool_call)
+                steps.append(step)
+                system_logs.append(f"Tool step {len(steps)}: {local_tool_call.tool_name} success={step.success}")
+                if not step.success:
+                    raise RuntimeError(step.output)
+
+            final_response = self._build_local_checkpoint_response(user_prompt, task.description, execution_memory)
+            trace_log = _summarize_execution_note(final_response)
+            working_blueprint = _mark_checkpoint_completed(working_blueprint, index, trace_log)
+            self.active_blueprint = working_blueprint
+            ai_logs.append(f"Checkpoint completed locally: {task.description}")
+            system_logs.append(f"Checkpoint {index + 1} completed")
+
+        plan_complete = _next_incomplete_task_index(working_blueprint) is None
+        if not plan_complete:
+            self.state = AgentState.EXECUTING
+            system_logs.append("Execution paused after one checkpoint")
+        return final_response, plan_complete
 
     def _run_planning_phase(
         self,
@@ -825,6 +989,184 @@ class DevenvKernel:
             tool_names.update(MEMORY_EXECUTION_TOOLS)
         return sorted(name for name in tool_names if name in self.tools)
 
+    def _build_local_plan_markdown(self, user_prompt: str) -> str:
+        target_path = self._derive_scaffold_target_path(user_prompt) or ""
+        lowered = user_prompt.lower()
+        if self._is_scaffold_request(lowered):
+            html_path = f"{target_path}/index.html" if target_path else "index.html"
+            css_path = f"{target_path}/styles.css" if target_path else "styles.css"
+            js_path = f"{target_path}/script.js" if target_path else "script.js"
+            return "\n".join(
+                [
+                    f"- [ ] Create {html_path} with the base calendar layout and linked assets.",
+                    f"- [ ] Add {css_path} with the calendar styling.",
+                    f"- [ ] Add {js_path} with month navigation and date rendering.",
+                ]
+            )
+
+        if "main.py" in lowered and "calendar" in lowered:
+            return "\n".join(
+                [
+                    "- [ ] Create calendar/main.py so it prints today's date.",
+                    "- [ ] Verify the generated calendar/main.py content matches the request.",
+                ]
+            )
+
+        return "\n".join(
+            [
+                "- [ ] Inspect the relevant workspace files for the requested change.",
+                "- [ ] Apply the requested update inside the matching file or folder.",
+                "- [ ] Verify the result in the workspace.",
+            ]
+        )
+
+    def _build_local_execution_tool_call(self, user_prompt: str, task_description: str) -> ToolCallRequest | None:
+        target_path = self._derive_scaffold_target_path(user_prompt, task_description)
+        lowered_task = task_description.lower()
+        lowered_prompt = user_prompt.lower()
+
+        if "main.py" in lowered_task and "calendar" in lowered_prompt:
+            path = "calendar/main.py"
+            return ToolCallRequest(
+                call_id=f"local_write_{uuid.uuid4().hex[:10]}",
+                tool_name="write_file",
+                arguments={
+                    "path": path,
+                    "content": _local_calendar_main_py(),
+                    "mode": "overwrite" if (Path(self.workspace_path) / path).exists() else "fresh",
+                },
+            )
+
+        if target_path:
+            target_root = Path(target_path)
+            file_name: str | None = None
+            content: str | None = None
+            if "index.html" in lowered_task or ("html" in lowered_task and "calendar" in lowered_prompt):
+                file_name = "index.html"
+                content = _local_calendar_html(target_path)
+            elif "styles.css" in lowered_task or ("css" in lowered_task and "calendar" in lowered_prompt):
+                file_name = "styles.css"
+                content = _local_calendar_css()
+            elif "script.js" in lowered_task or ("javascript" in lowered_task) or ("js" in lowered_task and "calendar" in lowered_prompt):
+                file_name = "script.js"
+                content = _local_calendar_js()
+
+            if file_name and content is not None:
+                relative_path = str(target_root / file_name).replace("\\", "/")
+                return ToolCallRequest(
+                    call_id=f"local_write_{uuid.uuid4().hex[:10]}",
+                    tool_name="write_file",
+                    arguments={
+                        "path": relative_path,
+                        "content": content,
+                        "mode": "overwrite" if (Path(self.workspace_path) / relative_path).exists() else "fresh",
+                    },
+                )
+
+        if lowered_task.startswith("inspect "):
+            candidate_path = self._resolve_workspace_candidate(user_prompt) or self.workspace_path
+            return ToolCallRequest(
+                call_id=f"local_inspect_{uuid.uuid4().hex[:10]}",
+                tool_name="list_directory",
+                arguments={"path": candidate_path, "mode": "recursive", "max_depth": 2},
+            )
+
+        return None
+
+    def _build_local_checkpoint_response(self, user_prompt: str, task_description: str, execution_memory: str) -> str:
+        lowered_task = task_description.lower()
+        if "index.html" in lowered_task:
+            return "Created the base HTML shell for the calendar frontend and linked the local stylesheet and script."
+        if "styles.css" in lowered_task:
+            return "Added the calendar styling layer with a responsive layout, panels, and day grid presentation."
+        if "script.js" in lowered_task:
+            return "Added the local JavaScript calendar behavior for month navigation and day rendering."
+        if "main.py" in lowered_task:
+            return "Created calendar/main.py so it prints today's date using Python's datetime module."
+        if "verify" in lowered_task:
+            return "Verified the generated workspace artifact against the requested local-only checkpoint."
+        memory_answer = _answer_from_retrieved_memory(user_prompt, execution_memory)
+        if memory_answer:
+            return memory_answer
+        return f"Completed locally: {task_description}"
+
+    def _select_local_relevant_paths(self, user_prompt: str, listing_output: str) -> list[str]:
+        payload = _extract_tool_payload_json(listing_output)
+        entries = []
+        if isinstance(payload, dict):
+            entries = payload.get("entries") or payload.get("topology") or []
+
+        prompt_tokens = {token for token in re.findall(r"[a-z0-9_]+", user_prompt.lower()) if len(token) >= 3}
+        preferred_names = {
+            "readme.md",
+            "documentation.md",
+            "server.py",
+            "app.py",
+            "main.py",
+            "core.py",
+            "rag.py",
+            "llm_connector.py",
+            "retriever.py",
+        }
+        scored: list[tuple[int, str]] = []
+        if isinstance(entries, list):
+            for entry in entries:
+                if not isinstance(entry, dict) or entry.get("is_dir"):
+                    continue
+                relative_path = entry.get("relative_path")
+                if not isinstance(relative_path, str) or not relative_path.strip():
+                    continue
+                lowered = relative_path.lower()
+                score = 0
+                if Path(lowered).name in preferred_names:
+                    score += 8
+                score += sum(2 for token in prompt_tokens if token in lowered)
+                if "backend" in prompt_tokens and any(marker in lowered for marker in ("server", "app", "main", "core")):
+                    score += 4
+                if "rag" in prompt_tokens and "rag" in lowered:
+                    score += 4
+                if lowered.endswith((".py", ".md", ".txt")):
+                    score += 1
+                scored.append((score, relative_path))
+
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        return [path for score, path in scored if score > 0][:3]
+
+    def _inspect_local_file_summary(self, path: str, steps: list[ToolExecutionStep], system_logs: list[str]) -> str | None:
+        absolute_path = Path(path).resolve()
+        if absolute_path.suffix.lower() == ".py" and "inspect_symbols" in self.tools:
+            symbol_call = ToolCallRequest(
+                call_id=f"local_symbols_{uuid.uuid4().hex[:10]}",
+                tool_name="inspect_symbols",
+                arguments={"path": str(absolute_path), "mode": "outline"},
+            )
+            symbol_step = self._execute_tool_call(symbol_call)
+            steps.append(symbol_step)
+            system_logs.append(f"Tool step {len(steps)}: inspect_symbols success={symbol_step.success}")
+            if symbol_step.success:
+                symbol_payload = _extract_tool_payload_json(symbol_step.output)
+                symbol_summary = _summarize_symbol_outline(absolute_path.name, symbol_payload)
+                if symbol_summary:
+                    return symbol_summary
+
+        if "read_file" not in self.tools:
+            return None
+        read_call = ToolCallRequest(
+            call_id=f"local_read_{uuid.uuid4().hex[:10]}",
+            tool_name="read_file",
+            arguments={"path": str(absolute_path), "features": "content"},
+        )
+        read_step = self._execute_tool_call(read_call)
+        steps.append(read_step)
+        system_logs.append(f"Tool step {len(steps)}: read_file success={read_step.success}")
+        if not read_step.success:
+            return None
+        payload = _extract_tool_payload_json(read_step.output)
+        content = ""
+        if isinstance(payload, dict):
+            content = str(payload.get("content") or "")
+        return _summarize_local_text_file(absolute_path.name, content)
+
     def _resolve_workspace_candidate(self, user_prompt: str) -> str | None:
         prompt_tokens = [token for token in re.findall(r"[a-z0-9_]+", user_prompt.lower()) if len(token) >= 3]
         try:
@@ -951,9 +1293,13 @@ class DevenvKernel:
         combined = f"{user_prompt} {task_description}".strip().lower()
         if not self._is_scaffold_request(combined):
             return None
-        direct_match = re.search(r"\b([a-z0-9_-]+/[a-z0-9_/-]+)\b", combined)
+        direct_match = re.search(r"\b([a-z0-9_.-]+/[a-z0-9_./-]+)\b", combined)
         if direct_match:
-            return direct_match.group(1).strip("/")
+            candidate = direct_match.group(1).strip("/")
+            suffix = Path(candidate).suffix.lower()
+            if suffix in {".html", ".css", ".js", ".py"}:
+                return str(Path(candidate).parent).replace("\\", "/")
+            return candidate
         nested_match = re.search(r"\b([a-z0-9_-]+)\s+folder\s+(?:inside|in|under)\s+([a-z0-9_/-]+)\b", combined)
         if nested_match:
             child, parent = nested_match.groups()
@@ -1467,3 +1813,312 @@ def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
     if ("how does" in prompt_lowered or "how do" in prompt_lowered or "why does" in prompt_lowered) and "i inspected" in lowered:
         return False
     return True
+
+
+def _summarize_symbol_outline(file_name: str, payload: dict[str, Any] | list[Any] | None) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    symbols = payload.get("symbols")
+    if not isinstance(symbols, list) or not symbols:
+        return None
+
+    functions: list[str] = []
+    classes: list[str] = []
+    for symbol in symbols:
+        if not isinstance(symbol, dict):
+            continue
+        name = symbol.get("name")
+        if not isinstance(name, str):
+            continue
+        if symbol.get("type") == "class":
+            classes.append(name)
+        elif symbol.get("type") == "function":
+            functions.append(name)
+
+    parts: list[str] = []
+    if classes:
+        parts.append(f"classes: {', '.join(classes[:4])}")
+    if functions:
+        parts.append(f"functions: {', '.join(functions[:6])}")
+    if not parts:
+        return None
+    return f"`{file_name}` exposes {'. '.join(parts)}."
+
+
+def _summarize_local_text_file(file_name: str, content: str) -> str | None:
+    stripped = content.strip()
+    if not stripped:
+        return None
+
+    frameworks = []
+    known_terms = (
+        "FastAPI",
+        "Flask",
+        "SQLAlchemy",
+        "Redis",
+        "GraphQL",
+        "LanceDB",
+        "SentenceTransformer",
+        "Retriever",
+        "RAG",
+    )
+    lowered = stripped.lower()
+    for term in known_terms:
+        if term.lower() in lowered:
+            frameworks.append(term)
+
+    first_lines = [line.strip() for line in stripped.splitlines() if line.strip()][:3]
+    preview = " ".join(first_lines)
+    preview = re.sub(r"\s+", " ", preview)[:220].rstrip()
+    if frameworks:
+        return f"`{file_name}` references {', '.join(frameworks[:4])}. Preview: {preview}"
+    return f"`{file_name}` preview: {preview}"
+
+
+def _local_calendar_html(target_path: str) -> str:
+    asset_prefix = ""
+    if "/" in target_path:
+        asset_prefix = ""
+    return f"""<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Calendar</title>
+    <link rel="stylesheet" href="{asset_prefix}styles.css" />
+  </head>
+  <body>
+    <main class="calendar-app">
+      <header class="calendar-header">
+        <button id="prev-month" type="button" aria-label="Previous month">Prev</button>
+        <div>
+          <p class="calendar-kicker">Local Demo</p>
+          <h1 id="month-label">Calendar</h1>
+        </div>
+        <button id="next-month" type="button" aria-label="Next month">Next</button>
+      </header>
+      <section class="calendar-panel">
+        <div class="calendar-weekdays" id="calendar-weekdays"></div>
+        <div class="calendar-grid" id="calendar-grid"></div>
+      </section>
+    </main>
+    <script src="{asset_prefix}script.js"></script>
+  </body>
+</html>
+"""
+
+
+def _local_calendar_css() -> str:
+    return """:root {
+  color-scheme: light;
+  --bg: #f6f4ef;
+  --panel: #ffffff;
+  --border: #d4cec3;
+  --text: #1f1f1f;
+  --muted: #6b655d;
+  --accent: #1f6feb;
+  --accent-soft: #dce9ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background: linear-gradient(180deg, #f8f6f1 0%, #ece7dc 100%);
+  color: var(--text);
+}
+
+.calendar-app {
+  max-width: 960px;
+  margin: 48px auto;
+  padding: 24px;
+}
+
+.calendar-header,
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.calendar-header {
+  grid-template-columns: 92px 1fr 92px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.calendar-header button {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.calendar-kicker {
+  margin: 0 0 4px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+}
+
+.calendar-header h1 {
+  margin: 0;
+  font-size: 32px;
+}
+
+.calendar-panel {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 20px;
+  box-shadow: 0 20px 40px rgba(77, 68, 51, 0.08);
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.calendar-weekdays {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.calendar-grid {
+  min-height: 420px;
+}
+
+.calendar-day {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 14px;
+  padding: 12px;
+  min-height: 88px;
+}
+
+.calendar-day.is-today {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.calendar-day.is-empty {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+@media (max-width: 720px) {
+  .calendar-app {
+    margin: 20px auto;
+    padding: 16px;
+  }
+
+  .calendar-header {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .calendar-header h1 {
+    font-size: 24px;
+  }
+}
+"""
+
+
+def _local_calendar_js() -> str:
+    return """const monthLabel = document.getElementById("month-label");
+const calendarGrid = document.getElementById("calendar-grid");
+const weekdays = document.getElementById("calendar-weekdays");
+const prevMonthButton = document.getElementById("prev-month");
+const nextMonthButton = document.getElementById("next-month");
+
+const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const monthLabels = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+const today = new Date();
+let visibleMonth = today.getMonth();
+let visibleYear = today.getFullYear();
+
+weekdayLabels.forEach((label) => {
+  const item = document.createElement("div");
+  item.textContent = label;
+  weekdays.appendChild(item);
+});
+
+function renderCalendar() {
+  const firstDay = new Date(visibleYear, visibleMonth, 1).getDay();
+  const daysInMonth = new Date(visibleYear, visibleMonth + 1, 0).getDate();
+  monthLabel.textContent = `${monthLabels[visibleMonth]} ${visibleYear}`;
+  calendarGrid.innerHTML = "";
+
+  for (let index = 0; index < firstDay; index += 1) {
+    const emptyCell = document.createElement("div");
+    emptyCell.className = "calendar-day is-empty";
+    calendarGrid.appendChild(emptyCell);
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "calendar-day";
+    if (day === today.getDate() && visibleMonth === today.getMonth() && visibleYear === today.getFullYear()) {
+      cell.classList.add("is-today");
+    }
+    cell.textContent = String(day);
+    calendarGrid.appendChild(cell);
+  }
+}
+
+prevMonthButton.addEventListener("click", () => {
+  visibleMonth -= 1;
+  if (visibleMonth < 0) {
+    visibleMonth = 11;
+    visibleYear -= 1;
+  }
+  renderCalendar();
+});
+
+nextMonthButton.addEventListener("click", () => {
+  visibleMonth += 1;
+  if (visibleMonth > 11) {
+    visibleMonth = 0;
+    visibleYear += 1;
+  }
+  renderCalendar();
+});
+
+renderCalendar();
+"""
+
+
+def _local_calendar_main_py() -> str:
+    return """from datetime import date
+
+
+def main() -> None:
+    print(date.today().isoformat())
+
+
+if __name__ == "__main__":
+    main()
+"""

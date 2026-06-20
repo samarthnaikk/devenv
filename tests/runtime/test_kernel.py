@@ -13,8 +13,10 @@ from core.memory.vector_index import InMemoryVectorIndex
 from core.runtime import DevenvKernel
 from core.runtime.kernel import _answer_from_retrieved_memory, _summarize_directory_listing
 from core.runtime.local_router import LocalRouteDecision
+from core.runtime.models import PlanningMode
 from core.tools.list_directory import ListDirectoryTool
 from core.tools.read_file import ReadFileTool
+from core.tools.write_file import WriteFileTool
 
 
 @dataclass(frozen=True)
@@ -112,6 +114,17 @@ class RateLimitedAI(FakeAI):
         if isinstance(next_response, Exception):
             raise next_response
         return next_response
+
+
+class ExplodingAI(FakeAI):
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        memory_context: str | None = None,
+        temperature: float = 0.2,
+        tool_names: list[str] | tuple[str, ...] | set[str] | None = None,
+    ) -> AIResponse:
+        raise AssertionError("Local-only mode should not call the remote AI client")
 
 
 class DevenvKernelTest(unittest.TestCase):
@@ -596,6 +609,47 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertTrue(result.steps[0].success)
         self.assertIn("applied", result.final_response or "")
         self.assertIn("HTTP 429", result.final_response or "")
+
+    def test_local_only_direct_mode_answers_from_memory_without_ai(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="## Retrieved Memory\n- [episode] The calendar project backend used FastAPI."
+        )
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("What was the calendar project backend?", local_only=True)
+
+        self.assertIn("FastAPI", result.final_response or "")
+
+    def test_local_only_planning_executes_without_ai(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(WriteFileTool())
+            first = kernel.execute_turn("create a frontend folder in calendar with html css and js", planning_mode=PlanningMode.FORCE_PLAN, local_only=True)
+            second = kernel.execute_turn(
+                "create a frontend folder in calendar with html css and js",
+                planning_mode=PlanningMode.FORCE_PLAN,
+                continue_plan=True,
+                local_only=True,
+            )
+
+            html_path = Path(tempdir) / "calendar" / "frontend" / "index.html"
+            css_path = Path(tempdir) / "calendar" / "frontend" / "styles.css"
+            html_exists = html_path.exists()
+            css_exists = css_path.exists()
+            html_content = html_path.read_text(encoding="utf-8")
+
+        self.assertIsNotNone(first.blueprint)
+        self.assertEqual(len(first.blueprint.tasks), 3)
+        self.assertTrue(html_exists)
+        self.assertTrue(css_exists)
+        self.assertIn("calendar-weekdays", html_content)
+        self.assertIn("calendar styling", second.final_response or "")
 
     def test_memory_persists_across_kernel_sessions(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

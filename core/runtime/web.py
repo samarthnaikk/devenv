@@ -75,12 +75,14 @@ class DevenvWebApp:
         max_consecutive_tools: int | None = None,
         planning_mode: PlanningMode = PlanningMode.AUTO,
         continue_plan: bool = False,
+        local_only: bool = False,
     ) -> dict[str, object]:
         result = self.kernel.execute_turn(
             prompt,
             max_consecutive_tools=max_consecutive_tools or self.config.max_consecutive_tools,
             planning_mode=planning_mode,
             continue_plan=continue_plan,
+            local_only=local_only,
         )
         return result.to_dict()
 
@@ -143,6 +145,10 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
         if not isinstance(continue_plan, bool):
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": "continue_plan must be a boolean"})
             return
+        local_only = payload.get("local_only", False)
+        if not isinstance(local_only, bool):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "local_only must be a boolean"})
+            return
 
         try:
             result = self.app.run_turn(
@@ -150,6 +156,7 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
                 max_consecutive_tools=max_consecutive_tools,
                 planning_mode=planning_mode,
                 continue_plan=continue_plan,
+                local_only=local_only,
             )
         except RuntimeError as exc:
             self._write_json(HTTPStatus.BAD_GATEWAY, {"error": str(exc)})
