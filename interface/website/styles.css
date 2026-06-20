@@ -558,6 +558,14 @@ textarea {
   background: #fffdfa;
 }
 
+.image-preview {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border: 1px solid rgba(111, 90, 71, 0.12);
+  background: #fffdfa;
+}
+
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3 {

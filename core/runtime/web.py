@@ -65,10 +65,7 @@ class DevenvWebApp:
         }
 
     def build_file_payload(self, relative_path: str) -> dict[str, object]:
-        return {
-            "path": relative_path,
-            "content": self.workspace.read_text_file(relative_path),
-        }
+        return {"path": relative_path, **self.workspace.read_file_preview(relative_path)}
 
     def run_turn(self, prompt: str, max_consecutive_tools: int | None = None) -> dict[str, object]:
         result = self.kernel.execute_turn(

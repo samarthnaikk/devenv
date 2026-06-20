@@ -67,6 +67,25 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(health["ai_model"], "fake-groq-model")
         self.assertEqual(files["entries"][0]["name"], "README.md")
         self.assertEqual(file_payload["content"], "hello")
+        self.assertEqual(file_payload["kind"], "text")
+
+    def test_file_payload_supports_image_preview(self) -> None:
+        png_bytes = bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082"
+        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            Path(tempdir, "pixel.png").write_bytes(png_bytes)
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+
+            payload = app.build_file_payload("pixel.png")
+
+        self.assertEqual(payload["kind"], "image")
+        self.assertEqual(payload["content_type"], "image/png")
+        self.assertTrue(str(payload["content"]).startswith("data:image/png;base64,"))
 
     def test_web_app_exposes_turn_and_error_contracts(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

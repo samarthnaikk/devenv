@@ -7,13 +7,15 @@ export function FilePreviewPanel({
   expandedPaths,
   selectedPath,
   content,
+  previewKind,
+  contentType,
   isPreviewVisible,
   onSelectFile,
   onToggleDirectory,
   onOpenPreview,
   onClose,
 }) {
-  const preview = renderFilePreview(content || "", selectedPath);
+  const preview = previewKind === "text" ? renderFilePreview(content || "", selectedPath) : null;
 
   return React.createElement(
     "section",
@@ -88,12 +90,24 @@ export function FilePreviewPanel({
             : "Preview stays blank until you explicitly open a file."
         ),
         isPreviewVisible
-          ? React.createElement("div", {
-              className: preview.className,
-              dangerouslySetInnerHTML: {
-                __html: preview.html,
-              },
-            })
+          ? previewKind === "image"
+            ? React.createElement("img", {
+                className: "image-preview",
+                src: content,
+                alt: selectedPath || "Image preview",
+              })
+            : previewKind === "binary"
+              ? React.createElement(
+                  "div",
+                  { className: "preview-empty" },
+                  `Preview unavailable for ${contentType || "binary"} files.`
+                )
+              : React.createElement("div", {
+                  className: preview.className,
+                  dangerouslySetInnerHTML: {
+                    __html: preview.html,
+                  },
+                })
           : React.createElement(
               "div",
               { className: "preview-empty" },

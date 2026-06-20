@@ -9,7 +9,11 @@ export function App() {
   const [tree, setTree] = React.useState([]);
   const [expandedPaths, setExpandedPaths] = React.useState(new Set([""]));
   const [selectedPath, setSelectedPath] = React.useState("");
-  const [selectedContent, setSelectedContent] = React.useState("");
+  const [selectedPreview, setSelectedPreview] = React.useState({
+    kind: "text",
+    content: "",
+    contentType: "text/plain",
+  });
   const [isPreviewVisible, setIsPreviewVisible] = React.useState(false);
   const [prompt, setPrompt] = React.useState("Tell me about this project.");
   const [transcript, setTranscript] = React.useState([
@@ -101,6 +105,8 @@ export function App() {
         expandedPaths,
         selectedPath,
         content: selectedContent,
+        previewKind: selectedPreview.kind,
+        contentType: selectedPreview.contentType,
         isPreviewVisible,
         onSelectFile: (path) => {
           setSelectedPath(path);
@@ -123,7 +129,11 @@ export function App() {
             return;
           }
           const filePayload = await fetchFile(selectedPath);
-          setSelectedContent(filePayload.content);
+          setSelectedPreview({
+            kind: filePayload.kind || "text",
+            content: filePayload.content || "",
+            contentType: filePayload.content_type || "text/plain",
+          });
           setIsPreviewVisible(true);
         },
         onClose: () => {

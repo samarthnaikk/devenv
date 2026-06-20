@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import mimetypes
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,6 +45,33 @@ class WorkspaceBrowser:
         if target.is_dir():
             raise IsADirectoryError(f"Expected a file, got a directory: {target}")
         return target.read_text(encoding="utf-8")
+
+    def read_file_preview(self, relative_path: str) -> dict[str, str]:
+        target = self._resolve_relative(relative_path)
+        if target.is_dir():
+            raise IsADirectoryError(f"Expected a file, got a directory: {target}")
+
+        mime_type, _encoding = mimetypes.guess_type(str(target))
+        if mime_type and mime_type.startswith("image/"):
+            payload = base64.b64encode(target.read_bytes()).decode("ascii")
+            return {
+                "kind": "image",
+                "content_type": mime_type,
+                "content": f"data:{mime_type};base64,{payload}",
+            }
+
+        try:
+            return {
+                "kind": "text",
+                "content_type": mime_type or "text/plain",
+                "content": target.read_text(encoding="utf-8"),
+            }
+        except UnicodeDecodeError:
+            return {
+                "kind": "binary",
+                "content_type": mime_type or "application/octet-stream",
+                "content": "",
+            }
 
     def _resolve_relative(self, relative_path: str) -> Path:
         candidate = (self.root / relative_path).resolve()
