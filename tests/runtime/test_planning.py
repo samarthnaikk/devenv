@@ -6,7 +6,7 @@ from typing import Any
 
 from core.ai.models import AIResponse, ToolCallRequest
 from core.runtime import DevenvKernel
-from core.runtime.kernel import _focus_memory_context_for_direct_answers
+from core.runtime.kernel import _focus_memory_context_for_direct_answers, _summarize_execution_note
 from core.runtime.models import AgentState, CheckpointTask, ExecutionBlueprint, PlanningMode
 from core.tools.base import BaseTool, ToolResult
 
@@ -118,6 +118,25 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertEqual(blueprint.tasks[0].description, "HTML Structure: Create the basic HTML structure for the calendar.")
         self.assertEqual(blueprint.tasks[1].description, "CSS Styling: Add CSS to make the calendar visually appealing.")
         self.assertEqual(blueprint.tasks[2].description, "JavaScript Functionality: Add JavaScript to render days and handle navigation.")
+
+    def test_summarize_execution_note_strips_code_and_keeps_plain_objective(self) -> None:
+        note = _summarize_execution_note(
+            "\n".join(
+                [
+                    "To add JavaScript functionality for calendar interactions, I will wire up month navigation.",
+                    "```javascript",
+                    "const monthYear = document.getElementById('month-year');",
+                    "function renderCalendar() {}",
+                    "```",
+                    "<div class=\"calendar\"></div>",
+                ]
+            )
+        )
+
+        self.assertEqual(
+            note,
+            "To add JavaScript functionality for calendar interactions, I will wire up month navigation.",
+        )
 
     def test_planning_blocks_mutation_tool_calls_until_a_blueprint_exists(self) -> None:
         ai = FakeAI(

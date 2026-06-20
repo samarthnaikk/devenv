@@ -509,7 +509,7 @@ class DevenvKernel:
                     continue
 
                 final_response = ai_response.content or final_response
-                trace_log = ai_response.content or "Checkpoint completed via tool execution."
+                trace_log = _summarize_execution_note(ai_response.content)
                 working_blueprint = _mark_checkpoint_completed(working_blueprint, index, trace_log)
                 self.active_blueprint = working_blueprint
                 ai_logs.append(f"Checkpoint completed: {task.description}")
@@ -1279,3 +1279,31 @@ def _summarize_step_detail(lines: list[str]) -> str:
     summary = " ".join(cleaned).strip()
     summary = re.sub(r"[`*_#]+", "", summary)
     return summary[:160].rstrip(" :;,-")
+
+
+def _summarize_execution_note(content: str | None) -> str:
+    if not content or not content.strip():
+        return "Checkpoint completed via tool execution."
+
+    lines: list[str] = []
+    in_code_block = False
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if line.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block or not line:
+            continue
+        if line.lower() in {"html", "css", "javascript", "js", "python"}:
+            continue
+        if line.startswith("<") or line.startswith("{") or line.startswith("const ") or line.startswith("function "):
+            continue
+        lines.append(re.sub(r"\s+", " ", line))
+        if len(" ".join(lines)) >= 180:
+            break
+
+    summary = " ".join(lines).strip()
+    if not summary:
+        return "Checkpoint completed via tool execution."
+    summary = re.sub(r"[`*_#]+", "", summary)
+    return summary[:180].rstrip(" :;,-")
