@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from core.ai.models import AIResponse
+from core.runtime.models import CheckpointTask, ExecutionBlueprint
 from core.runtime.models import PlanningMode, RunConfig
 from core.runtime.web import DevenvWebApp
 
@@ -133,6 +134,41 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(captured["prompt"], "hello")
         self.assertEqual(captured["planning_mode"], PlanningMode.FORCE_PLAN)
         self.assertTrue(captured["continue_plan"])
+
+    def test_run_turn_preserves_partial_blueprint_when_execution_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.kernel.execute_turn = lambda prompt, max_consecutive_tools=5, planning_mode=PlanningMode.AUTO, continue_plan=False: type(
+                "Result",
+                (),
+                {
+                    "to_dict": lambda self: {
+                        "final_response": None,
+                        "steps": [],
+                        "total_usage": {},
+                        "ai_logs": [],
+                        "system_logs": ["Execution failed: Execution tool limit reached before the checkpoint completed."],
+                        "state": "EXECUTING",
+                        "blueprint": ExecutionBlueprint(
+                            raw_plan_markdown="- [ ] Build frontend\n- [ ] Add HTML",
+                            tasks=[
+                                CheckpointTask(task_id=1, description="Build frontend", is_completed=True),
+                                CheckpointTask(task_id=2, description="Add HTML"),
+                            ],
+                            active_task_pointer=1,
+                        ).to_dict(),
+                        "error_message": "Execution tool limit reached before the checkpoint completed.",
+                    }
+                },
+            )()
+            result = app.run_turn("hello", planning_mode=PlanningMode.FORCE_PLAN)
+
+        self.assertEqual(result["error_message"], "Execution tool limit reached before the checkpoint completed.")
+        self.assertEqual(result["blueprint"]["tasks"][0]["description"], "Build frontend")
 
 
 if __name__ == "__main__":

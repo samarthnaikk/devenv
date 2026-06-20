@@ -78,6 +78,7 @@ class RuntimeTurnResult:
     system_logs: list[str] = field(default_factory=list)
     state: str = AgentState.PLANNING.name
     blueprint: ExecutionBlueprint | None = None
+    error_message: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -88,6 +89,7 @@ class RuntimeTurnResult:
             "system_logs": list(self.system_logs),
             "state": self.state,
             "blueprint": self.blueprint.to_dict() if self.blueprint else None,
+            "error_message": self.error_message,
         }
 
 

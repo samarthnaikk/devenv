@@ -197,18 +197,34 @@ class DevenvKernel:
             self.active_blueprint = blueprint
             system_logs.append(f"Plan checkpoints: {len(blueprint.tasks)}")
 
-        execution_final_response, plan_complete = self._run_execution_phase(
-            user_prompt=user_prompt,
-            memory_context=memory_context,
-            blueprint=blueprint,
-            conversation=planning_conversation,
-            steps=steps,
-            total_usage=total_usage,
-            ai_logs=ai_logs,
-            system_logs=system_logs,
-            max_consecutive_tools=max_consecutive_tools,
-            planning_mode=planning_mode,
-        )
+        try:
+            execution_final_response, plan_complete = self._run_execution_phase(
+                user_prompt=user_prompt,
+                memory_context=memory_context,
+                blueprint=blueprint,
+                conversation=planning_conversation,
+                steps=steps,
+                total_usage=total_usage,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                max_consecutive_tools=max_consecutive_tools,
+                planning_mode=planning_mode,
+            )
+        except RuntimeError as exc:
+            system_logs.append(f"Execution failed: {exc}")
+            logger.warning("Execution phase failed: error=%s", exc)
+            self._finalize_turn(user_prompt, "", conversation)
+            system_logs.append("Turn completed and stored in memory")
+            return RuntimeTurnResult(
+                final_response=None,
+                steps=steps,
+                total_usage=total_usage,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                state=self.state.name,
+                blueprint=self.active_blueprint,
+                error_message=str(exc),
+            )
         if execution_final_response:
             conversation.append({"role": "assistant", "content": execution_final_response})
 
@@ -837,6 +853,17 @@ class DevenvKernel:
             )
 
         normalized_arguments = self.sandbox.normalize_arguments(self._repair_tool_arguments(tool_call))
+        scaffold_validation_error = self._validate_scaffold_tool_call(tool_call.tool_name, normalized_arguments)
+        if scaffold_validation_error is not None:
+            logger.warning("Rejected scaffold tool call: tool=%s error=%s", tool_call.tool_name, scaffold_validation_error)
+            return ToolExecutionStep(
+                step_id=tool_call.call_id,
+                tool_name=tool_call.tool_name,
+                arguments=normalized_arguments,
+                output=scaffold_validation_error,
+                success=False,
+                is_sandboxed_violation=False,
+            )
         logger.info("Executing MCP tool: tool=%s normalized_arguments=%s", tool_call.tool_name, normalized_arguments)
         result = self.tool_client.call_tool(tool_call.tool_name, normalized_arguments)
         logger.info("MCP tool finished: tool=%s success=%s is_error=%s", tool_call.tool_name, result.success, result.is_error)
@@ -908,6 +935,28 @@ class DevenvKernel:
         if len(candidate.parts) == 1:
             return str(target / candidate.name).replace("\\", "/")
 
+        return None
+
+    def _validate_scaffold_tool_call(self, tool_name: str, arguments: dict[str, Any]) -> str | None:
+        target_path_hint = self._active_scaffold_target_path()
+        if target_path_hint is None or tool_name not in WRITE_EXECUTION_TOOLS:
+            return None
+
+        path_value = arguments.get("path")
+        content_value = arguments.get("content")
+        if not isinstance(path_value, str):
+            return None
+
+        target_path = (Path(self.workspace_path) / target_path_hint).resolve()
+        requested_path = Path(path_value).expanduser()
+        if not requested_path.is_absolute():
+            requested_path = (Path(self.workspace_path) / requested_path).resolve()
+
+        if requested_path == target_path and isinstance(content_value, str) and not content_value.strip():
+            return (
+                f"Use write_file on a file inside {target_path_hint} such as "
+                f"{target_path_hint}/index.html, not on the folder itself."
+            )
         return None
 
     def _repair_directory_path(self, requested_path: str) -> str | None:

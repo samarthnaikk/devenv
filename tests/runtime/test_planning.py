@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from pathlib import Path
 from typing import Any
 
 from core.ai.models import AIResponse, ToolCallRequest
@@ -393,6 +394,26 @@ class PlanningKernelTest(unittest.TestCase):
             )
 
         self.assertEqual(repaired["path"], "calendar/frontend/index.html")
+
+    def test_validate_scaffold_tool_call_rejects_empty_write_to_target_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.active_plan_prompt = "make frontend folder for calendar html css js"
+            kernel.active_blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [ ] Create html file",
+                tasks=[CheckpointTask(task_id=1, description="Create html file")],
+                active_task_pointer=0,
+            )
+            error = kernel._validate_scaffold_tool_call(
+                "write_file",
+                {
+                    "path": str((Path(tempdir) / "calendar" / "frontend").resolve()),
+                    "content": "",
+                    "mode": "fresh",
+                },
+            )
+
+        self.assertIn("index.html", error)
 
     def test_direct_memory_focus_prefers_retrieved_memory_block(self) -> None:
         focused = _focus_memory_context_for_direct_answers(

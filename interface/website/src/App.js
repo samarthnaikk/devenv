@@ -275,11 +275,21 @@ export function App() {
                   ? { ...entry, content: formatThinkingBlock(aggregateLogs), pending: false }
                   : entry
               ),
-              {
-                id: `assistant-${Date.now()}`,
-                role: "assistant",
-                content: finalMessage,
-              },
+              ...(result?.error_message
+                ? [
+                    {
+                      id: `assistant-error-${Date.now()}`,
+                      role: "error",
+                      content: result.error_message,
+                    },
+                  ]
+                : [
+                    {
+                      id: `assistant-${Date.now()}`,
+                      role: "assistant",
+                      content: finalMessage,
+                    },
+                  ]),
             ]);
             setRateLimitInfo(null);
           } catch (error) {
