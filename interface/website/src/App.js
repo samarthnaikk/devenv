@@ -214,9 +214,43 @@ export function App() {
             const planningMode = planModeEnabled ? "force_plan" : "force_direct";
             let continuePlan = false;
             let result = null;
+            const refreshThinking = (pending) => {
+              setTranscript((current) =>
+                current.map((entry) =>
+                  entry.id === thinkingId
+                    ? { ...entry, content: formatThinkingBlock(aggregateLogs), pending }
+                    : entry
+                )
+              );
+            };
 
             do {
-              result = await runTurn(nextPrompt, planningMode, continuePlan);
+              while (true) {
+                try {
+                  result = await runTurn(nextPrompt, planningMode, continuePlan);
+                  break;
+                } catch (error) {
+                  const parsedRateLimit = parseRateLimitError(error.message);
+                  if (!parsedRateLimit) {
+                    throw error;
+                  }
+
+                  setRateLimitInfo(parsedRateLimit);
+                  const retryEntry = createLogEntry(
+                    "error",
+                    `Rate limit reached. Retrying in ${formatDuration(parsedRateLimit.retryMs)}`
+                  );
+                  aggregateLogs.push(retryEntry);
+                  refreshThinking(true);
+                  await waitForCooldown(parsedRateLimit.resetAt, (remainingMs) => {
+                    retryEntry.message = `Rate limit reached. Retrying in ${formatDuration(remainingMs)}`;
+                    refreshThinking(true);
+                  });
+                  retryEntry.message = "Cooldown finished. Retrying request now.";
+                  refreshThinking(true);
+                }
+              }
+
               aggregateLogs.push(...buildLogEntries(result));
               setUsage(result.total_usage || {});
               setBlueprint(result.blueprint || null);
@@ -226,14 +260,7 @@ export function App() {
                   (entry) => Date.now() - entry.timestamp < 60000
                 )
               );
-              setTranscript((current) => {
-                const withoutThinking = current.map((entry) =>
-                  entry.id === thinkingId
-                    ? { ...entry, content: formatThinkingBlock(aggregateLogs), pending: hasIncompleteTasks(result?.blueprint) }
-                    : entry
-                );
-                return withoutThinking;
-              });
+              refreshThinking(hasIncompleteTasks(result?.blueprint));
               continuePlan = Boolean(hasIncompleteTasks(result.blueprint));
             } while (continuePlan);
 
@@ -408,6 +435,21 @@ function formatTimestamp(timestamp) {
 
 function hasIncompleteTasks(blueprint) {
   return Boolean(blueprint?.tasks?.some((task) => !task.is_completed));
+}
+
+async function waitForCooldown(resetAt, onTick) {
+  while (true) {
+    const remainingMs = Math.max(resetAt - Date.now(), 0);
+    onTick(remainingMs);
+    if (remainingMs <= 0) {
+      return;
+    }
+    await sleep(Math.min(remainingMs, 1000));
+  }
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function selectVisibleAssistantResponse(result, aggregateLogs) {
