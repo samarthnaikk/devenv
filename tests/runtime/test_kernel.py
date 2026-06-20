@@ -223,7 +223,7 @@ class DevenvKernelTest(unittest.TestCase):
             )()
             result = kernel.execute_turn("how does the repo work?")
 
-        self.assertTrue(result.final_response.startswith("From memory"))
+        self.assertIn("FastAPI backend", result.final_response)
         self.assertEqual(ai.chat_calls, [])
 
     def test_local_knowledge_route_can_inspect_workspace_without_ai(self) -> None:

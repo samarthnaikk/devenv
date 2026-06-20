@@ -26,7 +26,22 @@ export function TerminalPanel({
       React.createElement(
         "div",
         { className: "bubble-role" },
-        item.role === "user" ? "You" : item.role === "thinking" ? "Thinking" : item.role === "error" ? "Rate Limit" : "Devenv"
+        item.role === "user"
+          ? "You"
+          : item.role === "thinking"
+            ? React.createElement(
+                "span",
+                { className: "thinking-label" },
+                "Thinking",
+                React.createElement("span", { className: "typing-dots", "aria-hidden": "true" },
+                  React.createElement("span", null),
+                  React.createElement("span", null),
+                  React.createElement("span", null)
+                )
+              )
+            : item.role === "error"
+              ? "Rate Limit"
+              : "Devenv"
       ),
       React.createElement("div", {
         className: "bubble-content markdown-body",

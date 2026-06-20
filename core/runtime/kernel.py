@@ -961,7 +961,13 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     selected = [line for overlap, line in ranked[:3] if overlap == best_overlap or overlap > 0]
     if not selected:
         return None
-    return "From memory, here’s the most relevant context:\n\n" + "\n".join(f"- {line}" for line in selected)
+    cleaned = [_clean_memory_line(line) for line in selected]
+    cleaned = [line for line in cleaned if line]
+    if not cleaned:
+        return None
+    if len(cleaned) == 1:
+        return cleaned[0]
+    return "\n\n".join(cleaned)
 
 
 def _summarize_directory_listing(candidate_path: str, output: str) -> str:
@@ -978,6 +984,15 @@ def _summarize_directory_listing(candidate_path: str, output: str) -> str:
 
     preview = ", ".join(unique_paths[:6])
     return f"I inspected `{candidate_path}` locally. Relevant paths I found: {preview}."
+
+
+def _clean_memory_line(line: str) -> str:
+    cleaned = line.strip()
+    if "|" in cleaned:
+        cleaned = cleaned.split("|", 1)[1].strip()
+    cleaned = re.sub(r"^\[[^\]]+\]\s*", "", cleaned)
+    cleaned = re.sub(r"^(episodic memory|episode)\s+[a-f0-9-]+:\s*", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip()
 
 
 def _set_active_task(blueprint: ExecutionBlueprint, task_index: int) -> ExecutionBlueprint:

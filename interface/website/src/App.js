@@ -14,7 +14,6 @@ export function App() {
     content: "",
     contentType: "text/plain",
   });
-  const [isPreviewVisible, setIsPreviewVisible] = React.useState(false);
   const [prompt, setPrompt] = React.useState("Tell me about this project.");
   const [transcript, setTranscript] = React.useState([
     {
@@ -128,9 +127,14 @@ export function App() {
         content: selectedPreview.content,
         previewKind: selectedPreview.kind,
         contentType: selectedPreview.contentType,
-        isPreviewVisible,
-        onSelectFile: (path) => {
+        onSelectFile: async (path) => {
           setSelectedPath(path);
+          const filePayload = await fetchFile(path);
+          setSelectedPreview({
+            kind: filePayload.kind || "text",
+            content: filePayload.content || "",
+            contentType: filePayload.content_type || "text/plain",
+          });
         },
         onToggleDirectory: async (path) => {
           const next = new Set(expandedPaths);
@@ -144,21 +148,6 @@ export function App() {
           setTree((current) => attachChildren(current, path, normalizeEntries(payload.entries)));
           next.add(path);
           setExpandedPaths(next);
-        },
-        onOpenPreview: async () => {
-          if (!selectedPath) {
-            return;
-          }
-          const filePayload = await fetchFile(selectedPath);
-          setSelectedPreview({
-            kind: filePayload.kind || "text",
-            content: filePayload.content || "",
-            contentType: filePayload.content_type || "text/plain",
-          });
-          setIsPreviewVisible(true);
-        },
-        onClose: () => {
-          setIsPreviewVisible(false);
         },
       })
     ),
@@ -316,7 +305,9 @@ function attachChildren(nodes, targetPath, children) {
 
 function buildLogEntries(result) {
   const systemLogs = result.system_logs?.length
-    ? result.system_logs.map((entry) => createLogEntry("system", entry))
+    ? result.system_logs
+        .filter((entry) => !entry.startsWith("Plan checkpoints:"))
+        .map((entry) => createLogEntry("system", entry))
     : [createLogEntry("system", "No runtime system logs were returned for this turn.")];
   const aiLogs = result.ai_logs?.length
     ? result.ai_logs.map((entry) => createLogEntry("ai", entry))
@@ -327,16 +318,7 @@ function buildLogEntries(result) {
       `Step ${index + 1}: ${step.tool_name} ${step.success ? "completed successfully" : "failed"}`
     )
   );
-  const planLogs = result.blueprint?.tasks?.length
-    ? result.blueprint.tasks.map((task) =>
-        createLogEntry(
-          "system",
-          `${task.is_completed ? "[x]" : "[ ]"} Checkpoint ${task.task_id}: ${task.description}`
-        )
-      )
-    : [];
-
-  return [...systemLogs, ...planLogs, ...aiLogs, ...stepLogs];
+  return [...systemLogs, ...aiLogs, ...stepLogs];
 }
 
 function createLogEntry(source, message) {
