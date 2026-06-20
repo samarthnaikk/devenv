@@ -104,7 +104,7 @@ export function App() {
         nodes: tree,
         expandedPaths,
         selectedPath,
-        content: selectedContent,
+        content: selectedPreview.content,
         previewKind: selectedPreview.kind,
         contentType: selectedPreview.contentType,
         isPreviewVisible,
