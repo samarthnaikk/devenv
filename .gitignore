@@ -91,6 +91,5 @@ memory.db
 *.db
 *.sqlite
 *.sqlite3
-!sample-test/memory-demo/demo_memory.db
 vectors/
 interface/website/dash.html

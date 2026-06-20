@@ -85,14 +85,15 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("list_directory", kernel.tools)
         self.assertEqual(ai.registered_tools, ["read_file", "list_directory"])
 
-    def test_default_memory_paths_are_scoped_under_workspace(self) -> None:
+    def test_default_memory_paths_are_scoped_under_project_root(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
 
-        self.assertEqual(kernel.db_path, str(Path(tempdir, ".devenv", "memory.db").resolve()))
-        self.assertEqual(kernel.vector_dir, str(Path(tempdir, ".devenv", "vectors").resolve()))
+        repo_root = Path(__file__).resolve().parents[2]
+        self.assertEqual(kernel.db_path, str((repo_root / "memory.db").resolve()))
+        self.assertEqual(kernel.vector_dir, str((repo_root / "vectors").resolve()))
 
     def test_execute_turn_returns_direct_ai_response(self) -> None:
         memory = FakeMemory()

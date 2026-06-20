@@ -8,8 +8,9 @@ from core.memory.embeddings import HashingEmbedder
 from core.memory.vector_index import InMemoryVectorIndex
 
 DEMO_ROOT = Path(__file__).resolve().parent
-DEMO_DB = DEMO_ROOT / "demo_memory.db"
-DEMO_VECTORS = DEMO_ROOT / "demo_vectors"
+PROJECT_ROOT = DEMO_ROOT.parents[2]
+DEMO_DB = PROJECT_ROOT / "memory.db"
+DEMO_VECTORS = PROJECT_ROOT / "vectors"
 
 
 def create_engine() -> MemoryEngine:
@@ -66,6 +67,8 @@ def main() -> int:
     if args.seed or not DEMO_DB.exists():
         seed_demo_db(force=args.force)
 
+    print(f"Using shared memory DB: {DEMO_DB}")
+    print(f"Using shared vector dir: {DEMO_VECTORS}")
     print(run_demo())
     return 0
 
