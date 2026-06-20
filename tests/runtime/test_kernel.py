@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any
 
 from core.ai.models import AIResponse, ToolCallRequest
+from core.memory import MemoryEngine
+from core.memory.embeddings import HashingEmbedder
+from core.memory.vector_index import InMemoryVectorIndex
 from core.runtime import DevenvKernel
 from core.tools.list_directory import ListDirectoryTool
 from core.tools.read_file import ReadFileTool
@@ -237,6 +240,49 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(result.final_response, "Fallback answer")
         self.assertEqual(ai.chat_calls[0]["memory_context"], "")
+
+    def test_memory_persists_across_kernel_sessions(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            first_memory = MemoryEngine(
+                db_path=f"{tempdir}/memory.db",
+                vector_dir=f"{tempdir}/vectors",
+                embedder=HashingEmbedder(dimension=8),
+                vector_index=InMemoryVectorIndex(),
+            )
+            first_ai = FakeAI(
+                [
+                    AIResponse(
+                        content="The calendar project used a Python backend and React frontend.",
+                        tool_calls=(),
+                        finish_reason="stop",
+                        usage={"prompt_tokens": 3},
+                    )
+                ]
+            )
+            first_kernel = DevenvKernel(tempdir, memory=first_memory, ai=first_ai)
+            first_kernel.execute_turn("Remember the calendar project stack")
+
+            second_memory = MemoryEngine(
+                db_path=f"{tempdir}/memory.db",
+                vector_dir=f"{tempdir}/vectors",
+                embedder=HashingEmbedder(dimension=8),
+                vector_index=InMemoryVectorIndex(),
+            )
+            second_ai = FakeAI(
+                [
+                    AIResponse(
+                        content="I found prior context.",
+                        tool_calls=(),
+                        finish_reason="stop",
+                        usage={"prompt_tokens": 2},
+                    )
+                ]
+            )
+            second_kernel = DevenvKernel(tempdir, memory=second_memory, ai=second_ai)
+            second_kernel.execute_turn("What was the calendar project backend?")
+
+        self.assertIn("calendar project", second_ai.chat_calls[0]["memory_context"].lower())
+        self.assertIn("python backend", second_ai.chat_calls[0]["memory_context"].lower())
 
 
 if __name__ == "__main__":
