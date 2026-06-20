@@ -18,7 +18,11 @@ export function TerminalPanel({
         key: `${item.role}-${index}`,
         className: `terminal-bubble ${item.role}`,
       },
-      React.createElement("div", { className: "bubble-role" }, item.role === "user" ? "You" : "Devenv"),
+      React.createElement(
+        "div",
+        { className: "bubble-role" },
+        item.role === "user" ? "You" : item.role === "thinking" ? "Thinking" : "Devenv"
+      ),
       React.createElement("div", {
         className: "bubble-content markdown-body",
         dangerouslySetInnerHTML: { __html: renderMarkdown(item.content) },
