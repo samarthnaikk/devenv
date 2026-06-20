@@ -57,6 +57,17 @@ class FailingDiagnosticsTool(BaseTool):
         return ToolResult(success=False, output=f"FAIL {mode}", data={"mode": mode})
 
 
+class FakeWriteTool(BaseTool):
+    name = "write_file"
+    description = "Fake writer for execution tests."
+
+    def input_schema(self) -> dict[str, object]:
+        return {"type": "object", "properties": {}, "required": []}
+
+    def execute(self, **kwargs) -> ToolResult:
+        return ToolResult(success=True, output="wrote file", data=dict(kwargs))
+
+
 class PlanningKernelTest(unittest.TestCase):
     def test_parse_markdown_to_blueprint_extracts_mixed_checkbox_lists(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -220,6 +231,78 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertEqual(second.final_response, "Added main.py.")
         self.assertEqual([task.is_completed for task in second.blueprint.tasks], [True, True])
         self.assertEqual(second.state, AgentState.VERIFYING.name)
+
+    def test_auto_planning_executes_one_checkpoint_per_turn(self) -> None:
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="- [ ] Create frontend folder\n- [ ] Add styles.css",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+                AIResponse(
+                    content="Created the frontend folder.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
+            result = kernel.execute_turn("Create a frontend folder")
+
+        self.assertEqual(result.final_response, "Created the frontend folder.")
+        self.assertEqual([task.is_completed for task in result.blueprint.tasks], [True, False])
+        self.assertEqual(result.state, AgentState.EXECUTING.name)
+
+    def test_mutation_checkpoint_requires_real_write_tool_before_completion(self) -> None:
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="- [ ] Create index.html",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+                AIResponse(
+                    content="I would create index.html with a simple layout.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+                AIResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCallRequest(
+                            call_id="call-1",
+                            tool_name="write_file",
+                            arguments={"path": "calendar/index.html", "content": "<h1>Calendar</h1>", "mode": "fresh"},
+                        ),
+                    ),
+                    finish_reason="tool_calls",
+                    usage={},
+                ),
+                AIResponse(
+                    content="Created index.html.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
+            kernel.register_tool(FakeWriteTool())
+            result = kernel.execute_turn("Create index.html for the calendar frontend")
+
+        self.assertEqual(len(result.steps), 1)
+        self.assertEqual(result.steps[0].tool_name, "write_file")
+        self.assertIn("requires a file mutation tool before completion", "\n".join(result.system_logs))
+        self.assertEqual(result.final_response, "Created index.html.")
 
     def test_direct_memory_focus_prefers_retrieved_memory_block(self) -> None:
         focused = _focus_memory_context_for_direct_answers(

@@ -423,7 +423,7 @@ class DevenvKernel:
         system_logs.append(f"State: {self.state.name}")
         final_response: str | None = None
         working_blueprint = blueprint
-        checkpoint_indexes = self._execution_checkpoint_indexes(working_blueprint, planning_mode)
+        checkpoint_indexes = self._execution_checkpoint_indexes(working_blueprint)
 
         for index in checkpoint_indexes:
             task = working_blueprint.tasks[index]
@@ -451,6 +451,9 @@ class DevenvKernel:
                 },
             ]
             tool_iterations = 0
+            checkpoint_requires_mutation = self._checkpoint_requires_mutation(user_prompt, task.description) and any(
+                tool_name in scoped_tool_names for tool_name in (*WRITE_EXECUTION_TOOLS, *DELETE_EXECUTION_TOOLS)
+            )
 
             while True:
                 ai_response = self.ai.chat(
@@ -477,6 +480,31 @@ class DevenvKernel:
                     steps.append(step)
                     system_logs.append(f"Tool step {len(steps)}: {tool_call.tool_name} success={step.success}")
                     step_conversation.append(_tool_message(tool_call.call_id, tool_call.tool_name, step.output))
+                    continue
+
+                if checkpoint_requires_mutation and tool_iterations == 0:
+                    ai_logs.append(f"Checkpoint requires mutation before completion: {task.description}")
+                    system_logs.append(f"Checkpoint {index + 1} requires a file mutation tool before completion")
+                    step_conversation.append(
+                        {
+                            "role": "assistant",
+                            "content": ai_response.content
+                            or "I described the change but did not execute it.",
+                        }
+                    )
+                    step_conversation.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "You have not completed this checkpoint yet. "
+                                "Use a real workspace modification tool such as write_file or edit_file, "
+                                "then stop after the tool succeeds."
+                            ),
+                        }
+                    )
+                    tool_iterations += 1
+                    if tool_iterations > max_consecutive_tools:
+                        raise RuntimeError("Execution tool limit reached before the checkpoint completed.")
                     continue
 
                 final_response = ai_response.content or final_response
@@ -659,17 +687,42 @@ class DevenvKernel:
             return False
         return _next_incomplete_task_index(self.active_blueprint) is not None
 
-    def _execution_checkpoint_indexes(
-        self,
-        blueprint: ExecutionBlueprint,
-        planning_mode: PlanningMode,
-    ) -> list[int]:
+    def _execution_checkpoint_indexes(self, blueprint: ExecutionBlueprint) -> list[int]:
         start_index = _next_incomplete_task_index(blueprint)
         if start_index is None:
             return []
-        if planning_mode is PlanningMode.FORCE_PLAN:
-            return [start_index]
-        return list(range(start_index, len(blueprint.tasks)))
+        return [start_index]
+
+    def _checkpoint_requires_mutation(self, user_prompt: str, task_description: str) -> bool:
+        text = f"{user_prompt} {task_description}".lower()
+        mutation_markers = (
+            "create",
+            "make",
+            "add",
+            "build",
+            "generate",
+            "write",
+            "edit",
+            "update",
+            "modify",
+            "change",
+            "fix",
+            "refactor",
+            "delete",
+            "remove",
+            "rename",
+            "move",
+            "implement",
+            "patch",
+            "html",
+            "css",
+            "js",
+            "javascript",
+            "frontend",
+            "file",
+            "folder",
+        )
+        return any(marker in text for marker in mutation_markers)
 
     def _resolve_direct_tool_scope(self, user_prompt: str) -> list[str]:
         text = user_prompt.lower()

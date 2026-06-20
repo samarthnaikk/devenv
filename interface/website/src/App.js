@@ -244,7 +244,7 @@ export function App() {
                 const nextMessages = assistantMessages.filter((entry) => !existingIds.has(entry.id));
                 return [...withoutThinking, ...nextMessages];
               });
-              continuePlan = Boolean(planModeEnabled && hasIncompleteTasks(result.blueprint));
+              continuePlan = Boolean(hasIncompleteTasks(result.blueprint));
             } while (continuePlan);
 
             setTranscript((current) =>
