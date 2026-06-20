@@ -1,7 +1,16 @@
 import React from "https://esm.sh/react@18";
 import { renderMarkdown } from "../lib/markdown.js";
 
-export function TerminalPanel({ transcript, prompt, onPromptChange, onSubmit, isRunning }) {
+export function TerminalPanel({
+  transcript,
+  prompt,
+  onPromptChange,
+  onSubmit,
+  isRunning,
+  onToggleCollapse,
+  collapseLabel,
+  collapseGlyph,
+}) {
   const messages = transcript.map((item, index) =>
     React.createElement(
       "article",
@@ -23,12 +32,30 @@ export function TerminalPanel({ transcript, prompt, onPromptChange, onSubmit, is
     React.createElement(
       "div",
       { className: "terminal-header" },
-      React.createElement("div", { className: "panel-label" }, "Chat"),
-      React.createElement("h2", { className: "terminal-title" }, "Ask Devenv"),
       React.createElement(
-        "p",
-        { className: "terminal-caption" },
-        "Use chat on the right, browse files in the middle, and watch raw runtime output on the left."
+        "div",
+        { className: "terminal-header-copy" },
+        React.createElement("div", { className: "panel-label" }, "Chat"),
+        React.createElement("h2", { className: "terminal-title" }, "Ask Devenv"),
+        React.createElement(
+          "p",
+          { className: "terminal-caption" },
+          "Use chat on the right, browse files in the middle, and watch raw runtime output on the left."
+        )
+      ),
+      onToggleCollapse
+        ? React.createElement(
+            "button",
+            {
+              className: "pane-header-button",
+              type: "button",
+              onClick: onToggleCollapse,
+              title: collapseLabel,
+              "aria-label": collapseLabel,
+            },
+            collapseGlyph || ">"
+          )
+        : null
       )
     ),
     React.createElement("div", { className: "terminal-log" }, messages),

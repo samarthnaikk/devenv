@@ -1,6 +1,14 @@
 import React from "https://esm.sh/react@18";
 
-export function LogPanel({ title, badge, entries, tone = "neutral" }) {
+export function LogPanel({
+  title,
+  badge,
+  entries,
+  tone = "neutral",
+  onToggleCollapse,
+  collapseLabel,
+  collapseGlyph,
+}) {
   const rows = entries.length
     ? entries.map((entry, index) =>
         React.createElement(
@@ -26,7 +34,24 @@ export function LogPanel({ title, badge, entries, tone = "neutral" }) {
       "div",
       { className: "log-panel-header" },
       React.createElement("h3", null, title),
-      badge ? React.createElement("span", { className: "log-badge" }, badge) : null
+      React.createElement(
+        "div",
+        { className: "panel-header-actions" },
+        badge ? React.createElement("span", { className: "log-badge" }, badge) : null,
+        onToggleCollapse
+          ? React.createElement(
+              "button",
+              {
+                className: "pane-header-button",
+                type: "button",
+                onClick: onToggleCollapse,
+                title: collapseLabel,
+                "aria-label": collapseLabel,
+              },
+              collapseGlyph || "<"
+            )
+          : null
+      )
     ),
     React.createElement("div", { className: "log-stream" }, rows)
   );

@@ -38,6 +38,11 @@ body {
   overflow-x: hidden;
 }
 
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
 button,
 input,
 textarea {
@@ -48,7 +53,7 @@ textarea {
   min-height: 100vh;
   padding: 0;
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr) 380px;
+  grid-template-columns: 320px 14px minmax(0, 1fr) 14px 380px;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 0;
   align-items: start;
@@ -139,6 +144,7 @@ textarea {
   gap: 0;
   height: calc(100vh - 65px);
   min-height: 620px;
+  min-width: 0;
 }
 
 .main-column {
@@ -156,6 +162,63 @@ textarea {
 
 .main-column {
   border-right: 1px solid var(--border);
+}
+
+.left-column.collapsed,
+.right-column.collapsed {
+  visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.pane-resizer {
+  position: relative;
+  height: calc(100vh - 65px);
+  border-right: 1px solid var(--border);
+  background: #f4ede3;
+  cursor: col-resize;
+}
+
+.pane-resizer.right {
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+.pane-resizer.collapsed {
+  background: #ede3d4;
+}
+
+.pane-toggle {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: #fffdfa;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pane-header-button {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: #fffdfa;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
 }
 
 .panel-label {
@@ -299,6 +362,14 @@ textarea {
   margin-bottom: 0;
   padding: 16px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.terminal-header-copy {
+  min-width: 0;
 }
 
 .terminal-title {
@@ -593,6 +664,10 @@ textarea {
   .app-shell {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto auto;
+  }
+
+  .pane-resizer {
+    display: none;
   }
 
   .left-column,
