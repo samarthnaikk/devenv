@@ -3,6 +3,7 @@ from .list_directory import ListDirectoryTool
 from .locate_files import LocateFilesTool
 from .peek_lines import PeekLinesTool
 from .read_file import ReadFileTool
+from .search_text import SearchTextTool
 
 __all__ = [
     "InspectSymbolsTool",
@@ -10,4 +11,5 @@ __all__ = [
     "LocateFilesTool",
     "PeekLinesTool",
     "ReadFileTool",
+    "SearchTextTool",
 ]
