@@ -11,6 +11,7 @@ from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.memory.vector_index import InMemoryVectorIndex
 from core.runtime import DevenvKernel
+from core.runtime.local_router import LocalRouteDecision
 from core.tools.list_directory import ListDirectoryTool
 from core.tools.read_file import ReadFileTool
 
@@ -117,6 +118,7 @@ class DevenvKernelTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
             result = kernel.execute_turn("Explain the repo")
 
         self.assertEqual(result.final_response, "Final answer")
@@ -188,6 +190,7 @@ class DevenvKernelTest(unittest.TestCase):
             backend_path.mkdir()
             (backend_path / "routes.py").write_text("print('ok')", encoding="utf-8")
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
             kernel.register_tool(ListDirectoryTool())
             result = kernel.execute_turn("how does the backend work?")
 
@@ -195,6 +198,62 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(len(result.steps), 1)
         self.assertEqual(result.steps[0].tool_name, "list_directory")
         self.assertIn("Recovered inline tool request: list_directory", result.ai_logs)
+
+    def test_local_knowledge_route_answers_from_memory_without_ai(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="## Retrieved Memory\n- [episode] This repo uses a FastAPI backend and a job-processing service."
+        )
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = type(
+                "Router",
+                (),
+                {
+                    "decide": lambda self, prompt: LocalRouteDecision(
+                        use_local_knowledge=True,
+                        confidence=0.7,
+                        knowledge_score=0.8,
+                        remote_score=0.1,
+                        reason="test",
+                    )
+                },
+            )()
+            result = kernel.execute_turn("how does the repo work?")
+
+        self.assertTrue(result.final_response.startswith("From memory"))
+        self.assertEqual(ai.chat_calls, [])
+
+    def test_local_knowledge_route_can_inspect_workspace_without_ai(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            backend_path = Path(tempdir) / "rvidia1a"
+            backend_path.mkdir()
+            (backend_path / "server.py").write_text("print('server')", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = type(
+                "Router",
+                (),
+                {
+                    "decide": lambda self, prompt: LocalRouteDecision(
+                        use_local_knowledge=True,
+                        confidence=0.7,
+                        knowledge_score=0.8,
+                        remote_score=0.1,
+                        reason="test",
+                    )
+                },
+            )()
+            kernel.register_tool(ListDirectoryTool())
+            result = kernel.execute_turn("how does rvidia work?")
+
+        self.assertIn("I inspected", result.final_response)
+        self.assertEqual(len(result.steps), 1)
+        self.assertEqual(result.steps[0].tool_name, "list_directory")
 
     def test_execute_turn_runs_registered_tool(self) -> None:
         memory = FakeMemory()
@@ -226,6 +285,7 @@ class DevenvKernelTest(unittest.TestCase):
             with open(note_path, "w", encoding="utf-8") as handle:
                 handle.write("hello runtime")
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
             kernel.register_tool(ReadFileTool())
             result = kernel.execute_turn("Read note.txt")
 
@@ -277,6 +337,7 @@ class DevenvKernelTest(unittest.TestCase):
             with open(note_path, "w", encoding="utf-8") as handle:
                 handle.write("hello runtime")
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
             kernel.register_tool(ReadFileTool())
             kernel.execute_turn("Read note.txt")
             kernel.execute_turn("What happened?")
@@ -311,6 +372,7 @@ class DevenvKernelTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
             result = kernel.execute_turn("Read ../secrets.txt")
 
         self.assertTrue(result.steps[0].is_sandboxed_violation)
@@ -342,6 +404,7 @@ class DevenvKernelTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
             with self.assertRaises(RuntimeError):
                 kernel.execute_turn("Loop", max_consecutive_tools=1)
 
@@ -360,6 +423,7 @@ class DevenvKernelTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
             result = kernel.execute_turn("Explain the repo")
 
         self.assertEqual(result.final_response, "Fallback answer")
@@ -384,6 +448,7 @@ class DevenvKernelTest(unittest.TestCase):
                 ]
             )
             first_kernel = DevenvKernel(tempdir, memory=first_memory, ai=first_ai)
+            first_kernel.local_router = _disabled_router()
             first_kernel.execute_turn("Remember the calendar project stack")
 
             second_memory = MemoryEngine(
@@ -403,10 +468,28 @@ class DevenvKernelTest(unittest.TestCase):
                 ]
             )
             second_kernel = DevenvKernel(tempdir, memory=second_memory, ai=second_ai)
-            second_kernel.execute_turn("What was the calendar project backend?")
+            second_kernel.local_router = _disabled_router()
+            result = second_kernel.execute_turn("What was the calendar project backend?")
 
+        self.assertEqual(result.final_response, "I found prior context.")
         self.assertIn("calendar project", second_ai.chat_calls[0]["memory_context"].lower())
         self.assertIn("python backend", second_ai.chat_calls[0]["memory_context"].lower())
+
+
+def _disabled_router():
+    return type(
+        "Router",
+        (),
+        {
+            "decide": lambda self, prompt: LocalRouteDecision(
+                use_local_knowledge=False,
+                confidence=0.0,
+                knowledge_score=0.0,
+                remote_score=1.0,
+                reason="test",
+            )
+        },
+    )()
 
 
 if __name__ == "__main__":

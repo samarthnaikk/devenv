@@ -5,6 +5,7 @@ import logging
 import re
 import uuid
 from dataclasses import asdict
+from difflib import get_close_matches
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from core.memory.embeddings import HashingEmbedder
 from core.tools.base import BaseTool
 
 from .models import AgentState, CheckpointTask, ExecutionBlueprint, RuntimeTurnResult, ToolExecutionStep
+from .local_router import LocalIntentRouter
 from .mcp_client import MCPToolClient
 from .sandbox import PathSandbox
 from .state import resolve_memory_paths
@@ -76,6 +78,7 @@ class DevenvKernel:
         self.vector_dir = resolved_vector_dir
         self.state = AgentState.PLANNING
         self.active_blueprint: ExecutionBlueprint | None = None
+        self.local_router = LocalIntentRouter()
         self.tool_client = tool_client or MCPToolClient(
             workspace_path=self.workspace_path,
             db_path=db_path,
@@ -105,6 +108,37 @@ class DevenvKernel:
         steps: list[ToolExecutionStep] = []
         total_usage: dict[str, int] = {}
         if not self._requires_planning(user_prompt):
+            route_decision = self.local_router.decide(user_prompt)
+            system_logs.append(
+                f"Local route decision: use_local={route_decision.use_local_knowledge} confidence={route_decision.confidence:.3f}"
+            )
+            if route_decision.use_local_knowledge:
+                self.state = AgentState.EXECUTING
+                system_logs.append(f"State: {self.state.name}")
+                local_response, handled_locally = self._run_local_knowledge_turn(
+                    user_prompt=user_prompt,
+                    memory_context=memory_context,
+                    steps=steps,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                )
+                if handled_locally:
+                    if local_response:
+                        conversation.append({"role": "assistant", "content": local_response})
+                    logger.info("Finishing local runtime turn: final_response_present=%s total_steps=%s", local_response is not None, len(steps))
+                    self._finalize_turn(user_prompt, local_response or "", conversation)
+                    system_logs.append("Turn completed and stored in memory")
+                    return RuntimeTurnResult(
+                        final_response=local_response,
+                        steps=steps,
+                        total_usage=total_usage,
+                        ai_logs=ai_logs,
+                        system_logs=system_logs,
+                        state=self.state.name,
+                        blueprint=None,
+                    )
+                system_logs.append("Local knowledge path deferred to direct AI mode")
+
             self.state = AgentState.EXECUTING
             system_logs.append(f"State: {self.state.name}")
             direct_response = self._run_direct_turn(
@@ -241,6 +275,41 @@ class DevenvKernel:
             if ai_response.content:
                 ai_logs.append("Assistant produced direct response")
             return ai_response.content
+
+    def _run_local_knowledge_turn(
+        self,
+        *,
+        user_prompt: str,
+        memory_context: str,
+        steps: list[ToolExecutionStep],
+        ai_logs: list[str],
+        system_logs: list[str],
+    ) -> tuple[str | None, bool]:
+        ai_logs.append("Local router selected knowledge mode")
+        memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
+        if memory_answer is not None:
+            ai_logs.append("Local knowledge answer assembled from memory")
+            return memory_answer, True
+
+        candidate_path = self._resolve_workspace_candidate(user_prompt)
+        if candidate_path is None:
+            ai_logs.append("Local knowledge mode found no strong memory or workspace candidate")
+            return None, False
+
+        tool_call = ToolCallRequest(
+            call_id=f"local_{uuid.uuid4().hex[:10]}",
+            tool_name="list_directory",
+            arguments={"path": candidate_path, "mode": "recursive", "max_depth": 2},
+        )
+        step = self._execute_tool_call(tool_call)
+        steps.append(step)
+        system_logs.append(f"Tool step {len(steps)}: list_directory success={step.success}")
+        if not step.success:
+            ai_logs.append("Local knowledge mode could not inspect workspace candidate")
+            return None, False
+
+        ai_logs.append("Local knowledge answer assembled from workspace structure")
+        return _summarize_directory_listing(candidate_path, step.output), True
 
     def _run_planning_phase(
         self,
@@ -544,6 +613,23 @@ class DevenvKernel:
             tool_names.update(MEMORY_EXECUTION_TOOLS)
         return sorted(name for name in tool_names if name in self.tools)
 
+    def _resolve_workspace_candidate(self, user_prompt: str) -> str | None:
+        prompt_tokens = [token for token in re.findall(r"[a-z0-9_]+", user_prompt.lower()) if len(token) >= 3]
+        try:
+            entries = sorted(Path(self.workspace_path).iterdir(), key=lambda item: item.name.lower())
+        except OSError:
+            return None
+
+        names = [entry.name.lower() for entry in entries if entry.is_dir()]
+        for token in prompt_tokens:
+            matches = get_close_matches(token, names, n=1, cutoff=0.72)
+            if matches:
+                matched_name = matches[0]
+                for entry in entries:
+                    if entry.is_dir() and entry.name.lower() == matched_name:
+                        return str(entry)
+        return self.workspace_path if entries else None
+
     def _execute_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
         logger.info("Intercepted tool call: tool=%s arguments=%s", tool_call.tool_name, tool_call.arguments)
         unsafe_argument = self.sandbox.find_unsafe_argument(tool_call.arguments)
@@ -797,6 +883,62 @@ def _extract_json_block(content: str) -> dict[str, Any] | list[Any] | None:
         if isinstance(payload, (dict, list)):
             return payload
     return None
+
+
+def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str | None:
+    if not memory_context.strip():
+        return None
+
+    retrieved_header = "## Retrieved Memory"
+    header_index = memory_context.find(retrieved_header)
+    if header_index < 0:
+        return None
+
+    lines = memory_context[header_index:].splitlines()[1:]
+    bullet_lines = []
+    for line in lines:
+        if not line.startswith("- "):
+            continue
+        bullet = line[2:].strip()
+        bullet_lower = bullet.lower()
+        if bullet_lower.startswith("prompt:") or bullet_lower.startswith("[workspace] workspace:"):
+            continue
+        bullet_lines.append(bullet)
+    if not bullet_lines:
+        return None
+
+    prompt_tokens = {token for token in re.findall(r"[a-z0-9_]+", user_prompt.lower()) if len(token) >= 4}
+    ranked: list[tuple[int, str]] = []
+    for line in bullet_lines:
+        line_lower = line.lower()
+        overlap = sum(1 for token in prompt_tokens if token in line_lower)
+        ranked.append((overlap, line))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+
+    best_overlap = ranked[0][0]
+    if best_overlap <= 0:
+        return None
+
+    selected = [line for overlap, line in ranked[:3] if overlap == best_overlap or overlap > 0]
+    if not selected:
+        return None
+    return "From memory, here’s the most relevant context:\n\n" + "\n".join(f"- {line}" for line in selected)
+
+
+def _summarize_directory_listing(candidate_path: str, output: str) -> str:
+    lines = output.splitlines()
+    relative_paths: list[str] = []
+    for line in lines:
+        if '"relative_path":' in line:
+            fragment = line.split('"relative_path":', 1)[1].strip().strip('",')
+            if fragment:
+                relative_paths.append(fragment.strip('"'))
+    unique_paths = list(dict.fromkeys(relative_paths))
+    if not unique_paths:
+        return f"I inspected `{candidate_path}` locally, but I didn't find enough structured file evidence to summarize it yet."
+
+    preview = ", ".join(unique_paths[:6])
+    return f"I inspected `{candidate_path}` locally. Relevant paths I found: {preview}."
 
 
 def _set_active_task(blueprint: ExecutionBlueprint, task_index: int) -> ExecutionBlueprint:
