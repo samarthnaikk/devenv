@@ -43,6 +43,10 @@ EXECUTION_SYSTEM_RULE = (
     "Work only on the current checkpoint. Do not start future checkpoints. "
     "Use tools only when necessary, and stop after completing the current checkpoint."
 )
+DIRECT_SYSTEM_RULE = (
+    "Answer the user's question directly. Use tools only if they are needed to inspect the workspace or gather evidence. "
+    "Do not create a checklist or execution plan unless the user is asking you to make changes."
+)
 
 
 class DevenvKernel:
@@ -97,6 +101,33 @@ class DevenvKernel:
         system_logs.append(f"Memory context chars: {len(memory_context)}")
         steps: list[ToolExecutionStep] = []
         total_usage: dict[str, int] = {}
+        if not self._requires_planning(user_prompt):
+            self.state = AgentState.EXECUTING
+            system_logs.append(f"State: {self.state.name}")
+            direct_response = self._run_direct_turn(
+                user_prompt=user_prompt,
+                memory_context=memory_context,
+                steps=steps,
+                total_usage=total_usage,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                max_consecutive_tools=max_consecutive_tools,
+            )
+            if direct_response:
+                conversation.append({"role": "assistant", "content": direct_response})
+            logger.info("Finishing direct runtime turn: final_response_present=%s total_steps=%s", direct_response is not None, len(steps))
+            self._finalize_turn(user_prompt, direct_response or "", conversation)
+            system_logs.append("Turn completed and stored in memory")
+            return RuntimeTurnResult(
+                final_response=direct_response,
+                steps=steps,
+                total_usage=total_usage,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                state=self.state.name,
+                blueprint=None,
+            )
+
         self.state = AgentState.PLANNING
         system_logs.append(f"State: {self.state.name}")
 
@@ -148,6 +179,58 @@ class DevenvKernel:
             state=self.state.name,
             blueprint=self.active_blueprint,
         )
+
+    def _run_direct_turn(
+        self,
+        *,
+        user_prompt: str,
+        memory_context: str,
+        steps: list[ToolExecutionStep],
+        total_usage: dict[str, int],
+        ai_logs: list[str],
+        system_logs: list[str],
+        max_consecutive_tools: int,
+    ) -> str | None:
+        direct_memory = _trim_memory_context(memory_context, EXECUTION_MEMORY_CHAR_LIMIT)
+        tool_scope = self._resolve_direct_tool_scope(user_prompt)
+        system_logs.append(f"Direct memory chars sent: {len(direct_memory)}")
+        system_logs.append(f"Direct tool scope size: {len(tool_scope)}")
+        conversation = [
+            {"role": "system", "content": DIRECT_SYSTEM_RULE},
+            {"role": "user", "content": user_prompt},
+        ]
+        tool_iterations = 0
+
+        while True:
+            ai_response = self.ai.chat(
+                messages=list(conversation),
+                memory_context=direct_memory,
+                tool_names=tool_scope,
+            )
+            _merge_usage(total_usage, ai_response.usage)
+            ai_logs.append(
+                f"Direct response: finish_reason={ai_response.finish_reason}, tool_calls={len(ai_response.tool_calls)}, total_tokens={ai_response.usage.get('total_tokens', 0)}"
+            )
+            if ai_response.tool_calls:
+                tool_call = ai_response.tool_calls[0]
+                tool_iterations += 1
+                if tool_iterations > max_consecutive_tools:
+                    raise RuntimeError("Direct tool limit reached before the request could be completed.")
+                if len(ai_response.tool_calls) > 1:
+                    system_logs.append(
+                        f"Direct mode deferred {len(ai_response.tool_calls) - 1} extra tool call(s) to preserve bounded execution"
+                    )
+                ai_logs.append(f"Tool requested: {tool_call.tool_name}")
+                conversation.append(_assistant_tool_call_message(ai_response, [tool_call]))
+                step = self._execute_tool_call(tool_call)
+                steps.append(step)
+                system_logs.append(f"Tool step {len(steps)}: {tool_call.tool_name} success={step.success}")
+                conversation.append(_tool_message(tool_call.call_id, tool_call.tool_name, step.output))
+                continue
+
+            if ai_response.content:
+                ai_logs.append("Assistant produced direct response")
+            return ai_response.content
 
     def _run_planning_phase(
         self,
@@ -416,6 +499,40 @@ class DevenvKernel:
             and any(marker in text for marker in frontend_markers)
             and any(marker in text for marker in file_markers)
         ) or any(marker in text for marker in non_backend_markers)
+
+    def _requires_planning(self, user_prompt: str) -> bool:
+        text = user_prompt.lower()
+        if self._is_scaffold_request(text):
+            return True
+
+        change_markers = (
+            "create",
+            "make",
+            "add",
+            "build",
+            "generate",
+            "write",
+            "edit",
+            "update",
+            "modify",
+            "change",
+            "fix",
+            "refactor",
+            "delete",
+            "remove",
+            "rename",
+            "move",
+            "implement",
+            "patch",
+        )
+        return any(marker in text for marker in change_markers)
+
+    def _resolve_direct_tool_scope(self, user_prompt: str) -> list[str]:
+        text = user_prompt.lower()
+        tool_names = set(READ_ONLY_EXECUTION_TOOLS)
+        if any(token in text for token in ("memory", "recall", "trace", "history", "earlier", "previous")):
+            tool_names.update(MEMORY_EXECUTION_TOOLS)
+        return sorted(name for name in tool_names if name in self.tools)
 
     def _execute_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
         logger.info("Intercepted tool call: tool=%s arguments=%s", tool_call.tool_name, tool_call.arguments)

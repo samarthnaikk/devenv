@@ -163,6 +163,15 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertIn("Older project notes", memory_context)
         self.assertLessEqual(len(memory_context), 360)
 
+    def test_requires_planning_only_for_change_requests(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+        self.assertTrue(kernel._requires_planning("Fix the backend auth bug"))
+        self.assertTrue(kernel._requires_planning("make a frontend folder in calendar"))
+        self.assertFalse(kernel._requires_planning("how does the rvidia backend work"))
+        self.assertFalse(kernel._requires_planning("tell me about this project"))
+
 
 if __name__ == "__main__":
     unittest.main()

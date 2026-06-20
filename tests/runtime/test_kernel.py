@@ -107,16 +107,10 @@ class DevenvKernelTest(unittest.TestCase):
         ai = FakeAI(
             [
                 AIResponse(
-                    content="- [ ] Explain the repo",
-                    tool_calls=(),
-                    finish_reason="stop",
-                    usage={"prompt_tokens": 10},
-                ),
-                AIResponse(
                     content="Final answer",
                     tool_calls=(),
                     finish_reason="stop",
-                    usage={"completion_tokens": 4},
+                    usage={"prompt_tokens": 10, "completion_tokens": 4},
                 )
             ]
         )
@@ -130,6 +124,7 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(result.total_usage["completion_tokens"], 4)
         self.assertEqual(ai.chat_calls[0]["memory_context"], "## Retrieved Memory\n- Prompt: Explain the repo")
         self.assertEqual(ai.chat_calls[0]["tool_names"], [])
+        self.assertIsNone(result.blueprint)
         self.assertEqual(memory.logs[0][0], "Explain the repo")
         self.assertEqual(memory.logs[0][1], "Final answer")
         self.assertEqual(memory.logs[0][2]["workspace_path"], str(Path(tempdir).resolve()))
@@ -139,16 +134,37 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertTrue(result.ai_logs)
         self.assertTrue(result.system_logs)
 
-    def test_execute_turn_runs_registered_tool(self) -> None:
+    def test_execute_turn_uses_planning_for_change_requests(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
             [
                 AIResponse(
-                    content="- [ ] Read note.txt",
+                    content="- [ ] Create README.md",
                     tool_calls=(),
                     finish_reason="stop",
                     usage={"prompt_tokens": 5},
                 ),
+                AIResponse(
+                    content="Done",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"completion_tokens": 2},
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("Create a README.md")
+
+        self.assertEqual(ai.chat_calls[0]["tool_names"], [])
+        self.assertIsNotNone(result.blueprint)
+        self.assertEqual(result.blueprint.tasks[0].description, "Create README.md")
+
+    def test_execute_turn_runs_registered_tool(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
                 AIResponse(
                     content=None,
                     tool_calls=(
@@ -184,22 +200,16 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertTrue(result.steps[0].success)
         self.assertIn("read_file completed", result.steps[0].output)
         self.assertIn("hello runtime", result.steps[0].output)
-        third_call_messages = ai.chat_calls[2]["messages"]
-        self.assertEqual(third_call_messages[-1]["role"], "tool")
+        second_call_messages = ai.chat_calls[1]["messages"]
+        self.assertEqual(second_call_messages[-1]["role"], "tool")
         self.assertIn("read_file", ai.chat_calls[1]["tool_names"])
-        self.assertEqual(result.total_usage["prompt_tokens"], 12)
+        self.assertEqual(result.total_usage["prompt_tokens"], 7)
         self.assertEqual(result.total_usage["completion_tokens"], 4)
 
     def test_follow_up_turn_does_not_replay_old_tool_output_history(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
             [
-                AIResponse(
-                    content="- [ ] Read note.txt",
-                    tool_calls=(),
-                    finish_reason="stop",
-                    usage={"prompt_tokens": 5},
-                ),
                 AIResponse(
                     content=None,
                     tool_calls=(
@@ -219,16 +229,10 @@ class DevenvKernelTest(unittest.TestCase):
                     usage={"completion_tokens": 4},
                 ),
                 AIResponse(
-                    content="- [ ] Summarize the prior turn",
-                    tool_calls=(),
-                    finish_reason="stop",
-                    usage={"prompt_tokens": 3},
-                ),
-                AIResponse(
                     content="Follow-up answer",
                     tool_calls=(),
                     finish_reason="stop",
-                    usage={"completion_tokens": 2},
+                    usage={"prompt_tokens": 3},
                 ),
             ]
         )
@@ -242,19 +246,13 @@ class DevenvKernelTest(unittest.TestCase):
             kernel.execute_turn("Read note.txt")
             kernel.execute_turn("What happened?")
 
-        follow_up_messages = ai.chat_calls[3]["messages"]
+        follow_up_messages = ai.chat_calls[2]["messages"]
         self.assertEqual([message["role"] for message in follow_up_messages], ["system", "user"])
 
     def test_execute_turn_flags_sandbox_violation(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
             [
-                AIResponse(
-                    content="- [ ] Read ../secrets.txt",
-                    tool_calls=(),
-                    finish_reason="stop",
-                    usage={},
-                ),
                 AIResponse(
                     content=None,
                     tool_calls=(
@@ -289,12 +287,6 @@ class DevenvKernelTest(unittest.TestCase):
         ai = FakeAI(
             [
                 AIResponse(
-                    content="- [ ] Loop once",
-                    tool_calls=(),
-                    finish_reason="tool_calls",
-                    usage={},
-                ),
-                AIResponse(
                     content=None,
                     tool_calls=(
                         ToolCallRequest(call_id="call_1", tool_name="missing_tool", arguments={}),
@@ -323,16 +315,10 @@ class DevenvKernelTest(unittest.TestCase):
         ai = FakeAI(
             [
                 AIResponse(
-                    content="- [ ] Explain the repo",
-                    tool_calls=(),
-                    finish_reason="stop",
-                    usage={"prompt_tokens": 2},
-                ),
-                AIResponse(
                     content="Fallback answer",
                     tool_calls=(),
                     finish_reason="stop",
-                    usage={"completion_tokens": 2},
+                    usage={"prompt_tokens": 2},
                 )
             ]
         )
@@ -355,16 +341,10 @@ class DevenvKernelTest(unittest.TestCase):
             first_ai = FakeAI(
                 [
                     AIResponse(
-                        content="- [ ] Record the calendar project stack",
-                        tool_calls=(),
-                        finish_reason="stop",
-                        usage={"prompt_tokens": 3},
-                    ),
-                    AIResponse(
                         content="The calendar project used a Python backend and React frontend.",
                         tool_calls=(),
                         finish_reason="stop",
-                        usage={"completion_tokens": 3},
+                        usage={"prompt_tokens": 3},
                     )
                 ]
             )
@@ -380,16 +360,10 @@ class DevenvKernelTest(unittest.TestCase):
             second_ai = FakeAI(
                 [
                     AIResponse(
-                        content="- [ ] Answer from memory",
-                        tool_calls=(),
-                        finish_reason="stop",
-                        usage={"prompt_tokens": 2},
-                    ),
-                    AIResponse(
                         content="I found prior context.",
                         tool_calls=(),
                         finish_reason="stop",
-                        usage={"completion_tokens": 2},
+                        usage={"prompt_tokens": 2},
                     )
                 ]
             )
