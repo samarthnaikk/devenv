@@ -218,6 +218,7 @@ export function App() {
           }
 
           setIsRunning(true);
+          setPrompt("");
           setTranscript((current) => [...current, { role: "user", content: nextPrompt }]);
           setLogEntries((current) => [...current, createLogEntry("system", `Prompt submitted: ${nextPrompt}`)]);
 
@@ -228,7 +229,6 @@ export function App() {
               { role: "assistant", content: result.final_response || "No assistant response returned." },
             ]);
             setLogEntries((current) => [...current, ...buildLogEntries(result)]);
-            setPrompt("");
           } catch (error) {
             setTranscript((current) => [
               ...current,
