@@ -1,7 +1,6 @@
 import React from "https://esm.sh/react@18";
 import { fetchFile, fetchFiles, fetchHealth, runTurn } from "./api.js";
 import { FilePreviewPanel } from "./components/FilePreviewPanel.js";
-import { FileTree } from "./components/FileTree.js";
 import { HeaderBar } from "./components/HeaderBar.js";
 import { LogPanel } from "./components/LogPanel.js";
 import { TerminalPanel } from "./components/TerminalPanel.js";
@@ -21,10 +20,7 @@ export function App() {
         "I’m connected to your workspace. Expand folders on the left, inspect files only when you want a preview, and use the center terminal to ask the runtime about the project.",
     },
   ]);
-  const [steps, setSteps] = React.useState([]);
-  const [usage, setUsage] = React.useState({});
-  const [aiLogs, setAiLogs] = React.useState([]);
-  const [systemLogs, setSystemLogs] = React.useState([]);
+  const [logEntries, setLogEntries] = React.useState([]);
   const [isRunning, setIsRunning] = React.useState(false);
   const [bootError, setBootError] = React.useState("");
 
@@ -33,10 +29,10 @@ export function App() {
       .then(([healthPayload, filePayload]) => {
         setHealth(healthPayload);
         setTree(normalizeEntries(filePayload.entries));
-        setAiLogs(["AI channel connected and waiting for prompts"]);
-        setSystemLogs([
-          `Workspace loaded: ${healthPayload.workspace_path}`,
-          `Available tools: ${healthPayload.tools.join(", ")}`,
+        setLogEntries([
+          createLogEntry("system", `Workspace loaded: ${healthPayload.workspace_path}`),
+          createLogEntry("system", `Available tools: ${healthPayload.tools.join(", ")}`),
+          createLogEntry("ai", "AI channel connected and waiting for prompts"),
         ]);
       })
       .catch((error) => {
@@ -61,31 +57,32 @@ export function App() {
     }),
     React.createElement(
       "aside",
-      { className: "sidebar-panel left-column" },
-      React.createElement(
-        "div",
-        { className: "sidebar-header" },
-        React.createElement("div", { className: "panel-label" }, "Workspace Tree"),
-        React.createElement(
-          "div",
-          { className: "sidebar-caption" },
-          selectedPath ? `Selected: ${selectedPath}` : "Pick a file or expand a directory"
-        )
-      ),
-      React.createElement(FileTree, {
+      { className: "left-column" },
+      React.createElement(LogPanel, {
+        title: "Runtime Log",
+        badge: `${logEntries.length} lines`,
+        entries: logEntries,
+      })
+    ),
+    React.createElement(
+      "main",
+      { className: "main-column" },
+      React.createElement(FilePreviewPanel, {
         nodes: tree,
         expandedPaths,
         selectedPath,
+        content: selectedContent,
+        isPreviewVisible,
         onSelectFile: (path) => {
           setSelectedPath(path);
-          setSystemLogs((current) => [...current, `Selected file: ${path}`]);
+          setLogEntries((current) => [...current, createLogEntry("system", `Selected file: ${path}`)]);
         },
         onToggleDirectory: async (path) => {
           const next = new Set(expandedPaths);
           if (next.has(path)) {
             next.delete(path);
             setExpandedPaths(next);
-            setSystemLogs((current) => [...current, `Collapsed directory: ${path || "."}`]);
+            setLogEntries((current) => [...current, createLogEntry("system", `Collapsed directory: ${path || "."}`)]);
             return;
           }
 
@@ -93,48 +90,26 @@ export function App() {
           setTree((current) => attachChildren(current, path, normalizeEntries(payload.entries)));
           next.add(path);
           setExpandedPaths(next);
-          setSystemLogs((current) => [...current, `Expanded directory: ${path || "."}`]);
+          setLogEntries((current) => [...current, createLogEntry("system", `Expanded directory: ${path || "."}`)]);
         },
-      }),
-      React.createElement(
-        "div",
-        { className: "sidebar-actions" },
-        React.createElement(
-          "button",
-          {
-            className: "preview-button",
-            type: "button",
-            disabled: !selectedPath,
-            onClick: async () => {
-              if (!selectedPath) {
-                return;
-              }
-              const filePayload = await fetchFile(selectedPath);
-              setSelectedContent(filePayload.content);
-              setIsPreviewVisible(true);
-              setSystemLogs((current) => [...current, `Preview opened: ${selectedPath}`]);
-            },
-          },
-          "Preview File"
-        ),
-        React.createElement(
-          "button",
-          {
-            className: "preview-button secondary",
-            type: "button",
-            disabled: !isPreviewVisible,
-            onClick: () => {
-              setIsPreviewVisible(false);
-              setSystemLogs((current) => [...current, "Preview closed"]);
-            },
-          },
-          "Hide Preview"
-        )
-      )
+        onOpenPreview: async () => {
+          if (!selectedPath) {
+            return;
+          }
+          const filePayload = await fetchFile(selectedPath);
+          setSelectedContent(filePayload.content);
+          setIsPreviewVisible(true);
+          setLogEntries((current) => [...current, createLogEntry("system", `Preview opened: ${selectedPath}`)]);
+        },
+        onClose: () => {
+          setIsPreviewVisible(false);
+          setLogEntries((current) => [...current, createLogEntry("system", "Preview closed")]);
+        },
+      })
     ),
     React.createElement(
-      "main",
-      { className: "main-column" },
+      "aside",
+      { className: "right-column" },
       React.createElement(TerminalPanel, {
         transcript,
         prompt,
@@ -148,7 +123,7 @@ export function App() {
 
           setIsRunning(true);
           setTranscript((current) => [...current, { role: "user", content: nextPrompt }]);
-          setSystemLogs((current) => [...current, `Prompt submitted: ${nextPrompt}`]);
+          setLogEntries((current) => [...current, createLogEntry("system", `Prompt submitted: ${nextPrompt}`)]);
 
           try {
             const result = await runTurn(nextPrompt);
@@ -156,47 +131,18 @@ export function App() {
               ...current,
               { role: "assistant", content: result.final_response || "No assistant response returned." },
             ]);
-            setUsage(result.total_usage);
-            setSteps(result.steps || []);
-            setAiLogs(result.ai_logs?.length ? result.ai_logs : ["No AI-side trace was emitted for this turn."]);
-            setSystemLogs(buildSystemFeed(result));
+            setLogEntries((current) => [...current, ...buildLogEntries(result)]);
             setPrompt("");
           } catch (error) {
             setTranscript((current) => [
               ...current,
               { role: "assistant", content: `Request failed: ${error.message}` },
             ]);
-            setSystemLogs((current) => [...current, `Request failed: ${error.message}`]);
+            setLogEntries((current) => [...current, createLogEntry("system", `Request failed: ${error.message}`)]);
           } finally {
             setIsRunning(false);
           }
         },
-      }),
-      isPreviewVisible
-        ? React.createElement(FilePreviewPanel, {
-            path: selectedPath,
-            content: selectedContent,
-            onClose: () => {
-              setIsPreviewVisible(false);
-              setSystemLogs((current) => [...current, "Preview closed"]);
-            },
-          })
-        : null
-    ),
-    React.createElement(
-      "aside",
-      { className: "right-column" },
-      React.createElement(LogPanel, {
-        title: "AI Logs",
-        badge: `${usage.total_tokens || 0} tokens`,
-        entries: aiLogs,
-        tone: "ai",
-      }),
-      React.createElement(LogPanel, {
-        title: "System Logs",
-        badge: `${steps.length} step${steps.length === 1 ? "" : "s"}`,
-        entries: systemLogs,
-        tone: "system",
       })
     )
   );
@@ -229,14 +175,26 @@ function attachChildren(nodes, targetPath, children) {
   });
 }
 
-function buildSystemFeed(result) {
-  const baseLogs = result.system_logs?.length
-    ? result.system_logs
-    : ["No runtime system logs were returned for this turn."];
-  const stepLogs = (result.steps || []).map(
-    (step, index) =>
+function buildLogEntries(result) {
+  const systemLogs = result.system_logs?.length
+    ? result.system_logs.map((entry) => createLogEntry("system", entry))
+    : [createLogEntry("system", "No runtime system logs were returned for this turn.")];
+  const aiLogs = result.ai_logs?.length
+    ? result.ai_logs.map((entry) => createLogEntry("ai", entry))
+    : [createLogEntry("ai", "No AI-side trace was emitted for this turn.")];
+  const stepLogs = (result.steps || []).map((step, index) =>
+    createLogEntry(
+      step.success ? "system" : "error",
       `Step ${index + 1}: ${step.tool_name} ${step.success ? "completed successfully" : "failed"}`
+    )
   );
 
-  return [...baseLogs, ...stepLogs];
+  return [...systemLogs, ...aiLogs, ...stepLogs];
+}
+
+function createLogEntry(source, message) {
+  return {
+    source,
+    message,
+  };
 }

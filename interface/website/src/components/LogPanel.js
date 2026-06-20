@@ -5,9 +5,10 @@ export function LogPanel({ title, badge, entries, tone = "neutral" }) {
     ? entries.map((entry, index) =>
         React.createElement(
           "div",
-          { key: `${title}-${index}`, className: `log-row ${tone}` },
-          React.createElement("span", { className: "log-index" }, String(index + 1).padStart(2, "0")),
-          React.createElement("div", { className: "log-message" }, entry)
+          { key: `${title}-${index}`, className: `log-line ${entry.source || tone}` },
+          React.createElement("span", { className: "log-line-number" }, String(index + 1).padStart(3, "0")),
+          React.createElement("span", { className: "log-line-tag" }, (entry.source || tone).toUpperCase()),
+          React.createElement("span", { className: "log-line-message" }, entry.message || entry)
         )
       )
     : [
@@ -27,6 +28,6 @@ export function LogPanel({ title, badge, entries, tone = "neutral" }) {
       React.createElement("h3", null, title),
       badge ? React.createElement("span", { className: "log-badge" }, badge) : null
     ),
-    React.createElement("div", { className: "log-list" }, rows)
+    React.createElement("div", { className: "log-stream" }, rows)
   );
 }

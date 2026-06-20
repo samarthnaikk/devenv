@@ -23,12 +23,12 @@ export function TerminalPanel({ transcript, prompt, onPromptChange, onSubmit, is
     React.createElement(
       "div",
       { className: "terminal-header" },
-      React.createElement("div", { className: "panel-label" }, "Runtime Terminal"),
-      React.createElement("h2", { className: "terminal-title" }, "Ask the local agent about the workspace"),
+      React.createElement("div", { className: "panel-label" }, "Chat"),
+      React.createElement("h2", { className: "terminal-title" }, "Ask Devenv"),
       React.createElement(
         "p",
         { className: "terminal-caption" },
-        "The center panel stays focused on the conversation. File preview opens below it only when you explicitly request it."
+        "Use chat on the right, browse files in the middle, and watch raw runtime output on the left."
       )
     ),
     React.createElement("div", { className: "terminal-log" }, messages),
