@@ -115,6 +115,7 @@ textarea {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .status-pill {
@@ -137,6 +138,14 @@ textarea {
 .status-value {
   color: var(--text);
   font-family: "IBM Plex Mono", monospace;
+  font-size: 0.78rem;
+}
+
+.status-warning {
+  padding: 8px 10px;
+  border: 1px solid rgba(180, 79, 66, 0.24);
+  background: rgba(180, 79, 66, 0.1);
+  color: var(--danger);
   font-size: 0.78rem;
 }
 
@@ -414,6 +423,11 @@ textarea {
 .terminal-bubble.thinking {
   border-left: 3px solid rgba(47, 122, 120, 0.45);
   background: #fcfaf5;
+}
+
+.terminal-bubble.error {
+  border-left: 3px solid rgba(180, 79, 66, 0.65);
+  background: rgba(180, 79, 66, 0.08);
 }
 
 .bubble-role {

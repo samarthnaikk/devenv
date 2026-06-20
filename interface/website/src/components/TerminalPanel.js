@@ -7,6 +7,8 @@ export function TerminalPanel({
   onPromptChange,
   onSubmit,
   isRunning,
+  isCoolingDown,
+  cooldownLabel,
   onToggleCollapse,
   collapseLabel,
   collapseGlyph,
@@ -21,7 +23,7 @@ export function TerminalPanel({
       React.createElement(
         "div",
         { className: "bubble-role" },
-        item.role === "user" ? "You" : item.role === "thinking" ? "Thinking" : "Devenv"
+        item.role === "user" ? "You" : item.role === "thinking" ? "Thinking" : item.role === "error" ? "Rate Limit" : "Devenv"
       ),
       React.createElement("div", {
         className: "bubble-content markdown-body",
@@ -75,13 +77,16 @@ export function TerminalPanel({
         className: "terminal-input",
         rows: 4,
         value: prompt,
-        placeholder: "Ask Devenv to inspect the workspace, summarize architecture, or trace a bug...",
+        placeholder: isCoolingDown
+          ? `Groq cooldown active. Input unlocks in ${cooldownLabel}.`
+          : "Ask Devenv to inspect the workspace, summarize architecture, or trace a bug...",
         onChange: (event) => onPromptChange(event.target.value),
+        disabled: isCoolingDown,
       }),
       React.createElement(
         "button",
-        { className: "terminal-submit", type: "submit", disabled: isRunning || !prompt.trim() },
-        isRunning ? "Running..." : "Run Prompt"
+        { className: "terminal-submit", type: "submit", disabled: isRunning || isCoolingDown || !prompt.trim() },
+        isCoolingDown ? `Cooldown ${cooldownLabel}` : isRunning ? "Running..." : "Run Prompt"
       )
     )
   );

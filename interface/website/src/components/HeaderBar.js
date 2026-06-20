@@ -1,10 +1,12 @@
 import React from "https://esm.sh/react@18";
 
-export function HeaderBar({ workspacePath, provider, model, usage }) {
+export function HeaderBar({ workspacePath, provider, model, usage, contextBudget }) {
   const chips = [
     { label: "Provider", value: provider || "Unknown" },
     { label: "Model", value: model || "Unknown" },
     { label: "Tokens", value: String(usage?.total_tokens || 0) },
+    { label: "Context Left", value: contextBudget?.remainingLabel || "Unknown" },
+    { label: "Resets", value: contextBudget?.resetLabel || "Idle" },
   ];
 
   return React.createElement(
@@ -20,6 +22,13 @@ export function HeaderBar({ workspacePath, provider, model, usage }) {
     React.createElement(
       "div",
       { className: "status-strip" },
+      contextBudget?.isLow
+        ? React.createElement(
+            "div",
+            { className: "status-warning" },
+            `Warning: less than 10% context remains (${contextBudget.remainingLabel}).`
+          )
+        : null,
       chips.map((chip) =>
         React.createElement(
           "div",

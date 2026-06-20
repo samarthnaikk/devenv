@@ -30,7 +30,25 @@ export function App() {
   const [healthMeta, setHealthMeta] = React.useState({ provider: "", model: "" });
   const [rightWidth, setRightWidth] = React.useState(380);
   const [rightCollapsed, setRightCollapsed] = React.useState(false);
+  const [usageWindow, setUsageWindow] = React.useState([]);
+  const [rateLimitInfo, setRateLimitInfo] = React.useState(null);
+  const [clock, setClock] = React.useState(Date.now());
   const dragStateRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setClock(Date.now());
+      setUsageWindow((current) => current.filter((entry) => Date.now() - entry.timestamp < 60000));
+      setRateLimitInfo((current) => {
+        if (!current || current.resetAt > Date.now()) {
+          return current;
+        }
+        return null;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   React.useEffect(() => {
     Promise.all([fetchHealth(), fetchFiles("")])
@@ -87,6 +105,7 @@ export function App() {
     "14px",
     rightCollapsed ? "0px" : `${rightWidth}px`,
   ].join(" ");
+  const contextBudget = buildContextBudget(usageWindow, rateLimitInfo, clock);
 
   return React.createElement(
     "div",
@@ -96,6 +115,7 @@ export function App() {
       provider: healthMeta.provider,
       model: healthMeta.model,
       usage,
+      contextBudget,
     }),
     React.createElement(
       "main",
@@ -170,6 +190,8 @@ export function App() {
         prompt,
         onPromptChange: setPrompt,
         isRunning,
+        isCoolingDown: Boolean(rateLimitInfo && rateLimitInfo.resetAt > clock),
+        cooldownLabel: rateLimitInfo ? formatDuration(Math.max(rateLimitInfo.resetAt - clock, 0)) : "",
         onToggleCollapse: () => setRightCollapsed((current) => !current),
         collapseLabel: rightCollapsed ? "Expand chat" : "Collapse chat",
         collapseGlyph: rightCollapsed ? "<" : ">",
@@ -208,7 +230,14 @@ export function App() {
               },
             ]);
             setUsage(result.total_usage || {});
+            setUsageWindow((current) =>
+              [...current, { timestamp: Date.now(), totalTokens: result.total_usage?.total_tokens || 0 }].filter(
+                (entry) => Date.now() - entry.timestamp < 60000
+              )
+            );
+            setRateLimitInfo(null);
           } catch (error) {
+            const parsedRateLimit = parseRateLimitError(error.message);
             setTranscript((current) => [
               ...current.map((entry) =>
                 entry.id === thinkingId
@@ -221,8 +250,25 @@ export function App() {
                     }
                   : entry
               ),
-              { id: `assistant-${Date.now()}`, role: "assistant", content: `Request failed: ${error.message}` },
+              {
+                id: `assistant-${Date.now()}`,
+                role: parsedRateLimit ? "error" : "assistant",
+                content: parsedRateLimit
+                  ? [
+                      `Rate limit reached.`,
+                      ``,
+                      `TPM limit: ${parsedRateLimit.limit}`,
+                      `Used: ${parsedRateLimit.used}`,
+                      `Requested: ${parsedRateLimit.requested}`,
+                      `Retry in: ${formatDuration(parsedRateLimit.retryMs)}`,
+                      `Resets at: ${formatTimestamp(parsedRateLimit.resetAt)}`,
+                    ].join("\n")
+                  : `Request failed: ${error.message}`,
+              },
             ]);
+            if (parsedRateLimit) {
+              setRateLimitInfo(parsedRateLimit);
+            }
           } finally {
             setIsRunning(false);
           }
@@ -291,4 +337,54 @@ function formatThinkingBlock(entries) {
   return ["```text", ...entries.map((entry) => `${String(entry.source).toUpperCase()}  ${entry.message}`), "```"].join(
     "\n"
   );
+}
+
+function parseRateLimitError(message) {
+  const limitMatch = message.match(/Limit\s+(\d+)/i);
+  const usedMatch = message.match(/Used\s+(\d+)/i);
+  const requestedMatch = message.match(/Requested\s+(\d+)/i);
+  const retryMatch = message.match(/try again in\s+([\d.]+)s/i);
+  if (!limitMatch || !usedMatch || !requestedMatch || !retryMatch) {
+    return null;
+  }
+
+  const retryMs = Math.ceil(Number(retryMatch[1]) * 1000);
+  return {
+    limit: Number(limitMatch[1]),
+    used: Number(usedMatch[1]),
+    requested: Number(requestedMatch[1]),
+    retryMs,
+    resetAt: Date.now() + retryMs,
+  };
+}
+
+function buildContextBudget(usageWindow, rateLimitInfo, now) {
+  const limit = rateLimitInfo?.limit || 12000;
+  const recentUsage = usageWindow.reduce((sum, entry) => sum + entry.totalTokens, 0);
+  const remaining = Math.max(limit - recentUsage, 0);
+  const nextResetTimestamp = usageWindow.length ? Math.min(...usageWindow.map((entry) => entry.timestamp + 60000)) : null;
+  const resetAt = rateLimitInfo?.resetAt || nextResetTimestamp;
+
+  return {
+    remaining,
+    remainingLabel: `${remaining}/${limit}`,
+    resetAt,
+    resetLabel: resetAt ? formatTimestamp(resetAt) : "Idle",
+    isLow: remaining / limit < 0.1,
+  };
+}
+
+function formatDuration(milliseconds) {
+  const totalSeconds = Math.max(Math.ceil(milliseconds / 1000), 0);
+  const seconds = totalSeconds % 60;
+  const minutes = Math.floor(totalSeconds / 60);
+  return minutes ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+}
+
+function formatTimestamp(timestamp) {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
