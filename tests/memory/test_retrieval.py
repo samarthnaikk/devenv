@@ -104,6 +104,25 @@ class RetrievalFlowTest(unittest.TestCase):
             self.assertGreaterEqual(candidate.recency_score, 0.0)
             self.assertLessEqual(candidate.recency_score, 1.0)
 
+    def test_rehydrates_vector_index_from_stored_nodes_on_new_session(self) -> None:
+        self.engine.add_episodic_log(
+            "The calendar project used a React frontend and Python backend.",
+            "Stored for future recall.",
+            metadata={"workspace_path": self.tempdir.name},
+        )
+
+        reopened = MemoryEngine(
+            db_path=f"{self.tempdir.name}/memory.db",
+            vector_dir=f"{self.tempdir.name}/vectors",
+            embedder=HashingEmbedder(dimension=8),
+            vector_index=InMemoryVectorIndex(),
+        )
+
+        result = reopened.retrieve_context("What was the calendar project backend?", top_k=5)
+
+        self.assertIn("calendar project", result.markdown_context.lower())
+        self.assertIn("python backend", result.markdown_context.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

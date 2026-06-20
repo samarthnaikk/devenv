@@ -56,6 +56,7 @@ class MemoryEngine(MemoryEngineInterface):
             extractor=extractor,
         )
         self._last_trace = RetrievalTrace()
+        self._rehydrate_vector_index()
 
     def add_episodic_log(
         self,
@@ -135,6 +136,10 @@ class MemoryEngine(MemoryEngineInterface):
 
     def record_working_memory(self, messages: list[dict[str, Any]], active_state: dict[str, Any]) -> None:
         self.working_memory.record(messages=messages, active_state=active_state)
+
+    def _rehydrate_vector_index(self) -> None:
+        for node in self.store.list_nodes():
+            self.vector_index.upsert(node.node_id, node.summary, self.embedder.embed(node.summary))
 
     def _index_episodic_log(self, *, log: EpisodicLog, interaction: LogInteraction) -> None:
         summary = " | ".join(piece for piece in (interaction.user.strip(), interaction.agent.strip()) if piece).strip()
