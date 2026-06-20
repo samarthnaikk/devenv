@@ -1,3 +1,4 @@
+from .edit_file import EditFileTool
 from .inspect_symbols import InspectSymbolsTool
 from .list_directory import ListDirectoryTool
 from .locate_files import LocateFilesTool
@@ -8,6 +9,7 @@ from .track_symbol import TrackSymbolTool
 from .write_file import WriteFileTool
 
 __all__ = [
+    "EditFileTool",
     "InspectSymbolsTool",
     "ListDirectoryTool",
     "LocateFilesTool",
