@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,7 @@ class DevenvKernel:
         self.ai = ai or AICore()
         self.tools: dict[str, BaseTool] = {}
         self.ephemeral_history: list[dict[str, Any]] = []
+        self.session_id = str(uuid.uuid4())
 
     def register_tool(self, tool: BaseTool) -> None:
         self.tools[tool.name] = tool
@@ -152,7 +154,10 @@ class DevenvKernel:
             self.memory.add_episodic_log(
                 user_prompt,
                 final_response,
-                metadata={"workspace_path": self.workspace_path},
+                metadata={
+                    "workspace_path": self.workspace_path,
+                    "session_id": self.session_id,
+                },
             )
         except Exception as exc:
             logger.warning("Failed to record episodic log; continuing without persisted memory: error=%s", exc)
@@ -161,7 +166,10 @@ class DevenvKernel:
         try:
             self.memory.record_working_memory(
                 messages=conversation[-10:],
-                active_state={"workspace_path": self.workspace_path},
+                active_state={
+                    "workspace_path": self.workspace_path,
+                    "session_id": self.session_id,
+                },
             )
         except Exception as exc:
             logger.warning("Failed to record working memory; continuing: error=%s", exc)

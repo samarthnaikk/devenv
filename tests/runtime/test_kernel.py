@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from core.ai.models import AIResponse, ToolCallRequest
@@ -98,6 +99,9 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(ai.chat_calls[0]["memory_context"], "## Retrieved Memory\n- Prompt: Explain the repo")
         self.assertEqual(memory.logs[0][0], "Explain the repo")
         self.assertEqual(memory.logs[0][1], "Final answer")
+        self.assertEqual(memory.logs[0][2]["workspace_path"], str(Path(tempdir).resolve()))
+        self.assertEqual(memory.logs[0][2]["session_id"], kernel.session_id)
+        self.assertEqual(memory.working_memory_calls[0][1]["session_id"], kernel.session_id)
         self.assertTrue(result.ai_logs)
         self.assertTrue(result.system_logs)
 
