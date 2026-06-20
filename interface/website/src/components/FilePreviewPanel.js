@@ -9,11 +9,8 @@ export function FilePreviewPanel({
   content,
   previewKind,
   contentType,
-  isPreviewVisible,
   onSelectFile,
   onToggleDirectory,
-  onOpenPreview,
-  onClose,
 }) {
   const preview = previewKind === "text" ? renderFilePreview(content || "", selectedPath) : null;
 
@@ -28,30 +25,6 @@ export function FilePreviewPanel({
         { className: "editor-toolbar-group" },
         React.createElement("div", { className: "panel-label" }, "Explorer"),
         React.createElement("div", { className: "preview-path" }, selectedPath || "No file selected")
-      ),
-      React.createElement(
-        "div",
-        { className: "sidebar-actions" },
-        React.createElement(
-          "button",
-          {
-            className: "preview-button",
-            type: "button",
-            disabled: !selectedPath,
-            onClick: onOpenPreview,
-          },
-          "Open Preview"
-        ),
-        React.createElement(
-          "button",
-          {
-            className: "preview-button secondary",
-            type: "button",
-            disabled: !isPreviewVisible,
-            onClick: onClose,
-          },
-          "Close Preview"
-        )
       )
     ),
     React.createElement(
@@ -65,9 +38,9 @@ export function FilePreviewPanel({
           { className: "sidebar-header" },
           React.createElement("div", { className: "panel-label" }, "Files"),
           React.createElement(
-            "div",
-            { className: "sidebar-caption" },
-            "Select a file, then open it in the preview pane."
+          "div",
+          { className: "sidebar-caption" },
+            "Select a file to preview it instantly."
           )
         ),
         React.createElement(FileTree, {
@@ -85,11 +58,9 @@ export function FilePreviewPanel({
         React.createElement(
           "div",
           { className: "preview-caption" },
-          isPreviewVisible
-            ? "Manual preview is open for the selected file."
-            : "Preview stays blank until you explicitly open a file."
+          selectedPath ? "Preview updates automatically as you browse files." : "Preview a file by selecting it in the explorer."
         ),
-        isPreviewVisible
+        selectedPath
           ? previewKind === "image"
             ? React.createElement("img", {
                 className: "image-preview",
@@ -111,7 +82,7 @@ export function FilePreviewPanel({
           : React.createElement(
               "div",
               { className: "preview-empty" },
-              "No file preview is open."
+              "No file selected."
             )
       )
       )

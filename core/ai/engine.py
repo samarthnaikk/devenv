@@ -54,31 +54,35 @@ class AICore:
         messages: list[dict[str, Any]],
         memory_context: str | None = None,
         temperature: float = 0.2,
+        tool_names: Iterable[str] | None = None,
     ) -> AIResponse:
+        tool_definitions = self._build_tool_definitions(tool_names=tool_names)
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": self._compile_system_frame(memory_context)},
+                {"role": "system", "content": self._compile_system_frame(memory_context, tool_definitions=tool_definitions)},
                 *messages,
             ],
-            "tools": self._build_tool_definitions(),
-            "tool_choice": "auto",
             "temperature": temperature,
         }
+        if tool_definitions:
+            payload["tools"] = tool_definitions
+            payload["tool_choice"] = "auto"
         self.last_request_payload = json.loads(json.dumps(payload))
         logger.info(
             "Submitting Groq chat completion: model=%s message_count=%s tool_count=%s memory_chars=%s",
             self.model,
             len(payload["messages"]),
-            len(payload["tools"]),
+            len(tool_definitions),
             len(memory_context or ""),
         )
         response_payload = self._post_chat_completion(payload)
         return self._parse_response(response_payload)
 
-    def _build_tool_definitions(self) -> list[dict[str, Any]]:
+    def _build_tool_definitions(self, tool_names: Iterable[str] | None = None) -> list[dict[str, Any]]:
         definitions: list[dict[str, Any]] = []
-        for tool_name in sorted(self._tools):
+        resolved_names = sorted(self._resolve_tool_names(tool_names))
+        for tool_name in resolved_names:
             tool = self._tools[tool_name]
             definitions.append(
                 {
@@ -92,12 +96,22 @@ class AICore:
             )
         return definitions
 
-    def _compile_system_frame(self, memory_context: str | None) -> str:
+    def _compile_system_frame(
+        self,
+        memory_context: str | None,
+        *,
+        tool_definitions: list[dict[str, Any]] | None = None,
+    ) -> str:
+        serialized_tools = json.dumps(
+            tool_definitions if tool_definitions is not None else self._build_tool_definitions(),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         sections = [
             "## System Core Instructions",
             self.system_instructions,
             "## Reconciled Tool Declarations",
-            json.dumps(self._build_tool_definitions(), indent=2, sort_keys=True),
+            serialized_tools,
         ]
 
         if memory_context and memory_context.strip():
@@ -109,6 +123,16 @@ class AICore:
             )
 
         return "\n\n".join(sections)
+
+    def _resolve_tool_names(self, tool_names: Iterable[str] | None = None) -> set[str]:
+        if tool_names is None:
+            return set(self._tools)
+
+        resolved: set[str] = set()
+        for tool_name in tool_names:
+            if tool_name in self._tools:
+                resolved.add(tool_name)
+        return resolved
 
     def _post_chat_completion(self, payload: dict[str, Any]) -> dict[str, Any]:
         body = json.dumps(payload).encode("utf-8")
@@ -131,6 +155,10 @@ class AICore:
                 logger.info("Groq request succeeded: status=%s bytes=%s", getattr(response, "status", "unknown"), len(raw))
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
+            recovered_payload = _recover_failed_generation_payload(detail)
+            if recovered_payload is not None:
+                logger.warning("Recovered assistant text from Groq tool_use_failed response")
+                return recovered_payload
             logger.error("Groq request failed: http_status=%s detail=%s", exc.code, detail)
             raise RuntimeError(f"Groq chat completion failed with HTTP {exc.code}: {detail}") from exc
         except error.URLError as exc:
@@ -224,3 +252,35 @@ class AICore:
             else:
                 usage[str(key)] = 0
         return usage
+
+
+def _recover_failed_generation_payload(detail: str) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(detail)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    error_payload = payload.get("error")
+    if not isinstance(error_payload, dict):
+        return None
+    if error_payload.get("code") != "tool_use_failed":
+        return None
+
+    failed_generation = error_payload.get("failed_generation")
+    if not isinstance(failed_generation, str) or not failed_generation.strip():
+        return None
+
+    return {
+        "choices": [
+            {
+                "finish_reason": "stop",
+                "message": {
+                    "content": failed_generation,
+                    "tool_calls": [],
+                },
+            }
+        ],
+        "usage": {},
+    }

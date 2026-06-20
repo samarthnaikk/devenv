@@ -14,25 +14,27 @@ export function App() {
     content: "",
     contentType: "text/plain",
   });
-  const [isPreviewVisible, setIsPreviewVisible] = React.useState(false);
   const [prompt, setPrompt] = React.useState("Tell me about this project.");
   const [transcript, setTranscript] = React.useState([
     {
       id: "intro",
       role: "assistant",
-      content:
-        "I’m connected to your workspace. Expand folders on the left, inspect files only when you want a preview, and use the center terminal to ask the runtime about the project.",
+      content: "I’m connected to your workspace.",
     },
   ]);
   const [isRunning, setIsRunning] = React.useState(false);
   const [bootError, setBootError] = React.useState("");
   const [usage, setUsage] = React.useState({});
   const [healthMeta, setHealthMeta] = React.useState({ provider: "", model: "" });
+  const [blueprint, setBlueprint] = React.useState(null);
+  const [runtimeState, setRuntimeState] = React.useState("PLANNING");
   const [rightWidth, setRightWidth] = React.useState(380);
   const [rightCollapsed, setRightCollapsed] = React.useState(false);
   const [usageWindow, setUsageWindow] = React.useState([]);
   const [rateLimitInfo, setRateLimitInfo] = React.useState(null);
   const [clock, setClock] = React.useState(Date.now());
+  const [planModeEnabled, setPlanModeEnabled] = React.useState(false);
+  const [showThinking, setShowThinking] = React.useState(false);
   const dragStateRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -116,6 +118,10 @@ export function App() {
       model: healthMeta.model,
       usage,
       contextBudget,
+      planModeEnabled,
+      onPlanModeChange: setPlanModeEnabled,
+      showThinking,
+      onShowThinkingChange: setShowThinking,
     }),
     React.createElement(
       "main",
@@ -127,9 +133,14 @@ export function App() {
         content: selectedPreview.content,
         previewKind: selectedPreview.kind,
         contentType: selectedPreview.contentType,
-        isPreviewVisible,
-        onSelectFile: (path) => {
+        onSelectFile: async (path) => {
           setSelectedPath(path);
+          const filePayload = await fetchFile(path);
+          setSelectedPreview({
+            kind: filePayload.kind || "text",
+            content: filePayload.content || "",
+            contentType: filePayload.content_type || "text/plain",
+          });
         },
         onToggleDirectory: async (path) => {
           const next = new Set(expandedPaths);
@@ -143,21 +154,6 @@ export function App() {
           setTree((current) => attachChildren(current, path, normalizeEntries(payload.entries)));
           next.add(path);
           setExpandedPaths(next);
-        },
-        onOpenPreview: async () => {
-          if (!selectedPath) {
-            return;
-          }
-          const filePayload = await fetchFile(selectedPath);
-          setSelectedPreview({
-            kind: filePayload.kind || "text",
-            content: filePayload.content || "",
-            contentType: filePayload.content_type || "text/plain",
-          });
-          setIsPreviewVisible(true);
-        },
-        onClose: () => {
-          setIsPreviewVisible(false);
         },
       })
     ),
@@ -188,6 +184,9 @@ export function App() {
       React.createElement(TerminalPanel, {
         transcript,
         prompt,
+        blueprint,
+        runtimeState,
+        showThinking,
         onPromptChange: setPrompt,
         isRunning,
         isCoolingDown: Boolean(rateLimitInfo && rateLimitInfo.resetAt > clock),
@@ -211,30 +210,87 @@ export function App() {
           setTranscript((current) => [
             ...current,
             { id: `user-${Date.now()}`, role: "user", content: nextPrompt },
-            { id: thinkingId, role: "thinking", content: formatThinkingBlock(pendingLogs) },
+            { id: thinkingId, role: "thinking", content: formatThinkingBlock(pendingLogs), pending: true },
           ]);
 
           try {
-            const result = await runTurn(nextPrompt);
-            const turnLogs = buildLogEntries(result);
+            const aggregateLogs = [];
+            const planningMode = planModeEnabled ? "force_plan" : "force_direct";
+            let continuePlan = false;
+            let result = null;
+            const refreshThinking = (pending) => {
+              setTranscript((current) =>
+                current.map((entry) =>
+                  entry.id === thinkingId
+                    ? { ...entry, content: formatThinkingBlock(aggregateLogs), pending }
+                    : entry
+                )
+              );
+            };
+
+            do {
+              while (true) {
+                try {
+                  result = await runTurn(nextPrompt, planningMode, continuePlan);
+                  break;
+                } catch (error) {
+                  const parsedRateLimit = parseRateLimitError(error.message);
+                  if (!parsedRateLimit) {
+                    throw error;
+                  }
+
+                  setRateLimitInfo(parsedRateLimit);
+                  const retryEntry = createLogEntry(
+                    "error",
+                    `Rate limit reached. Retrying in ${formatDuration(parsedRateLimit.retryMs)}`
+                  );
+                  aggregateLogs.push(retryEntry);
+                  refreshThinking(true);
+                  await waitForCooldown(parsedRateLimit.resetAt, (remainingMs) => {
+                    retryEntry.message = `Rate limit reached. Retrying in ${formatDuration(remainingMs)}`;
+                    refreshThinking(true);
+                  });
+                  retryEntry.message = "Cooldown finished. Retrying request now.";
+                  refreshThinking(true);
+                }
+              }
+
+              aggregateLogs.push(...buildLogEntries(result));
+              setUsage(result.total_usage || {});
+              setBlueprint(result.blueprint || null);
+              setRuntimeState(result.state || "PLANNING");
+              setUsageWindow((current) =>
+                [...current, { timestamp: Date.now(), totalTokens: result.total_usage?.total_tokens || 0 }].filter(
+                  (entry) => Date.now() - entry.timestamp < 60000
+                )
+              );
+              refreshThinking(hasIncompleteTasks(result?.blueprint));
+              continuePlan = Boolean(hasIncompleteTasks(result.blueprint));
+            } while (continuePlan);
+
+            const finalMessage = selectVisibleAssistantResponse(result, aggregateLogs);
             setTranscript((current) => [
               ...current.map((entry) =>
                 entry.id === thinkingId
-                  ? { ...entry, content: formatThinkingBlock(turnLogs) }
+                  ? { ...entry, content: formatThinkingBlock(aggregateLogs), pending: false }
                   : entry
               ),
-              {
-                id: `assistant-${Date.now()}`,
-                role: "assistant",
-                content: result.final_response || "No assistant response returned.",
-              },
+              ...(result?.error_message
+                ? [
+                    {
+                      id: `assistant-error-${Date.now()}`,
+                      role: "error",
+                      content: result.error_message,
+                    },
+                  ]
+                : [
+                    {
+                      id: `assistant-${Date.now()}`,
+                      role: "assistant",
+                      content: finalMessage,
+                    },
+                  ]),
             ]);
-            setUsage(result.total_usage || {});
-            setUsageWindow((current) =>
-              [...current, { timestamp: Date.now(), totalTokens: result.total_usage?.total_tokens || 0 }].filter(
-                (entry) => Date.now() - entry.timestamp < 60000
-              )
-            );
             setRateLimitInfo(null);
           } catch (error) {
             const parsedRateLimit = parseRateLimitError(error.message);
@@ -243,6 +299,7 @@ export function App() {
                 entry.id === thinkingId
                   ? {
                       ...entry,
+                      pending: false,
                       content: formatThinkingBlock([
                         createLogEntry("system", `Prompt submitted: ${nextPrompt}`),
                         createLogEntry("error", `Request failed: ${error.message}`),
@@ -311,7 +368,9 @@ function attachChildren(nodes, targetPath, children) {
 
 function buildLogEntries(result) {
   const systemLogs = result.system_logs?.length
-    ? result.system_logs.map((entry) => createLogEntry("system", entry))
+    ? result.system_logs
+        .filter((entry) => !entry.startsWith("Plan checkpoints:"))
+        .map((entry) => createLogEntry("system", entry))
     : [createLogEntry("system", "No runtime system logs were returned for this turn.")];
   const aiLogs = result.ai_logs?.length
     ? result.ai_logs.map((entry) => createLogEntry("ai", entry))
@@ -322,20 +381,7 @@ function buildLogEntries(result) {
       `Step ${index + 1}: ${step.tool_name} ${step.success ? "completed successfully" : "failed"}`
     )
   );
-  const requestLogs = (result.debug?.groq_requests || []).map((request, index) =>
-    createLogEntry(
-      request.error ? "error" : "ai",
-      [
-        `Groq request ${index + 1}:`,
-        JSON.stringify(request.payload, null, 2),
-        request.error ? `Error: ${request.error}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n")
-    )
-  );
-
-  return [...systemLogs, ...aiLogs, ...stepLogs, ...requestLogs];
+  return [...systemLogs, ...aiLogs, ...stepLogs];
 }
 
 function createLogEntry(source, message) {
@@ -399,4 +445,55 @@ function formatTimestamp(timestamp) {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+function hasIncompleteTasks(blueprint) {
+  return Boolean(blueprint?.tasks?.some((task) => !task.is_completed));
+}
+
+async function waitForCooldown(resetAt, onTick) {
+  while (true) {
+    const remainingMs = Math.max(resetAt - Date.now(), 0);
+    onTick(remainingMs);
+    if (remainingMs <= 0) {
+      return;
+    }
+    await sleep(Math.min(remainingMs, 1000));
+  }
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function selectVisibleAssistantResponse(result, aggregateLogs) {
+  if (!result?.blueprint) {
+    return result?.final_response || "No assistant response returned.";
+  }
+
+  const completedTasks = result.blueprint.tasks?.filter((task) => task.is_completed) || [];
+  const verificationLines = aggregateLogs
+    .filter((entry) => entry.source === "system" && String(entry.message).startsWith("Verification "))
+    .map((entry) => `- ${entry.message}`);
+
+  const sections = [];
+  sections.push("Completed execution plan:");
+  sections.push(...completedTasks.map((task) => `- [x] ${task.description}`));
+
+  if (verificationLines.length) {
+    sections.push("");
+    sections.push("Verification:");
+    sections.push(...verificationLines);
+  }
+
+  if (!result.blueprint.verification_passed) {
+    sections.push("");
+    sections.push("Some verification checks still need attention.");
+  }
+
+  if (!completedTasks.length && result.final_response) {
+    return result.final_response;
+  }
+
+  return sections.join("\n");
 }

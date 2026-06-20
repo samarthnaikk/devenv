@@ -1,9 +1,13 @@
 import React from "https://esm.sh/react@18";
 import { renderMarkdown } from "../lib/markdown.js";
+import { PlanRail } from "./PlanRail.js";
 
 export function TerminalPanel({
   transcript,
   prompt,
+  blueprint,
+  runtimeState,
+  showThinking,
   onPromptChange,
   onSubmit,
   isRunning,
@@ -23,11 +27,32 @@ export function TerminalPanel({
       React.createElement(
         "div",
         { className: "bubble-role" },
-        item.role === "user" ? "You" : item.role === "thinking" ? "Thinking" : item.role === "error" ? "Rate Limit" : "Devenv"
+        item.role === "user"
+          ? "You"
+          : item.role === "thinking"
+            ? React.createElement(
+                "span",
+                { className: "thinking-label" },
+                "Thinking",
+                item.pending
+                  ? React.createElement("span", { className: "typing-dots", "aria-hidden": "true" },
+                      React.createElement("span", null),
+                      React.createElement("span", null),
+                      React.createElement("span", null)
+                    )
+                  : null
+              )
+            : item.role === "error"
+              ? "Rate Limit"
+              : "Devenv"
       ),
       React.createElement("div", {
         className: "bubble-content markdown-body",
-        dangerouslySetInnerHTML: { __html: renderMarkdown(item.content) },
+        dangerouslySetInnerHTML: {
+          __html: renderMarkdown(
+            item.role === "thinking" && !showThinking ? summarizeThinkingContent(item.content, item.pending) : item.content
+          ),
+        },
       })
     )
   );
@@ -42,12 +67,7 @@ export function TerminalPanel({
         "div",
         { className: "terminal-header-copy" },
         React.createElement("div", { className: "panel-label" }, "Chat"),
-        React.createElement("h2", { className: "terminal-title" }, "Ask Devenv"),
-        React.createElement(
-          "p",
-          { className: "terminal-caption" },
-          "Use chat on the right, browse files in the middle, and watch raw runtime output on the left."
-        )
+        React.createElement("h2", { className: "terminal-title" }, "Ask Devenv")
       ),
       onToggleCollapse
         ? React.createElement(
@@ -63,6 +83,10 @@ export function TerminalPanel({
           )
         : null
     ),
+    React.createElement(PlanRail, {
+      blueprint,
+      runtimeState,
+    }),
     React.createElement("div", { className: "terminal-log" }, messages),
     React.createElement(
       "form",
@@ -90,4 +114,22 @@ export function TerminalPanel({
       )
     )
   );
+}
+
+function summarizeThinkingContent(content, pending) {
+  const text = String(content || "");
+  const lowered = text.toLowerCase();
+  if (lowered.includes("retrying in")) {
+    const retryLine = text
+      .split("\n")
+      .find((line) => line.toLowerCase().includes("retrying in"));
+    return retryLine ? retryLine.replace(/^ERROR\s+/, "") : "Retrying shortly...";
+  }
+  if (lowered.includes("tool requested")) {
+    return pending ? "Calling tools..." : "Tool call completed.";
+  }
+  if (lowered.includes("planning response") || lowered.includes("state: planning")) {
+    return pending ? "Planning next step..." : "Planning completed.";
+  }
+  return pending ? "Thinking..." : "Completed.";
 }

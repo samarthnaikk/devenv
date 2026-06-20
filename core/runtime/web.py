@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urlparse
 from core.logging_utils import configure_logging
 
 from .kernel import DevenvKernel
-from .models import RunConfig
+from .models import PlanningMode, RunConfig
 from .tooling import build_runtime_tools
 from .workspace import WorkspaceBrowser
 
@@ -69,10 +69,18 @@ class DevenvWebApp:
     def build_file_payload(self, relative_path: str) -> dict[str, object]:
         return {"path": relative_path, **self.workspace.read_file_preview(relative_path)}
 
-    def run_turn(self, prompt: str, max_consecutive_tools: int | None = None) -> dict[str, object]:
+    def run_turn(
+        self,
+        prompt: str,
+        max_consecutive_tools: int | None = None,
+        planning_mode: PlanningMode = PlanningMode.AUTO,
+        continue_plan: bool = False,
+    ) -> dict[str, object]:
         result = self.kernel.execute_turn(
             prompt,
             max_consecutive_tools=max_consecutive_tools or self.config.max_consecutive_tools,
+            planning_mode=planning_mode,
+            continue_plan=continue_plan,
         )
         return result.to_dict()
 
@@ -122,9 +130,27 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
         if max_consecutive_tools is not None and not isinstance(max_consecutive_tools, int):
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": "max_consecutive_tools must be an integer"})
             return
+        planning_mode_value = payload.get("planning_mode", PlanningMode.AUTO.value)
+        if not isinstance(planning_mode_value, str):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "planning_mode must be a string"})
+            return
+        try:
+            planning_mode = PlanningMode(planning_mode_value)
+        except ValueError:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "planning_mode must be one of: auto, force_plan, force_direct"})
+            return
+        continue_plan = payload.get("continue_plan", False)
+        if not isinstance(continue_plan, bool):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "continue_plan must be a boolean"})
+            return
 
         try:
-            result = self.app.run_turn(prompt=prompt, max_consecutive_tools=max_consecutive_tools)
+            result = self.app.run_turn(
+                prompt=prompt,
+                max_consecutive_tools=max_consecutive_tools,
+                planning_mode=planning_mode,
+                continue_plan=continue_plan,
+            )
         except RuntimeError as exc:
             self._write_json(HTTPStatus.BAD_GATEWAY, {"error": str(exc)})
             return

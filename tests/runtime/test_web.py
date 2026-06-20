@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from core.ai.models import AIResponse
-from core.runtime.models import RunConfig
+from core.runtime.models import CheckpointTask, ExecutionBlueprint
+from core.runtime.models import PlanningMode, RunConfig
 from core.runtime.web import DevenvWebApp
 
 
@@ -37,14 +38,20 @@ class FakeAI:
     def __init__(self) -> None:
         self.model = "fake-groq-model"
         self.responses = [
-            AIResponse(content="Website response", tool_calls=(), finish_reason="stop", usage={"prompt_tokens": 3})
+            AIResponse(content="Website response", tool_calls=(), finish_reason="stop", usage={"prompt_tokens": 3}),
         ]
         self.registered_tools: list[str] = []
 
     def register_tool(self, tool) -> None:
         self.registered_tools.append(tool.name)
 
-    def chat(self, messages: list[dict[str, Any]], memory_context: str | None = None, temperature: float = 0.2) -> AIResponse:
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        memory_context: str | None = None,
+        temperature: float = 0.2,
+        tool_names=None,
+    ) -> AIResponse:
         return self.responses.pop(0)
 
 
@@ -99,11 +106,69 @@ class DevenvWebAppTest(unittest.TestCase):
             files = app.build_files_payload()
             turn = app.run_turn("hello")
 
-        self.assertEqual(health["status"], "ok")
-        self.assertEqual(files["entries"][0]["name"], "README.md")
-        self.assertEqual(turn["final_response"], "Website response")
+            self.assertEqual(health["status"], "ok")
+            self.assertEqual(files["entries"][0]["name"], "README.md")
+            self.assertEqual(turn["final_response"], "Website response")
+            self.assertIsNone(turn["blueprint"])
         with self.assertRaises(PermissionError):
             app.build_file_payload("../secrets.txt")
+
+    def test_run_turn_accepts_explicit_planning_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            captured: dict[str, object] = {}
+            app.kernel.execute_turn = lambda prompt, max_consecutive_tools=5, planning_mode=PlanningMode.AUTO, continue_plan=False: captured.update(
+                {
+                    "prompt": prompt,
+                    "planning_mode": planning_mode,
+                    "continue_plan": continue_plan,
+                }
+            ) or type("Result", (), {"to_dict": lambda self: {"final_response": "ok"}})()
+            result = app.run_turn("hello", planning_mode=PlanningMode.FORCE_PLAN, continue_plan=True)
+
+        self.assertEqual(result["final_response"], "ok")
+        self.assertEqual(captured["prompt"], "hello")
+        self.assertEqual(captured["planning_mode"], PlanningMode.FORCE_PLAN)
+        self.assertTrue(captured["continue_plan"])
+
+    def test_run_turn_preserves_partial_blueprint_when_execution_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.kernel.execute_turn = lambda prompt, max_consecutive_tools=5, planning_mode=PlanningMode.AUTO, continue_plan=False: type(
+                "Result",
+                (),
+                {
+                    "to_dict": lambda self: {
+                        "final_response": None,
+                        "steps": [],
+                        "total_usage": {},
+                        "ai_logs": [],
+                        "system_logs": ["Execution failed: Execution tool limit reached before the checkpoint completed."],
+                        "state": "EXECUTING",
+                        "blueprint": ExecutionBlueprint(
+                            raw_plan_markdown="- [ ] Build frontend\n- [ ] Add HTML",
+                            tasks=[
+                                CheckpointTask(task_id=1, description="Build frontend", is_completed=True),
+                                CheckpointTask(task_id=2, description="Add HTML"),
+                            ],
+                            active_task_pointer=1,
+                        ).to_dict(),
+                        "error_message": "Execution tool limit reached before the checkpoint completed.",
+                    }
+                },
+            )()
+            result = app.run_turn("hello", planning_mode=PlanningMode.FORCE_PLAN)
+
+        self.assertEqual(result["error_message"], "Execution tool limit reached before the checkpoint completed.")
+        self.assertEqual(result["blueprint"]["tasks"][0]["description"], "Build frontend")
 
 
 if __name__ == "__main__":

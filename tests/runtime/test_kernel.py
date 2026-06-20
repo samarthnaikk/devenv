@@ -11,6 +11,8 @@ from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.memory.vector_index import InMemoryVectorIndex
 from core.runtime import DevenvKernel
+from core.runtime.kernel import _answer_from_retrieved_memory, _summarize_directory_listing
+from core.runtime.local_router import LocalRouteDecision
 from core.tools.list_directory import ListDirectoryTool
 from core.tools.read_file import ReadFileTool
 
@@ -62,29 +64,32 @@ class FakeAI:
     def register_tool(self, tool) -> None:
         self.registered_tools.append(tool.name)
 
-    def chat(self, messages: list[dict[str, Any]], memory_context: str | None = None, temperature: float = 0.2) -> AIResponse:
-        self.last_request_payload = {
-            "model": "fake-model",
-            "messages": [
-                {"role": "system", "content": memory_context or ""},
-                *messages,
-            ],
-            "temperature": temperature,
-            "tools": [],
-            "tool_choice": "auto",
-        }
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        memory_context: str | None = None,
+        temperature: float = 0.2,
+        tool_names: list[str] | tuple[str, ...] | set[str] | None = None,
+    ) -> AIResponse:
         self.chat_calls.append(
             {
                 "messages": messages,
                 "memory_context": memory_context,
                 "temperature": temperature,
+                "tool_names": sorted(tool_names) if tool_names is not None else None,
             }
         )
         return self.responses.pop(0)
 
 
 class RateLimitedAI(FakeAI):
-    def chat(self, messages: list[dict[str, Any]], memory_context: str | None = None, temperature: float = 0.2) -> AIResponse:
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        memory_context: str | None = None,
+        temperature: float = 0.2,
+        tool_names: list[str] | tuple[str, ...] | set[str] | None = None,
+    ) -> AIResponse:
         self.last_request_payload = {
             "model": "fake-model",
             "messages": [
@@ -100,6 +105,7 @@ class RateLimitedAI(FakeAI):
                 "messages": messages,
                 "memory_context": memory_context,
                 "temperature": temperature,
+                "tool_names": sorted(tool_names) if tool_names is not None else None,
             }
         )
         next_response = self.responses.pop(0)
@@ -139,19 +145,22 @@ class DevenvKernelTest(unittest.TestCase):
                     content="Final answer",
                     tool_calls=(),
                     finish_reason="stop",
-                    usage={"prompt_tokens": 10},
+                    usage={"prompt_tokens": 10, "completion_tokens": 4},
                 )
             ]
         )
 
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
             result = kernel.execute_turn("Explain the repo")
 
         self.assertEqual(result.final_response, "Final answer")
         self.assertEqual(result.total_usage["prompt_tokens"], 10)
+        self.assertEqual(result.total_usage["completion_tokens"], 4)
         self.assertEqual(ai.chat_calls[0]["memory_context"], "## Retrieved Memory\n- Prompt: Explain the repo")
-        self.assertEqual(result.debug["groq_requests"][0]["payload"]["messages"][1]["content"], "Explain the repo")
+        self.assertEqual(ai.chat_calls[0]["tool_names"], [])
+        self.assertIsNone(result.blueprint)
         self.assertEqual(memory.logs[0][0], "Explain the repo")
         self.assertEqual(memory.logs[0][1], "Final answer")
         self.assertEqual(memory.logs[0][2]["workspace_path"], str(Path(tempdir).resolve()))
@@ -160,6 +169,226 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(memory.consolidation_runs, 1)
         self.assertTrue(result.ai_logs)
         self.assertTrue(result.system_logs)
+
+    def test_execute_turn_uses_planning_for_change_requests(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="- [ ] Create README.md",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 5},
+                ),
+                AIResponse(
+                    content="Done",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"completion_tokens": 2},
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("Create a README.md")
+
+        self.assertEqual(ai.chat_calls[0]["tool_names"], [])
+        self.assertIsNotNone(result.blueprint)
+        self.assertEqual(result.blueprint.tasks[0].description, "Create README.md")
+
+    def test_direct_turn_recovers_inline_tool_json_and_continues(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content=(
+                        "To inspect the backend, I need to list the directory.\n\n"
+                        '[{"name":"list_directory","parameters":{"path":"backend","mode":"recursive","max_depth":2}}]'
+                    ),
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 4},
+                ),
+                AIResponse(
+                    content="The backend has routes and services.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"completion_tokens": 3},
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            backend_path = Path(tempdir) / "backend"
+            backend_path.mkdir()
+            (backend_path / "routes.py").write_text("print('ok')", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
+            kernel.register_tool(ListDirectoryTool())
+            result = kernel.execute_turn("how does the backend work?")
+
+        self.assertEqual(result.final_response, "The backend has routes and services.")
+        self.assertEqual(len(result.steps), 1)
+        self.assertEqual(result.steps[0].tool_name, "list_directory")
+        self.assertIn("Recovered inline tool request: list_directory", result.ai_logs)
+
+    def test_local_knowledge_route_answers_from_memory_without_ai(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="## Retrieved Memory\n- [episode] This repo uses a FastAPI backend and a job-processing service."
+        )
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = type(
+                "Router",
+                (),
+                {
+                    "decide": lambda self, prompt: LocalRouteDecision(
+                        use_local_knowledge=True,
+                        confidence=0.7,
+                        knowledge_score=0.8,
+                        remote_score=0.1,
+                        reason="test",
+                    )
+                },
+            )()
+            result = kernel.execute_turn("how does the repo work?")
+
+        self.assertIn("FastAPI backend", result.final_response)
+        self.assertEqual(ai.chat_calls, [])
+
+    def test_local_knowledge_route_can_inspect_workspace_without_ai(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            backend_path = Path(tempdir) / "rvidia1a"
+            backend_path.mkdir()
+            (backend_path / "server.py").write_text("print('server')", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = type(
+                "Router",
+                (),
+                {
+                    "decide": lambda self, prompt: LocalRouteDecision(
+                        use_local_knowledge=True,
+                        confidence=0.7,
+                        knowledge_score=0.8,
+                        remote_score=0.1,
+                        reason="test",
+                    )
+                },
+            )()
+            kernel.register_tool(ListDirectoryTool())
+            result = kernel.execute_turn("tell me about rvidia")
+
+        self.assertIn("I inspected", result.final_response)
+        self.assertEqual(len(result.steps), 1)
+        self.assertEqual(result.steps[0].tool_name, "list_directory")
+
+    def test_local_knowledge_route_defers_code_level_question_without_memory_answer(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="GetGit decides what content to send by chunking and retrieval.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 5},
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            getgit_path = Path(tempdir) / "getgit"
+            getgit_path.mkdir()
+            (getgit_path / "core.py").write_text("print('core')", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = type(
+                "Router",
+                (),
+                {
+                    "decide": lambda self, prompt: LocalRouteDecision(
+                        use_local_knowledge=True,
+                        confidence=0.7,
+                        knowledge_score=0.8,
+                        remote_score=0.1,
+                        reason="test",
+                    )
+                },
+            )()
+            kernel.register_tool(ListDirectoryTool())
+            result = kernel.execute_turn("how does getgit decide what content to send to ai?")
+
+        self.assertEqual(result.final_response, "GetGit decides what content to send by chunking and retrieval.")
+        self.assertEqual(len(ai.chat_calls), 1)
+        self.assertEqual(result.steps, [])
+
+    def test_summarize_directory_listing_parses_structured_payload_without_leaking_json(self) -> None:
+        summary = _summarize_directory_listing(
+            "/tmp/getgit",
+            'list_directory completed for /tmp/getgit in recursive mode\n'
+            '{"path":"/tmp/getgit","mode":"recursive","entries":['
+            '{"relative_path":"rag","is_dir":true},'
+            '{"relative_path":"core.py","is_dir":false},'
+            '{"relative_path":"templates/index.html","is_dir":false}'
+            "]}",
+        )
+
+        self.assertIn("rag, core.py, templates/index.html", summary)
+        self.assertNotIn('{"relative_path"', summary)
+
+    def test_answer_from_retrieved_memory_rejects_low_signal_directory_dump(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "how does rag work in getgit",
+            "\n".join(
+                [
+                    "## Retrieved Memory",
+                    '- [episode] I inspected `/tmp/getgit` locally. Relevant paths I found: .git"}, {"relative_path": "rag"}',
+                ]
+            ),
+        )
+
+        self.assertIsNone(answer)
+
+    def test_local_directory_summary_is_not_persisted_to_episodic_memory(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            backend_path = Path(tempdir) / "rvidia1a"
+            backend_path.mkdir()
+            (backend_path / "server.py").write_text("print('server')", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = type(
+                "Router",
+                (),
+                {
+                    "decide": lambda self, prompt: LocalRouteDecision(
+                        use_local_knowledge=True,
+                        confidence=0.7,
+                        knowledge_score=0.8,
+                        remote_score=0.1,
+                        reason="test",
+                    )
+                },
+            )()
+            kernel.register_tool(ListDirectoryTool())
+            kernel.execute_turn("tell me about rvidia")
+
+        self.assertEqual(memory.logs, [])
+
+    def test_repair_directory_path_fixes_missing_inline_guess(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            (Path(tempdir) / "rvidia").mkdir()
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+            repaired = kernel._repair_directory_path(f"{tempdir}/rvidia1a")
+
+        self.assertTrue(repaired.endswith("rvidia"))
 
     def test_execute_turn_runs_registered_tool(self) -> None:
         memory = FakeMemory()
@@ -191,6 +420,7 @@ class DevenvKernelTest(unittest.TestCase):
             with open(note_path, "w", encoding="utf-8") as handle:
                 handle.write("hello runtime")
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
             kernel.register_tool(ReadFileTool())
             result = kernel.execute_turn("Read note.txt")
 
@@ -202,6 +432,7 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("hello runtime", result.steps[0].output)
         second_call_messages = ai.chat_calls[1]["messages"]
         self.assertEqual(second_call_messages[-1]["role"], "tool")
+        self.assertIn("read_file", ai.chat_calls[1]["tool_names"])
         self.assertEqual(result.total_usage["prompt_tokens"], 7)
         self.assertEqual(result.total_usage["completion_tokens"], 4)
 
@@ -241,12 +472,13 @@ class DevenvKernelTest(unittest.TestCase):
             with open(note_path, "w", encoding="utf-8") as handle:
                 handle.write("hello runtime")
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
             kernel.register_tool(ReadFileTool())
             kernel.execute_turn("Read note.txt")
             kernel.execute_turn("What happened?")
 
         follow_up_messages = ai.chat_calls[2]["messages"]
-        self.assertEqual([message["role"] for message in follow_up_messages], ["user", "assistant", "user"])
+        self.assertEqual([message["role"] for message in follow_up_messages], ["system", "user"])
 
     def test_execute_turn_flags_sandbox_violation(self) -> None:
         memory = FakeMemory()
@@ -275,6 +507,7 @@ class DevenvKernelTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
             result = kernel.execute_turn("Read ../secrets.txt")
 
         self.assertTrue(result.steps[0].is_sandboxed_violation)
@@ -306,10 +539,9 @@ class DevenvKernelTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
-            result = kernel.execute_turn("Loop", max_consecutive_tools=1)
-
-        self.assertEqual(len(result.steps), 1)
-        self.assertEqual(result.final_response, "Tool execution limit reached before the request could be completed.")
+            kernel.local_router = _disabled_router()
+            with self.assertRaises(RuntimeError):
+                kernel.execute_turn("Loop", max_consecutive_tools=1)
 
     def test_execute_turn_continues_when_memory_retrieval_fails(self) -> None:
         memory = FailingMemory()
@@ -326,6 +558,7 @@ class DevenvKernelTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
             result = kernel.execute_turn("Explain the repo")
 
         self.assertEqual(result.final_response, "Fallback answer")
@@ -383,6 +616,7 @@ class DevenvKernelTest(unittest.TestCase):
                 ]
             )
             first_kernel = DevenvKernel(tempdir, memory=first_memory, ai=first_ai)
+            first_kernel.local_router = _disabled_router()
             first_kernel.execute_turn("Remember the calendar project stack")
 
             second_memory = MemoryEngine(
@@ -402,10 +636,28 @@ class DevenvKernelTest(unittest.TestCase):
                 ]
             )
             second_kernel = DevenvKernel(tempdir, memory=second_memory, ai=second_ai)
-            second_kernel.execute_turn("What was the calendar project backend?")
+            second_kernel.local_router = _disabled_router()
+            result = second_kernel.execute_turn("What was the calendar project backend?")
 
+        self.assertEqual(result.final_response, "I found prior context.")
         self.assertIn("calendar project", second_ai.chat_calls[0]["memory_context"].lower())
         self.assertIn("python backend", second_ai.chat_calls[0]["memory_context"].lower())
+
+
+def _disabled_router():
+    return type(
+        "Router",
+        (),
+        {
+            "decide": lambda self, prompt: LocalRouteDecision(
+                use_local_knowledge=False,
+                confidence=0.0,
+                knowledge_score=0.0,
+                remote_score=1.0,
+                reason="test",
+            )
+        },
+    )()
 
 
 if __name__ == "__main__":
