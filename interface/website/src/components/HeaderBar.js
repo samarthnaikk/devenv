@@ -1,6 +1,6 @@
 import React from "https://esm.sh/react@18";
 
-export function HeaderBar({ workspacePath, provider, model, usage, contextBudget }) {
+export function HeaderBar({ workspacePath, provider, model, usage, contextBudget, planModeEnabled, onPlanModeChange }) {
   const chips = [
     { label: "Provider", value: provider || "Unknown" },
     { label: "Model", value: model || "Unknown" },
@@ -17,7 +17,17 @@ export function HeaderBar({ workspacePath, provider, model, usage, contextBudget
       { className: "header-copy" },
       React.createElement("p", { className: "eyebrow" }, "Devenv Runtime"),
       React.createElement("h1", null, "Web Terminal"),
-      React.createElement("span", { className: "workspace-path" }, workspacePath || "Loading workspace...")
+      React.createElement("span", { className: "workspace-path" }, workspacePath || "Loading workspace..."),
+      React.createElement(
+        "label",
+        { className: "plan-toggle" },
+        React.createElement("input", {
+          type: "checkbox",
+          checked: Boolean(planModeEnabled),
+          onChange: (event) => onPlanModeChange?.(event.target.checked),
+        }),
+        React.createElement("span", null, "Plan Mode")
+      )
     ),
     React.createElement(
       "div",

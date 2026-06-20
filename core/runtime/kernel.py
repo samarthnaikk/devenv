@@ -16,7 +16,7 @@ from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.tools.base import BaseTool
 
-from .models import AgentState, CheckpointTask, ExecutionBlueprint, RuntimeTurnResult, ToolExecutionStep
+from .models import AgentState, CheckpointTask, ExecutionBlueprint, PlanningMode, RuntimeTurnResult, ToolExecutionStep
 from .local_router import LocalIntentRouter
 from .mcp_client import MCPToolClient
 from .sandbox import PathSandbox
@@ -94,7 +94,12 @@ class DevenvKernel:
         if hasattr(self.tool_client, "close"):
             self.tool_client.close()
 
-    def execute_turn(self, user_prompt: str, max_consecutive_tools: int = 5) -> RuntimeTurnResult:
+    def execute_turn(
+        self,
+        user_prompt: str,
+        max_consecutive_tools: int = 5,
+        planning_mode: PlanningMode = PlanningMode.AUTO,
+    ) -> RuntimeTurnResult:
         logger.info("Starting runtime turn: workspace=%s prompt=%s", self.workspace_path, user_prompt)
         ai_logs = [f"Queued prompt: {user_prompt}"]
         system_logs = [f"Workspace: {self.workspace_path}"]
@@ -105,9 +110,11 @@ class DevenvKernel:
         memory_context = self._retrieve_memory_context(user_prompt)
         logger.info("Retrieved memory context: chars=%s", len(memory_context))
         system_logs.append(f"Memory context chars: {len(memory_context)}")
+        system_logs.append(f"Planning mode: {planning_mode.value}")
         steps: list[ToolExecutionStep] = []
         total_usage: dict[str, int] = {}
-        if not self._requires_planning(user_prompt):
+        should_plan = self._should_plan(user_prompt, planning_mode)
+        if not should_plan:
             route_decision = self.local_router.decide(user_prompt)
             system_logs.append(
                 f"Local route decision: use_local={route_decision.use_local_knowledge} confidence={route_decision.confidence:.3f}"
@@ -603,8 +610,16 @@ class DevenvKernel:
             "move",
             "implement",
             "patch",
+            "complete",
         )
         return any(marker in text for marker in change_markers)
+
+    def _should_plan(self, user_prompt: str, planning_mode: PlanningMode) -> bool:
+        if planning_mode is PlanningMode.FORCE_PLAN:
+            return True
+        if planning_mode is PlanningMode.FORCE_DIRECT:
+            return False
+        return self._requires_planning(user_prompt)
 
     def _resolve_direct_tool_scope(self, user_prompt: str) -> list[str]:
         text = user_prompt.lower()

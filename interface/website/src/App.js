@@ -33,6 +33,7 @@ export function App() {
   const [usageWindow, setUsageWindow] = React.useState([]);
   const [rateLimitInfo, setRateLimitInfo] = React.useState(null);
   const [clock, setClock] = React.useState(Date.now());
+  const [planModeEnabled, setPlanModeEnabled] = React.useState(false);
   const dragStateRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -116,6 +117,8 @@ export function App() {
       model: healthMeta.model,
       usage,
       contextBudget,
+      planModeEnabled,
+      onPlanModeChange: setPlanModeEnabled,
     }),
     React.createElement(
       "main",
@@ -203,16 +206,16 @@ export function App() {
           setTranscript((current) => [
             ...current,
             { id: `user-${Date.now()}`, role: "user", content: nextPrompt },
-            { id: thinkingId, role: "thinking", content: formatThinkingBlock(pendingLogs) },
+            { id: thinkingId, role: "thinking", content: formatThinkingBlock(pendingLogs), pending: true },
           ]);
 
           try {
-            const result = await runTurn(nextPrompt);
+            const result = await runTurn(nextPrompt, planModeEnabled ? "force_plan" : "force_direct");
             const turnLogs = buildLogEntries(result);
             setTranscript((current) => [
               ...current.map((entry) =>
                 entry.id === thinkingId
-                  ? { ...entry, content: formatThinkingBlock(turnLogs) }
+                  ? { ...entry, content: formatThinkingBlock(turnLogs), pending: false }
                   : entry
               ),
               {
@@ -237,6 +240,7 @@ export function App() {
                 entry.id === thinkingId
                   ? {
                       ...entry,
+                      pending: false,
                       content: formatThinkingBlock([
                         createLogEntry("system", `Prompt submitted: ${nextPrompt}`),
                         createLogEntry("error", `Request failed: ${error.message}`),

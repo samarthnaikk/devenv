@@ -5,6 +5,12 @@ from enum import Enum, auto
 from typing import Any
 
 
+class PlanningMode(Enum):
+    AUTO = "auto"
+    FORCE_PLAN = "force_plan"
+    FORCE_DIRECT = "force_direct"
+
+
 class AgentState(Enum):
     PLANNING = auto()
     EXECUTING = auto()

@@ -110,6 +110,19 @@ textarea {
   font-size: 0.76rem;
 }
 
+.plan-toggle {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.plan-toggle input {
+  accent-color: var(--accent);
+}
+
 .status-strip {
   display: flex;
   align-items: center;

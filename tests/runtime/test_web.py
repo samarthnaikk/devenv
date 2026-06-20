@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from core.ai.models import AIResponse
-from core.runtime.models import RunConfig
+from core.runtime.models import PlanningMode, RunConfig
 from core.runtime.web import DevenvWebApp
 
 
@@ -105,12 +105,32 @@ class DevenvWebAppTest(unittest.TestCase):
             files = app.build_files_payload()
             turn = app.run_turn("hello")
 
-        self.assertEqual(health["status"], "ok")
-        self.assertEqual(files["entries"][0]["name"], "README.md")
-        self.assertEqual(turn["final_response"], "Website response")
-        self.assertIsNone(turn["blueprint"])
+            self.assertEqual(health["status"], "ok")
+            self.assertEqual(files["entries"][0]["name"], "README.md")
+            self.assertEqual(turn["final_response"], "Website response")
+            self.assertIsNone(turn["blueprint"])
         with self.assertRaises(PermissionError):
             app.build_file_payload("../secrets.txt")
+
+    def test_run_turn_accepts_explicit_planning_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            captured: dict[str, object] = {}
+            app.kernel.execute_turn = lambda prompt, max_consecutive_tools=5, planning_mode=PlanningMode.AUTO: captured.update(
+                {
+                    "prompt": prompt,
+                    "planning_mode": planning_mode,
+                }
+            ) or type("Result", (), {"to_dict": lambda self: {"final_response": "ok"}})()
+            result = app.run_turn("hello", planning_mode=PlanningMode.FORCE_PLAN)
+
+        self.assertEqual(result["final_response"], "ok")
+        self.assertEqual(captured["prompt"], "hello")
+        self.assertEqual(captured["planning_mode"], PlanningMode.FORCE_PLAN)
 
 
 if __name__ == "__main__":

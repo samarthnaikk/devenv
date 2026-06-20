@@ -33,11 +33,13 @@ export function TerminalPanel({
                 "span",
                 { className: "thinking-label" },
                 "Thinking",
-                React.createElement("span", { className: "typing-dots", "aria-hidden": "true" },
-                  React.createElement("span", null),
-                  React.createElement("span", null),
-                  React.createElement("span", null)
-                )
+                item.pending
+                  ? React.createElement("span", { className: "typing-dots", "aria-hidden": "true" },
+                      React.createElement("span", null),
+                      React.createElement("span", null),
+                      React.createElement("span", null)
+                    )
+                  : null
               )
             : item.role === "error"
               ? "Rate Limit"

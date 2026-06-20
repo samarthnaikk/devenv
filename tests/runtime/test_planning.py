@@ -7,7 +7,7 @@ from typing import Any
 from core.ai.models import AIResponse, ToolCallRequest
 from core.runtime import DevenvKernel
 from core.runtime.kernel import _focus_memory_context_for_direct_answers
-from core.runtime.models import AgentState
+from core.runtime.models import AgentState, PlanningMode
 from core.tools.base import BaseTool, ToolResult
 
 
@@ -170,8 +170,16 @@ class PlanningKernelTest(unittest.TestCase):
 
         self.assertTrue(kernel._requires_planning("Fix the backend auth bug"))
         self.assertTrue(kernel._requires_planning("make a frontend folder in calendar"))
+        self.assertTrue(kernel._requires_planning("complete frontend for calendar folder"))
         self.assertFalse(kernel._requires_planning("how does the rvidia backend work"))
         self.assertFalse(kernel._requires_planning("tell me about this project"))
+
+    def test_should_plan_respects_explicit_planning_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+        self.assertTrue(kernel._should_plan("how does the repo work?", PlanningMode.FORCE_PLAN))
+        self.assertFalse(kernel._should_plan("create a frontend folder", PlanningMode.FORCE_DIRECT))
 
     def test_direct_memory_focus_prefers_retrieved_memory_block(self) -> None:
         focused = _focus_memory_context_for_direct_answers(
