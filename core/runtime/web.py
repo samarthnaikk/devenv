@@ -48,11 +48,14 @@ class DevenvWebApp:
         server.serve_forever()
 
     def build_health_payload(self) -> dict[str, object]:
+        model = getattr(self.kernel.ai, "model", "unknown")
         return {
             "workspace_path": self.config.workspace_path,
             "port": self.port,
             "tools": sorted(self.kernel.tools),
             "status": "ok",
+            "ai_provider": "Groq",
+            "ai_model": model,
         }
 
     def build_files_payload(self, relative_path: str = "") -> dict[str, object]:

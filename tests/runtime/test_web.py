@@ -35,6 +35,7 @@ class FakeMemory:
 
 class FakeAI:
     def __init__(self) -> None:
+        self.model = "fake-groq-model"
         self.responses = [
             AIResponse(content="Website response", tool_calls=(), finish_reason="stop", usage={"prompt_tokens": 3})
         ]
@@ -62,6 +63,8 @@ class DevenvWebAppTest(unittest.TestCase):
             file_payload = app.build_file_payload("README.md")
 
         self.assertEqual(health["status"], "ok")
+        self.assertEqual(health["ai_provider"], "Groq")
+        self.assertEqual(health["ai_model"], "fake-groq-model")
         self.assertEqual(files["entries"][0]["name"], "README.md")
         self.assertEqual(file_payload["content"], "hello")
 
