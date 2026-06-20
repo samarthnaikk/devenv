@@ -1,6 +1,7 @@
 from .audit_changes import AuditChangesTool
 from .edit_file import EditFileTool
 from .inspect_symbols import InspectSymbolsTool
+from .inspect_trace import InspectTraceTool
 from .list_directory import ListDirectoryTool
 from .locate_files import LocateFilesTool
 from .manage_memory import ManageMemoryTool
@@ -17,6 +18,7 @@ __all__ = [
     "AuditChangesTool",
     "EditFileTool",
     "InspectSymbolsTool",
+    "InspectTraceTool",
     "ListDirectoryTool",
     "LocateFilesTool",
     "ManageMemoryTool",
