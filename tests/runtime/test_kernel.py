@@ -57,11 +57,22 @@ class FakeAI:
         self.responses = list(responses or [])
         self.registered_tools: list[str] = []
         self.chat_calls: list[dict[str, Any]] = []
+        self.last_request_payload: dict[str, Any] | None = None
 
     def register_tool(self, tool) -> None:
         self.registered_tools.append(tool.name)
 
     def chat(self, messages: list[dict[str, Any]], memory_context: str | None = None, temperature: float = 0.2) -> AIResponse:
+        self.last_request_payload = {
+            "model": "fake-model",
+            "messages": [
+                {"role": "system", "content": memory_context or ""},
+                *messages,
+            ],
+            "temperature": temperature,
+            "tools": [],
+            "tool_choice": "auto",
+        }
         self.chat_calls.append(
             {
                 "messages": messages,
@@ -74,6 +85,16 @@ class FakeAI:
 
 class RateLimitedAI(FakeAI):
     def chat(self, messages: list[dict[str, Any]], memory_context: str | None = None, temperature: float = 0.2) -> AIResponse:
+        self.last_request_payload = {
+            "model": "fake-model",
+            "messages": [
+                {"role": "system", "content": memory_context or ""},
+                *messages,
+            ],
+            "temperature": temperature,
+            "tools": [],
+            "tool_choice": "auto",
+        }
         self.chat_calls.append(
             {
                 "messages": messages,
@@ -130,6 +151,7 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(result.final_response, "Final answer")
         self.assertEqual(result.total_usage["prompt_tokens"], 10)
         self.assertEqual(ai.chat_calls[0]["memory_context"], "## Retrieved Memory\n- Prompt: Explain the repo")
+        self.assertEqual(result.debug["groq_requests"][0]["payload"]["messages"][1]["content"], "Explain the repo")
         self.assertEqual(memory.logs[0][0], "Explain the repo")
         self.assertEqual(memory.logs[0][1], "Final answer")
         self.assertEqual(memory.logs[0][2]["workspace_path"], str(Path(tempdir).resolve()))

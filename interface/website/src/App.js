@@ -322,8 +322,20 @@ function buildLogEntries(result) {
       `Step ${index + 1}: ${step.tool_name} ${step.success ? "completed successfully" : "failed"}`
     )
   );
+  const requestLogs = (result.debug?.groq_requests || []).map((request, index) =>
+    createLogEntry(
+      request.error ? "error" : "ai",
+      [
+        `Groq request ${index + 1}:`,
+        JSON.stringify(request.payload, null, 2),
+        request.error ? `Error: ${request.error}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    )
+  );
 
-  return [...systemLogs, ...aiLogs, ...stepLogs];
+  return [...systemLogs, ...aiLogs, ...stepLogs, ...requestLogs];
 }
 
 function createLogEntry(source, message) {

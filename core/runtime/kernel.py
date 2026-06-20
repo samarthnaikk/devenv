@@ -73,11 +73,13 @@ class DevenvKernel:
         system_logs.append(f"Memory context chars: {len(memory_context)}")
         steps: list[ToolExecutionStep] = []
         total_usage: dict[str, int] = {}
+        debug_requests: list[dict[str, Any]] = []
 
         while True:
             try:
                 ai_response = self.ai.chat(messages=list(conversation), memory_context=memory_context)
             except RuntimeError as exc:
+                _append_groq_debug_request(debug_requests, self.ai, error=str(exc))
                 if not steps:
                     raise
 
@@ -97,7 +99,9 @@ class DevenvKernel:
                     total_usage=total_usage,
                     ai_logs=ai_logs,
                     system_logs=system_logs,
+                    debug={"groq_requests": debug_requests},
                 )
+            _append_groq_debug_request(debug_requests, self.ai, error=None)
             _merge_usage(total_usage, ai_response.usage)
             ai_logs.append(
                 f"AI response: finish_reason={ai_response.finish_reason}, tool_calls={len(ai_response.tool_calls)}, total_tokens={ai_response.usage.get('total_tokens', 0)}"
@@ -123,6 +127,7 @@ class DevenvKernel:
                             total_usage=total_usage,
                             ai_logs=ai_logs,
                             system_logs=system_logs,
+                            debug={"groq_requests": debug_requests},
                         )
                     step = self._execute_tool_call(tool_call)
                     steps.append(step)
@@ -144,6 +149,7 @@ class DevenvKernel:
                 total_usage=total_usage,
                 ai_logs=ai_logs,
                 system_logs=system_logs,
+                debug={"groq_requests": debug_requests},
             )
 
     def _execute_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
@@ -324,3 +330,15 @@ def _build_partial_failure_response(steps: list[ToolExecutionStep], error: Runti
         )
 
     return f"The AI response failed after tool execution: {error}"
+
+
+def _append_groq_debug_request(debug_requests: list[dict[str, Any]], ai: Any, *, error: str | None) -> None:
+    payload = getattr(ai, "last_request_payload", None)
+    if not isinstance(payload, dict):
+        return
+    debug_requests.append(
+        {
+            "payload": json.loads(json.dumps(payload)),
+            "error": error,
+        }
+    )

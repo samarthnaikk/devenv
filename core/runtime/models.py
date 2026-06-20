@@ -31,6 +31,7 @@ class RuntimeTurnResult:
     total_usage: dict[str, int] = field(default_factory=dict)
     ai_logs: list[str] = field(default_factory=list)
     system_logs: list[str] = field(default_factory=list)
+    debug: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -39,6 +40,7 @@ class RuntimeTurnResult:
             "total_usage": dict(self.total_usage),
             "ai_logs": list(self.ai_logs),
             "system_logs": list(self.system_logs),
+            "debug": dict(self.debug),
         }
 
 

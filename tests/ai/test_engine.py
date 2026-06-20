@@ -42,7 +42,7 @@ class AICoreTest(unittest.TestCase):
             self.assertEqual(AICore().model, "env-model")
             self.assertEqual(AICore(model="ctor-model").model, "ctor-model")
 
-        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key", "GROQ_MODEL": ""}, clear=True):
             self.assertEqual(AICore().model, "llama-3.3-70b-versatile")
 
     def test_loads_groq_configuration_from_dotenv(self) -> None:
@@ -64,7 +64,7 @@ class AICoreTest(unittest.TestCase):
         self.assertEqual(core.model, "dotenv-model")
 
     def test_build_tool_definitions_matches_read_file_schema(self) -> None:
-        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key", "GROQ_MODEL": ""}, clear=True):
             core = AICore(tools=[ReadFileTool()])
 
         definitions = core._build_tool_definitions()
@@ -88,7 +88,7 @@ class AICoreTest(unittest.TestCase):
         self.assertIn('"name": "read_file"', frame)
 
     def test_compile_system_frame_omits_blank_memory_block(self) -> None:
-        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key", "GROQ_MODEL": ""}, clear=True):
             core = AICore(tools=[ReadFileTool()])
 
         frame = core._compile_system_frame("   ")
@@ -126,7 +126,7 @@ class AICoreTest(unittest.TestCase):
             captured_request["authorization"] = req.headers["Authorization"]
             return FakeHTTPResponse(payload)
 
-        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key", "GROQ_MODEL": ""}, clear=True):
             core = AICore(tools=[ReadFileTool()])
 
         with patch("core.ai.engine.request.urlopen", side_effect=fake_urlopen):

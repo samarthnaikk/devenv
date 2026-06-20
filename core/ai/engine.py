@@ -41,6 +41,7 @@ class AICore:
         self.base_url = base_url.rstrip("/")
         self.system_instructions = system_instructions.strip()
         self._tools: dict[str, BaseTool] = {}
+        self.last_request_payload: dict[str, Any] | None = None
 
         for tool in tools or ():
             self.register_tool(tool)
@@ -64,6 +65,7 @@ class AICore:
             "tool_choice": "auto",
             "temperature": temperature,
         }
+        self.last_request_payload = json.loads(json.dumps(payload))
         logger.info(
             "Submitting Groq chat completion: model=%s message_count=%s tool_count=%s memory_chars=%s",
             self.model,
