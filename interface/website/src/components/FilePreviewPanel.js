@@ -98,6 +98,6 @@ export function FilePreviewPanel({
               "No file preview is open."
             )
       )
-    )
+      )
   );
 }

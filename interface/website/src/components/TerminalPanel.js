@@ -56,7 +56,6 @@ export function TerminalPanel({
             collapseGlyph || ">"
           )
         : null
-      )
     ),
     React.createElement("div", { className: "terminal-log" }, messages),
     React.createElement(
