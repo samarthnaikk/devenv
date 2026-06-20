@@ -7,6 +7,8 @@ export function TerminalPanel({
   prompt,
   blueprint,
   runtimeState,
+  stageTraces,
+  verificationResults,
   showThinking,
   onPromptChange,
   onSubmit,
@@ -86,6 +88,8 @@ export function TerminalPanel({
     React.createElement(PlanRail, {
       blueprint,
       runtimeState,
+      stageTraces,
+      verificationResults,
     }),
     React.createElement("div", { className: "terminal-log" }, messages),
     React.createElement(

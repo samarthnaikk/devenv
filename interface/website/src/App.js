@@ -28,6 +28,8 @@ export function App() {
   const [healthMeta, setHealthMeta] = React.useState({ provider: "", model: "" });
   const [blueprint, setBlueprint] = React.useState(null);
   const [runtimeState, setRuntimeState] = React.useState("PLANNING");
+  const [stageTraces, setStageTraces] = React.useState([]);
+  const [verificationResults, setVerificationResults] = React.useState([]);
   const [rightWidth, setRightWidth] = React.useState(380);
   const [rightCollapsed, setRightCollapsed] = React.useState(false);
   const [usageWindow, setUsageWindow] = React.useState([]);
@@ -191,6 +193,8 @@ export function App() {
         prompt,
         blueprint,
         runtimeState,
+        stageTraces,
+        verificationResults,
         showThinking,
         onPromptChange: setPrompt,
         isRunning,
@@ -264,6 +268,8 @@ export function App() {
               setUsage(result.total_usage || {});
               setBlueprint(result.blueprint || null);
               setRuntimeState(result.state || "PLANNING");
+              setStageTraces(result.stage_traces || []);
+              setVerificationResults(result.verification_results || []);
               setUsageWindow((current) =>
                 [...current, { timestamp: Date.now(), totalTokens: result.total_usage?.total_tokens || 0 }].filter(
                   (entry) => Date.now() - entry.timestamp < 60000
@@ -489,6 +495,12 @@ function selectVisibleAssistantResponse(result, aggregateLogs) {
     sections.push("");
     sections.push("Verification:");
     sections.push(...verificationLines);
+  }
+
+  if (Array.isArray(result.stage_traces) && result.stage_traces.length) {
+    sections.push("");
+    sections.push("Pipeline:");
+    sections.push(...result.stage_traces.map((trace) => `- ${trace.stage}: ${trace.summary}`));
   }
 
   if (!result.blueprint.verification_passed) {
