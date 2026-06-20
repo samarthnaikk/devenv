@@ -87,6 +87,8 @@ sample-test
 sample-test/*
 !sample-test/memory-demo/
 !sample-test/memory-demo/**
+!sample-test/tool-fixtures/
+!sample-test/tool-fixtures/**
 memory.db
 *.db
 *.sqlite

@@ -1,0 +1,5 @@
+{
+  "app_name": "fixture-calendar",
+  "provider": "groq",
+  "features": ["calendar", "jobs", "notifications"]
+}
