@@ -31,7 +31,7 @@ class RetrievalService:
         self.similarity_threshold = similarity_threshold
 
     def retrieve(self, current_prompt: str, top_k: int) -> RetrievalResult:
-        query_vector = self.embedder.embed(current_prompt)
+        query_vector = self.embedder.embed(self._compose_query(current_prompt))
         matches = self.vector_index.query(query_vector, top_k=max(top_k, 5), min_similarity=self.similarity_threshold)
         if not matches:
             markdown = self._compile_markdown([], include_working_memory=True)
@@ -151,6 +151,21 @@ class RetrievalService:
     def _recency_raw(self, node: MemoryNode) -> float:
         elapsed = max(time.time() - node.last_accessed, 1.0)
         return 1.0 / elapsed
+
+    def _compose_query(self, current_prompt: str) -> str:
+        snapshot = self.working_memory.snapshot()
+        recent_context: list[str] = []
+        for message in snapshot.messages[-4:]:
+            if message.content == current_prompt:
+                continue
+            if message.role not in {"user", "assistant"}:
+                continue
+            recent_context.append(message.content)
+
+        if not recent_context:
+            return current_prompt
+
+        return "\n".join([current_prompt, *recent_context])
 
 
 def _normalize(values: list[float]) -> list[float]:

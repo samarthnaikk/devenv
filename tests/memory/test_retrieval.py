@@ -104,6 +104,29 @@ class RetrievalFlowTest(unittest.TestCase):
             self.assertGreaterEqual(candidate.recency_score, 0.0)
             self.assertLessEqual(candidate.recency_score, 1.0)
 
+    def test_vague_follow_up_uses_recent_working_memory_context(self) -> None:
+        self.engine.add_episodic_log(
+            "We were building a calendar project with a Python backend and React frontend.",
+            "I'll remember that stack.",
+            metadata={"workspace_path": self.tempdir.name},
+        )
+        self.engine.record_working_memory(
+            messages=[
+                {"role": "user", "content": "Do you know about the calendar project we were building?"},
+                {"role": "assistant", "content": "Yes, tell me more about it."},
+                {"role": "user", "content": "Not in the current directory, I mean the project we were working on earlier."},
+            ],
+            active_state={"workspace_path": self.tempdir.name},
+        )
+
+        result = self.engine.retrieve_context(
+            "Not in the current directory, I mean the project we were working on earlier.",
+            top_k=5,
+        )
+
+        self.assertIn("calendar project", result.markdown_context.lower())
+        self.assertIn("python backend", result.markdown_context.lower())
+
     def test_rehydrates_vector_index_from_stored_nodes_on_new_session(self) -> None:
         self.engine.add_episodic_log(
             "The calendar project used a React frontend and Python backend.",
