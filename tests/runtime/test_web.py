@@ -120,17 +120,19 @@ class DevenvWebAppTest(unittest.TestCase):
                 ai=FakeAI(),
             )
             captured: dict[str, object] = {}
-            app.kernel.execute_turn = lambda prompt, max_consecutive_tools=5, planning_mode=PlanningMode.AUTO: captured.update(
+            app.kernel.execute_turn = lambda prompt, max_consecutive_tools=5, planning_mode=PlanningMode.AUTO, continue_plan=False: captured.update(
                 {
                     "prompt": prompt,
                     "planning_mode": planning_mode,
+                    "continue_plan": continue_plan,
                 }
             ) or type("Result", (), {"to_dict": lambda self: {"final_response": "ok"}})()
-            result = app.run_turn("hello", planning_mode=PlanningMode.FORCE_PLAN)
+            result = app.run_turn("hello", planning_mode=PlanningMode.FORCE_PLAN, continue_plan=True)
 
         self.assertEqual(result["final_response"], "ok")
         self.assertEqual(captured["prompt"], "hello")
         self.assertEqual(captured["planning_mode"], PlanningMode.FORCE_PLAN)
+        self.assertTrue(captured["continue_plan"])
 
 
 if __name__ == "__main__":

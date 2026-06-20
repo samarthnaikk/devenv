@@ -74,11 +74,13 @@ class DevenvWebApp:
         prompt: str,
         max_consecutive_tools: int | None = None,
         planning_mode: PlanningMode = PlanningMode.AUTO,
+        continue_plan: bool = False,
     ) -> dict[str, object]:
         result = self.kernel.execute_turn(
             prompt,
             max_consecutive_tools=max_consecutive_tools or self.config.max_consecutive_tools,
             planning_mode=planning_mode,
+            continue_plan=continue_plan,
         )
         return result.to_dict()
 
@@ -137,12 +139,17 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
         except ValueError:
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": "planning_mode must be one of: auto, force_plan, force_direct"})
             return
+        continue_plan = payload.get("continue_plan", False)
+        if not isinstance(continue_plan, bool):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "continue_plan must be a boolean"})
+            return
 
         try:
             result = self.app.run_turn(
                 prompt=prompt,
                 max_consecutive_tools=max_consecutive_tools,
                 planning_mode=planning_mode,
+                continue_plan=continue_plan,
             )
         except RuntimeError as exc:
             self._write_json(HTTPStatus.BAD_GATEWAY, {"error": str(exc)})

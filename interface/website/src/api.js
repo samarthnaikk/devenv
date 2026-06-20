@@ -12,11 +12,11 @@ export async function fetchFile(path) {
   return request(`/api/file${query}`);
 }
 
-export async function runTurn(prompt, planningMode = "force_direct") {
+export async function runTurn(prompt, planningMode = "force_direct", continuePlan = false) {
   return request("/api/turn", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, planning_mode: planningMode }),
+    body: JSON.stringify({ prompt, planning_mode: planningMode, continue_plan: continuePlan }),
   });
 }
 

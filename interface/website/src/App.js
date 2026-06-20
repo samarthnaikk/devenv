@@ -210,26 +210,48 @@ export function App() {
           ]);
 
           try {
-            const result = await runTurn(nextPrompt, planModeEnabled ? "force_plan" : "force_direct");
-            const turnLogs = buildLogEntries(result);
-            setTranscript((current) => [
-              ...current.map((entry) =>
+            const aggregateLogs = [];
+            const assistantMessages = [];
+            const planningMode = planModeEnabled ? "force_plan" : "force_direct";
+            let continuePlan = false;
+            let result = null;
+
+            do {
+              result = await runTurn(nextPrompt, planningMode, continuePlan);
+              aggregateLogs.push(...buildLogEntries(result));
+              if (result.final_response) {
+                assistantMessages.push({
+                  id: `assistant-${Date.now()}-${assistantMessages.length}`,
+                  role: "assistant",
+                  content: result.final_response,
+                });
+              }
+              setUsage(result.total_usage || {});
+              setBlueprint(result.blueprint || null);
+              setRuntimeState(result.state || "PLANNING");
+              setUsageWindow((current) =>
+                [...current, { timestamp: Date.now(), totalTokens: result.total_usage?.total_tokens || 0 }].filter(
+                  (entry) => Date.now() - entry.timestamp < 60000
+                )
+              );
+              setTranscript((current) => {
+                const withoutThinking = current.map((entry) =>
+                  entry.id === thinkingId
+                    ? { ...entry, content: formatThinkingBlock(aggregateLogs), pending: hasIncompleteTasks(result?.blueprint) }
+                    : entry
+                );
+                const existingIds = new Set(withoutThinking.map((entry) => entry.id));
+                const nextMessages = assistantMessages.filter((entry) => !existingIds.has(entry.id));
+                return [...withoutThinking, ...nextMessages];
+              });
+              continuePlan = Boolean(planModeEnabled && hasIncompleteTasks(result.blueprint));
+            } while (continuePlan);
+
+            setTranscript((current) =>
+              current.map((entry) =>
                 entry.id === thinkingId
-                  ? { ...entry, content: formatThinkingBlock(turnLogs), pending: false }
+                  ? { ...entry, content: formatThinkingBlock(aggregateLogs), pending: false }
                   : entry
-              ),
-              {
-                id: `assistant-${Date.now()}`,
-                role: "assistant",
-                content: result.final_response || "No assistant response returned.",
-              },
-            ]);
-            setUsage(result.total_usage || {});
-            setBlueprint(result.blueprint || null);
-            setRuntimeState(result.state || "PLANNING");
-            setUsageWindow((current) =>
-              [...current, { timestamp: Date.now(), totalTokens: result.total_usage?.total_tokens || 0 }].filter(
-                (entry) => Date.now() - entry.timestamp < 60000
               )
             );
             setRateLimitInfo(null);
@@ -386,4 +408,8 @@ function formatTimestamp(timestamp) {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+function hasIncompleteTasks(blueprint) {
+  return Boolean(blueprint?.tasks?.some((task) => !task.is_completed));
 }

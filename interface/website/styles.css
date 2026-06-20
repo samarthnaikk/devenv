@@ -110,19 +110,6 @@ textarea {
   font-size: 0.76rem;
 }
 
-.plan-toggle {
-  margin-top: 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text);
-  font-size: 0.78rem;
-}
-
-.plan-toggle input {
-  accent-color: var(--accent);
-}
-
 .status-strip {
   display: flex;
   align-items: center;
@@ -139,6 +126,26 @@ textarea {
   border-radius: 2px;
   background: rgba(47, 122, 120, 0.08);
   border: 1px solid rgba(47, 122, 120, 0.14);
+}
+
+.status-pill-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+
+.status-pill-toggle.enabled {
+  background: rgba(47, 122, 120, 0.16);
+  border-color: rgba(47, 122, 120, 0.28);
+}
+
+.status-toggle-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-toggle-value input {
+  accent-color: var(--accent);
 }
 
 .status-label {

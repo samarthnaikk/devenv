@@ -78,6 +78,7 @@ class DevenvKernel:
         self.vector_dir = resolved_vector_dir
         self.state = AgentState.PLANNING
         self.active_blueprint: ExecutionBlueprint | None = None
+        self.active_plan_prompt: str | None = None
         self.local_router = LocalIntentRouter()
         self.tool_client = tool_client or MCPToolClient(
             workspace_path=self.workspace_path,
@@ -99,6 +100,7 @@ class DevenvKernel:
         user_prompt: str,
         max_consecutive_tools: int = 5,
         planning_mode: PlanningMode = PlanningMode.AUTO,
+        continue_plan: bool = False,
     ) -> RuntimeTurnResult:
         logger.info("Starting runtime turn: workspace=%s prompt=%s", self.workspace_path, user_prompt)
         ai_logs = [f"Queued prompt: {user_prompt}"]
@@ -111,6 +113,7 @@ class DevenvKernel:
         logger.info("Retrieved memory context: chars=%s", len(memory_context))
         system_logs.append(f"Memory context chars: {len(memory_context)}")
         system_logs.append(f"Planning mode: {planning_mode.value}")
+        system_logs.append(f"Continue plan: {continue_plan}")
         steps: list[ToolExecutionStep] = []
         total_usage: dict[str, int] = {}
         should_plan = self._should_plan(user_prompt, planning_mode)
@@ -174,21 +177,27 @@ class DevenvKernel:
 
         self.state = AgentState.PLANNING
         system_logs.append(f"State: {self.state.name}")
+        if continue_plan and self._can_continue_active_plan(user_prompt):
+            blueprint = self.active_blueprint or self._parse_markdown_to_blueprint(user_prompt)
+            system_logs.append("Resuming existing execution plan")
+            planning_conversation = []
+        else:
+            self.active_plan_prompt = user_prompt
 
-        planning_response, planning_conversation = self._run_planning_phase(
-            user_prompt=user_prompt,
-            memory_context=memory_context,
-            steps=steps,
-            total_usage=total_usage,
-            ai_logs=ai_logs,
-            system_logs=system_logs,
-            max_consecutive_tools=max_consecutive_tools,
-        )
-        blueprint = self._parse_markdown_to_blueprint(planning_response or user_prompt)
-        self.active_blueprint = blueprint
-        system_logs.append(f"Plan checkpoints: {len(blueprint.tasks)}")
+            planning_response, planning_conversation = self._run_planning_phase(
+                user_prompt=user_prompt,
+                memory_context=memory_context,
+                steps=steps,
+                total_usage=total_usage,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                max_consecutive_tools=max_consecutive_tools,
+            )
+            blueprint = self._parse_markdown_to_blueprint(planning_response or user_prompt)
+            self.active_blueprint = blueprint
+            system_logs.append(f"Plan checkpoints: {len(blueprint.tasks)}")
 
-        execution_final_response = self._run_execution_phase(
+        execution_final_response, plan_complete = self._run_execution_phase(
             user_prompt=user_prompt,
             memory_context=memory_context,
             blueprint=blueprint,
@@ -198,9 +207,24 @@ class DevenvKernel:
             ai_logs=ai_logs,
             system_logs=system_logs,
             max_consecutive_tools=max_consecutive_tools,
+            planning_mode=planning_mode,
         )
         if execution_final_response:
             conversation.append({"role": "assistant", "content": execution_final_response})
+
+        if not plan_complete:
+            logger.info("Checkpoint execution paused: awaiting next plan continuation")
+            self._finalize_turn(user_prompt, execution_final_response or "", conversation)
+            system_logs.append("Turn completed and stored in memory")
+            return RuntimeTurnResult(
+                final_response=execution_final_response,
+                steps=steps,
+                total_usage=total_usage,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                state=self.state.name,
+                blueprint=self.active_blueprint,
+            )
 
         verification_ok = self._run_verification_phase(
             blueprint=blueprint,
@@ -210,6 +234,7 @@ class DevenvKernel:
         if not verification_ok:
             self.state = AgentState.PLANNING
             system_logs.append("Verification failed; state reset to PLANNING")
+        self.active_plan_prompt = None
 
         logger.info("Finishing runtime turn: final_response_present=%s total_steps=%s", execution_final_response is not None, len(steps))
         self._finalize_turn(user_prompt, execution_final_response or "", conversation)
@@ -392,13 +417,16 @@ class DevenvKernel:
         ai_logs: list[str],
         system_logs: list[str],
         max_consecutive_tools: int,
-    ) -> str | None:
+        planning_mode: PlanningMode,
+    ) -> tuple[str | None, bool]:
         self.state = AgentState.EXECUTING
         system_logs.append(f"State: {self.state.name}")
         final_response: str | None = None
         working_blueprint = blueprint
+        checkpoint_indexes = self._execution_checkpoint_indexes(working_blueprint, planning_mode)
 
-        for index, task in enumerate(working_blueprint.tasks):
+        for index in checkpoint_indexes:
+            task = working_blueprint.tasks[index]
             working_blueprint = _set_active_task(working_blueprint, index)
             self.active_blueprint = working_blueprint
             system_logs.append(f"Current checkpoint {index + 1}/{len(working_blueprint.tasks)}: {task.description}")
@@ -459,7 +487,11 @@ class DevenvKernel:
                 system_logs.append(f"Checkpoint {index + 1} completed")
                 break
 
-        return final_response
+        plan_complete = _next_incomplete_task_index(working_blueprint) is None
+        if not plan_complete:
+            self.state = AgentState.EXECUTING
+            system_logs.append("Execution paused after one checkpoint")
+        return final_response, plan_complete
 
     def _run_verification_phase(
         self,
@@ -473,10 +505,11 @@ class DevenvKernel:
         diagnostics_tool = self.tools.get("run_diagnostics")
         if diagnostics_tool is None:
             system_logs.append("Verification skipped: run_diagnostics is not registered")
+            source_blueprint = self.active_blueprint or blueprint
             self.active_blueprint = ExecutionBlueprint(
-                raw_plan_markdown=blueprint.raw_plan_markdown,
-                tasks=list(blueprint.tasks),
-                active_task_pointer=len(blueprint.tasks),
+                raw_plan_markdown=source_blueprint.raw_plan_markdown,
+                tasks=list(source_blueprint.tasks),
+                active_task_pointer=len(source_blueprint.tasks),
                 verification_passed=True,
             )
             return True
@@ -620,6 +653,23 @@ class DevenvKernel:
         if planning_mode is PlanningMode.FORCE_DIRECT:
             return False
         return self._requires_planning(user_prompt)
+
+    def _can_continue_active_plan(self, user_prompt: str) -> bool:
+        if self.active_blueprint is None or self.active_plan_prompt != user_prompt:
+            return False
+        return _next_incomplete_task_index(self.active_blueprint) is not None
+
+    def _execution_checkpoint_indexes(
+        self,
+        blueprint: ExecutionBlueprint,
+        planning_mode: PlanningMode,
+    ) -> list[int]:
+        start_index = _next_incomplete_task_index(blueprint)
+        if start_index is None:
+            return []
+        if planning_mode is PlanningMode.FORCE_PLAN:
+            return [start_index]
+        return list(range(start_index, len(blueprint.tasks)))
 
     def _resolve_direct_tool_scope(self, user_prompt: str) -> list[str]:
         text = user_prompt.lower()
@@ -1040,3 +1090,10 @@ def _mark_checkpoint_completed(blueprint: ExecutionBlueprint, task_index: int, t
         active_task_pointer=min(task_index + 1, len(tasks)),
         verification_passed=blueprint.verification_passed,
     )
+
+
+def _next_incomplete_task_index(blueprint: ExecutionBlueprint) -> int | None:
+    for index, task in enumerate(blueprint.tasks):
+        if not task.is_completed:
+            return index
+    return None

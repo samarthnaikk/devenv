@@ -181,6 +181,46 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertTrue(kernel._should_plan("how does the repo work?", PlanningMode.FORCE_PLAN))
         self.assertFalse(kernel._should_plan("create a frontend folder", PlanningMode.FORCE_DIRECT))
 
+    def test_force_plan_executes_one_checkpoint_per_turn(self) -> None:
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="- [ ] Create calendar folder\n- [ ] Add main.py",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+                AIResponse(
+                    content="Created the calendar folder.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+                AIResponse(
+                    content="Added main.py.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
+            first = kernel.execute_turn("Create a calendar app", planning_mode=PlanningMode.FORCE_PLAN)
+            second = kernel.execute_turn(
+                "Create a calendar app",
+                planning_mode=PlanningMode.FORCE_PLAN,
+                continue_plan=True,
+            )
+
+        self.assertEqual(first.final_response, "Created the calendar folder.")
+        self.assertEqual([task.is_completed for task in first.blueprint.tasks], [True, False])
+        self.assertEqual(first.state, AgentState.EXECUTING.name)
+        self.assertEqual(second.final_response, "Added main.py.")
+        self.assertEqual([task.is_completed for task in second.blueprint.tasks], [True, True])
+        self.assertEqual(second.state, AgentState.VERIFYING.name)
+
     def test_direct_memory_focus_prefers_retrieved_memory_block(self) -> None:
         focused = _focus_memory_context_for_direct_answers(
             "## Working Memory\n- noisy\n## Retrieved Memory\n- [episode] rvidia backend uses FastAPI",
