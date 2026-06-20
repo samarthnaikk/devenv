@@ -32,18 +32,20 @@ class AICoreTest(unittest.TestCase):
             try:
                 os.chdir(tempdir)
                 with patch.dict("os.environ", {}, clear=True):
-                    with self.assertRaises(ValueError):
-                        AICore()
+                    with patch("core.ai.engine.load_dotenv", return_value=None):
+                        with self.assertRaises(ValueError):
+                            AICore()
             finally:
                 os.chdir(original_cwd)
 
     def test_model_precedence_prefers_constructor_then_env_then_default(self) -> None:
-        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key", "GROQ_MODEL": "env-model"}, clear=True):
-            self.assertEqual(AICore().model, "env-model")
-            self.assertEqual(AICore(model="ctor-model").model, "ctor-model")
+        with patch("core.ai.engine.load_dotenv", return_value=None):
+            with patch.dict("os.environ", {"GROQ_API_KEY": "env-key", "GROQ_MODEL": "env-model"}, clear=True):
+                self.assertEqual(AICore().model, "env-model")
+                self.assertEqual(AICore(model="ctor-model").model, "ctor-model")
 
-        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
-            self.assertEqual(AICore().model, "llama-3.3-70b-versatile")
+            with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+                self.assertEqual(AICore().model, "llama-3.3-70b-versatile")
 
     def test_loads_groq_configuration_from_dotenv(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -64,8 +66,9 @@ class AICoreTest(unittest.TestCase):
         self.assertEqual(core.model, "dotenv-model")
 
     def test_build_tool_definitions_matches_read_file_schema(self) -> None:
-        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
-            core = AICore(tools=[ReadFileTool()])
+        with patch("core.ai.engine.load_dotenv", return_value=None):
+            with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+                core = AICore(tools=[ReadFileTool()])
 
         definitions = core._build_tool_definitions()
 
@@ -77,19 +80,22 @@ class AICoreTest(unittest.TestCase):
         self.assertEqual(parameters["properties"]["features"]["enum"], ["content", "metadata", "extension", "all"])
 
     def test_compile_system_frame_preserves_section_order(self) -> None:
-        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
-            core = AICore(tools=[ReadFileTool()], system_instructions="Static rules")
+        with patch("core.ai.engine.load_dotenv", return_value=None):
+            with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+                core = AICore(tools=[ReadFileTool()], system_instructions="Static rules")
 
         frame = core._compile_system_frame("## Retrieved Memory\n- remember this")
 
         self.assertLess(frame.index("## System Core Instructions"), frame.index("## Reconciled Tool Declarations"))
         self.assertLess(frame.index("## Reconciled Tool Declarations"), frame.index("## Cognitive Memory Context"))
         self.assertIn("Static rules", frame)
-        self.assertIn('"name": "read_file"', frame)
+        self.assertIn('"name":"read_file"', frame)
+        self.assertNotIn("\n  {", frame)
 
     def test_compile_system_frame_omits_blank_memory_block(self) -> None:
-        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
-            core = AICore(tools=[ReadFileTool()])
+        with patch("core.ai.engine.load_dotenv", return_value=None):
+            with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+                core = AICore(tools=[ReadFileTool()])
 
         frame = core._compile_system_frame("   ")
 
@@ -126,13 +132,15 @@ class AICoreTest(unittest.TestCase):
             captured_request["authorization"] = req.headers["Authorization"]
             return FakeHTTPResponse(payload)
 
-        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
-            core = AICore(tools=[ReadFileTool()])
+        with patch("core.ai.engine.load_dotenv", return_value=None):
+            with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+                core = AICore(tools=[ReadFileTool()])
 
         with patch("core.ai.engine.request.urlopen", side_effect=fake_urlopen):
             response = core.chat(
                 messages=[{"role": "user", "content": "Open the readme"}],
                 memory_context="## Retrieved Memory\n- Repo uses local memory",
+                tool_names=["read_file"],
             )
 
         self.assertEqual(captured_request["url"], "https://api.groq.com/openai/v1/chat/completions")
@@ -142,14 +150,84 @@ class AICoreTest(unittest.TestCase):
         self.assertEqual(body["tool_choice"], "auto")
         self.assertEqual(body["messages"][0]["role"], "system")
         self.assertEqual(body["messages"][1]["content"], "Open the readme")
+        self.assertEqual(len(body["tools"]), 1)
         self.assertEqual(response.finish_reason, "tool_calls")
         self.assertEqual(response.tool_calls[0].call_id, "call_123")
         self.assertEqual(response.tool_calls[0].arguments["path"], "README.md")
         self.assertEqual(response.usage["total_tokens"], 18)
 
+    def test_build_tool_definitions_can_scope_to_requested_tools(self) -> None:
+        with patch("core.ai.engine.load_dotenv", return_value=None):
+            with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+                core = AICore(tools=[ReadFileTool()])
+
+        definitions = core._build_tool_definitions(tool_names=["read_file", "missing_tool"])
+
+        self.assertEqual([definition["function"]["name"] for definition in definitions], ["read_file"])
+
+    def test_chat_omits_tool_fields_when_no_tools_are_requested(self) -> None:
+        captured_request: dict[str, object] = {}
+        payload = {
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {"content": "- [ ] Plan the work", "tool_calls": []},
+                }
+            ],
+            "usage": {"total_tokens": 5},
+        }
+
+        def fake_urlopen(req):
+            captured_request["body"] = json.loads(req.data.decode("utf-8"))
+            return FakeHTTPResponse(payload)
+
+        with patch("core.ai.engine.load_dotenv", return_value=None):
+            with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+                core = AICore(tools=[ReadFileTool()])
+
+        with patch("core.ai.engine.request.urlopen", side_effect=fake_urlopen):
+            response = core.chat(messages=[{"role": "user", "content": "Plan this"}], tool_names=[])
+
+        body = captured_request["body"]
+        self.assertNotIn("tools", body)
+        self.assertNotIn("tool_choice", body)
+        self.assertEqual(response.content, "- [ ] Plan the work")
+
+    def test_post_chat_completion_recovers_failed_generation_from_tool_use_error(self) -> None:
+        detail = json.dumps(
+            {
+                "error": {
+                    "message": "Failed to call a function.",
+                    "type": "invalid_request_error",
+                    "code": "tool_use_failed",
+                    "failed_generation": "- [ ] Create the frontend folder",
+                }
+            }
+        ).encode("utf-8")
+
+        http_error = error.HTTPError(
+            url="https://api.groq.com/openai/v1/chat/completions",
+            code=400,
+            msg="Bad Request",
+            hdrs=None,
+            fp=None,
+        )
+        http_error.read = lambda: detail
+
+        with patch("core.ai.engine.load_dotenv", return_value=None):
+            with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+                core = AICore()
+
+        with patch("core.ai.engine.request.urlopen", side_effect=http_error):
+            response = core.chat(messages=[{"role": "user", "content": "Plan this"}], tool_names=[])
+
+        self.assertEqual(response.content, "- [ ] Create the frontend folder")
+        self.assertEqual(response.finish_reason, "stop")
+
     def test_post_chat_completion_network_failure_raises_runtime_error(self) -> None:
-        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
-            core = AICore()
+        with patch("core.ai.engine.load_dotenv", return_value=None):
+            with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+                core = AICore()
 
         with patch("core.ai.engine.request.urlopen", side_effect=error.URLError("offline")):
             with self.assertRaises(RuntimeError):
@@ -173,8 +251,9 @@ class AICoreTest(unittest.TestCase):
             ]
         }
 
-        with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
-            core = AICore()
+        with patch("core.ai.engine.load_dotenv", return_value=None):
+            with patch.dict("os.environ", {"GROQ_API_KEY": "env-key"}, clear=True):
+                core = AICore()
 
         with self.assertRaises(ValueError):
             core._parse_response(payload)

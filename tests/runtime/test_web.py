@@ -37,14 +37,21 @@ class FakeAI:
     def __init__(self) -> None:
         self.model = "fake-groq-model"
         self.responses = [
-            AIResponse(content="Website response", tool_calls=(), finish_reason="stop", usage={"prompt_tokens": 3})
+            AIResponse(content="- [ ] Answer the prompt", tool_calls=(), finish_reason="stop", usage={"prompt_tokens": 3}),
+            AIResponse(content="Website response", tool_calls=(), finish_reason="stop", usage={"completion_tokens": 3}),
         ]
         self.registered_tools: list[str] = []
 
     def register_tool(self, tool) -> None:
         self.registered_tools.append(tool.name)
 
-    def chat(self, messages: list[dict[str, Any]], memory_context: str | None = None, temperature: float = 0.2) -> AIResponse:
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        memory_context: str | None = None,
+        temperature: float = 0.2,
+        tool_names=None,
+    ) -> AIResponse:
         return self.responses.pop(0)
 
 
@@ -102,6 +109,7 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(health["status"], "ok")
         self.assertEqual(files["entries"][0]["name"], "README.md")
         self.assertEqual(turn["final_response"], "Website response")
+        self.assertEqual(turn["blueprint"]["tasks"][0]["description"], "Answer the prompt")
         with self.assertRaises(PermissionError):
             app.build_file_payload("../secrets.txt")
 

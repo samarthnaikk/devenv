@@ -20,14 +20,15 @@ export function App() {
     {
       id: "intro",
       role: "assistant",
-      content:
-        "I’m connected to your workspace. Expand folders on the left, inspect files only when you want a preview, and use the center terminal to ask the runtime about the project.",
+      content: "I’m connected to your workspace.",
     },
   ]);
   const [isRunning, setIsRunning] = React.useState(false);
   const [bootError, setBootError] = React.useState("");
   const [usage, setUsage] = React.useState({});
   const [healthMeta, setHealthMeta] = React.useState({ provider: "", model: "" });
+  const [blueprint, setBlueprint] = React.useState(null);
+  const [runtimeState, setRuntimeState] = React.useState("PLANNING");
   const [rightWidth, setRightWidth] = React.useState(380);
   const [rightCollapsed, setRightCollapsed] = React.useState(false);
   const [usageWindow, setUsageWindow] = React.useState([]);
@@ -188,6 +189,8 @@ export function App() {
       React.createElement(TerminalPanel, {
         transcript,
         prompt,
+        blueprint,
+        runtimeState,
         onPromptChange: setPrompt,
         isRunning,
         isCoolingDown: Boolean(rateLimitInfo && rateLimitInfo.resetAt > clock),
@@ -230,6 +233,8 @@ export function App() {
               },
             ]);
             setUsage(result.total_usage || {});
+            setBlueprint(result.blueprint || null);
+            setRuntimeState(result.state || "PLANNING");
             setUsageWindow((current) =>
               [...current, { timestamp: Date.now(), totalTokens: result.total_usage?.total_tokens || 0 }].filter(
                 (entry) => Date.now() - entry.timestamp < 60000
@@ -322,8 +327,16 @@ function buildLogEntries(result) {
       `Step ${index + 1}: ${step.tool_name} ${step.success ? "completed successfully" : "failed"}`
     )
   );
+  const planLogs = result.blueprint?.tasks?.length
+    ? result.blueprint.tasks.map((task) =>
+        createLogEntry(
+          "system",
+          `${task.is_completed ? "[x]" : "[ ]"} Checkpoint ${task.task_id}: ${task.description}`
+        )
+      )
+    : [];
 
-  return [...systemLogs, ...aiLogs, ...stepLogs];
+  return [...systemLogs, ...planLogs, ...aiLogs, ...stepLogs];
 }
 
 function createLogEntry(source, message) {

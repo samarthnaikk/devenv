@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from dataclasses import asdict
 from pathlib import Path
@@ -14,13 +15,34 @@ from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.tools.base import BaseTool
 
-from .models import RuntimeTurnResult, ToolExecutionStep
+from .models import AgentState, CheckpointTask, ExecutionBlueprint, RuntimeTurnResult, ToolExecutionStep
 from .mcp_client import MCPToolClient
 from .sandbox import PathSandbox
 from .state import resolve_memory_paths
 
 logger = logging.getLogger(__name__)
 MAX_EPHEMERAL_TURNS = 4
+PLANNING_ALLOWED_TOOLS = frozenset({"list_directory", "read_file", "inspect_symbols"})
+READ_ONLY_EXECUTION_TOOLS = frozenset(
+    {"list_directory", "locate_files", "read_file", "peek_lines", "inspect_symbols", "search_text", "track_symbol"}
+)
+WRITE_EXECUTION_TOOLS = frozenset({"write_file", "edit_file"})
+DELETE_EXECUTION_TOOLS = frozenset({"remove_file"})
+SHELL_EXECUTION_TOOLS = frozenset({"run_shell", "run_diagnostics", "audit_changes"})
+MEMORY_EXECUTION_TOOLS = frozenset({"manage_memory", "inspect_trace"})
+PLANNING_MEMORY_CHAR_LIMIT = 900
+EXECUTION_MEMORY_CHAR_LIMIT = 1400
+SCAFFOLD_EXECUTION_TOOLS = frozenset({"list_directory", "write_file", "edit_file"})
+SCAFFOLD_EXECUTION_MEMORY_CHAR_LIMIT = 360
+PLANNING_SYSTEM_RULE = (
+    "Analyze the user's request and produce a sequential markdown checklist using checkbox items like '- [ ] Task'. "
+    "Do not invoke modification tools during planning. Stay focused on planning until the checklist is complete. "
+    "Prefer concise plans with at most 4 checkpoints."
+)
+EXECUTION_SYSTEM_RULE = (
+    "Work only on the current checkpoint. Do not start future checkpoints. "
+    "Use tools only when necessary, and stop after completing the current checkpoint."
+)
 
 
 class DevenvKernel:
@@ -45,6 +67,8 @@ class DevenvKernel:
         self.session_id = str(uuid.uuid4())
         self.db_path = resolved_db_path
         self.vector_dir = resolved_vector_dir
+        self.state = AgentState.PLANNING
+        self.active_blueprint: ExecutionBlueprint | None = None
         self.tool_client = tool_client or MCPToolClient(
             workspace_path=self.workspace_path,
             db_path=db_path,
@@ -73,56 +97,325 @@ class DevenvKernel:
         system_logs.append(f"Memory context chars: {len(memory_context)}")
         steps: list[ToolExecutionStep] = []
         total_usage: dict[str, int] = {}
+        self.state = AgentState.PLANNING
+        system_logs.append(f"State: {self.state.name}")
 
+        planning_response, planning_conversation = self._run_planning_phase(
+            user_prompt=user_prompt,
+            memory_context=memory_context,
+            steps=steps,
+            total_usage=total_usage,
+            ai_logs=ai_logs,
+            system_logs=system_logs,
+            max_consecutive_tools=max_consecutive_tools,
+        )
+        blueprint = self._parse_markdown_to_blueprint(planning_response or user_prompt)
+        self.active_blueprint = blueprint
+        system_logs.append(f"Plan checkpoints: {len(blueprint.tasks)}")
+
+        execution_final_response = self._run_execution_phase(
+            user_prompt=user_prompt,
+            memory_context=memory_context,
+            blueprint=blueprint,
+            conversation=planning_conversation,
+            steps=steps,
+            total_usage=total_usage,
+            ai_logs=ai_logs,
+            system_logs=system_logs,
+            max_consecutive_tools=max_consecutive_tools,
+        )
+        if execution_final_response:
+            conversation.append({"role": "assistant", "content": execution_final_response})
+
+        verification_ok = self._run_verification_phase(
+            blueprint=blueprint,
+            steps=steps,
+            system_logs=system_logs,
+        )
+        if not verification_ok:
+            self.state = AgentState.PLANNING
+            system_logs.append("Verification failed; state reset to PLANNING")
+
+        logger.info("Finishing runtime turn: final_response_present=%s total_steps=%s", execution_final_response is not None, len(steps))
+        self._finalize_turn(user_prompt, execution_final_response or "", conversation)
+        system_logs.append("Turn completed and stored in memory")
+        return RuntimeTurnResult(
+            final_response=execution_final_response,
+            steps=steps,
+            total_usage=total_usage,
+            ai_logs=ai_logs,
+            system_logs=system_logs,
+            state=self.state.name,
+            blueprint=self.active_blueprint,
+        )
+
+    def _run_planning_phase(
+        self,
+        *,
+        user_prompt: str,
+        memory_context: str,
+        steps: list[ToolExecutionStep],
+        total_usage: dict[str, int],
+        ai_logs: list[str],
+        system_logs: list[str],
+        max_consecutive_tools: int,
+    ) -> tuple[str | None, list[dict[str, Any]]]:
+        planning_memory = _trim_memory_context(memory_context, PLANNING_MEMORY_CHAR_LIMIT)
+        system_logs.append(f"Planning memory chars sent: {len(planning_memory)}")
+        system_logs.append("Planning tool scope size: 0")
+        conversation = [
+            {"role": "system", "content": PLANNING_SYSTEM_RULE},
+            {"role": "user", "content": user_prompt},
+        ]
+        planning_message_count = 0
         while True:
-            ai_response = self.ai.chat(messages=list(conversation), memory_context=memory_context)
+            ai_response = self.ai.chat(
+                messages=list(conversation),
+                memory_context=planning_memory,
+                tool_names=[],
+            )
             _merge_usage(total_usage, ai_response.usage)
             ai_logs.append(
-                f"AI response: finish_reason={ai_response.finish_reason}, tool_calls={len(ai_response.tool_calls)}, total_tokens={ai_response.usage.get('total_tokens', 0)}"
-            )
-            logger.info(
-                "AI response received: finish_reason=%s tool_calls=%s usage=%s",
-                ai_response.finish_reason,
-                len(ai_response.tool_calls),
-                ai_response.usage,
+                f"Planning response: finish_reason={ai_response.finish_reason}, tool_calls={len(ai_response.tool_calls)}, total_tokens={ai_response.usage.get('total_tokens', 0)}"
             )
             if ai_response.tool_calls:
-                conversation.append(_assistant_tool_call_message(ai_response))
                 for tool_call in ai_response.tool_calls:
-                    if len(steps) >= max_consecutive_tools:
-                        final_response = "Tool execution limit reached before the request could be completed."
-                        logger.warning("Tool limit reached: max_consecutive_tools=%s", max_consecutive_tools)
-                        system_logs.append(f"Tool limit reached at {max_consecutive_tools} step(s)")
-                        conversation.append({"role": "assistant", "content": final_response})
-                        self._finalize_turn(user_prompt, final_response, conversation)
-                        return RuntimeTurnResult(
-                            final_response=final_response,
-                            steps=steps,
-                            total_usage=total_usage,
-                            ai_logs=ai_logs,
-                            system_logs=system_logs,
+                    if tool_call.tool_name not in PLANNING_ALLOWED_TOOLS:
+                        logger.warning("Blocked non-planning tool during planning: tool=%s", tool_call.tool_name)
+                        system_logs.append(f"Blocked planning tool call: {tool_call.tool_name}")
+                        conversation.append(_assistant_tool_call_message(ai_response, [tool_call]))
+                        conversation.append(
+                            _tool_message(
+                                tool_call.call_id,
+                                tool_call.tool_name,
+                                "Planning phase active. Emit a checkbox plan before invoking modification or non-planning tools.",
+                            )
                         )
+                        break
+                    if len(steps) >= max_consecutive_tools:
+                        raise RuntimeError("Planning tool limit reached before a blueprint could be produced.")
                     step = self._execute_tool_call(tool_call)
                     steps.append(step)
-                    ai_logs.append(f"Tool requested: {tool_call.tool_name}")
-                    system_logs.append(f"Tool step {len(steps)}: {tool_call.tool_name} success={step.success}")
+                    ai_logs.append(f"Planning tool requested: {tool_call.tool_name}")
+                    system_logs.append(f"Planning tool: {tool_call.tool_name} success={step.success}")
+                    conversation.append(_assistant_tool_call_message(ai_response, [tool_call]))
                     conversation.append(_tool_message(tool_call.call_id, tool_call.tool_name, step.output))
+                planning_message_count += 1
+                if planning_message_count > max_consecutive_tools:
+                    raise RuntimeError("Planning exceeded the configured tool limit.")
                 continue
 
-            final_response = ai_response.content
-            if final_response is not None:
-                conversation.append({"role": "assistant", "content": final_response})
-                ai_logs.append("Assistant produced final response")
-            logger.info("Finishing runtime turn: final_response_present=%s total_steps=%s", final_response is not None, len(steps))
-            self._finalize_turn(user_prompt, final_response or "", conversation)
-            system_logs.append("Turn completed and stored in memory")
-            return RuntimeTurnResult(
-                final_response=final_response,
-                steps=steps,
-                total_usage=total_usage,
-                ai_logs=ai_logs,
-                system_logs=system_logs,
+            content = ai_response.content
+            if content:
+                conversation.append({"role": "assistant", "content": content})
+                ai_logs.append("Planning blueprint generated")
+            return content, conversation
+
+    def _run_execution_phase(
+        self,
+        *,
+        user_prompt: str,
+        memory_context: str,
+        blueprint: ExecutionBlueprint,
+        conversation: list[dict[str, Any]],
+        steps: list[ToolExecutionStep],
+        total_usage: dict[str, int],
+        ai_logs: list[str],
+        system_logs: list[str],
+        max_consecutive_tools: int,
+    ) -> str | None:
+        self.state = AgentState.EXECUTING
+        system_logs.append(f"State: {self.state.name}")
+        final_response: str | None = None
+        working_blueprint = blueprint
+
+        for index, task in enumerate(working_blueprint.tasks):
+            working_blueprint = _set_active_task(working_blueprint, index)
+            self.active_blueprint = working_blueprint
+            system_logs.append(f"Current checkpoint {index + 1}/{len(working_blueprint.tasks)}: {task.description}")
+            scoped_tool_names = self._resolve_execution_tool_scope(user_prompt, task.description)
+            execution_memory = self._resolve_execution_memory(
+                user_prompt=user_prompt,
+                task_description=task.description,
+                memory_context=memory_context,
             )
+            system_logs.append(f"Execution memory chars sent: {len(execution_memory)}")
+            system_logs.append(f"Execution tool scope size: {len(scoped_tool_names)}")
+            step_conversation = [
+                {"role": "system", "content": EXECUTION_SYSTEM_RULE},
+                {
+                    "role": "user",
+                    "content": self._build_execution_prompt(
+                        user_prompt=user_prompt,
+                        checkpoint_index=index + 1,
+                        total_checkpoints=len(working_blueprint.tasks),
+                        task_description=task.description,
+                    ),
+                },
+            ]
+            tool_iterations = 0
+
+            while True:
+                ai_response = self.ai.chat(
+                    messages=list(step_conversation),
+                    memory_context=execution_memory,
+                    tool_names=scoped_tool_names,
+                )
+                _merge_usage(total_usage, ai_response.usage)
+                ai_logs.append(
+                    f"Execution response: checkpoint={index + 1}, finish_reason={ai_response.finish_reason}, tool_calls={len(ai_response.tool_calls)}, total_tokens={ai_response.usage.get('total_tokens', 0)}"
+                )
+                if ai_response.tool_calls:
+                    tool_call = ai_response.tool_calls[0]
+                    tool_iterations += 1
+                    if tool_iterations > max_consecutive_tools:
+                        raise RuntimeError("Execution tool limit reached before the checkpoint completed.")
+                    if len(ai_response.tool_calls) > 1:
+                        system_logs.append(
+                            f"Checkpoint {index + 1}: deferred {len(ai_response.tool_calls) - 1} extra tool call(s) to preserve single-step execution"
+                        )
+                    ai_logs.append(f"Tool requested: {tool_call.tool_name}")
+                    step_conversation.append(_assistant_tool_call_message(ai_response, [tool_call]))
+                    step = self._execute_tool_call(tool_call)
+                    steps.append(step)
+                    system_logs.append(f"Tool step {len(steps)}: {tool_call.tool_name} success={step.success}")
+                    step_conversation.append(_tool_message(tool_call.call_id, tool_call.tool_name, step.output))
+                    continue
+
+                final_response = ai_response.content or final_response
+                trace_log = ai_response.content or "Checkpoint completed via tool execution."
+                working_blueprint = _mark_checkpoint_completed(working_blueprint, index, trace_log)
+                self.active_blueprint = working_blueprint
+                ai_logs.append(f"Checkpoint completed: {task.description}")
+                system_logs.append(f"Checkpoint {index + 1} completed")
+                break
+
+        return final_response
+
+    def _run_verification_phase(
+        self,
+        *,
+        blueprint: ExecutionBlueprint,
+        steps: list[ToolExecutionStep],
+        system_logs: list[str],
+    ) -> bool:
+        self.state = AgentState.VERIFYING
+        system_logs.append(f"State: {self.state.name}")
+        diagnostics_tool = self.tools.get("run_diagnostics")
+        if diagnostics_tool is None:
+            system_logs.append("Verification skipped: run_diagnostics is not registered")
+            self.active_blueprint = ExecutionBlueprint(
+                raw_plan_markdown=blueprint.raw_plan_markdown,
+                tasks=list(blueprint.tasks),
+                active_task_pointer=len(blueprint.tasks),
+                verification_passed=True,
+            )
+            return True
+
+        verification_results: list[bool] = []
+        for mode in ("tests", "types"):
+            result = diagnostics_tool.execute(mode=mode, target_path=self.workspace_path)
+            step = ToolExecutionStep(
+                step_id=f"verify-{mode}",
+                tool_name="run_diagnostics",
+                arguments={"mode": mode, "target_path": self.workspace_path},
+                output=_format_tool_output(result.output, result.data),
+                success=result.success,
+                is_sandboxed_violation=False,
+            )
+            steps.append(step)
+            verification_results.append(step.success)
+            system_logs.append(f"Verification {mode}: success={step.success}")
+
+        verification_passed = all(verification_results)
+        source_blueprint = self.active_blueprint or blueprint
+        self.active_blueprint = ExecutionBlueprint(
+            raw_plan_markdown=source_blueprint.raw_plan_markdown,
+            tasks=list(source_blueprint.tasks),
+            active_task_pointer=len(source_blueprint.tasks),
+            verification_passed=verification_passed,
+        )
+        return verification_passed
+
+    def _parse_markdown_to_blueprint(self, markdown_text: str) -> ExecutionBlueprint:
+        task_pattern = re.compile(r"^\s*(?:[-*]|\d+\.)\s*\[(?P<status>[ xX])\]\s*(?P<description>.+?)\s*$")
+        tasks: list[CheckpointTask] = []
+        for line in markdown_text.splitlines():
+            match = task_pattern.match(line)
+            if not match:
+                continue
+            tasks.append(
+                CheckpointTask(
+                    task_id=len(tasks) + 1,
+                    description=match.group("description").strip(),
+                    is_completed=match.group("status").lower() == "x",
+                )
+            )
+
+        if not tasks:
+            fallback = markdown_text.strip() or "Handle the user request."
+            tasks.append(CheckpointTask(task_id=1, description=fallback))
+
+        return ExecutionBlueprint(raw_plan_markdown=markdown_text, tasks=tasks)
+
+    def _resolve_execution_tool_scope(self, user_prompt: str, task_description: str) -> list[str]:
+        text = f"{user_prompt} {task_description}".lower()
+        if self._is_scaffold_request(text):
+            return sorted(name for name in SCAFFOLD_EXECUTION_TOOLS if name in self.tools)
+
+        tool_names = set(READ_ONLY_EXECUTION_TOOLS)
+
+        if any(token in text for token in ("create", "add", "write", "build", "generate", "html", "css", "js", "frontend", "folder", "file")):
+            tool_names.update(WRITE_EXECUTION_TOOLS)
+        if any(token in text for token in ("edit", "update", "modify", "change", "patch", "refactor")):
+            tool_names.update(WRITE_EXECUTION_TOOLS)
+        if any(token in text for token in ("delete", "remove", "cleanup")):
+            tool_names.update(DELETE_EXECUTION_TOOLS)
+        if any(token in text for token in ("run", "test", "verify", "diagnostic", "lint", "typecheck", "types", "shell")):
+            tool_names.update(SHELL_EXECUTION_TOOLS)
+        if any(token in text for token in ("memory", "recall", "trace", "history")):
+            tool_names.update(MEMORY_EXECUTION_TOOLS)
+
+        if "run_shell" in tool_names:
+            tool_names.add("audit_changes")
+        return sorted(name for name in tool_names if name in self.tools)
+
+    def _resolve_execution_memory(self, *, user_prompt: str, task_description: str, memory_context: str) -> str:
+        text = f"{user_prompt} {task_description}".lower()
+        if self._is_scaffold_request(text):
+            return _trim_memory_context(memory_context, SCAFFOLD_EXECUTION_MEMORY_CHAR_LIMIT)
+        return _trim_memory_context(memory_context, EXECUTION_MEMORY_CHAR_LIMIT)
+
+    def _build_execution_prompt(
+        self,
+        *,
+        user_prompt: str,
+        checkpoint_index: int,
+        total_checkpoints: int,
+        task_description: str,
+    ) -> str:
+        if self._is_scaffold_request(f"{user_prompt} {task_description}".lower()):
+            return (
+                f"Goal: {user_prompt}\n"
+                f"Checkpoint {checkpoint_index}/{total_checkpoints}: {task_description}\n"
+                "Complete only this checkpoint. Use the smallest valid tool call and stop after it succeeds."
+            )
+        return (
+            f"Original request:\n{user_prompt}\n\n"
+            f"Current checkpoint ({checkpoint_index}/{total_checkpoints}):\n- [ ] {task_description}\n\n"
+            "Complete only this checkpoint, then stop."
+        )
+
+    def _is_scaffold_request(self, text: str) -> bool:
+        creation_markers = ("create", "make", "add", "build", "generate")
+        frontend_markers = ("html", "css", "js", "javascript", "frontend", "ui")
+        non_backend_markers = ("dont connect with backend", "don't connect with backend", "no need to connect to backend")
+        file_markers = ("folder", "file", "calendar")
+        return (
+            any(marker in text for marker in creation_markers)
+            and any(marker in text for marker in frontend_markers)
+            and any(marker in text for marker in file_markers)
+        ) or any(marker in text for marker in non_backend_markers)
 
     def _execute_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
         logger.info("Intercepted tool call: tool=%s arguments=%s", tool_call.tool_name, tool_call.arguments)
@@ -228,7 +521,8 @@ class DevenvKernel:
             logger.warning("Failed to persist retrieval trace state: error=%s", exc)
 
 
-def _assistant_tool_call_message(ai_response: AIResponse) -> dict[str, Any]:
+def _assistant_tool_call_message(ai_response: AIResponse, tool_calls: list[ToolCallRequest] | None = None) -> dict[str, Any]:
+    selected_tool_calls = tool_calls or list(ai_response.tool_calls)
     return {
         "role": "assistant",
         "content": ai_response.content,
@@ -241,7 +535,7 @@ def _assistant_tool_call_message(ai_response: AIResponse) -> dict[str, Any]:
                     "arguments": json.dumps(tool_call.arguments, sort_keys=True),
                 },
             }
-            for tool_call in ai_response.tool_calls
+            for tool_call in selected_tool_calls
         ],
     }
 
@@ -290,3 +584,54 @@ def _build_memory_engine(db_path: str, vector_dir: str) -> MemoryEngine:
             vector_dir=vector_dir,
             embedder=HashingEmbedder(dimension=384),
         )
+
+
+def _trim_memory_context(memory_context: str, char_limit: int) -> str:
+    stripped = memory_context.strip()
+    if len(stripped) <= char_limit:
+        return stripped
+
+    lines: list[str] = []
+    current_length = 0
+    for line in stripped.splitlines():
+        next_length = current_length + len(line) + (1 if lines else 0)
+        if next_length > char_limit:
+            break
+        lines.append(line)
+        current_length = next_length
+
+    if not lines:
+        return stripped[:char_limit].rstrip()
+    return "\n".join(lines).rstrip()
+
+
+def _set_active_task(blueprint: ExecutionBlueprint, task_index: int) -> ExecutionBlueprint:
+    return ExecutionBlueprint(
+        raw_plan_markdown=blueprint.raw_plan_markdown,
+        tasks=list(blueprint.tasks),
+        active_task_pointer=task_index,
+        verification_passed=blueprint.verification_passed,
+    )
+
+
+def _mark_checkpoint_completed(blueprint: ExecutionBlueprint, task_index: int, trace_log: str) -> ExecutionBlueprint:
+    tasks: list[CheckpointTask] = []
+    for index, task in enumerate(blueprint.tasks):
+        if index == task_index:
+            tasks.append(
+                CheckpointTask(
+                    task_id=task.task_id,
+                    description=task.description,
+                    is_completed=True,
+                    execution_trace_log=trace_log,
+                )
+            )
+        else:
+            tasks.append(task)
+
+    return ExecutionBlueprint(
+        raw_plan_markdown=blueprint.raw_plan_markdown,
+        tasks=tasks,
+        active_task_pointer=min(task_index + 1, len(tasks)),
+        verification_passed=blueprint.verification_passed,
+    )

@@ -1,9 +1,12 @@
 import React from "https://esm.sh/react@18";
 import { renderMarkdown } from "../lib/markdown.js";
+import { PlanRail } from "./PlanRail.js";
 
 export function TerminalPanel({
   transcript,
   prompt,
+  blueprint,
+  runtimeState,
   onPromptChange,
   onSubmit,
   isRunning,
@@ -42,12 +45,7 @@ export function TerminalPanel({
         "div",
         { className: "terminal-header-copy" },
         React.createElement("div", { className: "panel-label" }, "Chat"),
-        React.createElement("h2", { className: "terminal-title" }, "Ask Devenv"),
-        React.createElement(
-          "p",
-          { className: "terminal-caption" },
-          "Use chat on the right, browse files in the middle, and watch raw runtime output on the left."
-        )
+        React.createElement("h2", { className: "terminal-title" }, "Ask Devenv")
       ),
       onToggleCollapse
         ? React.createElement(
@@ -63,6 +61,10 @@ export function TerminalPanel({
           )
         : null
     ),
+    React.createElement(PlanRail, {
+      blueprint,
+      runtimeState,
+    }),
     React.createElement("div", { className: "terminal-log" }, messages),
     React.createElement(
       "form",

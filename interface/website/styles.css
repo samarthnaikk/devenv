@@ -243,6 +243,100 @@ textarea {
   letter-spacing: 0.12em;
 }
 
+.plan-rail {
+  display: grid;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: #f9f4eb;
+  flex: 0 0 auto;
+}
+
+.plan-rail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plan-state-chip {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  background: #fffdfa;
+  color: var(--accent-strong);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.73rem;
+}
+
+.plan-rail-track {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.plan-node {
+  min-width: 160px;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: #fffdfa;
+}
+
+.plan-node-dot {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+}
+
+.plan-node-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plan-node-copy strong {
+  font-size: 0.74rem;
+}
+
+.plan-node-copy span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-node.active {
+  border-color: rgba(47, 122, 120, 0.38);
+  background: rgba(47, 122, 120, 0.08);
+}
+
+.plan-node.active .plan-node-dot {
+  border-color: rgba(47, 122, 120, 0.42);
+  color: var(--accent-strong);
+}
+
+.plan-node.done {
+  border-color: rgba(45, 138, 99, 0.28);
+  background: rgba(45, 138, 99, 0.08);
+}
+
+.plan-node.done .plan-node-dot {
+  border-color: rgba(45, 138, 99, 0.32);
+  color: var(--success);
+}
+
 .sidebar-header {
   margin-bottom: 12px;
 }
@@ -388,12 +482,6 @@ textarea {
 .terminal-title {
   margin: 0;
   font-size: 1.35rem;
-}
-
-.terminal-caption {
-  margin: 10px 0 0;
-  color: var(--muted);
-  line-height: 1.5;
 }
 
 .terminal-log,
