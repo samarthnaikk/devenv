@@ -109,7 +109,7 @@ class DevenvWebAppTest(unittest.TestCase):
             self.assertEqual(health["status"], "ok")
             self.assertEqual(files["entries"][0]["name"], "README.md")
             self.assertEqual(turn["final_response"], "Website response")
-            self.assertIsNone(turn["blueprint"])
+            self.assertEqual(turn["blueprint"]["tasks"][0]["description"], "hello")
         with self.assertRaises(PermissionError):
             app.build_file_payload("../secrets.txt")
 

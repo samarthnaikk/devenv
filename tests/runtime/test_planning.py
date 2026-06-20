@@ -197,7 +197,8 @@ class PlanningKernelTest(unittest.TestCase):
 
         self.assertEqual(result.state, AgentState.PLANNING.name)
         self.assertFalse(result.blueprint.verification_passed)
-        self.assertIn("Verification failed; state reset to PLANNING", result.system_logs)
+        self.assertIn("Verification failed; appended repair checkpoint", result.system_logs)
+        self.assertTrue(any(task.repair_origin_checkpoint_id == 1 for task in result.blueprint.tasks))
 
     def test_scaffold_request_uses_tiny_execution_scope_and_trimmed_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

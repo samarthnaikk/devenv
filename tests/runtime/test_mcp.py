@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import tempfile
 import unittest
 from contextlib import asynccontextmanager
@@ -14,6 +15,7 @@ FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "sample-test" / "tool-fixtu
 SAMPLE_ROOT = Path(__file__).resolve().parents[2] / "sample-test"
 
 
+@unittest.skipIf(importlib.util.find_spec("mcp") is None, "Optional mcp dependency is not installed")
 class MCPRuntimeTest(unittest.TestCase):
     def test_list_tools_over_stdio_exposes_all_runtime_schemas(self) -> None:
         client = MCPToolClient(

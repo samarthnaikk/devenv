@@ -171,9 +171,10 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(result.final_response, "Final answer")
         self.assertEqual(result.total_usage["prompt_tokens"], 10)
         self.assertEqual(result.total_usage["completion_tokens"], 4)
-        self.assertEqual(ai.chat_calls[0]["memory_context"], "## Retrieved Memory\n- Prompt: Explain the repo")
+        self.assertEqual(ai.chat_calls[0]["memory_context"], "## Context Packet\nPrompt: Explain the repo")
         self.assertEqual(ai.chat_calls[0]["tool_names"], [])
-        self.assertIsNone(result.blueprint)
+        self.assertIsNotNone(result.blueprint)
+        self.assertTrue(result.blueprint.verification_passed)
         self.assertEqual(memory.logs[0][0], "Explain the repo")
         self.assertEqual(memory.logs[0][1], "Final answer")
         self.assertEqual(memory.logs[0][2]["workspace_path"], str(Path(tempdir).resolve()))
@@ -553,8 +554,11 @@ class DevenvKernelTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
             kernel.local_router = _disabled_router()
-            with self.assertRaises(RuntimeError):
-                kernel.execute_turn("Loop", max_consecutive_tools=1)
+            result = kernel.execute_turn("Loop", max_consecutive_tools=1)
+
+        self.assertEqual(result.error_message, "Direct tool limit reached before the request could be completed.")
+        self.assertEqual(result.blueprint.tasks[0].child_checkpoint_ids, (2, 3))
+        self.assertEqual(result.blueprint.tasks[1].description, "Gather the context required for: Loop")
 
     def test_execute_turn_continues_when_memory_retrieval_fails(self) -> None:
         memory = FailingMemory()
