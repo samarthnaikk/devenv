@@ -168,6 +168,49 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(result.total_usage["prompt_tokens"], 7)
         self.assertEqual(result.total_usage["completion_tokens"], 4)
 
+    def test_follow_up_turn_does_not_replay_old_tool_output_history(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCallRequest(
+                            call_id="call_1",
+                            tool_name="read_file",
+                            arguments={"path": "note.txt"},
+                        ),
+                    ),
+                    finish_reason="tool_calls",
+                    usage={"prompt_tokens": 7},
+                ),
+                AIResponse(
+                    content="I read the file.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"completion_tokens": 4},
+                ),
+                AIResponse(
+                    content="Follow-up answer",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 3},
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            note_path = f"{tempdir}/note.txt"
+            with open(note_path, "w", encoding="utf-8") as handle:
+                handle.write("hello runtime")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ReadFileTool())
+            kernel.execute_turn("Read note.txt")
+            kernel.execute_turn("What happened?")
+
+        follow_up_messages = ai.chat_calls[2]["messages"]
+        self.assertEqual([message["role"] for message in follow_up_messages], ["user", "assistant", "user"])
+
     def test_execute_turn_flags_sandbox_violation(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(

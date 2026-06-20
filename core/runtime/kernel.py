@@ -16,6 +16,7 @@ from .models import RuntimeTurnResult, ToolExecutionStep
 from .sandbox import PathSandbox
 
 logger = logging.getLogger(__name__)
+MAX_EPHEMERAL_TURNS = 4
 
 
 class DevenvKernel:
@@ -150,8 +151,13 @@ class DevenvKernel:
         )
 
     def _finalize_turn(self, user_prompt: str, final_response: str, conversation: list[dict[str, Any]]) -> None:
-        self.ephemeral_history = conversation
+        self.ephemeral_history = _compact_conversation(conversation, max_turns=MAX_EPHEMERAL_TURNS)
         self._record_working_memory(self.ephemeral_history)
+        logger.info(
+            "Compacted runtime history: retained_messages=%s raw_messages=%s",
+            len(self.ephemeral_history),
+            len(conversation),
+        )
         logger.info("Recording episodic log for completed turn")
         try:
             log_id = self.memory.add_episodic_log(
@@ -176,8 +182,9 @@ class DevenvKernel:
 
     def _record_working_memory(self, conversation: list[dict[str, Any]]) -> None:
         try:
+            compact_messages = _compact_conversation(conversation, max_turns=MAX_EPHEMERAL_TURNS)
             self.memory.record_working_memory(
-                messages=conversation[-10:],
+                messages=compact_messages,
                 active_state={
                     "workspace_path": self.workspace_path,
                     "session_id": self.session_id,
@@ -230,6 +237,20 @@ def _format_tool_output(output: str, data: dict[str, Any]) -> str:
 def _merge_usage(total_usage: dict[str, int], usage: dict[str, int]) -> None:
     for key, value in usage.items():
         total_usage[key] = total_usage.get(key, 0) + value
+
+
+def _compact_conversation(messages: list[dict[str, Any]], max_turns: int) -> list[dict[str, Any]]:
+    retained: list[dict[str, Any]] = []
+    for message in messages:
+        role = message.get("role")
+        if role not in {"user", "assistant"}:
+            continue
+        content = message.get("content")
+        if not isinstance(content, str):
+            continue
+        retained.append({"role": role, "content": content})
+
+    return retained[-(max_turns * 2) :]
 
 
 def _resolve_memory_paths(workspace_path: str, db_path: str, vector_dir: str) -> tuple[str, str]:
