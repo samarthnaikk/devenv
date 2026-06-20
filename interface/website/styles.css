@@ -446,6 +446,11 @@ textarea {
   font-family: "IBM Plex Mono", monospace;
 }
 
+.code-preview {
+  padding: 0;
+  background: #fffdfa;
+}
+
 .terminal-input {
   resize: vertical;
   min-height: 112px;
@@ -589,6 +594,18 @@ textarea {
   border-radius: 2px;
   overflow: auto;
   background: #f6efe5;
+}
+
+.code-frame {
+  margin: 0;
+  min-height: 100%;
+}
+
+.code-frame code.hljs {
+  min-height: 100%;
+  padding: 16px 18px;
+  background: #fffdfa;
+  line-height: 1.55;
 }
 
 .log-panel {

@@ -1,5 +1,5 @@
 import React from "https://esm.sh/react@18";
-import { renderMarkdown } from "../lib/markdown.js";
+import { renderFilePreview } from "../lib/file_preview.js";
 import { FileTree } from "./FileTree.js";
 
 export function FilePreviewPanel({
@@ -13,6 +13,8 @@ export function FilePreviewPanel({
   onOpenPreview,
   onClose,
 }) {
+  const preview = renderFilePreview(content || "", selectedPath);
+
   return React.createElement(
     "section",
     { className: "content-panel preview-panel" },
@@ -87,9 +89,9 @@ export function FilePreviewPanel({
         ),
         isPreviewVisible
           ? React.createElement("div", {
-              className: "markdown-body preview-body",
+              className: preview.className,
               dangerouslySetInnerHTML: {
-                __html: renderMarkdown(content || "No preview content loaded."),
+                __html: preview.html,
               },
             })
           : React.createElement(
