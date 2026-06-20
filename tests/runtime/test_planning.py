@@ -7,7 +7,7 @@ from typing import Any
 from core.ai.models import AIResponse, ToolCallRequest
 from core.runtime import DevenvKernel
 from core.runtime.kernel import _focus_memory_context_for_direct_answers
-from core.runtime.models import AgentState, PlanningMode
+from core.runtime.models import AgentState, CheckpointTask, ExecutionBlueprint, PlanningMode
 from core.tools.base import BaseTool, ToolResult
 
 
@@ -303,6 +303,49 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertEqual(result.steps[0].tool_name, "write_file")
         self.assertIn("requires a file mutation tool before completion", "\n".join(result.system_logs))
         self.assertEqual(result.final_response, "Created index.html.")
+
+    def test_build_execution_prompt_includes_target_path_and_checkpoint_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [x] Create frontend folder\n- [ ] Add index.html\n- [ ] Add styles.css",
+                tasks=[
+                    CheckpointTask(task_id=1, description="Create frontend folder", is_completed=True),
+                    CheckpointTask(task_id=2, description="Add index.html"),
+                    CheckpointTask(task_id=3, description="Add styles.css"),
+                ],
+                active_task_pointer=1,
+            )
+            prompt = kernel._build_execution_prompt(
+                user_prompt="complete the frontend for calendar in html css js",
+                checkpoint_index=2,
+                total_checkpoints=3,
+                task_description="Add index.html",
+                blueprint=blueprint,
+            )
+
+        self.assertIn("All new files for this request must stay under: calendar/frontend", prompt)
+        self.assertIn("Completed earlier: Create frontend folder", prompt)
+        self.assertIn("Next after this: Add styles.css", prompt)
+
+    def test_repair_tool_arguments_prefixes_scaffold_files_under_calendar_frontend(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.active_plan_prompt = "complete the frontend for calendar in html css js"
+            kernel.active_blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [ ] Add index.html",
+                tasks=[CheckpointTask(task_id=1, description="Add index.html")],
+                active_task_pointer=0,
+            )
+            repaired = kernel._repair_tool_arguments(
+                ToolCallRequest(
+                    call_id="call-1",
+                    tool_name="write_file",
+                    arguments={"path": "index.html", "content": "<h1>Calendar</h1>", "mode": "fresh"},
+                )
+            )
+
+        self.assertEqual(repaired["path"], "calendar/frontend/index.html")
 
     def test_direct_memory_focus_prefers_retrieved_memory_block(self) -> None:
         focused = _focus_memory_context_for_direct_answers(

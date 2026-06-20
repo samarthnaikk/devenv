@@ -1,0 +1,98 @@
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Arial, sans-serif;
+  background: #f5f1ea;
+  color: #1f2430;
+}
+
+.calendar-shell {
+  max-width: 880px;
+  margin: 48px auto;
+  padding: 24px;
+}
+
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.calendar-header button {
+  border: 1px solid #d8cfc1;
+  background: #fffdf9;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.calendar-title-group {
+  text-align: center;
+}
+
+.calendar-kicker {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6f7480;
+}
+
+#month-year {
+  margin: 0;
+  font-size: 28px;
+}
+
+.calendar-panel {
+  border: 1px solid #d8cfc1;
+  background: #fffdf9;
+  padding: 20px;
+}
+
+.weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.weekdays {
+  margin-bottom: 12px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6f7480;
+}
+
+.weekdays span {
+  text-align: center;
+}
+
+.date-cell {
+  min-height: 88px;
+  border: 1px solid #e3dbcf;
+  background: #fff;
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.date-cell:hover {
+  border-color: #8a9b82;
+}
+
+.date-cell.is-today {
+  border-color: #2f7a78;
+  background: #eef7f6;
+}
+
+.date-cell.is-selected {
+  border-color: #b86f52;
+  background: #fff1ea;
+}
+
+.date-cell.is-muted {
+  color: #9ba0aa;
+  background: #faf7f1;
+}

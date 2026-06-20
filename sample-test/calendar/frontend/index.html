@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calendar Frontend Demo</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="calendar-shell">
+    <header class="calendar-header">
+      <button id="prev-month" type="button" aria-label="Previous month">Prev</button>
+      <div class="calendar-title-group">
+        <p class="calendar-kicker">Calendar Demo</p>
+        <h1 id="month-year">Month Year</h1>
+      </div>
+      <button id="next-month" type="button" aria-label="Next month">Next</button>
+    </header>
+
+    <section class="calendar-panel" aria-label="Calendar">
+      <div class="weekdays">
+        <span>Sun</span>
+        <span>Mon</span>
+        <span>Tue</span>
+        <span>Wed</span>
+        <span>Thu</span>
+        <span>Fri</span>
+        <span>Sat</span>
+      </div>
+      <div id="calendar-dates" class="calendar-grid"></div>
+    </section>
+  </main>
+
+  <script src="./script.js"></script>
+</body>
+</html>

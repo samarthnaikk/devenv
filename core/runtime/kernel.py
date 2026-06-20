@@ -447,6 +447,7 @@ class DevenvKernel:
                         checkpoint_index=index + 1,
                         total_checkpoints=len(working_blueprint.tasks),
                         task_description=task.description,
+                        blueprint=working_blueprint,
                     ),
                 },
             ]
@@ -623,13 +624,21 @@ class DevenvKernel:
         checkpoint_index: int,
         total_checkpoints: int,
         task_description: str,
+        blueprint: ExecutionBlueprint,
     ) -> str:
+        target_path_hint = self._derive_scaffold_target_path(user_prompt, task_description)
+        plan_context = self._build_checkpoint_context(blueprint, checkpoint_index - 1)
         if self._is_scaffold_request(f"{user_prompt} {task_description}".lower()):
-            return (
+            lines = [
                 f"Goal: {user_prompt}\n"
-                f"Checkpoint {checkpoint_index}/{total_checkpoints}: {task_description}\n"
-                "Complete only this checkpoint. Use the smallest valid tool call and stop after it succeeds."
-            )
+                f"Checkpoint {checkpoint_index}/{total_checkpoints}: {task_description}",
+            ]
+            if target_path_hint:
+                lines.append(f"All new files for this request must stay under: {target_path_hint}")
+            if plan_context:
+                lines.append(plan_context)
+            lines.append("Complete only this checkpoint. Use the smallest valid tool call and stop after it succeeds.")
+            return "\n".join(lines)
         return (
             f"Original request:\n{user_prompt}\n\n"
             f"Current checkpoint ({checkpoint_index}/{total_checkpoints}):\n- [ ] {task_description}\n\n"
@@ -692,6 +701,16 @@ class DevenvKernel:
         if start_index is None:
             return []
         return [start_index]
+
+    def _build_checkpoint_context(self, blueprint: ExecutionBlueprint, task_index: int) -> str:
+        completed = [task.description for task in blueprint.tasks[:task_index] if task.is_completed]
+        remaining = [task.description for task in blueprint.tasks[task_index + 1 :] if not task.is_completed]
+        lines: list[str] = []
+        if completed:
+            lines.append(f"Completed earlier: {completed[-1]}")
+        if remaining:
+            lines.append(f"Next after this: {remaining[0]}")
+        return "\n".join(lines)
 
     def _checkpoint_requires_mutation(self, user_prompt: str, task_description: str) -> bool:
         text = f"{user_prompt} {task_description}".lower()
@@ -799,8 +818,55 @@ class DevenvKernel:
                 repaired_path = self._repair_directory_path(path_value)
                 if repaired_path is not None:
                     arguments["path"] = repaired_path
+        if tool_call.tool_name in WRITE_EXECUTION_TOOLS | DELETE_EXECUTION_TOOLS | frozenset({"edit_file"}):
+            path_value = arguments.get("path")
+            if isinstance(path_value, str):
+                target_path_hint = self._active_scaffold_target_path()
+                if target_path_hint:
+                    repaired_path = self._repair_scaffold_path(path_value, target_path_hint)
+                    if repaired_path is not None:
+                        arguments["path"] = repaired_path
 
         return arguments
+
+    def _active_scaffold_target_path(self) -> str | None:
+        prompt = self.active_plan_prompt or ""
+        task_description = ""
+        if self.active_blueprint and 0 <= self.active_blueprint.active_task_pointer < len(self.active_blueprint.tasks):
+            task_description = self.active_blueprint.tasks[self.active_blueprint.active_task_pointer].description
+        return self._derive_scaffold_target_path(prompt, task_description)
+
+    def _derive_scaffold_target_path(self, user_prompt: str, task_description: str = "") -> str | None:
+        combined = f"{user_prompt} {task_description}".strip().lower()
+        if not self._is_scaffold_request(combined):
+            return None
+        direct_match = re.search(r"\b([a-z0-9_-]+/[a-z0-9_/-]+)\b", combined)
+        if direct_match:
+            return direct_match.group(1).strip("/")
+        nested_match = re.search(r"\b([a-z0-9_-]+)\s+folder\s+(?:inside|in|under)\s+([a-z0-9_/-]+)\b", combined)
+        if nested_match:
+            child, parent = nested_match.groups()
+            return f"{parent.strip('/')}/{child.strip('/')}"
+        if "frontend" in combined and "calendar" in combined:
+            return "calendar/frontend"
+        return None
+
+    def _repair_scaffold_path(self, requested_path: str, target_path_hint: str) -> str | None:
+        candidate = Path(requested_path)
+        if candidate.is_absolute():
+            return None
+
+        target = Path(target_path_hint)
+        if candidate.parts[: len(target.parts)] == target.parts:
+            return requested_path
+
+        if candidate.parts and candidate.parts[0] == target.name:
+            return str(target.parent / candidate).replace("\\", "/")
+
+        if len(candidate.parts) == 1:
+            return str(target / candidate.name).replace("\\", "/")
+
+        return None
 
     def _repair_directory_path(self, requested_path: str) -> str | None:
         candidate = Path(requested_path).expanduser()
