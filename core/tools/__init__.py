@@ -1,3 +1,4 @@
+from .audit_changes import AuditChangesTool
 from .edit_file import EditFileTool
 from .inspect_symbols import InspectSymbolsTool
 from .list_directory import ListDirectoryTool
@@ -12,6 +13,7 @@ from .track_symbol import TrackSymbolTool
 from .write_file import WriteFileTool
 
 __all__ = [
+    "AuditChangesTool",
     "EditFileTool",
     "InspectSymbolsTool",
     "ListDirectoryTool",
