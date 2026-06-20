@@ -21,6 +21,7 @@ class FakeMemory:
     def __init__(self) -> None:
         self.working_memory_calls: list[tuple[list[dict[str, Any]], dict[str, Any]]] = []
         self.logs: list[tuple[str, str, dict[str, Any] | None]] = []
+        self.consolidation_runs = 0
 
     def record_working_memory(self, messages: list[dict[str, Any]], active_state: dict[str, Any]) -> None:
         self.working_memory_calls.append((messages, active_state))
@@ -37,6 +38,10 @@ class FakeMemory:
     ) -> str:
         self.logs.append((user_prompt, agent_response, metadata))
         return "log-1"
+
+    def run_consolidation(self):
+        self.consolidation_runs += 1
+        return type("Result", (), {"processed_logs": 1, "created_nodes": (), "updated_nodes": ()})()
 
 
 class FailingMemory(FakeMemory):
@@ -102,6 +107,7 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(memory.logs[0][2]["workspace_path"], str(Path(tempdir).resolve()))
         self.assertEqual(memory.logs[0][2]["session_id"], kernel.session_id)
         self.assertEqual(memory.working_memory_calls[0][1]["session_id"], kernel.session_id)
+        self.assertEqual(memory.consolidation_runs, 1)
         self.assertTrue(result.ai_logs)
         self.assertTrue(result.system_logs)
 

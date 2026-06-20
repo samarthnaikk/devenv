@@ -151,7 +151,7 @@ class DevenvKernel:
         self._record_working_memory(self.ephemeral_history)
         logger.info("Recording episodic log for completed turn")
         try:
-            self.memory.add_episodic_log(
+            log_id = self.memory.add_episodic_log(
                 user_prompt,
                 final_response,
                 metadata={
@@ -159,6 +159,15 @@ class DevenvKernel:
                     "session_id": self.session_id,
                 },
             )
+            logger.info("Recorded episodic log: log_id=%s", log_id)
+            if hasattr(self.memory, "run_consolidation"):
+                result = self.memory.run_consolidation()
+                logger.info(
+                    "Memory consolidation finished: processed_logs=%s created_nodes=%s updated_nodes=%s",
+                    getattr(result, "processed_logs", 0),
+                    len(getattr(result, "created_nodes", ())),
+                    len(getattr(result, "updated_nodes", ())),
+                )
         except Exception as exc:
             logger.warning("Failed to record episodic log; continuing without persisted memory: error=%s", exc)
 
