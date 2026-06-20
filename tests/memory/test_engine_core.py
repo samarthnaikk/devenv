@@ -61,6 +61,9 @@ class MemoryEngineCoreTest(unittest.TestCase):
         payload = json.loads(logs[0].raw_interaction)
         self.assertEqual(payload["user"], "Investigate auth bug")
         self.assertEqual(payload["metadata"]["command"], "pytest")
+        indexed = self.engine.store.get_node(f"episodic_{log_id}")
+        self.assertIsNotNone(indexed)
+        self.assertIn("Investigate auth bug", indexed.summary)
 
     def test_update_associative_tree_refreshes_vector_summary(self) -> None:
         self.engine.update_associative_tree(

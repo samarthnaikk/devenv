@@ -73,6 +73,7 @@ class MemoryEngine(MemoryEngineInterface):
             raw_interaction=json.dumps(interaction.__dict__, sort_keys=True),
         )
         self.store.insert_log(log)
+        self._index_episodic_log(log=log, interaction=interaction)
         return log_id
 
     def retrieve_context(self, current_prompt: str, top_k: int = 5) -> RetrievalResult:
@@ -133,6 +134,24 @@ class MemoryEngine(MemoryEngineInterface):
 
     def record_working_memory(self, messages: list[dict[str, Any]], active_state: dict[str, Any]) -> None:
         self.working_memory.record(messages=messages, active_state=active_state)
+
+    def _index_episodic_log(self, *, log: EpisodicLog, interaction: LogInteraction) -> None:
+        summary = " | ".join(piece for piece in (interaction.user.strip(), interaction.agent.strip()) if piece).strip()
+        if not summary:
+            summary = "Conversation turn with empty content."
+
+        node = MemoryNode(
+            node_id=f"episodic_{log.log_id}",
+            parent_id=None,
+            label=f"Episodic Memory {log.log_id[:8]}",
+            category="episode",
+            summary=summary,
+            created_at=log.timestamp,
+            last_accessed=log.timestamp,
+            access_count=0,
+        )
+        self.store.upsert_node(node)
+        self.vector_index.upsert(node.node_id, summary, self.embedder.embed(summary))
 
 
 def _coerce_payload(node_data: dict[str, Any]) -> NodeUpsertPayload:
