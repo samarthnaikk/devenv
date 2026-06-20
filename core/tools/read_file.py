@@ -7,6 +7,7 @@ from mimetypes import guess_type
 from pathlib import Path
 from typing import Literal
 
+from ._common import ensure_file
 from .base import BaseTool, ToolResult
 
 logger = logging.getLogger(__name__)
@@ -142,15 +143,7 @@ def read_file(path: str) -> str:
 
 
 def _resolve_file_path(path: str) -> Path:
-    file_path = Path(path).expanduser().resolve()
-
-    if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
-
-    if file_path.is_dir():
-        raise IsADirectoryError(f"Expected a file, got a directory: {file_path}")
-
-    return file_path
+    return ensure_file(path)
 
 
 def build_metadata(file_path: Path) -> FileMetadata:
