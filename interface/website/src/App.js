@@ -211,7 +211,6 @@ export function App() {
 
           try {
             const aggregateLogs = [];
-            const assistantMessages = [];
             const planningMode = planModeEnabled ? "force_plan" : "force_direct";
             let continuePlan = false;
             let result = null;
@@ -219,13 +218,6 @@ export function App() {
             do {
               result = await runTurn(nextPrompt, planningMode, continuePlan);
               aggregateLogs.push(...buildLogEntries(result));
-              if (result.final_response) {
-                assistantMessages.push({
-                  id: `assistant-${Date.now()}-${assistantMessages.length}`,
-                  role: "assistant",
-                  content: result.final_response,
-                });
-              }
               setUsage(result.total_usage || {});
               setBlueprint(result.blueprint || null);
               setRuntimeState(result.state || "PLANNING");
@@ -240,20 +232,24 @@ export function App() {
                     ? { ...entry, content: formatThinkingBlock(aggregateLogs), pending: hasIncompleteTasks(result?.blueprint) }
                     : entry
                 );
-                const existingIds = new Set(withoutThinking.map((entry) => entry.id));
-                const nextMessages = assistantMessages.filter((entry) => !existingIds.has(entry.id));
-                return [...withoutThinking, ...nextMessages];
+                return withoutThinking;
               });
               continuePlan = Boolean(hasIncompleteTasks(result.blueprint));
             } while (continuePlan);
 
-            setTranscript((current) =>
-              current.map((entry) =>
+            const finalMessage = selectVisibleAssistantResponse(result, aggregateLogs);
+            setTranscript((current) => [
+              ...current.map((entry) =>
                 entry.id === thinkingId
                   ? { ...entry, content: formatThinkingBlock(aggregateLogs), pending: false }
                   : entry
-              )
-            );
+              ),
+              {
+                id: `assistant-${Date.now()}`,
+                role: "assistant",
+                content: finalMessage,
+              },
+            ]);
             setRateLimitInfo(null);
           } catch (error) {
             const parsedRateLimit = parseRateLimitError(error.message);
@@ -412,4 +408,36 @@ function formatTimestamp(timestamp) {
 
 function hasIncompleteTasks(blueprint) {
   return Boolean(blueprint?.tasks?.some((task) => !task.is_completed));
+}
+
+function selectVisibleAssistantResponse(result, aggregateLogs) {
+  if (!result?.blueprint) {
+    return result?.final_response || "No assistant response returned.";
+  }
+
+  const completedTasks = result.blueprint.tasks?.filter((task) => task.is_completed) || [];
+  const verificationLines = aggregateLogs
+    .filter((entry) => entry.source === "system" && String(entry.message).startsWith("Verification "))
+    .map((entry) => `- ${entry.message}`);
+
+  const sections = [];
+  sections.push("Completed execution plan:");
+  sections.push(...completedTasks.map((task) => `- [x] ${task.description}`));
+
+  if (verificationLines.length) {
+    sections.push("");
+    sections.push("Verification:");
+    sections.push(...verificationLines);
+  }
+
+  if (!result.blueprint.verification_passed) {
+    sections.push("");
+    sections.push("Some verification checks still need attention.");
+  }
+
+  if (!completedTasks.length && result.final_response) {
+    return result.final_response;
+  }
+
+  return sections.join("\n");
 }
