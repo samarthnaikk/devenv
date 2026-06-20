@@ -7,6 +7,7 @@ export function TerminalPanel({
   prompt,
   blueprint,
   runtimeState,
+  showThinking,
   onPromptChange,
   onSubmit,
   isRunning,
@@ -47,7 +48,11 @@ export function TerminalPanel({
       ),
       React.createElement("div", {
         className: "bubble-content markdown-body",
-        dangerouslySetInnerHTML: { __html: renderMarkdown(item.content) },
+        dangerouslySetInnerHTML: {
+          __html: renderMarkdown(
+            item.role === "thinking" && !showThinking ? summarizeThinkingContent(item.content, item.pending) : item.content
+          ),
+        },
       })
     )
   );
@@ -109,4 +114,22 @@ export function TerminalPanel({
       )
     )
   );
+}
+
+function summarizeThinkingContent(content, pending) {
+  const text = String(content || "");
+  const lowered = text.toLowerCase();
+  if (lowered.includes("retrying in")) {
+    const retryLine = text
+      .split("\n")
+      .find((line) => line.toLowerCase().includes("retrying in"));
+    return retryLine ? retryLine.replace(/^ERROR\s+/, "") : "Retrying shortly...";
+  }
+  if (lowered.includes("tool requested")) {
+    return pending ? "Calling tools..." : "Tool call completed.";
+  }
+  if (lowered.includes("planning response") || lowered.includes("state: planning")) {
+    return pending ? "Planning next step..." : "Planning completed.";
+  }
+  return pending ? "Thinking..." : "Completed.";
 }

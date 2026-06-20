@@ -91,6 +91,34 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertFalse(blueprint.tasks[0].is_completed)
         self.assertTrue(blueprint.tasks[2].is_completed)
 
+    def test_parse_markdown_to_blueprint_extracts_step_sections_without_swallowing_code(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            blueprint = kernel._parse_markdown_to_blueprint(
+                "\n".join(
+                    [
+                        "To complete the frontend:",
+                        "Step 1: HTML Structure",
+                        "Create the basic HTML structure for the calendar.",
+                        "```html",
+                        "<div>ignored code</div>",
+                        "```",
+                        "### Step 2: CSS Styling",
+                        "Add CSS to make the calendar visually appealing.",
+                        "```css",
+                        ".calendar {}",
+                        "```",
+                        "Step 3: JavaScript Functionality",
+                        "Add JavaScript to render days and handle navigation.",
+                    ]
+                )
+            )
+
+        self.assertEqual(len(blueprint.tasks), 3)
+        self.assertEqual(blueprint.tasks[0].description, "HTML Structure: Create the basic HTML structure for the calendar.")
+        self.assertEqual(blueprint.tasks[1].description, "CSS Styling: Add CSS to make the calendar visually appealing.")
+        self.assertEqual(blueprint.tasks[2].description, "JavaScript Functionality: Add JavaScript to render days and handle navigation.")
+
     def test_planning_blocks_mutation_tool_calls_until_a_blueprint_exists(self) -> None:
         ai = FakeAI(
             [

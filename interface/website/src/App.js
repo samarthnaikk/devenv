@@ -34,6 +34,7 @@ export function App() {
   const [rateLimitInfo, setRateLimitInfo] = React.useState(null);
   const [clock, setClock] = React.useState(Date.now());
   const [planModeEnabled, setPlanModeEnabled] = React.useState(false);
+  const [showThinking, setShowThinking] = React.useState(false);
   const dragStateRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -119,6 +120,8 @@ export function App() {
       contextBudget,
       planModeEnabled,
       onPlanModeChange: setPlanModeEnabled,
+      showThinking,
+      onShowThinkingChange: setShowThinking,
     }),
     React.createElement(
       "main",
@@ -183,6 +186,7 @@ export function App() {
         prompt,
         blueprint,
         runtimeState,
+        showThinking,
         onPromptChange: setPrompt,
         isRunning,
         isCoolingDown: Boolean(rateLimitInfo && rateLimitInfo.resetAt > clock),

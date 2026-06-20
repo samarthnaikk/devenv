@@ -584,10 +584,52 @@ class DevenvKernel:
             )
 
         if not tasks:
+            tasks = self._parse_step_sections(markdown_text)
+
+        if not tasks:
             fallback = markdown_text.strip() or "Handle the user request."
             tasks.append(CheckpointTask(task_id=1, description=fallback))
 
         return ExecutionBlueprint(raw_plan_markdown=markdown_text, tasks=tasks)
+
+    def _parse_step_sections(self, markdown_text: str) -> list[CheckpointTask]:
+        step_heading = re.compile(r"^\s*(?:#{1,6}\s*)?step\s+(?P<number>\d+)\s*:\s*(?P<title>.+?)\s*$", re.IGNORECASE)
+        tasks: list[CheckpointTask] = []
+        current_title: str | None = None
+        detail_lines: list[str] = []
+        in_code_block = False
+
+        def flush() -> None:
+            nonlocal current_title, detail_lines
+            if current_title is None:
+                return
+            description = current_title.strip()
+            detail = _summarize_step_detail(detail_lines)
+            if detail:
+                description = f"{description}: {detail}"
+            tasks.append(CheckpointTask(task_id=len(tasks) + 1, description=description))
+            current_title = None
+            detail_lines = []
+
+        for raw_line in markdown_text.splitlines():
+            line = raw_line.rstrip()
+            if line.strip().startswith("```"):
+                in_code_block = not in_code_block
+                continue
+            if in_code_block:
+                continue
+
+            match = step_heading.match(line)
+            if match:
+                flush()
+                current_title = match.group("title").strip()
+                continue
+
+            if current_title is not None:
+                detail_lines.append(line)
+
+        flush()
+        return tasks
 
     def _resolve_execution_tool_scope(self, user_prompt: str, task_description: str) -> list[str]:
         text = f"{user_prompt} {task_description}".lower()
@@ -1216,3 +1258,24 @@ def _next_incomplete_task_index(blueprint: ExecutionBlueprint) -> int | None:
         if not task.is_completed:
             return index
     return None
+
+
+def _summarize_step_detail(lines: list[str]) -> str:
+    cleaned: list[str] = []
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            if cleaned:
+                break
+            continue
+        if line.lower() in {"html", "css", "javascript", "js"}:
+            continue
+        if line.startswith("<") or line.startswith("{") or line.startswith("const ") or line.startswith("function "):
+            break
+        cleaned.append(re.sub(r"\s+", " ", line))
+        if len(" ".join(cleaned)) >= 140:
+            break
+
+    summary = " ".join(cleaned).strip()
+    summary = re.sub(r"[`*_#]+", "", summary)
+    return summary[:160].rstrip(" :;,-")
