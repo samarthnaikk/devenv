@@ -11,6 +11,7 @@ from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.memory.vector_index import InMemoryVectorIndex
 from core.runtime import DevenvKernel
+from core.runtime.kernel import _summarize_directory_listing
 from core.runtime.local_router import LocalRouteDecision
 from core.tools.list_directory import ListDirectoryTool
 from core.tools.read_file import ReadFileTool
@@ -249,11 +250,63 @@ class DevenvKernelTest(unittest.TestCase):
                 },
             )()
             kernel.register_tool(ListDirectoryTool())
-            result = kernel.execute_turn("how does rvidia work?")
+            result = kernel.execute_turn("tell me about rvidia")
 
         self.assertIn("I inspected", result.final_response)
         self.assertEqual(len(result.steps), 1)
         self.assertEqual(result.steps[0].tool_name, "list_directory")
+
+    def test_local_knowledge_route_defers_code_level_question_without_memory_answer(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="GetGit decides what content to send by chunking and retrieval.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 5},
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            getgit_path = Path(tempdir) / "getgit"
+            getgit_path.mkdir()
+            (getgit_path / "core.py").write_text("print('core')", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = type(
+                "Router",
+                (),
+                {
+                    "decide": lambda self, prompt: LocalRouteDecision(
+                        use_local_knowledge=True,
+                        confidence=0.7,
+                        knowledge_score=0.8,
+                        remote_score=0.1,
+                        reason="test",
+                    )
+                },
+            )()
+            kernel.register_tool(ListDirectoryTool())
+            result = kernel.execute_turn("how does getgit decide what content to send to ai?")
+
+        self.assertEqual(result.final_response, "GetGit decides what content to send by chunking and retrieval.")
+        self.assertEqual(len(ai.chat_calls), 1)
+        self.assertEqual(result.steps, [])
+
+    def test_summarize_directory_listing_parses_structured_payload_without_leaking_json(self) -> None:
+        summary = _summarize_directory_listing(
+            "/tmp/getgit",
+            'list_directory completed for /tmp/getgit in recursive mode\n'
+            '{"path":"/tmp/getgit","mode":"recursive","entries":['
+            '{"relative_path":"rag","is_dir":true},'
+            '{"relative_path":"core.py","is_dir":false},'
+            '{"relative_path":"templates/index.html","is_dir":false}'
+            "]}",
+        )
+
+        self.assertIn("rag, core.py, templates/index.html", summary)
+        self.assertNotIn('{"relative_path"', summary)
 
     def test_repair_directory_path_fixes_missing_inline_guess(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

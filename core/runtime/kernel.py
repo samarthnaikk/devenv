@@ -339,6 +339,10 @@ class DevenvKernel:
             ai_logs.append("Local knowledge answer assembled from memory")
             return memory_answer, True
 
+        if not self._can_answer_from_structure(user_prompt):
+            ai_logs.append("Local knowledge mode deferred because the question needs code-level inspection")
+            return None, False
+
         candidate_path = self._resolve_workspace_candidate(user_prompt)
         if candidate_path is None:
             ai_logs.append("Local knowledge mode found no strong memory or workspace candidate")
@@ -825,6 +829,31 @@ class DevenvKernel:
                         return str(entry)
         return self.workspace_path if entries else None
 
+    def _can_answer_from_structure(self, user_prompt: str) -> bool:
+        lowered = user_prompt.lower()
+        structure_queries = (
+            "what is in",
+            "show me",
+            "list",
+            "tell me about",
+            "what folders",
+            "what files",
+            "what's in",
+        )
+        deep_queries = (
+            "how does",
+            "how do",
+            "why does",
+            "decide what",
+            "what content",
+            "what does it send",
+            "architecture",
+            "backend work",
+        )
+        if any(phrase in lowered for phrase in deep_queries):
+            return False
+        return any(phrase in lowered for phrase in structure_queries)
+
     def _execute_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
         logger.info("Intercepted tool call: tool=%s arguments=%s", tool_call.tool_name, tool_call.arguments)
         unsafe_argument = self.sandbox.find_unsafe_argument(tool_call.arguments)
@@ -1246,13 +1275,25 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
 
 
 def _summarize_directory_listing(candidate_path: str, output: str) -> str:
-    lines = output.splitlines()
     relative_paths: list[str] = []
-    for line in lines:
-        if '"relative_path":' in line:
-            fragment = line.split('"relative_path":', 1)[1].strip().strip('",')
-            if fragment:
-                relative_paths.append(fragment.strip('"'))
+    payload = _extract_tool_payload_json(output)
+    entries = []
+    if isinstance(payload, dict):
+        entries = payload.get("entries") or payload.get("topology") or []
+    if isinstance(entries, list):
+        for entry in entries:
+            if isinstance(entry, dict):
+                relative_path = entry.get("relative_path")
+                if isinstance(relative_path, str) and relative_path.strip():
+                    relative_paths.append(relative_path.strip())
+
+    if not relative_paths:
+        lines = output.splitlines()
+        for line in lines:
+            if '"relative_path":' in line:
+                fragment = line.split('"relative_path":', 1)[1].strip().strip('",')
+                if fragment:
+                    relative_paths.append(fragment.strip('"'))
     unique_paths = list(dict.fromkeys(relative_paths))
     if not unique_paths:
         return f"I inspected `{candidate_path}` locally, but I didn't find enough structured file evidence to summarize it yet."
@@ -1356,3 +1397,18 @@ def _summarize_execution_note(content: str | None) -> str:
         return "Checkpoint completed via tool execution."
     summary = re.sub(r"[`*_#]+", "", summary)
     return summary[:180].rstrip(" :;,-")
+
+
+def _extract_tool_payload_json(output: str) -> dict[str, Any] | list[Any] | None:
+    if not output:
+        return None
+    brace_index = output.find("{")
+    bracket_index = output.find("[")
+    start_candidates = [index for index in (brace_index, bracket_index) if index >= 0]
+    if not start_candidates:
+        return None
+    start_index = min(start_candidates)
+    try:
+        return json.loads(output[start_index:])
+    except json.JSONDecodeError:
+        return None
