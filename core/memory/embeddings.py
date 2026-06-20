@@ -49,11 +49,10 @@ class HashingEmbedder:
         for token in tokens:
             digest = hashlib.sha256(token.encode("utf-8")).digest()
             for index in range(self.dimension):
-                values[index] += digest[index] / 255.0
+                values[index] += digest[index % len(digest)] / 255.0
 
         magnitude = math.sqrt(sum(value * value for value in values))
         if magnitude == 0.0:
             return values
 
         return [value / magnitude for value in values]
-
