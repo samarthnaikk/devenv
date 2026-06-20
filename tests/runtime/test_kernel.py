@@ -161,6 +161,41 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIsNotNone(result.blueprint)
         self.assertEqual(result.blueprint.tasks[0].description, "Create README.md")
 
+    def test_direct_turn_recovers_inline_tool_json_and_continues(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content=(
+                        "To inspect the backend, I need to list the directory.\n\n"
+                        '[{"name":"list_directory","parameters":{"path":"backend","mode":"recursive","max_depth":2}}]'
+                    ),
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 4},
+                ),
+                AIResponse(
+                    content="The backend has routes and services.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"completion_tokens": 3},
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            backend_path = Path(tempdir) / "backend"
+            backend_path.mkdir()
+            (backend_path / "routes.py").write_text("print('ok')", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            result = kernel.execute_turn("how does the backend work?")
+
+        self.assertEqual(result.final_response, "The backend has routes and services.")
+        self.assertEqual(len(result.steps), 1)
+        self.assertEqual(result.steps[0].tool_name, "list_directory")
+        self.assertIn("Recovered inline tool request: list_directory", result.ai_logs)
+
     def test_execute_turn_runs_registered_tool(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(

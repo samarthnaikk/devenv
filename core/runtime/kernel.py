@@ -44,9 +44,12 @@ EXECUTION_SYSTEM_RULE = (
     "Use tools only when necessary, and stop after completing the current checkpoint."
 )
 DIRECT_SYSTEM_RULE = (
-    "Answer the user's question directly. Use tools only if they are needed to inspect the workspace or gather evidence. "
+    "Answer the user's question directly. First use the memory context if it plausibly contains the answer. "
+    "Use tools only if workspace inspection is still needed after considering memory. "
+    "If you need a tool, emit a real function call and never print JSON tool snippets in plain text. "
     "Do not create a checklist or execution plan unless the user is asking you to make changes."
 )
+DIRECT_MEMORY_CHAR_LIMIT = 900
 
 
 class DevenvKernel:
@@ -191,7 +194,7 @@ class DevenvKernel:
         system_logs: list[str],
         max_consecutive_tools: int,
     ) -> str | None:
-        direct_memory = _trim_memory_context(memory_context, EXECUTION_MEMORY_CHAR_LIMIT)
+        direct_memory = _focus_memory_context_for_direct_answers(memory_context, DIRECT_MEMORY_CHAR_LIMIT)
         tool_scope = self._resolve_direct_tool_scope(user_prompt)
         system_logs.append(f"Direct memory chars sent: {len(direct_memory)}")
         system_logs.append(f"Direct tool scope size: {len(tool_scope)}")
@@ -211,17 +214,24 @@ class DevenvKernel:
             ai_logs.append(
                 f"Direct response: finish_reason={ai_response.finish_reason}, tool_calls={len(ai_response.tool_calls)}, total_tokens={ai_response.usage.get('total_tokens', 0)}"
             )
-            if ai_response.tool_calls:
-                tool_call = ai_response.tool_calls[0]
+            inline_tool_call = _coerce_inline_tool_call(ai_response.content, tool_scope)
+            effective_tool_calls = list(ai_response.tool_calls)
+            if inline_tool_call is not None:
+                effective_tool_calls = [inline_tool_call]
+                ai_logs.append(f"Recovered inline tool request: {inline_tool_call.tool_name}")
+                system_logs.append(f"Recovered inline tool request: {inline_tool_call.tool_name}")
+
+            if effective_tool_calls:
+                tool_call = effective_tool_calls[0]
                 tool_iterations += 1
                 if tool_iterations > max_consecutive_tools:
                     raise RuntimeError("Direct tool limit reached before the request could be completed.")
-                if len(ai_response.tool_calls) > 1:
+                if len(effective_tool_calls) > 1:
                     system_logs.append(
-                        f"Direct mode deferred {len(ai_response.tool_calls) - 1} extra tool call(s) to preserve bounded execution"
+                        f"Direct mode deferred {len(effective_tool_calls) - 1} extra tool call(s) to preserve bounded execution"
                     )
                 ai_logs.append(f"Tool requested: {tool_call.tool_name}")
-                conversation.append(_assistant_tool_call_message(ai_response, [tool_call]))
+                conversation.append(_assistant_tool_call_message(ai_response, [tool_call], content_override=ai_response.content if inline_tool_call is None else None))
                 step = self._execute_tool_call(tool_call)
                 steps.append(step)
                 system_logs.append(f"Tool step {len(steps)}: {tool_call.tool_name} success={step.success}")
@@ -638,11 +648,15 @@ class DevenvKernel:
             logger.warning("Failed to persist retrieval trace state: error=%s", exc)
 
 
-def _assistant_tool_call_message(ai_response: AIResponse, tool_calls: list[ToolCallRequest] | None = None) -> dict[str, Any]:
+def _assistant_tool_call_message(
+    ai_response: AIResponse,
+    tool_calls: list[ToolCallRequest] | None = None,
+    content_override: str | None = None,
+) -> dict[str, Any]:
     selected_tool_calls = tool_calls or list(ai_response.tool_calls)
     return {
         "role": "assistant",
-        "content": ai_response.content,
+        "content": ai_response.content if content_override is None else content_override,
         "tool_calls": [
             {
                 "id": tool_call.call_id,
@@ -720,6 +734,69 @@ def _trim_memory_context(memory_context: str, char_limit: int) -> str:
     if not lines:
         return stripped[:char_limit].rstrip()
     return "\n".join(lines).rstrip()
+
+
+def _focus_memory_context_for_direct_answers(memory_context: str, char_limit: int) -> str:
+    stripped = memory_context.strip()
+    if not stripped:
+        return ""
+
+    retrieved_header = "## Retrieved Memory"
+    header_index = stripped.find(retrieved_header)
+    if header_index >= 0:
+        focused = stripped[header_index:]
+        return _trim_memory_context(focused, char_limit)
+    return _trim_memory_context(stripped, char_limit)
+
+
+def _coerce_inline_tool_call(content: str | None, allowed_tools: list[str]) -> ToolCallRequest | None:
+    if not isinstance(content, str) or not content.strip() or not allowed_tools:
+        return None
+
+    inline_payload = _extract_json_block(content)
+    if inline_payload is None:
+        return None
+
+    candidates: list[dict[str, Any]] = []
+    if isinstance(inline_payload, dict):
+        candidates = [inline_payload]
+    elif isinstance(inline_payload, list):
+        candidates = [item for item in inline_payload if isinstance(item, dict)]
+
+    for candidate in candidates:
+        tool_name = candidate.get("name")
+        parameters = candidate.get("parameters")
+        if not isinstance(tool_name, str) or tool_name not in allowed_tools:
+            continue
+        if not isinstance(parameters, dict):
+            continue
+        return ToolCallRequest(
+            call_id=f"inline_{uuid.uuid4().hex[:10]}",
+            tool_name=tool_name,
+            arguments=parameters,
+        )
+
+    return None
+
+
+def _extract_json_block(content: str) -> dict[str, Any] | list[Any] | None:
+    stripped = content.strip()
+    candidates = [stripped]
+    for opener in ("\n[", "\n{"):
+        index = stripped.find(opener)
+        if index >= 0:
+            candidates.append(stripped[index + 1 :].strip())
+
+    for candidate in candidates:
+        if not candidate or candidate[0] not in "[{":
+            continue
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, (dict, list)):
+            return payload
+    return None
 
 
 def _set_active_task(blueprint: ExecutionBlueprint, task_index: int) -> ExecutionBlueprint:

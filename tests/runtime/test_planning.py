@@ -6,6 +6,7 @@ from typing import Any
 
 from core.ai.models import AIResponse, ToolCallRequest
 from core.runtime import DevenvKernel
+from core.runtime.kernel import _focus_memory_context_for_direct_answers
 from core.runtime.models import AgentState
 from core.tools.base import BaseTool, ToolResult
 
@@ -171,6 +172,16 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertTrue(kernel._requires_planning("make a frontend folder in calendar"))
         self.assertFalse(kernel._requires_planning("how does the rvidia backend work"))
         self.assertFalse(kernel._requires_planning("tell me about this project"))
+
+    def test_direct_memory_focus_prefers_retrieved_memory_block(self) -> None:
+        focused = _focus_memory_context_for_direct_answers(
+            "## Working Memory\n- noisy\n## Retrieved Memory\n- [episode] rvidia backend uses FastAPI",
+            120,
+        )
+
+        self.assertNotIn("## Working Memory", focused)
+        self.assertIn("## Retrieved Memory", focused)
+        self.assertIn("FastAPI", focused)
 
 
 if __name__ == "__main__":
