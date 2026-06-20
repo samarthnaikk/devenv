@@ -2,7 +2,6 @@ import React from "https://esm.sh/react@18";
 import { fetchFile, fetchFiles, fetchHealth, runTurn } from "./api.js";
 import { FilePreviewPanel } from "./components/FilePreviewPanel.js";
 import { HeaderBar } from "./components/HeaderBar.js";
-import { LogPanel } from "./components/LogPanel.js";
 import { TerminalPanel } from "./components/TerminalPanel.js";
 
 export function App() {
@@ -15,19 +14,17 @@ export function App() {
   const [prompt, setPrompt] = React.useState("Tell me about this project.");
   const [transcript, setTranscript] = React.useState([
     {
+      id: "intro",
       role: "assistant",
       content:
         "I’m connected to your workspace. Expand folders on the left, inspect files only when you want a preview, and use the center terminal to ask the runtime about the project.",
     },
   ]);
-  const [logEntries, setLogEntries] = React.useState([]);
   const [isRunning, setIsRunning] = React.useState(false);
   const [bootError, setBootError] = React.useState("");
   const [usage, setUsage] = React.useState({});
   const [healthMeta, setHealthMeta] = React.useState({ provider: "", model: "" });
-  const [leftWidth, setLeftWidth] = React.useState(320);
   const [rightWidth, setRightWidth] = React.useState(380);
-  const [leftCollapsed, setLeftCollapsed] = React.useState(false);
   const [rightCollapsed, setRightCollapsed] = React.useState(false);
   const dragStateRef = React.useRef(null);
 
@@ -40,11 +37,6 @@ export function App() {
           model: healthPayload.ai_model || "",
         });
         setTree(normalizeEntries(filePayload.entries));
-        setLogEntries([
-          createLogEntry("system", `Workspace loaded: ${healthPayload.workspace_path}`),
-          createLogEntry("system", `Available tools: ${healthPayload.tools.join(", ")}`),
-          createLogEntry("ai", "AI channel connected and waiting for prompts"),
-        ]);
       })
       .catch((error) => {
         setBootError(error.message);
@@ -60,14 +52,6 @@ export function App() {
 
       const minPaneWidth = 220;
       const maxPaneWidth = Math.max(minPaneWidth, Math.floor(window.innerWidth * 0.45));
-
-      if (dragState.side === "left") {
-        const nextWidth = clamp(event.clientX, minPaneWidth, maxPaneWidth);
-        setLeftCollapsed(false);
-        setLeftWidth(nextWidth);
-        return;
-      }
-
       const nextWidth = clamp(window.innerWidth - event.clientX, minPaneWidth, maxPaneWidth);
       setRightCollapsed(false);
       setRightWidth(nextWidth);
@@ -95,8 +79,6 @@ export function App() {
   }
 
   const gridTemplateColumns = [
-    leftCollapsed ? "0px" : `${leftWidth}px`,
-    "14px",
     "minmax(0, 1fr)",
     "14px",
     rightCollapsed ? "0px" : `${rightWidth}px`,
@@ -112,39 +94,6 @@ export function App() {
       usage,
     }),
     React.createElement(
-      "aside",
-      { className: `left-column${leftCollapsed ? " collapsed" : ""}` },
-      React.createElement(LogPanel, {
-        title: "Runtime Log",
-        badge: `${logEntries.length} lines`,
-        entries: logEntries,
-        onToggleCollapse: () => setLeftCollapsed((current) => !current),
-        collapseLabel: leftCollapsed ? "Expand logs" : "Collapse logs",
-        collapseGlyph: leftCollapsed ? ">" : "<",
-      })
-    ),
-    React.createElement("div", {
-      className: `pane-resizer left${leftCollapsed ? " collapsed" : ""}`,
-      onPointerDown: () => {
-        dragStateRef.current = { side: "left" };
-        document.body.classList.add("is-resizing");
-      },
-      children: React.createElement(
-        "button",
-        {
-          className: "pane-toggle",
-          type: "button",
-          onClick: (event) => {
-            event.stopPropagation();
-            setLeftCollapsed((current) => !current);
-          },
-          "aria-label": leftCollapsed ? "Expand logs" : "Collapse logs",
-          title: leftCollapsed ? "Expand logs" : "Collapse logs",
-        },
-        leftCollapsed ? ">" : "<"
-      ),
-    }),
-    React.createElement(
       "main",
       { className: "main-column" },
       React.createElement(FilePreviewPanel, {
@@ -155,14 +104,12 @@ export function App() {
         isPreviewVisible,
         onSelectFile: (path) => {
           setSelectedPath(path);
-          setLogEntries((current) => [...current, createLogEntry("system", `Selected file: ${path}`)]);
         },
         onToggleDirectory: async (path) => {
           const next = new Set(expandedPaths);
           if (next.has(path)) {
             next.delete(path);
             setExpandedPaths(next);
-            setLogEntries((current) => [...current, createLogEntry("system", `Collapsed directory: ${path || "."}`)]);
             return;
           }
 
@@ -170,7 +117,6 @@ export function App() {
           setTree((current) => attachChildren(current, path, normalizeEntries(payload.entries)));
           next.add(path);
           setExpandedPaths(next);
-          setLogEntries((current) => [...current, createLogEntry("system", `Expanded directory: ${path || "."}`)]);
         },
         onOpenPreview: async () => {
           if (!selectedPath) {
@@ -179,11 +125,9 @@ export function App() {
           const filePayload = await fetchFile(selectedPath);
           setSelectedContent(filePayload.content);
           setIsPreviewVisible(true);
-          setLogEntries((current) => [...current, createLogEntry("system", `Preview opened: ${selectedPath}`)]);
         },
         onClose: () => {
           setIsPreviewVisible(false);
-          setLogEntries((current) => [...current, createLogEntry("system", "Preview closed")]);
         },
       })
     ),
@@ -227,23 +171,48 @@ export function App() {
 
           setIsRunning(true);
           setPrompt("");
-          setTranscript((current) => [...current, { role: "user", content: nextPrompt }]);
-          setLogEntries((current) => [...current, createLogEntry("system", `Prompt submitted: ${nextPrompt}`)]);
+          const thinkingId = `thinking-${Date.now()}`;
+          const pendingLogs = [
+            createLogEntry("system", `Prompt submitted: ${nextPrompt}`),
+            createLogEntry("ai", "Waiting for runtime response..."),
+          ];
+          setTranscript((current) => [
+            ...current,
+            { id: `user-${Date.now()}`, role: "user", content: nextPrompt },
+            { id: thinkingId, role: "thinking", content: formatThinkingBlock(pendingLogs) },
+          ]);
 
           try {
             const result = await runTurn(nextPrompt);
+            const turnLogs = buildLogEntries(result);
             setTranscript((current) => [
-              ...current,
-              { role: "assistant", content: result.final_response || "No assistant response returned." },
+              ...current.map((entry) =>
+                entry.id === thinkingId
+                  ? { ...entry, content: formatThinkingBlock(turnLogs) }
+                  : entry
+              ),
+              {
+                id: `assistant-${Date.now()}`,
+                role: "assistant",
+                content: result.final_response || "No assistant response returned.",
+              },
             ]);
             setUsage(result.total_usage || {});
-            setLogEntries((current) => [...current, ...buildLogEntries(result)]);
           } catch (error) {
             setTranscript((current) => [
-              ...current,
-              { role: "assistant", content: `Request failed: ${error.message}` },
+              ...current.map((entry) =>
+                entry.id === thinkingId
+                  ? {
+                      ...entry,
+                      content: formatThinkingBlock([
+                        createLogEntry("system", `Prompt submitted: ${nextPrompt}`),
+                        createLogEntry("error", `Request failed: ${error.message}`),
+                      ]),
+                    }
+                  : entry
+              ),
+              { id: `assistant-${Date.now()}`, role: "assistant", content: `Request failed: ${error.message}` },
             ]);
-            setLogEntries((current) => [...current, createLogEntry("system", `Request failed: ${error.message}`)]);
           } finally {
             setIsRunning(false);
           }
@@ -306,4 +275,10 @@ function createLogEntry(source, message) {
     source,
     message,
   };
+}
+
+function formatThinkingBlock(entries) {
+  return ["```text", ...entries.map((entry) => `${String(entry.source).toUpperCase()}  ${entry.message}`), "```"].join(
+    "\n"
+  );
 }
