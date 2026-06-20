@@ -111,22 +111,34 @@ textarea {
   font-size: 0.76rem;
 }
 
+.status-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 999px;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 2px;
   background: rgba(47, 122, 120, 0.08);
   border: 1px solid rgba(47, 122, 120, 0.14);
 }
 
-.status-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--success);
-  box-shadow: 0 0 12px rgba(45, 138, 99, 0.35);
+.status-label {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.status-value {
+  color: var(--text);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.78rem;
 }
 
 .sidebar-panel,

@@ -23,6 +23,8 @@ export function App() {
   const [logEntries, setLogEntries] = React.useState([]);
   const [isRunning, setIsRunning] = React.useState(false);
   const [bootError, setBootError] = React.useState("");
+  const [usage, setUsage] = React.useState({});
+  const [healthMeta, setHealthMeta] = React.useState({ provider: "", model: "" });
   const [leftWidth, setLeftWidth] = React.useState(320);
   const [rightWidth, setRightWidth] = React.useState(380);
   const [leftCollapsed, setLeftCollapsed] = React.useState(false);
@@ -33,6 +35,10 @@ export function App() {
     Promise.all([fetchHealth(), fetchFiles("")])
       .then(([healthPayload, filePayload]) => {
         setHealth(healthPayload);
+        setHealthMeta({
+          provider: healthPayload.ai_provider || "",
+          model: healthPayload.ai_model || "",
+        });
         setTree(normalizeEntries(filePayload.entries));
         setLogEntries([
           createLogEntry("system", `Workspace loaded: ${healthPayload.workspace_path}`),
@@ -101,7 +107,9 @@ export function App() {
     { className: "app-shell", style: { gridTemplateColumns } },
     React.createElement(HeaderBar, {
       workspacePath: health.workspace_path,
-      status: health.status,
+      provider: healthMeta.provider,
+      model: healthMeta.model,
+      usage,
     }),
     React.createElement(
       "aside",
@@ -228,6 +236,7 @@ export function App() {
               ...current,
               { role: "assistant", content: result.final_response || "No assistant response returned." },
             ]);
+            setUsage(result.total_usage || {});
             setLogEntries((current) => [...current, ...buildLogEntries(result)]);
           } catch (error) {
             setTranscript((current) => [
