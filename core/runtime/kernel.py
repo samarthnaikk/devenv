@@ -31,11 +31,14 @@ class DevenvKernel:
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
         load_dotenv(self.workspace_path)
         self.sandbox = PathSandbox(root_path=self.workspace_path)
-        self.memory = memory or MemoryEngine(db_path=db_path, vector_dir=vector_dir)
+        resolved_db_path, resolved_vector_dir = _resolve_memory_paths(self.workspace_path, db_path, vector_dir)
+        self.memory = memory or MemoryEngine(db_path=resolved_db_path, vector_dir=resolved_vector_dir)
         self.ai = ai or AICore()
         self.tools: dict[str, BaseTool] = {}
         self.ephemeral_history: list[dict[str, Any]] = []
         self.session_id = str(uuid.uuid4())
+        self.db_path = resolved_db_path
+        self.vector_dir = resolved_vector_dir
 
     def register_tool(self, tool: BaseTool) -> None:
         self.tools[tool.name] = tool
@@ -227,3 +230,22 @@ def _format_tool_output(output: str, data: dict[str, Any]) -> str:
 def _merge_usage(total_usage: dict[str, int], usage: dict[str, int]) -> None:
     for key, value in usage.items():
         total_usage[key] = total_usage.get(key, 0) + value
+
+
+def _resolve_memory_paths(workspace_path: str, db_path: str, vector_dir: str) -> tuple[str, str]:
+    workspace_root = Path(workspace_path)
+    state_root = workspace_root / ".devenv"
+
+    if db_path == "memory.db":
+        resolved_db_path = state_root / "memory.db"
+    else:
+        candidate_db_path = Path(db_path).expanduser()
+        resolved_db_path = candidate_db_path if candidate_db_path.is_absolute() else workspace_root / candidate_db_path
+
+    if vector_dir == "vectors":
+        resolved_vector_dir = state_root / "vectors"
+    else:
+        candidate_vector_dir = Path(vector_dir).expanduser()
+        resolved_vector_dir = candidate_vector_dir if candidate_vector_dir.is_absolute() else workspace_root / candidate_vector_dir
+
+    return str(resolved_db_path.resolve()), str(resolved_vector_dir.resolve())
