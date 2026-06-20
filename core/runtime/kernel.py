@@ -657,7 +657,7 @@ class DevenvKernel:
                 is_sandboxed_violation=False,
             )
 
-        normalized_arguments = self.sandbox.normalize_arguments(tool_call.arguments)
+        normalized_arguments = self.sandbox.normalize_arguments(self._repair_tool_arguments(tool_call))
         logger.info("Executing MCP tool: tool=%s normalized_arguments=%s", tool_call.tool_name, normalized_arguments)
         result = self.tool_client.call_tool(tool_call.tool_name, normalized_arguments)
         logger.info("MCP tool finished: tool=%s success=%s is_error=%s", tool_call.tool_name, result.success, result.is_error)
@@ -669,6 +669,45 @@ class DevenvKernel:
             success=result.success and not result.is_error,
             is_sandboxed_violation=False,
         )
+
+    def _repair_tool_arguments(self, tool_call: ToolCallRequest) -> dict[str, Any]:
+        arguments = dict(tool_call.arguments)
+        if "max_depth" in arguments and isinstance(arguments["max_depth"], str) and arguments["max_depth"].isdigit():
+            arguments["max_depth"] = int(arguments["max_depth"])
+
+        if tool_call.tool_name == "list_directory":
+            path_value = arguments.get("path")
+            if isinstance(path_value, str):
+                repaired_path = self._repair_directory_path(path_value)
+                if repaired_path is not None:
+                    arguments["path"] = repaired_path
+
+        return arguments
+
+    def _repair_directory_path(self, requested_path: str) -> str | None:
+        candidate = Path(requested_path).expanduser()
+        if not candidate.is_absolute():
+            candidate = Path(self.workspace_path) / candidate
+
+        if candidate.exists():
+            return str(candidate.resolve())
+
+        requested_name = candidate.name.lower()
+        try:
+            directories = [entry for entry in Path(self.workspace_path).iterdir() if entry.is_dir()]
+        except OSError:
+            return None
+
+        names = [entry.name.lower() for entry in directories]
+        matches = get_close_matches(requested_name, names, n=1, cutoff=0.5)
+        if matches:
+            matched_name = matches[0]
+            for entry in directories:
+                if entry.name.lower() == matched_name:
+                    logger.info("Repaired missing directory path: requested=%s repaired=%s", requested_path, entry)
+                    return str(entry.resolve())
+
+        return None
 
     def _finalize_turn(self, user_prompt: str, final_response: str, conversation: list[dict[str, Any]]) -> None:
         self.ephemeral_history = _compact_conversation(conversation, max_turns=MAX_EPHEMERAL_TURNS)

@@ -34,7 +34,7 @@ class LocalRouteDecision:
 
 
 class LocalIntentRouter:
-    def __init__(self, threshold: float = 0.58) -> None:
+    def __init__(self, threshold: float = 0.44) -> None:
         self.threshold = threshold
 
     def decide(self, prompt: str) -> LocalRouteDecision:
@@ -53,7 +53,14 @@ class LocalIntentRouter:
             knowledge_score = max(_dot(prompt_embedding, candidate) for candidate in knowledge_embeddings)
             remote_score = max(_dot(prompt_embedding, candidate) for candidate in remote_embeddings)
             confidence = knowledge_score - remote_score
-            use_local = knowledge_score >= self.threshold and confidence >= 0.04
+            lowered = text.lower()
+            knowledge_hint = any(
+                phrase in lowered
+                for phrase in ("how does", "how do", "explain", "tell me about", "what do you remember", "how does")
+            )
+            use_local = (knowledge_score >= self.threshold and confidence >= 0.04) or (
+                knowledge_hint and confidence >= 0.02
+            )
             reason = "embedding classifier"
             return LocalRouteDecision(use_local, confidence, knowledge_score, remote_score, reason)
         except Exception as exc:

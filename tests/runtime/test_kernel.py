@@ -255,6 +255,15 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(len(result.steps), 1)
         self.assertEqual(result.steps[0].tool_name, "list_directory")
 
+    def test_repair_directory_path_fixes_missing_inline_guess(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            (Path(tempdir) / "rvidia").mkdir()
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+            repaired = kernel._repair_directory_path(f"{tempdir}/rvidia1a")
+
+        self.assertTrue(repaired.endswith("rvidia"))
+
     def test_execute_turn_runs_registered_tool(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
