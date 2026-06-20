@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 from .consolidation import ConsolidationService
@@ -140,9 +141,10 @@ class MemoryEngine(MemoryEngineInterface):
         if not summary:
             summary = "Conversation turn with empty content."
 
+        workspace_parent_id = self._ensure_workspace_node(interaction.metadata, log.timestamp)
         node = MemoryNode(
             node_id=f"episodic_{log.log_id}",
-            parent_id=None,
+            parent_id=workspace_parent_id,
             label=f"Episodic Memory {log.log_id[:8]}",
             category="episode",
             summary=summary,
@@ -152,6 +154,28 @@ class MemoryEngine(MemoryEngineInterface):
         )
         self.store.upsert_node(node)
         self.vector_index.upsert(node.node_id, summary, self.embedder.embed(summary))
+
+    def _ensure_workspace_node(self, metadata: dict[str, Any], timestamp: float) -> str | None:
+        workspace_path = str(metadata.get("workspace_path", "")).strip()
+        if not workspace_path:
+            return None
+
+        workspace_name = Path(workspace_path).name or "workspace"
+        node_id = f"workspace::{workspace_name.lower().replace(' ', '_')}"
+        if self.store.get_node(node_id) is None:
+            node = MemoryNode(
+                node_id=node_id,
+                parent_id=None,
+                label=f"Workspace: {workspace_name}",
+                category="workspace",
+                summary=f"Persistent memory for workspace {workspace_path}",
+                created_at=timestamp,
+                last_accessed=timestamp,
+                access_count=0,
+            )
+            self.store.upsert_node(node)
+            self.vector_index.upsert(node.node_id, node.summary, self.embedder.embed(node.summary))
+        return node_id
 
 
 def _coerce_payload(node_data: dict[str, Any]) -> NodeUpsertPayload:

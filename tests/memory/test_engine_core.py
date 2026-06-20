@@ -52,7 +52,7 @@ class MemoryEngineCoreTest(unittest.TestCase):
             "Investigate auth bug",
             "I checked the Django middleware chain.",
             node_id="proj_rxgpt",
-            metadata={"command": "pytest"},
+            metadata={"command": "pytest", "workspace_path": self.tempdir.name},
         )
 
         logs = self.engine.store.list_logs_since(0.0)
@@ -64,6 +64,10 @@ class MemoryEngineCoreTest(unittest.TestCase):
         indexed = self.engine.store.get_node(f"episodic_{log_id}")
         self.assertIsNotNone(indexed)
         self.assertIn("Investigate auth bug", indexed.summary)
+        workspace_node_id = f"workspace::{self.tempdir.name.split('/')[-1].lower().replace(' ', '_')}"
+        self.assertEqual(indexed.parent_id, workspace_node_id)
+        workspace_node = self.engine.store.get_node(workspace_node_id)
+        self.assertIsNotNone(workspace_node)
 
     def test_update_associative_tree_refreshes_vector_summary(self) -> None:
         self.engine.update_associative_tree(
