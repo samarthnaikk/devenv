@@ -3,6 +3,7 @@ from .edit_file import EditFileTool
 from .inspect_symbols import InspectSymbolsTool
 from .list_directory import ListDirectoryTool
 from .locate_files import LocateFilesTool
+from .manage_memory import ManageMemoryTool
 from .peek_lines import PeekLinesTool
 from .read_file import ReadFileTool
 from .remove_file import RemoveFileTool
@@ -18,6 +19,7 @@ __all__ = [
     "InspectSymbolsTool",
     "ListDirectoryTool",
     "LocateFilesTool",
+    "ManageMemoryTool",
     "PeekLinesTool",
     "ReadFileTool",
     "RemoveFileTool",
