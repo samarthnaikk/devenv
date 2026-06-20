@@ -11,10 +11,10 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
-
 logger = logging.getLogger(__name__)
+ClientSession = None
+StdioServerParameters = None
+stdio_client = None
 
 
 @dataclass(frozen=True)
@@ -36,7 +36,8 @@ class MCPToolClient:
     ) -> None:
         root = Path(__file__).resolve().parents[2]
         command = sys.executable
-        self.server_params = StdioServerParameters(
+        self._mcp = _load_mcp_dependencies()
+        self.server_params = self._mcp["StdioServerParameters"](
             command=command,
             args=[
                 "-m",
@@ -58,7 +59,7 @@ class MCPToolClient:
         self._thread.start()
         self._started = False
         self._closed = False
-        self._session: ClientSession | None = None
+        self._session = None
         self._remote_tools: dict[str, dict[str, Any]] = {}
         self._ready = threading.Event()
         self._start_error: BaseException | None = None
@@ -98,8 +99,8 @@ class MCPToolClient:
 
     async def _session_runner(self) -> None:
         try:
-            async with stdio_client(self.server_params) as (read_stream, write_stream):
-                async with ClientSession(read_stream, write_stream) as session:
+            async with self._mcp["stdio_client"](self.server_params) as (read_stream, write_stream):
+                async with self._mcp["ClientSession"](read_stream, write_stream) as session:
                     self._session = session
                     await self._session.initialize()
                     tool_result = await self._session.list_tools()
@@ -166,3 +167,21 @@ def _decode_tool_payload(content: list[Any]) -> dict[str, Any]:
         dumped = first.model_dump()
         return {"success": True, "output": json.dumps(dumped, sort_keys=True), "data": {}}
     return {"success": True, "output": str(first), "data": {}}
+
+
+def _load_mcp_dependencies() -> dict[str, Any]:
+    try:
+        from mcp import ClientSession as imported_client_session, StdioServerParameters as imported_server_parameters
+        from mcp.client.stdio import stdio_client as imported_stdio_client
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "The optional 'mcp' dependency is not installed. Install project dependencies to enable the MCP runtime."
+        ) from exc
+    globals()["ClientSession"] = imported_client_session
+    globals()["StdioServerParameters"] = imported_server_parameters
+    globals()["stdio_client"] = imported_stdio_client
+    return {
+        "ClientSession": imported_client_session,
+        "StdioServerParameters": imported_server_parameters,
+        "stdio_client": imported_stdio_client,
+    }

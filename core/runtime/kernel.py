@@ -16,9 +16,21 @@ from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.tools.base import BaseTool
 
-from .models import AgentState, CheckpointTask, ExecutionBlueprint, PlanningMode, RuntimeTurnResult, ToolExecutionStep
+from .context_stage import build_context_packet
 from .local_router import LocalIntentRouter
-from .mcp_client import MCPToolClient
+from .local_model import load_local_small_model
+from .metadata_stage import build_checkpoint_metadata
+from .models import (
+    AgentState,
+    CheckpointTask,
+    ExecutionBlueprint,
+    PlanningMode,
+    ProcessStage,
+    RuntimeTurnResult,
+    StageTrace,
+    ToolExecutionStep,
+    VerificationResult,
+)
 from .sandbox import PathSandbox
 from .state import resolve_memory_paths
 
@@ -63,7 +75,7 @@ class DevenvKernel:
         *,
         memory: MemoryEngine | Any | None = None,
         ai: AICore | Any | None = None,
-        tool_client: MCPToolClient | Any | None = None,
+        tool_client: Any | None = None,
     ):
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
         load_dotenv(self.workspace_path)
@@ -80,11 +92,8 @@ class DevenvKernel:
         self.active_blueprint: ExecutionBlueprint | None = None
         self.active_plan_prompt: str | None = None
         self.local_router = LocalIntentRouter()
-        self.tool_client = tool_client or MCPToolClient(
-            workspace_path=self.workspace_path,
-            db_path=db_path,
-            vector_dir=vector_dir,
-        )
+        self.local_small_model = load_local_small_model()
+        self.tool_client = tool_client or self._build_tool_client(db_path=db_path, vector_dir=vector_dir)
 
     def register_tool(self, tool: BaseTool) -> None:
         self.tools[tool.name] = tool
@@ -106,6 +115,9 @@ class DevenvKernel:
         logger.info("Starting runtime turn: workspace=%s prompt=%s", self.workspace_path, user_prompt)
         ai_logs = [f"Queued prompt: {user_prompt}"]
         system_logs = [f"Workspace: {self.workspace_path}"]
+        stage_traces: list[StageTrace] = []
+        verification_results: list[VerificationResult] = []
+        turn_metadata: dict[str, Any] = {}
         conversation = list(self.ephemeral_history)
         conversation.append({"role": "user", "content": user_prompt})
 
@@ -118,99 +130,232 @@ class DevenvKernel:
         system_logs.append(f"Local only: {local_only}")
         steps: list[ToolExecutionStep] = []
         total_usage: dict[str, int] = {}
-        should_plan = self._should_plan(user_prompt, planning_mode)
-        if not should_plan:
-            if local_only:
-                self.state = AgentState.EXECUTING
-                system_logs.append(f"State: {self.state.name}")
-                direct_response = self._run_local_only_direct_turn(
-                    user_prompt=user_prompt,
-                    memory_context=memory_context,
-                    steps=steps,
-                    ai_logs=ai_logs,
-                    system_logs=system_logs,
-                )
-                if direct_response:
-                    conversation.append({"role": "assistant", "content": direct_response})
-                logger.info("Finishing local-only runtime turn: final_response_present=%s total_steps=%s", direct_response is not None, len(steps))
-                persist_memory = not (direct_response or "").startswith("I inspected `")
-                self._finalize_turn(user_prompt, direct_response or "", conversation, persist_memory=persist_memory)
-                system_logs.append("Turn completed and stored in memory")
-                return RuntimeTurnResult(
-                    final_response=direct_response,
-                    steps=steps,
-                    total_usage=total_usage,
-                    ai_logs=ai_logs,
-                    system_logs=system_logs,
-                    state=self.state.name,
-                    blueprint=None,
-                )
-            route_decision = self.local_router.decide(user_prompt)
-            system_logs.append(
-                f"Local route decision: use_local={route_decision.use_local_knowledge} confidence={route_decision.confidence:.3f}"
-            )
-            if route_decision.use_local_knowledge:
-                self.state = AgentState.EXECUTING
-                system_logs.append(f"State: {self.state.name}")
-                local_response, handled_locally = self._run_local_knowledge_turn(
-                    user_prompt=user_prompt,
-                    memory_context=memory_context,
-                    steps=steps,
-                    ai_logs=ai_logs,
-                    system_logs=system_logs,
-                )
-                if handled_locally:
-                    if local_response:
-                        conversation.append({"role": "assistant", "content": local_response})
-                    logger.info("Finishing local runtime turn: final_response_present=%s total_steps=%s", local_response is not None, len(steps))
-                    persist_memory = not (local_response or "").startswith("I inspected `")
-                    self._finalize_turn(user_prompt, local_response or "", conversation, persist_memory=persist_memory)
-                    system_logs.append("Turn completed and stored in memory")
-                    return RuntimeTurnResult(
-                        final_response=local_response,
-                        steps=steps,
-                        total_usage=total_usage,
-                        ai_logs=ai_logs,
-                        system_logs=system_logs,
-                        state=self.state.name,
-                        blueprint=None,
-                    )
-                system_logs.append("Local knowledge path deferred to direct AI mode")
+        self.state = AgentState.PLANNING
+        system_logs.append(f"State: {self.state.name}")
+        blueprint, planning_conversation, creation_trace = self._checkpoint_creation_stage(
+            user_prompt=user_prompt,
+            memory_context=memory_context,
+            continue_plan=continue_plan,
+            local_only=local_only,
+            planning_mode=planning_mode,
+            steps=steps,
+            total_usage=total_usage,
+            ai_logs=ai_logs,
+            system_logs=system_logs,
+            max_consecutive_tools=max_consecutive_tools,
+        )
+        stage_traces.append(creation_trace)
+        self.active_blueprint = blueprint
+        self.active_plan_prompt = user_prompt
+        turn_metadata["original_objective"] = blueprint.original_objective or user_prompt
 
-            self.state = AgentState.EXECUTING
-            system_logs.append(f"State: {self.state.name}")
-            direct_response = self._run_direct_turn(
+        active_index = _next_incomplete_task_index(blueprint)
+        if active_index is None:
+            self.active_plan_prompt = None
+            self._finalize_turn(user_prompt, "", conversation, metadata=turn_metadata)
+            return RuntimeTurnResult(
+                final_response="Nothing left to execute.",
+                steps=steps,
+                total_usage=total_usage,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                stage_traces=stage_traces,
+                verification_results=verification_results,
+                metadata=turn_metadata,
+                state=self.state.name,
+                blueprint=self.active_blueprint,
+            )
+
+        checkpoint = blueprint.tasks[active_index]
+        self.active_blueprint = _set_active_task(blueprint, active_index)
+        context_packet, context_trace = build_context_packet(
+            checkpoint_id=checkpoint.task_id,
+            checkpoint_objective=checkpoint.objective or checkpoint.description,
+            memory_context=memory_context,
+            local_model=self.local_small_model,
+            tool_names=self._resolve_execution_tool_scope(user_prompt, checkpoint.description),
+            execute_tool_call=self._execute_tool_call,
+            char_limit=self._context_char_limit_for_checkpoint(checkpoint),
+        )
+        stage_traces.append(context_trace)
+        system_logs.append(f"Context packet chars: {len(context_packet.distilled_context)}")
+
+        try:
+            final_response, updated_blueprint, checkpoint_steps = self._brain_stage(
                 user_prompt=user_prompt,
-                memory_context=memory_context,
+                checkpoint=checkpoint,
+                blueprint=self.active_blueprint,
+                planning_conversation=planning_conversation,
+                context_packet=context_packet.as_prompt_block(),
+                raw_memory_context=memory_context,
                 steps=steps,
                 total_usage=total_usage,
                 ai_logs=ai_logs,
                 system_logs=system_logs,
                 max_consecutive_tools=max_consecutive_tools,
+                local_only=local_only,
             )
-            if direct_response:
-                conversation.append({"role": "assistant", "content": direct_response})
-            logger.info("Finishing direct runtime turn: final_response_present=%s total_steps=%s", direct_response is not None, len(steps))
-            self._finalize_turn(user_prompt, direct_response or "", conversation)
-            system_logs.append("Turn completed and stored in memory")
+        except RuntimeError as exc:
+            system_logs.append(f"Execution failed: {exc}")
+            split_blueprint = self._split_active_checkpoint(self.active_blueprint, active_index, reason=str(exc))
+            if split_blueprint is not None:
+                self.active_blueprint = split_blueprint
+                stage_traces.append(
+                    StageTrace(
+                        stage=ProcessStage.CHECKPOINT_CREATION.value,
+                        checkpoint_id=checkpoint.task_id,
+                        success=True,
+                        summary="Split oversized checkpoint into child checkpoints",
+                        logs=[str(exc)],
+                        payload={"reason": str(exc), "child_count": len(split_blueprint.tasks)},
+                    )
+                )
+            self._finalize_turn(user_prompt, "", conversation, metadata=turn_metadata)
             return RuntimeTurnResult(
-                final_response=direct_response,
+                final_response=None,
                 steps=steps,
                 total_usage=total_usage,
                 ai_logs=ai_logs,
                 system_logs=system_logs,
+                stage_traces=stage_traces,
+                verification_results=verification_results,
+                metadata=turn_metadata,
                 state=self.state.name,
-                blueprint=None,
+                blueprint=self.active_blueprint,
+                error_message=str(exc),
             )
 
-        self.state = AgentState.PLANNING
-        system_logs.append(f"State: {self.state.name}")
-        if continue_plan and self._can_continue_active_plan(user_prompt):
-            blueprint = self.active_blueprint or self._parse_markdown_to_blueprint(user_prompt)
-            system_logs.append("Resuming existing execution plan")
-            planning_conversation = []
+        self.active_blueprint = updated_blueprint
+        stage_traces.append(
+            StageTrace(
+                stage=ProcessStage.BRAIN.value,
+                checkpoint_id=checkpoint.task_id,
+                success=True,
+                summary="Brain stage completed checkpoint execution",
+                logs=[f"Checkpoint {checkpoint.task_id} executed"],
+                payload={"response_chars": len(final_response or ""), "step_count": len(checkpoint_steps)},
+            )
+        )
+
+        metadata_record, metadata_trace = build_checkpoint_metadata(
+            original_objective=user_prompt,
+            checkpoint=self.active_blueprint.tasks[min(active_index, len(self.active_blueprint.tasks) - 1)],
+            checkpoint_steps=checkpoint_steps,
+            completion_summary=_summarize_execution_note(final_response),
+        )
+        turn_metadata.update(metadata_record.to_dict())
+        stage_traces.append(metadata_trace)
+
+        verification_ok, verification_trace, verification_batch = self._verify_active_checkpoint(
+            checkpoint=self.active_blueprint.tasks[min(active_index, len(self.active_blueprint.tasks) - 1)],
+            final_response=final_response or "",
+            checkpoint_steps=checkpoint_steps,
+            system_logs=system_logs,
+        )
+        stage_traces.append(verification_trace)
+        verification_results.extend(verification_batch)
+
+        if final_response:
+            conversation.append({"role": "assistant", "content": final_response})
+
+        if not verification_ok:
+            self.state = AgentState.PLANNING
+            self.active_blueprint = self._append_repair_checkpoint(
+                self.active_blueprint,
+                checkpoint_id=checkpoint.task_id,
+                reason=verification_trace.summary or "Verification failed",
+            )
+            system_logs.append("Verification failed; appended repair checkpoint")
+            self._finalize_turn(
+                user_prompt,
+                final_response or "",
+                conversation,
+                persist_memory=not (final_response or "").startswith("I inspected `"),
+                metadata=turn_metadata,
+            )
+            return RuntimeTurnResult(
+                final_response=final_response,
+                steps=steps,
+                total_usage=total_usage,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                stage_traces=stage_traces,
+                verification_results=verification_results,
+                metadata=turn_metadata,
+                state=self.state.name,
+                blueprint=self.active_blueprint,
+            )
+
+        if _next_incomplete_task_index(self.active_blueprint) is None:
+            self.state = AgentState.VERIFYING
+            self.active_blueprint = _mark_blueprint_verified(self.active_blueprint, True)
+            self.active_plan_prompt = None
         else:
-            self.active_plan_prompt = user_prompt
+            self.state = AgentState.EXECUTING
+
+        logger.info("Finishing runtime turn: final_response_present=%s total_steps=%s", final_response is not None, len(steps))
+        self._finalize_turn(
+            user_prompt,
+            final_response or "",
+            conversation,
+            persist_memory=not (final_response or "").startswith("I inspected `"),
+            metadata=turn_metadata,
+        )
+        system_logs.append("Turn completed and stored in memory")
+        return RuntimeTurnResult(
+            final_response=final_response,
+            steps=steps,
+            total_usage=total_usage,
+            ai_logs=ai_logs,
+            system_logs=system_logs,
+            stage_traces=stage_traces,
+            verification_results=verification_results,
+            metadata=turn_metadata,
+            state=self.state.name,
+            blueprint=self.active_blueprint,
+        )
+
+    def _build_tool_client(self, *, db_path: str, vector_dir: str):
+        try:
+            from .mcp_client import MCPToolClient
+
+            return MCPToolClient(
+                workspace_path=self.workspace_path,
+                db_path=db_path,
+                vector_dir=vector_dir,
+            )
+        except RuntimeError as exc:
+            logger.warning("Using in-process tool client fallback: error=%s", exc)
+            return _InProcessToolClient(self.tools)
+
+    def _checkpoint_creation_stage(
+        self,
+        *,
+        user_prompt: str,
+        memory_context: str,
+        continue_plan: bool,
+        local_only: bool,
+        planning_mode: PlanningMode,
+        steps: list[ToolExecutionStep],
+        total_usage: dict[str, int],
+        ai_logs: list[str],
+        system_logs: list[str],
+        max_consecutive_tools: int,
+    ) -> tuple[ExecutionBlueprint, list[dict[str, Any]], StageTrace]:
+        if continue_plan and self._can_continue_active_plan(user_prompt):
+            blueprint = self.active_blueprint or self._build_direct_blueprint(user_prompt)
+            trace = StageTrace(
+                stage=ProcessStage.CHECKPOINT_CREATION.value,
+                success=True,
+                summary="Resumed existing checkpoint plan",
+                logs=[f"Checkpoint count: {len(blueprint.tasks)}"],
+                payload={"continued": True},
+            )
+            return blueprint, [], trace
+
+        planning_conversation: list[dict[str, Any]] = []
+        should_plan = self._should_plan(user_prompt, planning_mode)
+        if should_plan:
             if local_only:
                 planning_response, planning_conversation = self._run_local_only_planning_phase(
                     user_prompt=user_prompt,
@@ -228,87 +373,336 @@ class DevenvKernel:
                     system_logs=system_logs,
                     max_consecutive_tools=max_consecutive_tools,
                 )
-            blueprint = self._parse_markdown_to_blueprint(planning_response or user_prompt)
-            self.active_blueprint = blueprint
-            system_logs.append(f"Plan checkpoints: {len(blueprint.tasks)}")
+            blueprint = self._parse_markdown_to_blueprint(planning_response or user_prompt, original_objective=user_prompt)
+        else:
+            blueprint = self._build_direct_blueprint(user_prompt)
 
-        try:
-            if local_only:
-                execution_final_response, plan_complete = self._run_local_only_execution_phase(
-                    user_prompt=user_prompt,
-                    memory_context=memory_context,
-                    blueprint=blueprint,
-                    steps=steps,
-                    ai_logs=ai_logs,
-                    system_logs=system_logs,
-                )
-            else:
-                execution_final_response, plan_complete = self._run_execution_phase(
-                    user_prompt=user_prompt,
-                    memory_context=memory_context,
-                    blueprint=blueprint,
-                    conversation=planning_conversation,
-                    steps=steps,
-                    total_usage=total_usage,
-                    ai_logs=ai_logs,
-                    system_logs=system_logs,
-                    max_consecutive_tools=max_consecutive_tools,
-                    planning_mode=planning_mode,
-                )
-        except RuntimeError as exc:
-            system_logs.append(f"Execution failed: {exc}")
-            logger.warning("Execution phase failed: error=%s", exc)
-            self._finalize_turn(user_prompt, "", conversation)
-            system_logs.append("Turn completed and stored in memory")
-            return RuntimeTurnResult(
-                final_response=None,
-                steps=steps,
-                total_usage=total_usage,
-                ai_logs=ai_logs,
-                system_logs=system_logs,
-                state=self.state.name,
-                blueprint=self.active_blueprint,
-                error_message=str(exc),
-            )
-        if execution_final_response:
-            conversation.append({"role": "assistant", "content": execution_final_response})
-
-        if not plan_complete:
-            logger.info("Checkpoint execution paused: awaiting next plan continuation")
-            self._finalize_turn(user_prompt, execution_final_response or "", conversation)
-            system_logs.append("Turn completed and stored in memory")
-            return RuntimeTurnResult(
-                final_response=execution_final_response,
-                steps=steps,
-                total_usage=total_usage,
-                ai_logs=ai_logs,
-                system_logs=system_logs,
-                state=self.state.name,
-                blueprint=self.active_blueprint,
-            )
-
-        verification_ok = self._run_verification_phase(
-            blueprint=blueprint,
-            steps=steps,
-            system_logs=system_logs,
+        trace = StageTrace(
+            stage=ProcessStage.CHECKPOINT_CREATION.value,
+            success=True,
+            summary="Created ordered checkpoint blueprint",
+            logs=[f"Checkpoint count: {len(blueprint.tasks)}", f"Mode: {'planned' if should_plan else 'direct'}"],
+            payload={"checkpoint_count": len(blueprint.tasks), "should_plan": should_plan},
         )
-        if not verification_ok:
-            self.state = AgentState.PLANNING
-            system_logs.append("Verification failed; state reset to PLANNING")
-        self.active_plan_prompt = None
+        return blueprint, planning_conversation, trace
 
-        logger.info("Finishing runtime turn: final_response_present=%s total_steps=%s", execution_final_response is not None, len(steps))
-        self._finalize_turn(user_prompt, execution_final_response or "", conversation)
-        system_logs.append("Turn completed and stored in memory")
-        return RuntimeTurnResult(
-            final_response=execution_final_response,
+    def _build_direct_blueprint(self, user_prompt: str) -> ExecutionBlueprint:
+        task = self._build_checkpoint_task(task_id=1, description=user_prompt, original_objective=user_prompt)
+        return ExecutionBlueprint(
+            raw_plan_markdown=f"- [ ] {user_prompt}",
+            original_objective=user_prompt,
+            tasks=[task],
+            active_task_pointer=0,
+            verification_passed=False,
+        )
+
+    def _build_checkpoint_task(self, *, task_id: int, description: str, original_objective: str, repair_origin_checkpoint_id: int | None = None) -> CheckpointTask:
+        target_path_hint = self._derive_scaffold_target_path(original_objective, description)
+        expected_artifact = self._infer_expected_artifact(original_objective, description, target_path_hint)
+        verification_mode = self._infer_verification_mode(expected_artifact, original_objective, description)
+        output_destination = self._infer_output_destination(expected_artifact)
+        return CheckpointTask(
+            task_id=task_id,
+            description=description,
+            objective=description,
+            target_path_hint=target_path_hint,
+            expected_artifact=expected_artifact,
+            verification_mode=verification_mode,
+            repair_origin_checkpoint_id=repair_origin_checkpoint_id,
+            status_reason=None,
+            output_destination=output_destination,
+        )
+
+    def _infer_expected_artifact(self, user_prompt: str, task_description: str, target_path_hint: str | None) -> str:
+        text = f"{user_prompt} {task_description}".lower()
+        if any(token in text for token in ("html", "css", "javascript", "frontend")):
+            return "frontend"
+        if any(token in text for token in ("create", "write", "edit", "modify", "update", "fix", "implement", "file", "folder")) or target_path_hint:
+            return "code"
+        return "chat"
+
+    def _infer_verification_mode(self, expected_artifact: str, user_prompt: str, task_description: str) -> str:
+        if expected_artifact == "frontend":
+            return "frontend"
+        if expected_artifact == "code":
+            return "code"
+        text = f"{user_prompt} {task_description}".lower()
+        if any(token in text for token in ("file", "folder", "remove", "delete")):
+            return "file"
+        return "chat"
+
+    def _infer_output_destination(self, expected_artifact: str) -> str:
+        if expected_artifact == "frontend":
+            return "file_write"
+        if expected_artifact == "code":
+            return "file_edit"
+        return "chat"
+
+    def _context_char_limit_for_checkpoint(self, checkpoint: CheckpointTask) -> int:
+        if checkpoint.expected_artifact == "frontend":
+            return SCAFFOLD_EXECUTION_MEMORY_CHAR_LIMIT
+        if checkpoint.expected_artifact == "chat":
+            return DIRECT_MEMORY_CHAR_LIMIT
+        return EXECUTION_MEMORY_CHAR_LIMIT
+
+    def _brain_stage(
+        self,
+        *,
+        user_prompt: str,
+        checkpoint: CheckpointTask,
+        blueprint: ExecutionBlueprint,
+        planning_conversation: list[dict[str, Any]],
+        context_packet: str,
+        raw_memory_context: str,
+        steps: list[ToolExecutionStep],
+        total_usage: dict[str, int],
+        ai_logs: list[str],
+        system_logs: list[str],
+        max_consecutive_tools: int,
+        local_only: bool,
+    ) -> tuple[str | None, ExecutionBlueprint, list[ToolExecutionStep]]:
+        pre_step_count = len(steps)
+        if checkpoint.expected_artifact == "chat":
+            if local_only:
+                final_response = self._run_local_only_direct_turn(
+                    user_prompt=user_prompt,
+                    memory_context=raw_memory_context,
+                    steps=steps,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                )
+                updated = _mark_checkpoint_completed(blueprint, blueprint.active_task_pointer, _summarize_execution_note(final_response))
+                self.active_blueprint = updated
+                return final_response, updated, steps[pre_step_count:]
+
+            route_decision = self.local_router.decide(user_prompt)
+            system_logs.append(
+                f"Local route decision: use_local={route_decision.use_local_knowledge} confidence={route_decision.confidence:.3f}"
+            )
+            if route_decision.use_local_knowledge:
+                local_response, handled_locally = self._run_local_knowledge_turn(
+                    user_prompt=user_prompt,
+                    memory_context=raw_memory_context,
+                    steps=steps,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                )
+                if handled_locally:
+                    updated = _mark_checkpoint_completed(blueprint, blueprint.active_task_pointer, _summarize_execution_note(local_response))
+                    self.active_blueprint = updated
+                    return local_response, updated, steps[pre_step_count:]
+
+            final_response = self._run_direct_turn(
+                user_prompt=user_prompt,
+                memory_context=context_packet,
+                steps=steps,
+                total_usage=total_usage,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                max_consecutive_tools=max_consecutive_tools,
+            )
+            updated = _mark_checkpoint_completed(blueprint, blueprint.active_task_pointer, _summarize_execution_note(final_response))
+            self.active_blueprint = updated
+            return final_response, updated, steps[pre_step_count:]
+
+        if local_only:
+            final_response, _plan_complete = self._run_local_only_execution_phase(
+                user_prompt=user_prompt,
+                memory_context=context_packet,
+                blueprint=blueprint,
+                steps=steps,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+            )
+            return final_response, self.active_blueprint or blueprint, steps[pre_step_count:]
+
+        final_response, _plan_complete = self._run_execution_phase(
+            user_prompt=user_prompt,
+            memory_context=context_packet,
+            blueprint=blueprint,
+            conversation=planning_conversation,
             steps=steps,
             total_usage=total_usage,
             ai_logs=ai_logs,
             system_logs=system_logs,
-            state=self.state.name,
-            blueprint=self.active_blueprint,
+            max_consecutive_tools=max_consecutive_tools,
+            planning_mode=PlanningMode.FORCE_PLAN,
         )
+        return final_response, self.active_blueprint or blueprint, steps[pre_step_count:]
+
+    def _verify_active_checkpoint(
+        self,
+        *,
+        checkpoint: CheckpointTask,
+        final_response: str,
+        checkpoint_steps: list[ToolExecutionStep],
+        system_logs: list[str],
+    ) -> tuple[bool, StageTrace, list[VerificationResult]]:
+        self.state = AgentState.VERIFYING
+        system_logs.append(f"State: {self.state.name}")
+        results: list[VerificationResult] = []
+        success = True
+        logs: list[str] = []
+
+        if checkpoint.verification_mode == "chat":
+            success = bool(final_response.strip())
+            details = "Non-empty answer returned." if success else "Empty answer returned."
+            results.append(VerificationResult(checkpoint_id=checkpoint.task_id, mode="chat", success=success, details=details))
+            logs.append(details)
+        else:
+            file_check = self._verify_file_artifact(checkpoint, checkpoint_steps)
+            if file_check is not None:
+                results.append(file_check)
+                logs.append(file_check.details)
+                success = success and file_check.success
+
+            diagnostics_tool = self.tools.get("run_diagnostics")
+            if diagnostics_tool is not None and checkpoint.verification_mode in {"code", "frontend"}:
+                for mode in ("tests", "types"):
+                    result = diagnostics_tool.execute(mode=mode, target_path=self.workspace_path)
+                    details = result.output
+                    results.append(
+                        VerificationResult(
+                            checkpoint_id=checkpoint.task_id,
+                            mode=mode,
+                            success=result.success,
+                            details=details,
+                        )
+                    )
+                    logs.append(f"{mode}: {details}")
+                    success = success and result.success
+            elif not results:
+                success = bool(final_response.strip())
+                results.append(
+                    VerificationResult(
+                        checkpoint_id=checkpoint.task_id,
+                        mode=checkpoint.verification_mode,
+                        success=success,
+                        details="Fallback verification used.",
+                    )
+                )
+                logs.append("Fallback verification used.")
+
+        trace = StageTrace(
+            stage=ProcessStage.VERIFICATION.value,
+            checkpoint_id=checkpoint.task_id,
+            success=success,
+            summary="Verification passed" if success else "Verification failed",
+            logs=logs,
+            payload={"verification_mode": checkpoint.verification_mode},
+        )
+        return success, trace, results
+
+    def _verify_file_artifact(self, checkpoint: CheckpointTask, checkpoint_steps: list[ToolExecutionStep]) -> VerificationResult | None:
+        paths = []
+        for step in checkpoint_steps:
+            for key in ("path", "file_path", "target_path"):
+                value = step.arguments.get(key)
+                if isinstance(value, str) and value.strip():
+                    paths.append(value)
+        path_hint = checkpoint.target_path_hint or (paths[-1] if paths else None)
+        if not path_hint:
+            return None
+        candidate = Path(path_hint)
+        if not candidate.is_absolute():
+            candidate = Path(self.workspace_path) / candidate
+        success = candidate.exists() or candidate.parent.exists()
+        return VerificationResult(
+            checkpoint_id=checkpoint.task_id,
+            mode="file",
+            success=success,
+            details=f"Artifact check for {candidate}: {'ok' if success else 'missing'}",
+        )
+
+    def _append_repair_checkpoint(self, blueprint: ExecutionBlueprint, *, checkpoint_id: int, reason: str) -> ExecutionBlueprint:
+        tasks = list(blueprint.tasks)
+        source_task = next((task for task in tasks if task.task_id == checkpoint_id), None)
+        if source_task is None:
+            return blueprint
+        repair_id = max(task.task_id for task in tasks) + 1 if tasks else 1
+        repair_task = CheckpointTask(
+            task_id=repair_id,
+            description=f"Repair checkpoint {checkpoint_id}: fix verification issue",
+            objective=f"Fix the failed verification for checkpoint {checkpoint_id}",
+            target_path_hint=source_task.target_path_hint,
+            expected_artifact=source_task.expected_artifact,
+            verification_mode=source_task.verification_mode,
+            repair_origin_checkpoint_id=checkpoint_id,
+            status_reason=reason,
+            output_destination=source_task.output_destination,
+        )
+        insert_at = next((index for index, task in enumerate(tasks) if task.task_id == checkpoint_id), len(tasks)) + 1
+        tasks.insert(insert_at, repair_task)
+        return ExecutionBlueprint(
+            raw_plan_markdown=blueprint.raw_plan_markdown,
+            original_objective=blueprint.original_objective,
+            tasks=tasks,
+            active_task_pointer=insert_at,
+            verification_passed=False,
+        )
+
+    def _split_active_checkpoint(self, blueprint: ExecutionBlueprint | None, task_index: int, *, reason: str) -> ExecutionBlueprint | None:
+        if blueprint is None or not (0 <= task_index < len(blueprint.tasks)):
+            return None
+        source_task = blueprint.tasks[task_index]
+        child_descriptions = self._decompose_checkpoint(source_task)
+        if len(child_descriptions) <= 1:
+            return None
+        tasks = list(blueprint.tasks[:task_index])
+        next_id = max(task.task_id for task in blueprint.tasks) + 1
+        child_ids: list[int] = []
+        for description in child_descriptions:
+            child_ids.append(next_id)
+            tasks.append(
+                CheckpointTask(
+                    task_id=next_id,
+                    description=description,
+                    objective=description,
+                    target_path_hint=source_task.target_path_hint,
+                    expected_artifact=source_task.expected_artifact,
+                    verification_mode=source_task.verification_mode,
+                    repair_origin_checkpoint_id=source_task.repair_origin_checkpoint_id,
+                    status_reason=reason,
+                    output_destination=source_task.output_destination,
+                )
+            )
+            next_id += 1
+        source_with_children = CheckpointTask(
+            task_id=source_task.task_id,
+            description=source_task.description,
+            objective=source_task.objective,
+            target_path_hint=source_task.target_path_hint,
+            expected_artifact=source_task.expected_artifact,
+            verification_mode=source_task.verification_mode,
+            repair_origin_checkpoint_id=source_task.repair_origin_checkpoint_id,
+            status_reason=reason,
+            output_destination=source_task.output_destination,
+            child_checkpoint_ids=tuple(child_ids),
+            is_completed=True,
+            execution_trace_log="Split into smaller child checkpoints before completion.",
+        )
+        tasks.insert(task_index, source_with_children)
+        tasks.extend(blueprint.tasks[task_index + 1 :])
+        return ExecutionBlueprint(
+            raw_plan_markdown=blueprint.raw_plan_markdown,
+            original_objective=blueprint.original_objective,
+            tasks=tasks,
+            active_task_pointer=task_index + 1,
+            verification_passed=False,
+        )
+
+    def _decompose_checkpoint(self, checkpoint: CheckpointTask) -> list[str]:
+        description = checkpoint.description
+        if checkpoint.expected_artifact in {"code", "frontend"}:
+            return [
+                f"Inspect the files and dependencies needed for: {description}",
+                f"Apply the requested implementation for: {description}",
+                f"Verify the workspace result for: {description}",
+            ]
+        return [
+            f"Gather the context required for: {description}",
+            f"Answer the request clearly for: {description}",
+        ]
 
     def _run_direct_turn(
         self,
@@ -734,6 +1128,7 @@ class DevenvKernel:
             source_blueprint = self.active_blueprint or blueprint
             self.active_blueprint = ExecutionBlueprint(
                 raw_plan_markdown=source_blueprint.raw_plan_markdown,
+                original_objective=source_blueprint.original_objective,
                 tasks=list(source_blueprint.tasks),
                 active_task_pointer=len(source_blueprint.tasks),
                 verification_passed=True,
@@ -759,37 +1154,51 @@ class DevenvKernel:
         source_blueprint = self.active_blueprint or blueprint
         self.active_blueprint = ExecutionBlueprint(
             raw_plan_markdown=source_blueprint.raw_plan_markdown,
+            original_objective=source_blueprint.original_objective,
             tasks=list(source_blueprint.tasks),
             active_task_pointer=len(source_blueprint.tasks),
             verification_passed=verification_passed,
         )
         return verification_passed
 
-    def _parse_markdown_to_blueprint(self, markdown_text: str) -> ExecutionBlueprint:
+    def _parse_markdown_to_blueprint(self, markdown_text: str, *, original_objective: str | None = None) -> ExecutionBlueprint:
         task_pattern = re.compile(r"^\s*(?:[-*]|\d+\.)\s*\[(?P<status>[ xX])\]\s*(?P<description>.+?)\s*$")
         tasks: list[CheckpointTask] = []
         for line in markdown_text.splitlines():
             match = task_pattern.match(line)
             if not match:
                 continue
+            task = self._build_checkpoint_task(
+                task_id=len(tasks) + 1,
+                description=match.group("description").strip(),
+                original_objective=original_objective or markdown_text.strip() or "Handle the user request.",
+            )
             tasks.append(
                 CheckpointTask(
-                    task_id=len(tasks) + 1,
-                    description=match.group("description").strip(),
+                    task_id=task.task_id,
+                    description=task.description,
+                    objective=task.objective,
+                    target_path_hint=task.target_path_hint,
+                    expected_artifact=task.expected_artifact,
+                    verification_mode=task.verification_mode,
+                    repair_origin_checkpoint_id=task.repair_origin_checkpoint_id,
+                    status_reason=task.status_reason,
+                    output_destination=task.output_destination,
+                    child_checkpoint_ids=task.child_checkpoint_ids,
                     is_completed=match.group("status").lower() == "x",
                 )
             )
 
         if not tasks:
-            tasks = self._parse_step_sections(markdown_text)
+            tasks = self._parse_step_sections(markdown_text, original_objective=original_objective or markdown_text)
 
         if not tasks:
             fallback = markdown_text.strip() or "Handle the user request."
-            tasks.append(CheckpointTask(task_id=1, description=fallback))
+            tasks.append(self._build_checkpoint_task(task_id=1, description=fallback, original_objective=original_objective or fallback))
 
-        return ExecutionBlueprint(raw_plan_markdown=markdown_text, tasks=tasks)
+        return ExecutionBlueprint(raw_plan_markdown=markdown_text, original_objective=original_objective, tasks=tasks)
 
-    def _parse_step_sections(self, markdown_text: str) -> list[CheckpointTask]:
+    def _parse_step_sections(self, markdown_text: str, *, original_objective: str) -> list[CheckpointTask]:
         step_heading = re.compile(r"^\s*(?:#{1,6}\s*)?step\s+(?P<number>\d+)\s*:\s*(?P<title>.+?)\s*$", re.IGNORECASE)
         tasks: list[CheckpointTask] = []
         current_title: str | None = None
@@ -804,7 +1213,7 @@ class DevenvKernel:
             detail = _summarize_step_detail(detail_lines)
             if detail:
                 description = f"{description}: {detail}"
-            tasks.append(CheckpointTask(task_id=len(tasks) + 1, description=description))
+            tasks.append(self._build_checkpoint_task(task_id=len(tasks) + 1, description=description, original_objective=original_objective))
             current_title = None
             detail_lines = []
 
@@ -1379,6 +1788,7 @@ class DevenvKernel:
         conversation: list[dict[str, Any]],
         *,
         persist_memory: bool = True,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         self.ephemeral_history = _compact_conversation(conversation, max_turns=MAX_EPHEMERAL_TURNS)
         self._record_working_memory(self.ephemeral_history)
@@ -1398,6 +1808,7 @@ class DevenvKernel:
                 metadata={
                     "workspace_path": self.workspace_path,
                     "session_id": self.session_id,
+                    **(metadata or {}),
                 },
             )
             logger.info("Recorded episodic log: log_id=%s", log_id)
@@ -1513,6 +1924,21 @@ def _build_memory_engine(db_path: str, vector_dir: str) -> MemoryEngine:
             vector_dir=vector_dir,
             embedder=HashingEmbedder(dimension=384),
         )
+
+
+class _InProcessToolClient:
+    def __init__(self, tools: dict[str, BaseTool]) -> None:
+        self._tools = tools
+
+    def call_tool(self, name: str, arguments: dict[str, Any]):
+        tool = self._tools.get(name)
+        if tool is None:
+            return type("ToolCallResult", (), {"success": False, "output": f"Tool '{name}' is not registered.", "data": {}, "is_error": True})()
+        result = tool.execute(**arguments)
+        return type("ToolCallResult", (), {"success": result.success, "output": result.output, "data": result.data, "is_error": False})()
+
+    def close(self) -> None:
+        return None
 
 def _build_partial_failure_response(steps: list[ToolExecutionStep], error: RuntimeError) -> str:
     successful_steps = [step.tool_name for step in steps if step.success]
@@ -1694,6 +2120,7 @@ def _clean_memory_line(line: str) -> str:
 def _set_active_task(blueprint: ExecutionBlueprint, task_index: int) -> ExecutionBlueprint:
     return ExecutionBlueprint(
         raw_plan_markdown=blueprint.raw_plan_markdown,
+        original_objective=blueprint.original_objective,
         tasks=list(blueprint.tasks),
         active_task_pointer=task_index,
         verification_passed=blueprint.verification_passed,
@@ -1708,6 +2135,14 @@ def _mark_checkpoint_completed(blueprint: ExecutionBlueprint, task_index: int, t
                 CheckpointTask(
                     task_id=task.task_id,
                     description=task.description,
+                    objective=task.objective,
+                    target_path_hint=task.target_path_hint,
+                    expected_artifact=task.expected_artifact,
+                    verification_mode=task.verification_mode,
+                    repair_origin_checkpoint_id=task.repair_origin_checkpoint_id,
+                    status_reason=task.status_reason,
+                    output_destination=task.output_destination,
+                    child_checkpoint_ids=task.child_checkpoint_ids,
                     is_completed=True,
                     execution_trace_log=trace_log,
                 )
@@ -1717,6 +2152,7 @@ def _mark_checkpoint_completed(blueprint: ExecutionBlueprint, task_index: int, t
 
     return ExecutionBlueprint(
         raw_plan_markdown=blueprint.raw_plan_markdown,
+        original_objective=blueprint.original_objective,
         tasks=tasks,
         active_task_pointer=min(task_index + 1, len(tasks)),
         verification_passed=blueprint.verification_passed,
@@ -1728,6 +2164,16 @@ def _next_incomplete_task_index(blueprint: ExecutionBlueprint) -> int | None:
         if not task.is_completed:
             return index
     return None
+
+
+def _mark_blueprint_verified(blueprint: ExecutionBlueprint, passed: bool) -> ExecutionBlueprint:
+    return ExecutionBlueprint(
+        raw_plan_markdown=blueprint.raw_plan_markdown,
+        original_objective=blueprint.original_objective,
+        tasks=list(blueprint.tasks),
+        active_task_pointer=len(blueprint.tasks),
+        verification_passed=passed,
+    )
 
 
 def _summarize_step_detail(lines: list[str]) -> str:

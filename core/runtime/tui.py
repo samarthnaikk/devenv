@@ -19,6 +19,10 @@ def render_banner(config: RunConfig) -> None:
 
 
 def render_turn_result(result: RuntimeTurnResult) -> None:
+    for trace in result.stage_traces:
+        checkpoint_label = f" checkpoint={trace.checkpoint_id}" if trace.checkpoint_id is not None else ""
+        status = "ok" if trace.success else "failed"
+        print(f"🧭 [STAGE]: {trace.stage}{checkpoint_label} -> {status}. {trace.summary}")
     for step in result.steps:
         if step.is_sandboxed_violation:
             print(f"🔒 [SANDBOX CHECK]: {step.output}")

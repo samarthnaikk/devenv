@@ -23,6 +23,23 @@ class HeuristicConsolidationExtractor:
             payload = json.loads(log.raw_interaction)
             metadata = payload.get("metadata", {})
             detected_project = detected_project or metadata.get("project")
+            checkpoint_objective = str(metadata.get("checkpoint_objective", "")).strip()
+            target_path_hint = str(metadata.get("target_path_hint", "")).strip()
+            workspace_memory_node_id = str(metadata.get("workspace_memory_node_id", "")).strip()
+            if checkpoint_objective and workspace_memory_node_id:
+                updates.append(
+                    ConsolidationUpdate(
+                        node_id=workspace_memory_node_id,
+                        append_summary=f"Checkpoint objective: {checkpoint_objective}",
+                    )
+                )
+            if target_path_hint and log.associated_node_id:
+                updates.append(
+                    ConsolidationUpdate(
+                        node_id=log.associated_node_id,
+                        append_summary=f"Target path: {target_path_hint}",
+                    )
+                )
 
             memory_entities = metadata.get("memory_entities", [])
             for entity in memory_entities:
