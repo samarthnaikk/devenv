@@ -11,7 +11,7 @@ from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.memory.vector_index import InMemoryVectorIndex
 from core.runtime import DevenvKernel
-from core.runtime.kernel import _summarize_directory_listing
+from core.runtime.kernel import _answer_from_retrieved_memory, _summarize_directory_listing
 from core.runtime.local_router import LocalRouteDecision
 from core.tools.list_directory import ListDirectoryTool
 from core.tools.read_file import ReadFileTool
@@ -307,6 +307,46 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("rag, core.py, templates/index.html", summary)
         self.assertNotIn('{"relative_path"', summary)
+
+    def test_answer_from_retrieved_memory_rejects_low_signal_directory_dump(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "how does rag work in getgit",
+            "\n".join(
+                [
+                    "## Retrieved Memory",
+                    '- [episode] I inspected `/tmp/getgit` locally. Relevant paths I found: .git"}, {"relative_path": "rag"}',
+                ]
+            ),
+        )
+
+        self.assertIsNone(answer)
+
+    def test_local_directory_summary_is_not_persisted_to_episodic_memory(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            backend_path = Path(tempdir) / "rvidia1a"
+            backend_path.mkdir()
+            (backend_path / "server.py").write_text("print('server')", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = type(
+                "Router",
+                (),
+                {
+                    "decide": lambda self, prompt: LocalRouteDecision(
+                        use_local_knowledge=True,
+                        confidence=0.7,
+                        knowledge_score=0.8,
+                        remote_score=0.1,
+                        reason="test",
+                    )
+                },
+            )()
+            kernel.register_tool(ListDirectoryTool())
+            kernel.execute_turn("tell me about rvidia")
+
+        self.assertEqual(memory.logs, [])
 
     def test_repair_directory_path_fixes_missing_inline_guess(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

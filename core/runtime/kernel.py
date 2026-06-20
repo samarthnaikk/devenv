@@ -136,7 +136,8 @@ class DevenvKernel:
                     if local_response:
                         conversation.append({"role": "assistant", "content": local_response})
                     logger.info("Finishing local runtime turn: final_response_present=%s total_steps=%s", local_response is not None, len(steps))
-                    self._finalize_turn(user_prompt, local_response or "", conversation)
+                    persist_memory = not (local_response or "").startswith("I inspected `")
+                    self._finalize_turn(user_prompt, local_response or "", conversation, persist_memory=persist_memory)
                     system_logs.append("Turn completed and stored in memory")
                     return RuntimeTurnResult(
                         final_response=local_response,
@@ -1013,7 +1014,14 @@ class DevenvKernel:
 
         return None
 
-    def _finalize_turn(self, user_prompt: str, final_response: str, conversation: list[dict[str, Any]]) -> None:
+    def _finalize_turn(
+        self,
+        user_prompt: str,
+        final_response: str,
+        conversation: list[dict[str, Any]],
+        *,
+        persist_memory: bool = True,
+    ) -> None:
         self.ephemeral_history = _compact_conversation(conversation, max_turns=MAX_EPHEMERAL_TURNS)
         self._record_working_memory(self.ephemeral_history)
         logger.info(
@@ -1021,6 +1029,9 @@ class DevenvKernel:
             len(self.ephemeral_history),
             len(conversation),
         )
+        if not persist_memory:
+            logger.info("Skipping episodic persistence for low-signal local summary response")
+            return
         logger.info("Recording episodic log for completed turn")
         try:
             log_id = self.memory.add_episodic_log(
@@ -1266,7 +1277,7 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     if not selected:
         return None
     cleaned = [_clean_memory_line(line) for line in selected]
-    cleaned = [line for line in cleaned if line]
+    cleaned = [line for line in cleaned if line and _is_high_signal_memory_answer(line, user_prompt)]
     if not cleaned:
         return None
     if len(cleaned) == 1:
@@ -1412,3 +1423,24 @@ def _extract_tool_payload_json(output: str) -> dict[str, Any] | list[Any] | None
         return json.loads(output[start_index:])
     except json.JSONDecodeError:
         return None
+
+
+def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
+    lowered = candidate.lower()
+    prompt_lowered = user_prompt.lower()
+    reject_markers = (
+        'relative_path',
+        '"depth":',
+        '"is_dir":',
+        '"path":',
+        "tool requested",
+        "recovered inline tool request",
+        "queued prompt",
+        "i inspected `",
+        "locally. relevant paths i found:",
+    )
+    if any(marker in lowered for marker in reject_markers):
+        return False
+    if ("how does" in prompt_lowered or "how do" in prompt_lowered or "why does" in prompt_lowered) and "i inspected" in lowered:
+        return False
+    return True
