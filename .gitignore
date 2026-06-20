@@ -83,9 +83,14 @@ logs/
 # Local tooling
 .benchmarks/
 sample-test
+!sample-test/
+sample-test/*
+!sample-test/memory-demo/
+!sample-test/memory-demo/**
 memory.db
 *.db
 *.sqlite
 *.sqlite3
+!sample-test/memory-demo/demo_memory.db
 vectors/
 interface/website/dash.html
