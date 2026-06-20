@@ -7,7 +7,7 @@ from typing import Any
 
 from core.ai.models import AIResponse, ToolCallRequest
 from core.runtime import DevenvKernel
-from core.runtime.kernel import _focus_memory_context_for_direct_answers, _summarize_execution_note
+from core.runtime.kernel import PLANNING_SYSTEM_RULE, _focus_memory_context_for_direct_answers, _summarize_execution_note
 from core.runtime.models import AgentState, CheckpointTask, ExecutionBlueprint, PlanningMode
 from core.tools.base import BaseTool, ToolResult
 
@@ -56,6 +56,21 @@ class FailingDiagnosticsTool(BaseTool):
     def execute(self, **kwargs) -> ToolResult:
         mode = kwargs.get("mode", "tests")
         return ToolResult(success=False, output=f"FAIL {mode}", data={"mode": mode})
+
+
+class CapturingDiagnosticsTool(BaseTool):
+    name = "run_diagnostics"
+    description = "Captures diagnostic target paths for verification tests."
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def input_schema(self) -> dict[str, object]:
+        return {"type": "object", "properties": {}, "required": []}
+
+    def execute(self, **kwargs) -> ToolResult:
+        self.calls.append(dict(kwargs))
+        return ToolResult(success=True, output="PASS", data=dict(kwargs))
 
 
 class FakeWriteTool(BaseTool):
@@ -199,6 +214,55 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertFalse(result.blueprint.verification_passed)
         self.assertIn("Verification failed; appended repair checkpoint", result.system_logs)
         self.assertTrue(any(task.repair_origin_checkpoint_id == 1 for task in result.blueprint.tasks))
+        repair_task = next(task for task in result.blueprint.tasks if task.repair_origin_checkpoint_id == 1)
+        self.assertIn("Verification failed", repair_task.description)
+
+    def test_verification_failure_does_not_chain_repairs_from_repair_checkpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [x] Update backend\n- [x] Repair checkpoint 1",
+                tasks=[
+                    CheckpointTask(task_id=1, description="Update backend", is_completed=True),
+                    CheckpointTask(task_id=2, description="Repair checkpoint 1", repair_origin_checkpoint_id=1, is_completed=True),
+                ],
+                active_task_pointer=1,
+            )
+
+            updated, appended = kernel._append_repair_checkpoint(blueprint, checkpoint_id=2, reason="Verification failed")
+
+        self.assertFalse(appended)
+        self.assertEqual(len(updated.tasks), 2)
+
+    def test_planning_rule_allows_many_single_shot_checkpoints(self) -> None:
+        self.assertIn("as many single-shot checkpoints as needed", PLANNING_SYSTEM_RULE)
+        self.assertNotIn("at most 4 checkpoints", PLANNING_SYSTEM_RULE)
+
+    def test_verification_scopes_diagnostics_to_checkpoint_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            (Path(tempdir) / "calendar" / "frontend").mkdir(parents=True)
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            diagnostics = CapturingDiagnosticsTool()
+            kernel.register_tool(diagnostics)
+            checkpoint = CheckpointTask(
+                task_id=1,
+                description="Create calendar frontend",
+                target_path_hint="calendar/frontend",
+                expected_artifact="frontend",
+                verification_mode="frontend",
+            )
+
+            success, _trace, results = kernel._verify_active_checkpoint(
+                checkpoint=checkpoint,
+                final_response="Created the frontend files.",
+                checkpoint_steps=[],
+                system_logs=[],
+            )
+
+        self.assertTrue(success)
+        self.assertEqual(len(diagnostics.calls), 2)
+        self.assertTrue(all(call["target_path"].endswith("calendar/frontend") for call in diagnostics.calls))
+        self.assertEqual([result.mode for result in results], ["file", "tests", "types"])
 
     def test_scaffold_request_uses_tiny_execution_scope_and_trimmed_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

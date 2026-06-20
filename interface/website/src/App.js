@@ -237,6 +237,7 @@ export function App() {
               );
             };
 
+            let autoContinueCount = 0;
             do {
               while (true) {
                 try {
@@ -275,8 +276,10 @@ export function App() {
                   (entry) => Date.now() - entry.timestamp < 60000
                 )
               );
-              refreshThinking(hasIncompleteTasks(result?.blueprint));
-              continuePlan = Boolean(hasIncompleteTasks(result.blueprint));
+              const shouldContinue = shouldAutoContinue(result, autoContinueCount);
+              refreshThinking(shouldContinue);
+              continuePlan = shouldContinue;
+              autoContinueCount += shouldContinue ? 1 : 0;
             } while (continuePlan);
 
             const finalMessage = selectVisibleAssistantResponse(result, aggregateLogs);
@@ -460,6 +463,23 @@ function formatTimestamp(timestamp) {
 
 function hasIncompleteTasks(blueprint) {
   return Boolean(blueprint?.tasks?.some((task) => !task.is_completed));
+}
+
+function shouldAutoContinue(result, autoContinueCount) {
+  if (!hasIncompleteTasks(result?.blueprint)) {
+    return false;
+  }
+  if (result?.state !== "EXECUTING") {
+    return false;
+  }
+  if (autoContinueCount >= 24) {
+    return false;
+  }
+  const systemLogs = result?.system_logs || [];
+  if (systemLogs.some((entry) => String(entry).includes("Verification failed"))) {
+    return false;
+  }
+  return true;
 }
 
 async function waitForCooldown(resetAt, onTick) {

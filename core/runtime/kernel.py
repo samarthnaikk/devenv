@@ -51,7 +51,7 @@ SCAFFOLD_EXECUTION_MEMORY_CHAR_LIMIT = 360
 PLANNING_SYSTEM_RULE = (
     "Analyze the user's request and produce a sequential markdown checklist using checkbox items like '- [ ] Task'. "
     "Do not invoke modification tools during planning. Stay focused on planning until the checklist is complete. "
-    "Prefer concise plans with at most 4 checkpoints."
+    "Break the work into as many single-shot checkpoints as needed for the available context."
 )
 EXECUTION_SYSTEM_RULE = (
     "Work only on the current checkpoint. Do not start future checkpoints. "
@@ -260,12 +260,15 @@ class DevenvKernel:
 
         if not verification_ok:
             self.state = AgentState.PLANNING
-            self.active_blueprint = self._append_repair_checkpoint(
+            self.active_blueprint, appended_repair = self._append_repair_checkpoint(
                 self.active_blueprint,
                 checkpoint_id=checkpoint.task_id,
                 reason=verification_trace.summary or "Verification failed",
             )
-            system_logs.append("Verification failed; appended repair checkpoint")
+            if appended_repair:
+                system_logs.append("Verification failed; appended repair checkpoint")
+            else:
+                system_logs.append("Verification failed; stopped automatic repair chaining")
             self._finalize_turn(
                 user_prompt,
                 final_response or "",
@@ -558,8 +561,9 @@ class DevenvKernel:
 
             diagnostics_tool = self.tools.get("run_diagnostics")
             if diagnostics_tool is not None and checkpoint.verification_mode in {"code", "frontend"}:
+                diagnostics_target = self._resolve_verification_target_path(checkpoint, checkpoint_steps)
                 for mode in ("tests", "types"):
-                    result = diagnostics_tool.execute(mode=mode, target_path=self.workspace_path)
+                    result = diagnostics_tool.execute(mode=mode, target_path=diagnostics_target)
                     details = result.output
                     results.append(
                         VerificationResult(
@@ -593,6 +597,31 @@ class DevenvKernel:
         )
         return success, trace, results
 
+    def _resolve_verification_target_path(self, checkpoint: CheckpointTask, checkpoint_steps: list[ToolExecutionStep]) -> str:
+        candidates: list[Path] = []
+        for step in checkpoint_steps:
+            for key in ("path", "file_path", "target_path"):
+                value = step.arguments.get(key)
+                if not isinstance(value, str) or not value.strip():
+                    continue
+                candidate = Path(value)
+                if not candidate.is_absolute():
+                    candidate = Path(self.workspace_path) / candidate
+                candidates.append(candidate)
+
+        if checkpoint.target_path_hint:
+            hinted = Path(checkpoint.target_path_hint)
+            if not hinted.is_absolute():
+                hinted = Path(self.workspace_path) / hinted
+            candidates.append(hinted)
+
+        for candidate in reversed(candidates):
+            if candidate.exists():
+                return str(candidate)
+            if candidate.parent.exists():
+                return str(candidate.parent)
+        return self.workspace_path
+
     def _verify_file_artifact(self, checkpoint: CheckpointTask, checkpoint_steps: list[ToolExecutionStep]) -> VerificationResult | None:
         paths = []
         for step in checkpoint_steps:
@@ -614,16 +643,19 @@ class DevenvKernel:
             details=f"Artifact check for {candidate}: {'ok' if success else 'missing'}",
         )
 
-    def _append_repair_checkpoint(self, blueprint: ExecutionBlueprint, *, checkpoint_id: int, reason: str) -> ExecutionBlueprint:
+    def _append_repair_checkpoint(self, blueprint: ExecutionBlueprint, *, checkpoint_id: int, reason: str) -> tuple[ExecutionBlueprint, bool]:
         tasks = list(blueprint.tasks)
         source_task = next((task for task in tasks if task.task_id == checkpoint_id), None)
         if source_task is None:
-            return blueprint
+            return blueprint, False
+        if source_task.repair_origin_checkpoint_id is not None:
+            return blueprint, False
         repair_id = max(task.task_id for task in tasks) + 1 if tasks else 1
+        repair_summary = _summarize_verification_failure_reason(reason)
         repair_task = CheckpointTask(
             task_id=repair_id,
-            description=f"Repair checkpoint {checkpoint_id}: fix verification issue",
-            objective=f"Fix the failed verification for checkpoint {checkpoint_id}",
+            description=f"Repair checkpoint {checkpoint_id}: {repair_summary}",
+            objective=f"Fix the failed verification for checkpoint {checkpoint_id}: {repair_summary}",
             target_path_hint=source_task.target_path_hint,
             expected_artifact=source_task.expected_artifact,
             verification_mode=source_task.verification_mode,
@@ -639,7 +671,7 @@ class DevenvKernel:
             tasks=tasks,
             active_task_pointer=insert_at,
             verification_passed=False,
-        )
+        ), True
 
     def _split_active_checkpoint(self, blueprint: ExecutionBlueprint | None, task_index: int, *, reason: str) -> ExecutionBlueprint | None:
         if blueprint is None or not (0 <= task_index < len(blueprint.tasks)):
@@ -2115,6 +2147,15 @@ def _clean_memory_line(line: str) -> str:
     cleaned = re.sub(r"^\[[^\]]+\]\s*", "", cleaned)
     cleaned = re.sub(r"^(episodic memory|episode)\s+[a-f0-9-]+:\s*", "", cleaned, flags=re.IGNORECASE)
     return cleaned.strip()
+
+
+def _summarize_verification_failure_reason(reason: str) -> str:
+    compact = re.sub(r"\s+", " ", (reason or "").strip())
+    if not compact:
+        return "resolve the verification failure"
+    if len(compact) > 96:
+        compact = f"{compact[:93].rstrip()}..."
+    return compact
 
 
 def _set_active_task(blueprint: ExecutionBlueprint, task_index: int) -> ExecutionBlueprint:
