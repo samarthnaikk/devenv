@@ -75,7 +75,29 @@ class DevenvKernel:
         total_usage: dict[str, int] = {}
 
         while True:
-            ai_response = self.ai.chat(messages=list(conversation), memory_context=memory_context)
+            try:
+                ai_response = self.ai.chat(messages=list(conversation), memory_context=memory_context)
+            except RuntimeError as exc:
+                if not steps:
+                    raise
+
+                final_response = _build_partial_failure_response(steps, exc)
+                ai_logs.append(f"AI response failed after tool execution: {exc}")
+                system_logs.append("Turn ended after tool execution because the model response failed")
+                conversation.append({"role": "assistant", "content": final_response})
+                logger.warning(
+                    "AI response failed after tool execution: steps=%s error=%s",
+                    len(steps),
+                    exc,
+                )
+                self._finalize_turn(user_prompt, final_response, conversation)
+                return RuntimeTurnResult(
+                    final_response=final_response,
+                    steps=steps,
+                    total_usage=total_usage,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                )
             _merge_usage(total_usage, ai_response.usage)
             ai_logs.append(
                 f"AI response: finish_reason={ai_response.finish_reason}, tool_calls={len(ai_response.tool_calls)}, total_tokens={ai_response.usage.get('total_tokens', 0)}"
@@ -290,3 +312,15 @@ def _build_memory_engine(db_path: str, vector_dir: str) -> MemoryEngine:
             vector_dir=vector_dir,
             embedder=HashingEmbedder(dimension=384),
         )
+
+
+def _build_partial_failure_response(steps: list[ToolExecutionStep], error: RuntimeError) -> str:
+    successful_steps = [step.tool_name for step in steps if step.success]
+    if successful_steps:
+        tool_summary = ", ".join(successful_steps)
+        return (
+            f"The requested tool changes were applied ({tool_summary}), "
+            f"but the follow-up AI response failed: {error}"
+        )
+
+    return f"The AI response failed after tool execution: {error}"

@@ -72,6 +72,21 @@ class FakeAI:
         return self.responses.pop(0)
 
 
+class RateLimitedAI(FakeAI):
+    def chat(self, messages: list[dict[str, Any]], memory_context: str | None = None, temperature: float = 0.2) -> AIResponse:
+        self.chat_calls.append(
+            {
+                "messages": messages,
+                "memory_context": memory_context,
+                "temperature": temperature,
+            }
+        )
+        next_response = self.responses.pop(0)
+        if isinstance(next_response, Exception):
+            raise next_response
+        return next_response
+
+
 class DevenvKernelTest(unittest.TestCase):
     def test_register_tool_syncs_runtime_and_ai(self) -> None:
         memory = FakeMemory()
@@ -293,6 +308,39 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(result.final_response, "Fallback answer")
         self.assertEqual(ai.chat_calls[0]["memory_context"], "")
+
+    def test_execute_turn_returns_partial_success_when_follow_up_ai_call_fails(self) -> None:
+        memory = FakeMemory()
+        ai = RateLimitedAI(
+            [
+                AIResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCallRequest(
+                            call_id="call_1",
+                            tool_name="read_file",
+                            arguments={"path": "note.txt"},
+                        ),
+                    ),
+                    finish_reason="tool_calls",
+                    usage={"prompt_tokens": 7},
+                ),
+                RuntimeError("Groq chat completion failed with HTTP 429"),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            note_path = f"{tempdir}/note.txt"
+            with open(note_path, "w", encoding="utf-8") as handle:
+                handle.write("hello runtime")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ReadFileTool())
+            result = kernel.execute_turn("Read note.txt")
+
+        self.assertEqual(len(result.steps), 1)
+        self.assertTrue(result.steps[0].success)
+        self.assertIn("applied", result.final_response or "")
+        self.assertIn("HTTP 429", result.final_response or "")
 
     def test_memory_persists_across_kernel_sessions(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
