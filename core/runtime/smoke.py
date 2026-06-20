@@ -5,10 +5,9 @@ import json
 from pathlib import Path
 
 from core.logging_utils import configure_logging
-from core.tools.list_directory import ListDirectoryTool
-from core.tools.read_file import ReadFileTool
 
 from .kernel import DevenvKernel
+from .tooling import build_runtime_tools
 
 
 def main() -> int:
@@ -27,9 +26,10 @@ def main() -> int:
         db_path=args.db_path,
         vector_dir=args.vector_dir,
     )
-    kernel.register_tool(ReadFileTool())
-    kernel.register_tool(ListDirectoryTool())
+    for tool in build_runtime_tools(kernel.memory):
+        kernel.register_tool(tool)
     result = kernel.execute_turn(args.prompt, max_consecutive_tools=args.max_consecutive_tools)
+    kernel.close()
     print(json.dumps(
         {
             "final_response": result.final_response,

@@ -9,11 +9,10 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from core.logging_utils import configure_logging
-from core.tools.list_directory import ListDirectoryTool
-from core.tools.read_file import ReadFileTool
 
 from .kernel import DevenvKernel
 from .models import RunConfig
+from .tooling import build_runtime_tools
 from .workspace import WorkspaceBrowser
 
 logger = logging.getLogger(__name__)
@@ -31,8 +30,8 @@ class DevenvWebApp:
             memory=memory,
             ai=ai,
         )
-        self.kernel.register_tool(ReadFileTool())
-        self.kernel.register_tool(ListDirectoryTool())
+        for tool in build_runtime_tools(self.kernel.memory):
+            self.kernel.register_tool(tool)
         self.workspace = WorkspaceBrowser(config.workspace_path)
 
     def create_handler(self):
@@ -45,7 +44,10 @@ class DevenvWebApp:
         server = self.create_server()
         logger.info("Starting Devenv web server: url=http://127.0.0.1:%s workspace=%s", self.port, self.config.workspace_path)
         print(f"Devenv website running at http://127.0.0.1:{server.server_address[1]}")
-        server.serve_forever()
+        try:
+            server.serve_forever()
+        finally:
+            self.kernel.close()
 
     def build_health_payload(self) -> dict[str, object]:
         model = getattr(self.kernel.ai, "model", "unknown")

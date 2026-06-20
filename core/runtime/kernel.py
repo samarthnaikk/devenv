@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -10,10 +11,13 @@ from core.ai import AICore
 from core.ai.models import AIResponse, ToolCallRequest
 from core.env import load_dotenv
 from core.memory import MemoryEngine
+from core.memory.embeddings import HashingEmbedder
 from core.tools.base import BaseTool
 
 from .models import RuntimeTurnResult, ToolExecutionStep
+from .mcp_client import MCPToolClient
 from .sandbox import PathSandbox
+from .state import resolve_memory_paths
 
 logger = logging.getLogger(__name__)
 MAX_EPHEMERAL_TURNS = 4
@@ -28,23 +32,33 @@ class DevenvKernel:
         *,
         memory: MemoryEngine | Any | None = None,
         ai: AICore | Any | None = None,
+        tool_client: MCPToolClient | Any | None = None,
     ):
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
         load_dotenv(self.workspace_path)
         self.sandbox = PathSandbox(root_path=self.workspace_path)
-        resolved_db_path, resolved_vector_dir = _resolve_memory_paths(self.workspace_path, db_path, vector_dir)
-        self.memory = memory or MemoryEngine(db_path=resolved_db_path, vector_dir=resolved_vector_dir)
+        resolved_db_path, resolved_vector_dir = resolve_memory_paths(db_path, vector_dir)
+        self.memory = memory or _build_memory_engine(resolved_db_path, resolved_vector_dir)
         self.ai = ai or AICore()
         self.tools: dict[str, BaseTool] = {}
         self.ephemeral_history: list[dict[str, Any]] = []
         self.session_id = str(uuid.uuid4())
         self.db_path = resolved_db_path
         self.vector_dir = resolved_vector_dir
+        self.tool_client = tool_client or MCPToolClient(
+            workspace_path=self.workspace_path,
+            db_path=db_path,
+            vector_dir=vector_dir,
+        )
 
     def register_tool(self, tool: BaseTool) -> None:
         self.tools[tool.name] = tool
         self.ai.register_tool(tool)
         logger.info("Registered tool with runtime and AI: tool=%s", tool.name)
+
+    def close(self) -> None:
+        if hasattr(self.tool_client, "close"):
+            self.tool_client.close()
 
     def execute_turn(self, user_prompt: str, max_consecutive_tools: int = 5) -> RuntimeTurnResult:
         logger.info("Starting runtime turn: workspace=%s prompt=%s", self.workspace_path, user_prompt)
@@ -138,15 +152,15 @@ class DevenvKernel:
             )
 
         normalized_arguments = self.sandbox.normalize_arguments(tool_call.arguments)
-        logger.info("Executing tool: tool=%s normalized_arguments=%s", tool_call.tool_name, normalized_arguments)
-        result = tool.execute(**normalized_arguments)
-        logger.info("Tool finished: tool=%s success=%s", tool_call.tool_name, result.success)
+        logger.info("Executing MCP tool: tool=%s normalized_arguments=%s", tool_call.tool_name, normalized_arguments)
+        result = self.tool_client.call_tool(tool_call.tool_name, normalized_arguments)
+        logger.info("MCP tool finished: tool=%s success=%s is_error=%s", tool_call.tool_name, result.success, result.is_error)
         return ToolExecutionStep(
             step_id=tool_call.call_id,
             tool_name=tool_call.tool_name,
             arguments=normalized_arguments,
             output=_format_tool_output(result.output, result.data),
-            success=result.success,
+            success=result.success and not result.is_error,
             is_sandboxed_violation=False,
         )
 
@@ -195,10 +209,23 @@ class DevenvKernel:
 
     def _retrieve_memory_context(self, user_prompt: str) -> str:
         try:
-            return self.memory.retrieve_context(user_prompt).markdown_context
+            result = self.memory.retrieve_context(user_prompt)
+            self._persist_last_retrieval_trace(getattr(result, "trace", None))
+            return result.markdown_context
         except Exception as exc:
             logger.warning("Memory retrieval failed; continuing without memory context: error=%s", exc)
             return ""
+
+    def _persist_last_retrieval_trace(self, trace: Any) -> None:
+        if trace is None:
+            return
+        store = getattr(self.memory, "store", None)
+        if store is None or not hasattr(store, "set_state"):
+            return
+        try:
+            store.set_state("last_retrieval_trace", json.dumps(asdict(trace), sort_keys=True))
+        except Exception as exc:
+            logger.warning("Failed to persist retrieval trace state: error=%s", exc)
 
 
 def _assistant_tool_call_message(ai_response: AIResponse) -> dict[str, Any]:
@@ -253,19 +280,13 @@ def _compact_conversation(messages: list[dict[str, Any]], max_turns: int) -> lis
     return retained[-(max_turns * 2) :]
 
 
-def _resolve_memory_paths(workspace_path: str, db_path: str, vector_dir: str) -> tuple[str, str]:
-    state_root = Path(__file__).resolve().parents[2]
-
-    if db_path == "memory.db":
-        resolved_db_path = state_root / "memory.db"
-    else:
-        candidate_db_path = Path(db_path).expanduser()
-        resolved_db_path = candidate_db_path if candidate_db_path.is_absolute() else state_root / candidate_db_path
-
-    if vector_dir == "vectors":
-        resolved_vector_dir = state_root / "vectors"
-    else:
-        candidate_vector_dir = Path(vector_dir).expanduser()
-        resolved_vector_dir = candidate_vector_dir if candidate_vector_dir.is_absolute() else state_root / candidate_vector_dir
-
-    return str(resolved_db_path.resolve()), str(resolved_vector_dir.resolve())
+def _build_memory_engine(db_path: str, vector_dir: str) -> MemoryEngine:
+    try:
+        return MemoryEngine(db_path=db_path, vector_dir=vector_dir)
+    except Exception as exc:
+        logger.warning("Falling back to hashing memory embedder: error=%s", exc)
+        return MemoryEngine(
+            db_path=db_path,
+            vector_dir=vector_dir,
+            embedder=HashingEmbedder(dimension=384),
+        )

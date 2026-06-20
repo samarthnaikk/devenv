@@ -15,14 +15,14 @@ from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.tools.base import BaseTool
 
-from .kernel import _resolve_memory_paths
+from .state import resolve_memory_paths
 from .tooling import build_runtime_tools
 
 logger = logging.getLogger(__name__)
 
 
 def create_mcp_server(*, workspace_path: str, db_path: str = "memory.db", vector_dir: str = "vectors") -> FastMCP:
-    resolved_db_path, resolved_vector_dir = _resolve_memory_paths(workspace_path, db_path, vector_dir)
+    resolved_db_path, resolved_vector_dir = resolve_memory_paths(db_path, vector_dir)
     memory = MemoryEngine(
         db_path=resolved_db_path,
         vector_dir=resolved_vector_dir,

@@ -4,11 +4,10 @@ import argparse
 from pathlib import Path
 
 from core.logging_utils import configure_logging
-from core.tools.list_directory import ListDirectoryTool
-from core.tools.read_file import ReadFileTool
 
 from .kernel import DevenvKernel
 from .models import RunConfig, RuntimeTurnResult
+from .tooling import build_runtime_tools
 
 
 def render_banner(config: RunConfig) -> None:
@@ -38,8 +37,8 @@ def run_tui(config: RunConfig) -> int:
         db_path=config.db_path,
         vector_dir=config.vector_dir,
     )
-    kernel.register_tool(ReadFileTool())
-    kernel.register_tool(ListDirectoryTool())
+    for tool in build_runtime_tools(kernel.memory):
+        kernel.register_tool(tool)
     render_banner(config)
 
     while True:
@@ -47,14 +46,17 @@ def run_tui(config: RunConfig) -> int:
             prompt = input("devenv@local_workspace:~$ ").strip()
         except EOFError:
             print()
+            kernel.close()
             return 0
         except KeyboardInterrupt:
             print()
+            kernel.close()
             return 0
 
         if not prompt:
             continue
         if prompt.lower() in {"exit", "quit"}:
+            kernel.close()
             return 0
 
         print("⏳ [RETRIEVING MEMORY CONTEXT]...")
