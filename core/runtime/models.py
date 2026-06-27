@@ -167,3 +167,136 @@ class RunConfig:
     db_path: str = "memory.db"
     vector_dir: str = "vectors"
     max_consecutive_tools: int = 5
+    external_session_configs: tuple["ExternalSessionProviderConfig", ...] = ()
+
+
+@dataclass(frozen=True)
+class ExternalSessionProviderConfig:
+    provider: str
+    root_path: str
+    enabled: bool = True
+    session_glob: str = "sessions/**/*.jsonl"
+    index_path: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "root_path": self.root_path,
+            "enabled": self.enabled,
+            "session_glob": self.session_glob,
+            "index_path": self.index_path,
+        }
+
+
+@dataclass(frozen=True)
+class ExternalSourceHealth:
+    provider: str
+    enabled: bool
+    available: bool
+    root_path: str
+    summary: str
+    session_count: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "enabled": self.enabled,
+            "available": self.available,
+            "root_path": self.root_path,
+            "summary": self.summary,
+            "session_count": self.session_count,
+        }
+
+
+@dataclass(frozen=True)
+class ExternalSessionSummary:
+    provider: str
+    session_id: str
+    title: str
+    updated_at: str
+    workspace_path: str | None = None
+    source_path: str | None = None
+    message_count: int = 0
+    preview: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "session_id": self.session_id,
+            "title": self.title,
+            "updated_at": self.updated_at,
+            "workspace_path": self.workspace_path,
+            "source_path": self.source_path,
+            "message_count": self.message_count,
+            "preview": self.preview,
+        }
+
+
+@dataclass(frozen=True)
+class ExternalSessionMessage:
+    role: str
+    content: str
+    timestamp: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "role": self.role,
+            "content": self.content,
+            "timestamp": self.timestamp,
+        }
+
+
+@dataclass(frozen=True)
+class ExternalSessionDetail:
+    summary: ExternalSessionSummary
+    messages: tuple[ExternalSessionMessage, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "summary": self.summary.to_dict(),
+            "messages": [message.to_dict() for message in self.messages],
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(frozen=True)
+class PreparedPromptRequest:
+    task: str
+    provider: str | None = None
+    session_ids: tuple[str, ...] = ()
+    include_workspace_scan: bool = True
+    include_prior_context: bool = True
+    output_format: str = "compact"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "task": self.task,
+            "provider": self.provider,
+            "session_ids": list(self.session_ids),
+            "include_workspace_scan": self.include_workspace_scan,
+            "include_prior_context": self.include_prior_context,
+            "output_format": self.output_format,
+        }
+
+
+@dataclass(frozen=True)
+class PreparedPromptResult:
+    prompt: str
+    provider: str | None = None
+    session_ids: tuple[str, ...] = ()
+    workspace_facts: tuple[str, ...] = ()
+    prior_context: tuple[str, ...] = ()
+    constraints: tuple[str, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "prompt": self.prompt,
+            "provider": self.provider,
+            "session_ids": list(self.session_ids),
+            "workspace_facts": list(self.workspace_facts),
+            "prior_context": list(self.prior_context),
+            "constraints": list(self.constraints),
+            "metadata": dict(self.metadata),
+        }
