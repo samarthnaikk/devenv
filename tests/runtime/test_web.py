@@ -8,7 +8,7 @@ from typing import Any
 
 from core.ai.models import AIResponse
 from core.runtime.models import CheckpointTask, ExecutionBlueprint
-from core.runtime.models import PlanningMode, RunConfig
+from core.runtime.models import ExternalSessionProviderConfig, PlanningMode, RunConfig
 from core.runtime.web import DevenvWebApp
 
 
@@ -72,6 +72,8 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(health["status"], "ok")
         self.assertEqual(health["ai_provider"], "Groq")
         self.assertEqual(health["ai_model"], "fake-groq-model")
+        self.assertTrue(health["context_builder_enabled"])
+        self.assertIn("context_sources", health)
         self.assertEqual(files["entries"][0]["name"], "README.md")
         self.assertEqual(file_payload["content"], "hello")
         self.assertEqual(file_payload["kind"], "text")
@@ -136,6 +138,60 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(captured["planning_mode"], PlanningMode.FORCE_PLAN)
         self.assertTrue(captured["continue_plan"])
         self.assertTrue(captured["local_only"])
+
+    def test_context_builder_payload_helpers_expose_sessions_and_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            (workspace / "README.md").write_text("Prompt builder workspace.", encoding="utf-8")
+            codex_root = workspace / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "28"
+            sessions_dir.mkdir(parents=True)
+            session_id = "web-session-1"
+            (codex_root / "session_index.jsonl").write_text(
+                '{"id":"web-session-1","thread_name":"Prompt builder","updated_at":"2026-06-28T12:00:00Z"}\n',
+                encoding="utf-8",
+            )
+            (codex_root / "history.jsonl").write_text(
+                '{"session_id":"web-session-1","ts":1,"text":"Prepare a prompt for Codex."}\n',
+                encoding="utf-8",
+            )
+            (sessions_dir / "rollout-2026-06-28T12-00-00-web-session-1.jsonl").write_text(
+                '{"timestamp":"2026-06-28T12:00:01Z","type":"event_msg","payload":{"type":"agent_message","message":"Keep this manual and copy-paste only."}}\n',
+                encoding="utf-8",
+            )
+            app = DevenvWebApp(
+                RunConfig(
+                    workspace_path=tempdir,
+                    external_session_configs=(
+                        ExternalSessionProviderConfig(
+                            provider="codex",
+                            root_path=str(codex_root),
+                            index_path="session_index.jsonl",
+                        ),
+                    ),
+                ),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+
+            sources = app.build_context_sources_payload()
+            sessions = app.build_context_sessions_payload("codex")
+            detail = app.build_context_session_payload("codex", session_id)
+            prepared = app.build_prepared_prompt_payload(
+                {
+                    "task": "Prepare a prompt with minimal changes.",
+                    "provider": "codex",
+                    "session_ids": [session_id],
+                    "include_workspace_scan": True,
+                    "include_prior_context": True,
+                    "output_format": "compact",
+                }
+            )
+
+        self.assertEqual(sources["sources"][0]["provider"], "codex")
+        self.assertEqual(sessions["sessions"][0]["session_id"], session_id)
+        self.assertEqual(detail["summary"]["session_id"], session_id)
+        self.assertIn("Task:", prepared["prompt"])
 
     def test_run_turn_preserves_partial_blueprint_when_execution_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

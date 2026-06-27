@@ -10,8 +10,9 @@ from urllib.parse import parse_qs, urlparse
 
 from core.logging_utils import configure_logging
 
+from .context_builder import ContextBuilderService
 from .kernel import DevenvKernel
-from .models import PlanningMode, RunConfig
+from .models import PlanningMode, PreparedPromptRequest, RunConfig
 from .tooling import build_runtime_tools
 from .workspace import WorkspaceBrowser
 
@@ -33,6 +34,11 @@ class DevenvWebApp:
         for tool in build_runtime_tools(self.kernel.memory):
             self.kernel.register_tool(tool)
         self.workspace = WorkspaceBrowser(config.workspace_path)
+        self.context_builder = ContextBuilderService(
+            config.workspace_path,
+            memory=self.kernel.memory,
+            provider_configs=config.external_session_configs,
+        )
 
     def create_handler(self):
         return partial(DevenvRequestHandler, app=self)
@@ -58,6 +64,8 @@ class DevenvWebApp:
             "status": "ok",
             "ai_provider": "Groq",
             "ai_model": model,
+            "context_builder_enabled": True,
+            "context_sources": [source.to_dict() for source in self.context_builder.list_sources()],
         }
 
     def build_files_payload(self, relative_path: str = "") -> dict[str, object]:
@@ -68,6 +76,42 @@ class DevenvWebApp:
 
     def build_file_payload(self, relative_path: str) -> dict[str, object]:
         return {"path": relative_path, **self.workspace.read_file_preview(relative_path)}
+
+    def build_context_sources_payload(self) -> dict[str, object]:
+        return {
+            "sources": [source.to_dict() for source in self.context_builder.list_sources()],
+        }
+
+    def build_context_sessions_payload(self, provider_name: str) -> dict[str, object]:
+        return {
+            "provider": provider_name,
+            "sessions": [session.to_dict() for session in self.context_builder.list_sessions(provider_name)],
+        }
+
+    def build_context_session_payload(self, provider_name: str, session_id: str) -> dict[str, object]:
+        detail = self.context_builder.get_session(provider_name, session_id)
+        return detail.to_dict()
+
+    def build_prepared_prompt_payload(self, payload: dict[str, object]) -> dict[str, object]:
+        task = payload.get("task")
+        if not isinstance(task, str) or not task.strip():
+            raise ValueError("Missing required field: task")
+        provider = payload.get("provider")
+        session_ids_raw = payload.get("session_ids") or []
+        if not isinstance(session_ids_raw, list) or any(not isinstance(item, str) for item in session_ids_raw):
+            raise ValueError("session_ids must be a list of strings")
+        include_workspace_scan = bool(payload.get("include_workspace_scan", True))
+        include_prior_context = bool(payload.get("include_prior_context", True))
+        output_format = str(payload.get("output_format", "compact"))
+        request = PreparedPromptRequest(
+            task=task.strip(),
+            provider=provider if isinstance(provider, str) and provider.strip() else None,
+            session_ids=tuple(session_ids_raw),
+            include_workspace_scan=include_workspace_scan,
+            include_prior_context=include_prior_context,
+            output_format="detailed" if output_format == "detailed" else "compact",
+        )
+        return self.context_builder.prepare_prompt(request).to_dict()
 
     def run_turn(
         self,
@@ -108,6 +152,20 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
                 relative_path = query.get("path", [""])[0]
                 self._write_json(HTTPStatus.OK, self.app.build_file_payload(relative_path))
                 return
+            if parsed.path == "/api/context-sources":
+                self._write_json(HTTPStatus.OK, self.app.build_context_sources_payload())
+                return
+            if parsed.path.startswith("/api/context-sources/"):
+                payload = self._match_context_source_path(parsed.path)
+                if payload is None:
+                    self.send_error(HTTPStatus.NOT_FOUND)
+                    return
+                provider_name, session_id = payload
+                if session_id is None:
+                    self._write_json(HTTPStatus.OK, self.app.build_context_sessions_payload(provider_name))
+                    return
+                self._write_json(HTTPStatus.OK, self.app.build_context_session_payload(provider_name, session_id))
+                return
         except (FileNotFoundError, IsADirectoryError, NotADirectoryError, PermissionError) as exc:
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             return
@@ -118,11 +176,22 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        payload = self._read_json()
+        if parsed.path == "/api/context-builder/prepare":
+            try:
+                prepared = self.app.build_prepared_prompt_payload(payload)
+            except ValueError as exc:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                return
+            except FileNotFoundError as exc:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                return
+            self._write_json(HTTPStatus.OK, prepared)
+            return
         if parsed.path != "/api/turn":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
 
-        payload = self._read_json()
         prompt = payload.get("prompt")
         if not isinstance(prompt, str) or not prompt.strip():
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": "Missing required field: prompt"})
@@ -182,6 +251,14 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
         except json.JSONDecodeError:
             return {}
         return payload if isinstance(payload, dict) else {}
+
+    def _match_context_source_path(self, path: str) -> tuple[str, str | None] | None:
+        parts = [part for part in path.split("/") if part]
+        if len(parts) == 4 and parts[0] == "api" and parts[1] == "context-sources" and parts[3] == "sessions":
+            return parts[2], None
+        if len(parts) == 5 and parts[0] == "api" and parts[1] == "context-sources" and parts[3] == "sessions":
+            return parts[2], parts[4]
+        return None
 
 
 def main() -> int:
