@@ -1,5 +1,15 @@
 import React from "https://esm.sh/react@18";
-import { fetchFile, fetchFiles, fetchHealth, runTurn } from "./api.js";
+import {
+  fetchContextSession,
+  fetchContextSessions,
+  fetchContextSources,
+  fetchFile,
+  fetchFiles,
+  fetchHealth,
+  prepareContextPrompt,
+  runTurn,
+} from "./api.js";
+import { ContextBuilderPanel } from "./components/ContextBuilderPanel.js";
 import { FilePreviewPanel } from "./components/FilePreviewPanel.js";
 import { HeaderBar } from "./components/HeaderBar.js";
 import { TerminalPanel } from "./components/TerminalPanel.js";
@@ -38,6 +48,18 @@ export function App() {
   const [planModeEnabled, setPlanModeEnabled] = React.useState(false);
   const [localOnlyEnabled, setLocalOnlyEnabled] = React.useState(false);
   const [showThinking, setShowThinking] = React.useState(false);
+  const [contextSources, setContextSources] = React.useState([]);
+  const [selectedContextProvider, setSelectedContextProvider] = React.useState("codex");
+  const [contextSessions, setContextSessions] = React.useState([]);
+  const [activeContextSessionIds, setActiveContextSessionIds] = React.useState([]);
+  const [contextSessionDetail, setContextSessionDetail] = React.useState(null);
+  const [contextTask, setContextTask] = React.useState("");
+  const [contextPromptResult, setContextPromptResult] = React.useState(null);
+  const [contextLoading, setContextLoading] = React.useState(false);
+  const [contextPreparing, setContextPreparing] = React.useState(false);
+  const [includeWorkspaceScan, setIncludeWorkspaceScan] = React.useState(true);
+  const [includePriorContext, setIncludePriorContext] = React.useState(true);
+  const [contextStatus, setContextStatus] = React.useState("");
   const dragStateRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -56,19 +78,44 @@ export function App() {
   }, []);
 
   React.useEffect(() => {
-    Promise.all([fetchHealth(), fetchFiles("")])
-      .then(([healthPayload, filePayload]) => {
+    Promise.all([fetchHealth(), fetchFiles(""), fetchContextSources()])
+      .then(([healthPayload, filePayload, contextPayload]) => {
         setHealth(healthPayload);
         setHealthMeta({
           provider: healthPayload.ai_provider || "",
           model: healthPayload.ai_model || "",
         });
         setTree(normalizeEntries(filePayload.entries));
+        const sources = contextPayload.sources || [];
+        setContextSources(sources);
+        const defaultProvider = sources.find((source) => source.available)?.provider || sources[0]?.provider || "codex";
+        setSelectedContextProvider(defaultProvider);
       })
       .catch((error) => {
         setBootError(error.message);
       });
   }, []);
+
+  React.useEffect(() => {
+    if (!selectedContextProvider) {
+      return;
+    }
+    setContextLoading(true);
+    fetchContextSessions(selectedContextProvider)
+      .then((payload) => {
+        setContextSessions(payload.sessions || []);
+        setActiveContextSessionIds((current) =>
+          current.filter((sessionId) => (payload.sessions || []).some((session) => session.session_id === sessionId))
+        );
+      })
+      .catch((error) => {
+        setContextStatus(`Failed to load sessions: ${error.message}`);
+        setContextSessions([]);
+      })
+      .finally(() => {
+        setContextLoading(false);
+      });
+  }, [selectedContextProvider]);
 
   React.useEffect(() => {
     function handlePointerMove(event) {
@@ -188,6 +235,93 @@ export function App() {
     React.createElement(
       "aside",
       { className: `right-column${rightCollapsed ? " collapsed" : ""}` },
+      React.createElement(ContextBuilderPanel, {
+        sources: contextSources,
+        selectedProvider: selectedContextProvider,
+        onProviderChange: (provider) => {
+          setSelectedContextProvider(provider);
+          setActiveContextSessionIds([]);
+          setContextSessionDetail(null);
+          setContextStatus("");
+        },
+        sessions: contextSessions,
+        activeSessionIds: activeContextSessionIds,
+        onSelectSession: async (sessionId) => {
+          const detail = await fetchContextSession(selectedContextProvider, sessionId);
+          setContextSessionDetail(detail);
+        },
+        sessionDetail: contextSessionDetail,
+        builderTask: contextTask,
+        onBuilderTaskChange: setContextTask,
+        includeWorkspaceScan,
+        onIncludeWorkspaceScanChange: setIncludeWorkspaceScan,
+        includePriorContext,
+        onIncludePriorContextChange: setIncludePriorContext,
+        promptResult: contextPromptResult,
+        onGeneratePrompt: async () => {
+          const nextTask = contextTask.trim() || prompt.trim();
+          if (!nextTask) {
+            setContextStatus("Add a task before generating a prompt.");
+            return;
+          }
+          setContextPreparing(true);
+          setContextStatus("");
+          try {
+            const result = await prepareContextPrompt({
+              task: nextTask,
+              provider: selectedContextProvider,
+              include_workspace_scan: includeWorkspaceScan,
+              include_prior_context: includePriorContext,
+              output_format: "compact",
+            });
+            setContextPromptResult(result);
+            const selectedIds = result.session_ids || [];
+            setActiveContextSessionIds(selectedIds);
+            if (selectedIds.length) {
+              const detail = await fetchContextSession(selectedContextProvider, selectedIds[0]);
+              setContextSessionDetail(detail);
+            }
+            setContextStatus(
+              `Prepared prompt using ${selectedIds.length || 0} automatically selected prior session(s).`
+            );
+          } catch (error) {
+            setContextStatus(`Prompt generation failed: ${error.message}`);
+          } finally {
+            setContextPreparing(false);
+          }
+        },
+        onRefreshSessions: async () => {
+          if (!selectedContextProvider) {
+            return;
+          }
+          setContextLoading(true);
+          setContextStatus("");
+          try {
+            const payload = await fetchContextSessions(selectedContextProvider);
+            setContextSessions(payload.sessions || []);
+            setContextStatus("Session list refreshed.");
+          } catch (error) {
+            setContextStatus(`Refresh failed: ${error.message}`);
+          } finally {
+            setContextLoading(false);
+          }
+        },
+        onCopyPrompt: async () => {
+          const promptText = contextPromptResult?.prompt || "";
+          if (!promptText.trim()) {
+            return;
+          }
+          try {
+            await navigator.clipboard.writeText(promptText);
+            setContextStatus("Prompt copied to clipboard.");
+          } catch (error) {
+            setContextStatus(`Copy failed: ${error.message}`);
+          }
+        },
+        isLoading: contextLoading,
+        isPreparing: contextPreparing,
+        statusMessage: contextStatus,
+      }),
       React.createElement(TerminalPanel, {
         transcript,
         prompt,
