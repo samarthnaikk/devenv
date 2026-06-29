@@ -29,21 +29,34 @@ COMMON_CONTEXT_TOKENS = {
     "about",
     "again",
     "also",
+    "any",
     "been",
+    "do",
     "from",
     "have",
     "into",
     "just",
+    "know",
+    "previous",
+    "project",
+    "projects",
+    "session",
+    "sessions",
+    "some",
     "that",
     "them",
     "they",
     "this",
     "talking",
     "there",
+    "work",
+    "worked",
     "what",
     "were",
     "with",
     "would",
+    "you",
+    "your",
     "issue",
     "issues",
     "review",
@@ -480,7 +493,7 @@ class ContextBuilderService:
         if not summaries:
             return ()
 
-        scored: list[tuple[int, ExternalSessionSummary]] = []
+        scored: list[tuple[int, int, ExternalSessionSummary]] = []
         workspace_name = Path(self.workspace_path).name.lower()
         workspace_path = self.workspace_path.lower()
         prompt_tokens = _tokenize(task)
@@ -488,10 +501,11 @@ class ContextBuilderService:
         for summary in summaries:
             detail = provider.get_session(summary.session_id)
             score = 0
+            content_score = 0
             haystacks = _session_haystacks(summary, detail)
             for token in prompt_tokens:
                 if any(_token_matches(token, haystack) for haystack in haystacks):
-                    score += 4
+                    content_score += 4
             session_workspace = (summary.workspace_path or "").lower()
             if session_workspace:
                 if session_workspace == workspace_path:
@@ -502,14 +516,17 @@ class ContextBuilderService:
                     score -= 1
             if "devenv" in " ".join(haystacks):
                 score += 1
-            score += 6 * _exact_prompt_hits(prompt_tokens, haystacks)
-            score += min(_best_message_overlap(prompt_tokens, detail), 8)
-            scored.append((score, summary))
+            content_score += 6 * _exact_prompt_hits(prompt_tokens, haystacks)
+            content_score += min(_best_message_overlap(prompt_tokens, detail), 8)
+            score += content_score
+            scored.append((content_score, score, summary))
 
-        scored.sort(key=lambda item: (item[0], item[1].updated_at), reverse=True)
-        selected = [summary.session_id for score, summary in scored if score > 0][:3]
-        if not selected:
-            selected = [summary.session_id for _score, summary in sorted(scored, key=lambda item: item[1].updated_at, reverse=True)[:2]]
+        scored.sort(key=lambda item: (item[1], item[2].updated_at), reverse=True)
+        selected = [
+            summary.session_id
+            for content_score, score, summary in scored
+            if (content_score > 0 and score > 0) or (not prompt_tokens and score > 0)
+        ][:3]
         return tuple(selected)
 
 
@@ -570,7 +587,7 @@ def _extract_session_messages(*, row_type: str | None, payload: dict[str, Any], 
                 )
             )
     elif row_type == "response_item" and payload.get("type") == "function_call_output":
-        output_text = _normalize_whitespace(str(payload.get("output") or ""))
+        output_text = _normalize_whitespace(_clean_tool_output(str(payload.get("output") or "")))
         if output_text and not _is_noise_message_content(output_text):
             messages.append(
                 ExternalSessionMessage(
@@ -596,7 +613,7 @@ def _collect_relevant_context_lines(
         for message in detail.messages:
             if message.role not in {"user", "assistant", "tool"}:
                 continue
-            content = _normalize_whitespace(message.content)
+            content = _compact_context_content(message.role, message.content)
             if not content or content in seen:
                 continue
             seen.add(content)
@@ -699,13 +716,17 @@ def _is_noise_message_content(text: str) -> bool:
 
 
 def _token_matches(token: str, haystack: str) -> bool:
-    if token in haystack:
+    if _contains_whole_token(token, haystack):
         return True
-    if token.endswith("ers") and token[:-3] and token[:-3] in haystack:
+    if token.endswith("ers") and token[:-3] and _contains_whole_token(token[:-3], haystack):
         return True
-    if token.endswith("er") and token[:-2] and token[:-2] in haystack:
+    if token.endswith("er") and token[:-2] and _contains_whole_token(token[:-2], haystack):
         return True
     return False
+
+
+def _contains_whole_token(token: str, haystack: str) -> bool:
+    return bool(re.search(rf"\b{re.escape(token)}\b", haystack))
 
 
 def _session_haystacks(summary: ExternalSessionSummary, detail: ExternalSessionDetail) -> list[str]:
@@ -743,6 +764,47 @@ def _truncate_tool_output(text: str, max_chars: int = 900) -> str:
     if len(cleaned) <= max_chars:
         return cleaned
     return f"{cleaned[: max_chars - 3].rstrip()}..."
+
+
+def _compact_context_content(role: str, text: str) -> str:
+    cleaned = _normalize_whitespace(text)
+    if not cleaned:
+        return ""
+    max_chars = 480 if role == "tool" else 260
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return f"{cleaned[: max_chars - 3].rstrip()}..."
+
+
+def _clean_tool_output(text: str) -> str:
+    raw = text or ""
+    if "Output:\n" in raw:
+        raw = raw.split("Output:\n", 1)[1]
+    elif "Output:" in raw:
+        raw = raw.split("Output:", 1)[1]
+
+    filtered_lines: list[str] = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        lowered = stripped.lower()
+        if not stripped:
+            continue
+        if lowered.startswith("chunk id:"):
+            continue
+        if lowered.startswith("wall time:"):
+            continue
+        if lowered.startswith("process exited"):
+            continue
+        if lowered.startswith("original token count:"):
+            continue
+        if lowered.startswith("warning: truncated"):
+            continue
+        if lowered.startswith("total output lines:"):
+            continue
+        if "operation not permitted: ps" in lowered:
+            continue
+        filtered_lines.append(stripped)
+    return "\n".join(filtered_lines).strip()
 
 
 def _timestamp_from_path(path: Path) -> str:
