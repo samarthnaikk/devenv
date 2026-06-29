@@ -314,6 +314,72 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("convex action", (result.final_response or "").lower())
 
+    def test_local_only_mode_recalls_multiple_named_projects_from_old_sessions(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            codex_root = workspace / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "30"
+            sessions_dir.mkdir(parents=True)
+            fixtures = [
+                (
+                    "session-opencode",
+                    "Integrate Codex and OpenCode",
+                    "Do you know about OpenCode?",
+                    "OpenCode sessions should be read and chunked for context building.",
+                ),
+                (
+                    "session-supabase",
+                    "Add Supabase auth sign in/up",
+                    "Do you know about Supabase?",
+                    "Supabase email sign in and sign up were added with migrations in mind.",
+                ),
+                (
+                    "session-verticalaxis",
+                    "Update VerticalAxis header colors",
+                    "Do you know about VerticalAxis?",
+                    "VerticalAxis needed header color updates in the LaTeX file.",
+                ),
+            ]
+
+            index_lines: list[str] = []
+            for session_id, title, query, answer in fixtures:
+                index_lines.append(json.dumps({"id": session_id, "thread_name": title, "updated_at": "2026-06-30T10:00:00Z"}))
+                (sessions_dir / f"rollout-2026-06-30T10-00-00-{session_id}.jsonl").write_text(
+                    "\n".join(
+                        [
+                            json.dumps({"timestamp": "2026-06-30T10:00:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": str(workspace)}}),
+                            json.dumps({"timestamp": "2026-06-30T10:00:01Z", "type": "event_msg", "payload": {"type": "user_message", "message": query}}),
+                            json.dumps({"timestamp": "2026-06-30T10:00:02Z", "type": "event_msg", "payload": {"type": "agent_message", "message": answer}}),
+                        ]
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+            (codex_root / "session_index.jsonl").write_text("\n".join(index_lines) + "\n", encoding="utf-8")
+
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.context_builder = ContextBuilderService(
+                str(workspace),
+                memory=memory,
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+
+            opencode = kernel.execute_turn("Do you know about OpenCode?", local_only=True)
+            supabase = kernel.execute_turn("Do you know about Supabase?", local_only=True)
+            vertical_axis = kernel.execute_turn("Do you know about VerticalAxis?", local_only=True)
+            no_match = kernel.execute_turn("Do you know about Project Atlas?", local_only=True)
+
+        self.assertIn("opencode", (opencode.final_response or "").lower())
+        self.assertIn("supabase", (supabase.final_response or "").lower())
+        self.assertIn("verticalaxis", (vertical_axis.final_response or "").lower())
+        self.assertNotIn("opencode", (no_match.final_response or "").lower())
+        self.assertNotIn("supabase", (no_match.final_response or "").lower())
+
     def test_execute_turn_uses_planning_for_change_requests(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
