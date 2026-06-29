@@ -94,8 +94,143 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertEqual(sessions[0].title, "Integrate prompt builder")
         self.assertEqual(sessions[0].updated_at, "2026-06-28T10:10:10Z")
         self.assertEqual(detail.summary.workspace_path, str(workspace))
+        self.assertEqual(sessions[0].workspace_path, str(workspace))
         self.assertTrue(any(message.role == "user" for message in detail.messages))
         self.assertTrue(any("prompt preview ui" in message.content.lower() for message in detail.messages))
+
+    def test_codex_provider_ignores_developer_rows_and_reads_user_event_messages(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "29"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-user-event"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps(
+                    {
+                        "id": session_id,
+                        "thread_name": "Review follow-up",
+                        "updated_at": "2026-06-29T10:10:10Z",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-29T10-09-00-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "timestamp": "2026-06-29T10:09:00Z",
+                                "type": "session_meta",
+                                "payload": {"id": session_id, "cwd": str(workspace)},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": "2026-06-29T10:09:01Z",
+                                "type": "response_item",
+                                "payload": {
+                                    "type": "message",
+                                    "role": "developer",
+                                    "content": [{"type": "input_text", "text": "internal instructions"}],
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": "2026-06-29T10:09:02Z",
+                                "type": "event_msg",
+                                "payload": {
+                                    "type": "user_message",
+                                    "message": "what were the review issues again?",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": "2026-06-29T10:09:03Z",
+                                "type": "response_item",
+                                "payload": {
+                                    "type": "message",
+                                    "role": "assistant",
+                                    "content": [{"type": "output_text", "text": "Need to fix the remaining review items."}],
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            detail = service.get_session("codex", session_id)
+
+        roles = [message.role for message in detail.messages]
+        contents = [message.content for message in detail.messages]
+        self.assertEqual(roles, ["user", "assistant"])
+        self.assertNotIn("internal instructions", " ".join(contents))
+        self.assertIn("what were the review issues again?", contents[0].lower())
+
+    def test_codex_provider_keeps_useful_function_call_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "29"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-tool-output"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Reviewer notes", "updated_at": "2026-06-29T11:10:10Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-29T11-09-00-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-06-29T11:09:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": str(workspace)}}),
+                        json.dumps(
+                            {
+                                "timestamp": "2026-06-29T11:09:02Z",
+                                "type": "response_item",
+                                "payload": {
+                                    "type": "function_call_output",
+                                    "output": "Sharmil001 | File: reviews.md | Comment: move this logic to the backend action.",
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            detail = service.get_session("codex", session_id)
+            result = service.prepare_prompt(
+                PreparedPromptRequest(
+                    task="What did Sharmil say about the backend action?",
+                    provider="codex",
+                    include_workspace_scan=False,
+                    include_prior_context=True,
+                )
+            )
+
+        self.assertTrue(any(message.role == "tool" for message in detail.messages))
+        self.assertIn("backend action", result.prompt.lower())
 
     def test_opencode_provider_reports_not_configured(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -260,6 +395,123 @@ class ContextBuilderServiceTest(unittest.TestCase):
 
         self.assertIn(relevant_session_id, result.session_ids)
         self.assertEqual(result.metadata["selection_mode"], "automatic")
+
+    def test_prepare_prompt_auto_selects_session_when_match_exists_only_in_message_body(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "28"
+            sessions_dir.mkdir(parents=True)
+            message_match_session = "session-message-only"
+            generic_session = "session-generic"
+            (codex_root / "session_index.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"id": message_match_session, "thread_name": "Notes", "updated_at": "2026-06-28T12:00:00Z"}),
+                        json.dumps({"id": generic_session, "thread_name": "Devenv work", "updated_at": "2026-06-28T13:00:00Z"}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-28T12-00-00-{message_match_session}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-06-28T11:59:00Z", "type": "session_meta", "payload": {"id": message_match_session, "cwd": str(workspace)}}),
+                        json.dumps({"timestamp": "2026-06-28T11:59:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Project Chimera needed a scraper retry path and TPM tuning."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-28T13-00-00-{generic_session}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-06-28T12:59:00Z", "type": "session_meta", "payload": {"id": generic_session, "cwd": str(workspace)}}),
+                        json.dumps({"timestamp": "2026-06-28T12:59:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Worked on Devenv UI polish."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            result = service.prepare_prompt(
+                PreparedPromptRequest(
+                    task="Do you know about Project Chimera?",
+                    provider="codex",
+                    include_workspace_scan=False,
+                    include_prior_context=True,
+                )
+            )
+
+        self.assertIn(message_match_session, result.session_ids)
+
+    def test_prepare_prompt_prefers_exact_name_match_over_generic_same_workspace_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "28"
+            sessions_dir.mkdir(parents=True)
+            exact_match_session = "session-sharmil"
+            generic_workspace_session = "session-devenv"
+            (codex_root / "session_index.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"id": exact_match_session, "thread_name": "Reviewer follow-up", "updated_at": "2026-06-28T12:00:00Z"}),
+                        json.dumps({"id": generic_workspace_session, "thread_name": "Devenv review work", "updated_at": "2026-06-28T13:00:00Z"}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-28T12-00-00-{exact_match_session}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-06-28T11:59:00Z", "type": "session_meta", "payload": {"id": exact_match_session, "cwd": "/tmp/other"}}),
+                        json.dumps({"timestamp": "2026-06-28T11:59:01Z", "type": "event_msg", "payload": {"type": "user_message", "message": "What did Sharmil say in review?"}}),
+                        json.dumps({"timestamp": "2026-06-28T11:59:02Z", "type": "response_item", "payload": {"type": "function_call_output", "output": "Sharmil001 | Comment: use a convex action instead of the frontend route."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-28T13-00-00-{generic_workspace_session}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-06-28T12:59:00Z", "type": "session_meta", "payload": {"id": generic_workspace_session, "cwd": str(workspace)}}),
+                        json.dumps({"timestamp": "2026-06-28T12:59:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Worked on generic devenv review fixes."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            result = service.prepare_prompt(
+                PreparedPromptRequest(
+                    task="What were the issues Sharmil was talking about?",
+                    provider="codex",
+                    include_workspace_scan=False,
+                    include_prior_context=True,
+                )
+            )
+
+        self.assertEqual(result.session_ids[0], exact_match_session)
 
 
 if __name__ == "__main__":
