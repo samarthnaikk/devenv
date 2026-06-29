@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Any
 
@@ -11,9 +12,10 @@ from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.memory.vector_index import InMemoryVectorIndex
 from core.runtime import DevenvKernel
+from core.runtime.context_builder import ContextBuilderService
 from core.runtime.kernel import _answer_from_retrieved_memory, _summarize_directory_listing
 from core.runtime.local_router import LocalRouteDecision
-from core.runtime.models import PlanningMode
+from core.runtime.models import ExternalSessionProviderConfig, PlanningMode
 from core.tools.list_directory import ListDirectoryTool
 from core.tools.read_file import ReadFileTool
 from core.tools.write_file import WriteFileTool
@@ -183,6 +185,134 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(memory.consolidation_runs, 1)
         self.assertTrue(result.ai_logs)
         self.assertTrue(result.system_logs)
+
+    def test_execute_turn_appends_external_session_context_to_memory(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="I found the prior project session.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 8},
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            codex_root = workspace / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "20"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-project-1"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Project Atlas review", "updated_at": "2026-06-20T10:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (codex_root / "history.jsonl").write_text(
+                json.dumps({"session_id": session_id, "ts": 1, "text": "We worked on Project Atlas ingestion and review fixes."}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-20T09-59-00-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-06-20T09:59:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": str(workspace)}}),
+                        json.dumps({"timestamp": "2026-06-20T09:59:01Z", "type": "event_msg", "payload": {"type": "user_message", "message": "Do you know Project Atlas?"}}),
+                        json.dumps({"timestamp": "2026-06-20T09:59:02Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Project Atlas had an ingestion path and review fixes."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.context_builder = ContextBuilderService(
+                str(workspace),
+                memory=memory,
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            kernel.local_router = _disabled_router()
+            kernel.execute_turn("Do you know about Project Atlas?")
+
+        memory_context = ai.chat_calls[0]["memory_context"] or ""
+        self.assertIn("## Context Packet", memory_context)
+        self.assertIn("Project Atlas", memory_context)
+
+    def test_local_only_mode_can_answer_from_external_session_context(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            codex_root = workspace / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "20"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-project-2"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Project Atlas review", "updated_at": "2026-06-20T10:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (codex_root / "history.jsonl").write_text(
+                json.dumps({"session_id": session_id, "ts": 1, "text": "Project Atlas had an ingestion path and review fixes."}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-20T09-59-00-{session_id}.jsonl").write_text(
+                json.dumps({"timestamp": "2026-06-20T09:59:02Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Project Atlas had an ingestion path and review fixes."}})
+                + "\n",
+                encoding="utf-8",
+            )
+
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.context_builder = ContextBuilderService(
+                str(workspace),
+                memory=memory,
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            result = kernel.execute_turn("Do you know about Project Atlas?", local_only=True)
+
+        self.assertIn("Project Atlas", result.final_response or "")
+
+    def test_local_only_mode_can_answer_from_external_tool_output_context(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            codex_root = workspace / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "20"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-review-1"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Review notes", "updated_at": "2026-06-20T10:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-20T09-59-00-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-06-20T09:59:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": "/tmp/other"}}),
+                        json.dumps({"timestamp": "2026-06-20T09:59:01Z", "type": "event_msg", "payload": {"type": "user_message", "message": "What did Sharmil say?"}}),
+                        json.dumps({"timestamp": "2026-06-20T09:59:02Z", "type": "response_item", "payload": {"type": "function_call_output", "output": "Sharmil001 | Comment: use a convex action instead of the frontend route."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.context_builder = ContextBuilderService(
+                str(workspace),
+                memory=memory,
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            result = kernel.execute_turn("What were the issues Sharmil was talking about?", local_only=True)
+
+        self.assertIn("convex action", (result.final_response or "").lower())
 
     def test_execute_turn_uses_planning_for_change_requests(self) -> None:
         memory = FakeMemory()
