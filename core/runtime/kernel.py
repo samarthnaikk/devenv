@@ -1928,13 +1928,26 @@ class DevenvKernel:
             logger.warning("Failed to record working memory; continuing: error=%s", exc)
 
     def _retrieve_memory_context(self, user_prompt: str) -> str:
+        memory_context = ""
         try:
             result = self.memory.retrieve_context(user_prompt)
             self._persist_last_retrieval_trace(getattr(result, "trace", None))
-            return result.markdown_context
+            memory_context = result.markdown_context
         except Exception as exc:
             logger.warning("Memory retrieval failed; continuing without memory context: error=%s", exc)
-            return ""
+        external_builder = getattr(self, "context_builder", None)
+        if external_builder is None or not hasattr(external_builder, "build_runtime_memory_context"):
+            return memory_context
+        try:
+            external_context, _session_ids = external_builder.build_runtime_memory_context(user_prompt)
+        except Exception as exc:
+            logger.warning("External session retrieval failed; continuing without session context: error=%s", exc)
+            return memory_context
+        if not external_context.strip():
+            return memory_context
+        if not memory_context.strip():
+            return external_context
+        return f"{memory_context.rstrip()}\n\n{external_context}"
 
     def _persist_last_retrieval_trace(self, trace: Any) -> None:
         if trace is None:
@@ -2129,17 +2142,10 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     if not memory_context.strip():
         return None
 
-    retrieved_header = "## Retrieved Memory"
-    header_index = memory_context.find(retrieved_header)
-    if header_index < 0:
-        return None
-
-    lines = memory_context[header_index:].splitlines()[1:]
+    lines = _memory_bullet_lines(memory_context)
     bullet_lines = []
     for line in lines:
-        if not line.startswith("- "):
-            continue
-        bullet = line[2:].strip()
+        bullet = line.strip()
         bullet_lower = bullet.lower()
         if bullet_lower.startswith("prompt:") or bullet_lower.startswith("[workspace] workspace:"):
             continue
@@ -2169,6 +2175,22 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     if len(cleaned) == 1:
         return cleaned[0]
     return "\n\n".join(cleaned)
+
+
+def _memory_bullet_lines(memory_context: str) -> list[str]:
+    supported_headers = ("## Retrieved Memory", "## External Session Context")
+    lines: list[str] = []
+    active = False
+    for raw_line in memory_context.splitlines():
+        stripped = raw_line.strip()
+        if stripped in supported_headers:
+            active = True
+            continue
+        if active and stripped.startswith("## "):
+            active = False
+        if active and stripped.startswith("- "):
+            lines.append(stripped[2:].strip())
+    return lines
 
 
 def _summarize_directory_listing(candidate_path: str, output: str) -> str:
