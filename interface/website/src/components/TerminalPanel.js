@@ -9,15 +9,23 @@ export function TerminalPanel({
   runtimeState,
   stageTraces,
   verificationResults,
+  workspacePath,
+  provider,
+  model,
+  availableModels,
+  contextBudget,
+  planningMode,
+  onPlanningModeChange,
+  localOnlyEnabled,
+  onLocalOnlyChange,
   showThinking,
+  onShowThinkingChange,
+  onModelChange,
   onPromptChange,
   onSubmit,
   isRunning,
   isCoolingDown,
   cooldownLabel,
-  onToggleCollapse,
-  collapseLabel,
-  collapseGlyph,
 }) {
   const messages = transcript.map((item, index) =>
     React.createElement(
@@ -68,22 +76,76 @@ export function TerminalPanel({
       React.createElement(
         "div",
         { className: "terminal-header-copy" },
-        React.createElement("div", { className: "panel-label" }, "Chat"),
-        React.createElement("h2", { className: "terminal-title" }, "Ask Devenv")
+        React.createElement("div", { className: "panel-label" }, "Devenv"),
+        React.createElement("h2", { className: "terminal-title" }, "Ask Anything From Prior Sessions"),
+        React.createElement(
+          "p",
+          { className: "terminal-caption" },
+          workspacePath || "Loading workspace..."
+        )
       ),
-      onToggleCollapse
-        ? React.createElement(
-            "button",
+      React.createElement(
+        "div",
+        { className: "terminal-controls" },
+        React.createElement(
+          "label",
+          { className: "terminal-select-group" },
+          React.createElement("span", { className: "status-label" }, "Planning"),
+          React.createElement(
+            "select",
             {
-              className: "pane-header-button",
-              type: "button",
-              onClick: onToggleCollapse,
-              title: collapseLabel,
-              "aria-label": collapseLabel,
+              className: "terminal-select",
+              value: planningMode || "auto",
+              onChange: (event) => onPlanningModeChange?.(event.target.value),
             },
-            collapseGlyph || ">"
+            React.createElement("option", { value: "auto" }, "Auto"),
+            React.createElement("option", { value: "force_plan" }, "Plan"),
+            React.createElement("option", { value: "force_direct" }, "Direct")
           )
-        : null
+        ),
+        React.createElement(
+          "label",
+          { className: "terminal-select-group" },
+          React.createElement("span", { className: "status-label" }, "Model"),
+          React.createElement(
+            "select",
+            {
+              className: "terminal-select",
+              value: model || "",
+              disabled: localOnlyEnabled,
+              onChange: (event) => onModelChange?.(event.target.value),
+            },
+            (availableModels?.length ? availableModels : [model || ""]).map((modelName) =>
+              React.createElement("option", { key: modelName, value: modelName }, modelName || "Unknown")
+            )
+          )
+        ),
+        React.createElement(
+          "label",
+          { className: `terminal-toggle${localOnlyEnabled ? " enabled" : ""}` },
+          React.createElement("input", {
+            type: "checkbox",
+            checked: Boolean(localOnlyEnabled),
+            onChange: (event) => onLocalOnlyChange?.(event.target.checked),
+          }),
+          React.createElement("span", null, "Local only")
+        ),
+        React.createElement(
+          "label",
+          { className: `terminal-toggle${showThinking ? " enabled" : ""}` },
+          React.createElement("input", {
+            type: "checkbox",
+            checked: Boolean(showThinking),
+            onChange: (event) => onShowThinkingChange?.(event.target.checked),
+          }),
+          React.createElement("span", null, "Show thinking")
+        ),
+        React.createElement(
+          "div",
+          { className: "terminal-meta" },
+          `${provider || "Unknown"} · ${contextBudget?.remainingLabel || "Unknown"}`
+        )
+      )
     ),
     React.createElement(PlanRail, {
       blueprint,
@@ -107,14 +169,14 @@ export function TerminalPanel({
         value: prompt,
         placeholder: isCoolingDown
           ? `Groq cooldown active. Input unlocks in ${cooldownLabel}.`
-          : "Ask Devenv to inspect the workspace, summarize architecture, or trace a bug...",
+          : "Ask about a past project, old review comments, architecture decisions, or repository history...",
         onChange: (event) => onPromptChange(event.target.value),
         disabled: isCoolingDown,
       }),
       React.createElement(
         "button",
         { className: "terminal-submit", type: "submit", disabled: isRunning || isCoolingDown || !prompt.trim() },
-        isCoolingDown ? `Cooldown ${cooldownLabel}` : isRunning ? "Running..." : "Run Prompt"
+        isCoolingDown ? `Cooldown ${cooldownLabel}` : isRunning ? "Thinking..." : "Send"
       )
     )
   );

@@ -1,36 +1,19 @@
 import React from "https://esm.sh/react@18";
-import {
-  fetchContextSession,
-  fetchContextSessions,
-  fetchContextSources,
-  fetchFile,
-  fetchFiles,
-  fetchHealth,
-  prepareContextPrompt,
-  runTurn,
-  updateModel,
-} from "./api.js";
-import { ContextBuilderPanel } from "./components/ContextBuilderPanel.js";
-import { FilePreviewPanel } from "./components/FilePreviewPanel.js";
-import { HeaderBar } from "./components/HeaderBar.js";
+import { fetchHealth, runTurn, updateModel } from "./api.js";
 import { TerminalPanel } from "./components/TerminalPanel.js";
 
 export function App() {
   const [health, setHealth] = React.useState(null);
-  const [tree, setTree] = React.useState([]);
-  const [expandedPaths, setExpandedPaths] = React.useState(new Set([""]));
-  const [selectedPath, setSelectedPath] = React.useState("");
-  const [selectedPreview, setSelectedPreview] = React.useState({
-    kind: "text",
-    content: "",
-    contentType: "text/plain",
-  });
-  const [prompt, setPrompt] = React.useState("Tell me about this project.");
+  const [prompt, setPrompt] = React.useState("Do you know about Integrate Codex and OpenCode?");
   const [transcript, setTranscript] = React.useState([
     {
       id: "intro",
       role: "assistant",
-      content: "I’m connected to your workspace.",
+      content: [
+        "I’m connected to your workspace and prior Codex history.",
+        "",
+        "Ask about a past project, reviewer feedback, architecture decision, or anything Devenv may have seen before.",
+      ].join("\n"),
     },
   ]);
   const [isRunning, setIsRunning] = React.useState(false);
@@ -41,27 +24,12 @@ export function App() {
   const [runtimeState, setRuntimeState] = React.useState("PLANNING");
   const [stageTraces, setStageTraces] = React.useState([]);
   const [verificationResults, setVerificationResults] = React.useState([]);
-  const [rightWidth, setRightWidth] = React.useState(380);
-  const [rightCollapsed, setRightCollapsed] = React.useState(false);
   const [usageWindow, setUsageWindow] = React.useState([]);
   const [rateLimitInfo, setRateLimitInfo] = React.useState(null);
   const [clock, setClock] = React.useState(Date.now());
   const [planningMode, setPlanningMode] = React.useState("auto");
   const [localOnlyEnabled, setLocalOnlyEnabled] = React.useState(false);
   const [showThinking, setShowThinking] = React.useState(false);
-  const [contextSources, setContextSources] = React.useState([]);
-  const [selectedContextProvider, setSelectedContextProvider] = React.useState("codex");
-  const [contextSessions, setContextSessions] = React.useState([]);
-  const [activeContextSessionIds, setActiveContextSessionIds] = React.useState([]);
-  const [contextSessionDetail, setContextSessionDetail] = React.useState(null);
-  const [contextTask, setContextTask] = React.useState("");
-  const [contextPromptResult, setContextPromptResult] = React.useState(null);
-  const [contextLoading, setContextLoading] = React.useState(false);
-  const [contextPreparing, setContextPreparing] = React.useState(false);
-  const [includeWorkspaceScan, setIncludeWorkspaceScan] = React.useState(true);
-  const [includePriorContext, setIncludePriorContext] = React.useState(true);
-  const [contextStatus, setContextStatus] = React.useState("");
-  const dragStateRef = React.useRef(null);
 
   React.useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -79,71 +47,18 @@ export function App() {
   }, []);
 
   React.useEffect(() => {
-    Promise.all([fetchHealth(), fetchFiles(""), fetchContextSources()])
-      .then(([healthPayload, filePayload, contextPayload]) => {
+    fetchHealth()
+      .then((healthPayload) => {
         setHealth(healthPayload);
         setHealthMeta({
           provider: healthPayload.ai_provider || "",
           model: healthPayload.ai_model || "",
           availableModels: healthPayload.available_models || [],
         });
-        setTree(normalizeEntries(filePayload.entries));
-        const sources = contextPayload.sources || [];
-        setContextSources(sources);
-        const defaultProvider = sources.find((source) => source.available)?.provider || sources[0]?.provider || "codex";
-        setSelectedContextProvider(defaultProvider);
       })
       .catch((error) => {
         setBootError(error.message);
       });
-  }, []);
-
-  React.useEffect(() => {
-    if (!selectedContextProvider) {
-      return;
-    }
-    setContextLoading(true);
-    fetchContextSessions(selectedContextProvider)
-      .then((payload) => {
-        setContextSessions(payload.sessions || []);
-        setActiveContextSessionIds((current) =>
-          current.filter((sessionId) => (payload.sessions || []).some((session) => session.session_id === sessionId))
-        );
-      })
-      .catch((error) => {
-        setContextStatus(`Failed to load sessions: ${error.message}`);
-        setContextSessions([]);
-      })
-      .finally(() => {
-        setContextLoading(false);
-      });
-  }, [selectedContextProvider]);
-
-  React.useEffect(() => {
-    function handlePointerMove(event) {
-      const dragState = dragStateRef.current;
-      if (!dragState) {
-        return;
-      }
-
-      const minPaneWidth = 220;
-      const maxPaneWidth = Math.max(minPaneWidth, Math.floor(window.innerWidth * 0.45));
-      const nextWidth = clamp(window.innerWidth - event.clientX, minPaneWidth, maxPaneWidth);
-      setRightCollapsed(false);
-      setRightWidth(nextWidth);
-    }
-
-    function handlePointerUp() {
-      dragStateRef.current = null;
-      document.body.classList.remove("is-resizing");
-    }
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-    };
   }, []);
 
   if (bootError) {
@@ -154,185 +69,16 @@ export function App() {
     return React.createElement("div", { className: "loading-shell" }, "Booting Devenv web interface...");
   }
 
-  const gridTemplateColumns = [
-    "minmax(0, 1fr)",
-    "14px",
-    rightCollapsed ? "0px" : `${rightWidth}px`,
-  ].join(" ");
-  const contextBudget = buildContextBudget(usageWindow, rateLimitInfo, clock);
+  const contextBudget = buildContextBudget(usageWindow, rateLimitInfo);
   const activeProvider = localOnlyEnabled ? "Local" : healthMeta.provider;
   const activeModel = localOnlyEnabled ? "heuristic-runtime" : healthMeta.model;
 
   return React.createElement(
     "div",
-    { className: "app-shell", style: { gridTemplateColumns } },
-    React.createElement(HeaderBar, {
-      workspacePath: health.workspace_path,
-      provider: activeProvider,
-      model: activeModel,
-      availableModels: healthMeta.availableModels,
-      usage,
-      contextBudget,
-      planningMode,
-      onPlanningModeChange: setPlanningMode,
-      localOnlyEnabled,
-      onLocalOnlyChange: setLocalOnlyEnabled,
-      showThinking,
-      onShowThinkingChange: setShowThinking,
-      onModelChange: async (nextModel) => {
-        const payload = await updateModel(nextModel);
-        setHealthMeta((current) => ({
-          ...current,
-          model: payload.ai_model || nextModel,
-          availableModels: payload.available_models || current.availableModels,
-        }));
-      },
-    }),
+    { className: "app-shell chat-shell" },
     React.createElement(
       "main",
-      { className: "main-column" },
-      React.createElement(FilePreviewPanel, {
-        nodes: tree,
-        expandedPaths,
-        selectedPath,
-        content: selectedPreview.content,
-        previewKind: selectedPreview.kind,
-        contentType: selectedPreview.contentType,
-        onSelectFile: async (path) => {
-          setSelectedPath(path);
-          const filePayload = await fetchFile(path);
-          setSelectedPreview({
-            kind: filePayload.kind || "text",
-            content: filePayload.content || "",
-            contentType: filePayload.content_type || "text/plain",
-          });
-        },
-        onToggleDirectory: async (path) => {
-          const next = new Set(expandedPaths);
-          if (next.has(path)) {
-            next.delete(path);
-            setExpandedPaths(next);
-            return;
-          }
-
-          const payload = await fetchFiles(path);
-          setTree((current) => attachChildren(current, path, normalizeEntries(payload.entries)));
-          next.add(path);
-          setExpandedPaths(next);
-        },
-      })
-    ),
-    React.createElement("div", {
-      className: `pane-resizer right${rightCollapsed ? " collapsed" : ""}`,
-      onPointerDown: () => {
-        dragStateRef.current = { side: "right" };
-        document.body.classList.add("is-resizing");
-      },
-      children: React.createElement(
-        "button",
-        {
-          className: "pane-toggle",
-          type: "button",
-          onClick: (event) => {
-            event.stopPropagation();
-            setRightCollapsed((current) => !current);
-          },
-          "aria-label": rightCollapsed ? "Expand chat" : "Collapse chat",
-          title: rightCollapsed ? "Expand chat" : "Collapse chat",
-        },
-        rightCollapsed ? "<" : ">"
-      ),
-    }),
-    React.createElement(
-      "aside",
-      { className: `right-column${rightCollapsed ? " collapsed" : ""}` },
-      React.createElement(ContextBuilderPanel, {
-        sources: contextSources,
-        selectedProvider: selectedContextProvider,
-        onProviderChange: (provider) => {
-          setSelectedContextProvider(provider);
-          setActiveContextSessionIds([]);
-          setContextSessionDetail(null);
-          setContextStatus("");
-        },
-        sessions: contextSessions,
-        activeSessionIds: activeContextSessionIds,
-        onSelectSession: async (sessionId) => {
-          const detail = await fetchContextSession(selectedContextProvider, sessionId);
-          setContextSessionDetail(detail);
-        },
-        sessionDetail: contextSessionDetail,
-        builderTask: contextTask,
-        onBuilderTaskChange: setContextTask,
-        includeWorkspaceScan,
-        onIncludeWorkspaceScanChange: setIncludeWorkspaceScan,
-        includePriorContext,
-        onIncludePriorContextChange: setIncludePriorContext,
-        promptResult: contextPromptResult,
-        onGeneratePrompt: async () => {
-          const nextTask = contextTask.trim() || prompt.trim();
-          if (!nextTask) {
-            setContextStatus("Add a task before generating a prompt.");
-            return;
-          }
-          setContextPreparing(true);
-          setContextStatus("");
-          try {
-            const result = await prepareContextPrompt({
-              task: nextTask,
-              provider: selectedContextProvider,
-              include_workspace_scan: includeWorkspaceScan,
-              include_prior_context: includePriorContext,
-              output_format: "compact",
-            });
-            setContextPromptResult(result);
-            const selectedIds = result.session_ids || [];
-            setActiveContextSessionIds(selectedIds);
-            if (selectedIds.length) {
-              const detail = await fetchContextSession(selectedContextProvider, selectedIds[0]);
-              setContextSessionDetail(detail);
-            }
-            setContextStatus(
-              `Prepared prompt using ${selectedIds.length || 0} automatically selected prior session(s).`
-            );
-          } catch (error) {
-            setContextStatus(`Prompt generation failed: ${error.message}`);
-          } finally {
-            setContextPreparing(false);
-          }
-        },
-        onRefreshSessions: async () => {
-          if (!selectedContextProvider) {
-            return;
-          }
-          setContextLoading(true);
-          setContextStatus("");
-          try {
-            const payload = await fetchContextSessions(selectedContextProvider);
-            setContextSessions(payload.sessions || []);
-            setContextStatus("Session list refreshed.");
-          } catch (error) {
-            setContextStatus(`Refresh failed: ${error.message}`);
-          } finally {
-            setContextLoading(false);
-          }
-        },
-        onCopyPrompt: async () => {
-          const promptText = contextPromptResult?.prompt || "";
-          if (!promptText.trim()) {
-            return;
-          }
-          try {
-            await navigator.clipboard.writeText(promptText);
-            setContextStatus("Prompt copied to clipboard.");
-          } catch (error) {
-            setContextStatus(`Copy failed: ${error.message}`);
-          }
-        },
-        isLoading: contextLoading,
-        isPreparing: contextPreparing,
-        statusMessage: contextStatus,
-      }),
+      { className: "chat-main" },
       React.createElement(TerminalPanel, {
         transcript,
         prompt,
@@ -340,14 +86,29 @@ export function App() {
         runtimeState,
         stageTraces,
         verificationResults,
+        workspacePath: health.workspace_path,
+        provider: activeProvider,
+        model: activeModel,
+        availableModels: healthMeta.availableModels,
+        contextBudget,
+        planningMode,
+        onPlanningModeChange: setPlanningMode,
+        localOnlyEnabled,
+        onLocalOnlyChange: setLocalOnlyEnabled,
         showThinking,
+        onShowThinkingChange: setShowThinking,
+        onModelChange: async (nextModel) => {
+          const payload = await updateModel(nextModel);
+          setHealthMeta((current) => ({
+            ...current,
+            model: payload.ai_model || nextModel,
+            availableModels: payload.available_models || current.availableModels,
+          }));
+        },
         onPromptChange: setPrompt,
         isRunning,
         isCoolingDown: Boolean(rateLimitInfo && rateLimitInfo.resetAt > clock),
         cooldownLabel: rateLimitInfo ? formatDuration(Math.max(rateLimitInfo.resetAt - clock, 0)) : "",
-        onToggleCollapse: () => setRightCollapsed((current) => !current),
-        collapseLabel: rightCollapsed ? "Expand chat" : "Collapse chat",
-        collapseGlyph: rightCollapsed ? "<" : ">",
         onSubmit: async () => {
           const nextPrompt = prompt.trim();
           if (!nextPrompt) {
@@ -470,8 +231,8 @@ export function App() {
                 role: parsedRateLimit ? "error" : "assistant",
                 content: parsedRateLimit
                   ? [
-                      `Rate limit reached.`,
-                      ``,
+                      "Rate limit reached.",
+                      "",
                       `TPM limit: ${parsedRateLimit.limit}`,
                       `Used: ${parsedRateLimit.used}`,
                       `Requested: ${parsedRateLimit.requested}`,
@@ -491,37 +252,6 @@ export function App() {
       })
     )
   );
-}
-
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function normalizeEntries(entries) {
-  return [...entries]
-    .sort((left, right) => {
-      if (left.is_dir !== right.is_dir) {
-        return left.is_dir ? -1 : 1;
-      }
-      return left.name.localeCompare(right.name);
-    })
-    .map(toTreeNode);
-}
-
-function toTreeNode(entry) {
-  return { ...entry, children: entry.children ? normalizeEntries(entry.children) : null };
-}
-
-function attachChildren(nodes, targetPath, children) {
-  return nodes.map((node) => {
-    if (node.path === targetPath) {
-      return { ...node, children };
-    }
-    if (!node.children) {
-      return node;
-    }
-    return { ...node, children: attachChildren(node.children, targetPath, children) };
-  });
 }
 
 function buildLogEntries(result) {
@@ -574,7 +304,7 @@ function parseRateLimitError(message) {
   };
 }
 
-function buildContextBudget(usageWindow, rateLimitInfo, now) {
+function buildContextBudget(usageWindow, rateLimitInfo) {
   const limit = rateLimitInfo?.limit || 12000;
   const recentUsage = usageWindow.reduce((sum, entry) => sum + entry.totalTokens, 0);
   const remaining = Math.max(limit - recentUsage, 0);
