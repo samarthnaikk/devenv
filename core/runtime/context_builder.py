@@ -25,6 +25,33 @@ MAX_SESSION_MESSAGES = 10
 MAX_CONTEXT_LINES = 8
 MAX_WORKSPACE_FACTS = 8
 MAX_README_CHARS = 500
+COMMON_CONTEXT_TOKENS = {
+    "about",
+    "again",
+    "also",
+    "been",
+    "from",
+    "have",
+    "into",
+    "just",
+    "that",
+    "them",
+    "they",
+    "this",
+    "talking",
+    "there",
+    "what",
+    "were",
+    "with",
+    "would",
+    "issue",
+    "issues",
+    "review",
+    "reviewer",
+    "reviews",
+    "fix",
+    "fixed",
+}
 
 
 class ExternalSessionProvider(ABC):
@@ -83,15 +110,19 @@ class CodexSessionProvider(ExternalSessionProvider):
         if by_id:
             for session_id, record in by_id.items():
                 source_path = self._find_session_file(session_id)
-                preview = self._preview_from_history(session_id)
+                detail = self._detail_cache.get(session_id)
+                if detail is None and source_path is not None:
+                    detail = self._parse_session_file(session_file=source_path)
+                preview = (detail.summary.preview if detail is not None else "") or self._preview_from_history(session_id)
                 summaries.append(
                     ExternalSessionSummary(
                         provider=self.name,
                         session_id=session_id,
                         title=str(record.get("thread_name") or "Untitled session"),
                         updated_at=str(record.get("updated_at") or ""),
-                        workspace_path=None,
+                        workspace_path=detail.summary.workspace_path if detail is not None else None,
                         source_path=str(source_path) if source_path else None,
+                        message_count=detail.summary.message_count if detail is not None else 0,
                         preview=preview,
                     )
                 )
@@ -165,7 +196,7 @@ class CodexSessionProvider(ExternalSessionProvider):
             if str(payload.get("session_id")) != session_id:
                 continue
             text = _normalize_whitespace(str(payload.get("text") or ""))
-            if text:
+            if text and not _is_noise_message_content(text):
                 return text[:220]
         return ""
 
@@ -260,7 +291,7 @@ class CodexSessionProvider(ExternalSessionProvider):
             if str(payload.get("session_id")) != session_id:
                 continue
             text = _normalize_whitespace(str(payload.get("text") or ""))
-            if not text:
+            if not text or _is_noise_message_content(text):
                 continue
             messages.append(
                 ExternalSessionMessage(
@@ -357,6 +388,27 @@ class ContextBuilderService:
             },
         )
 
+    def build_runtime_memory_context(
+        self,
+        task: str,
+        *,
+        provider_name: str | None = None,
+        max_lines: int = 6,
+    ) -> tuple[str, tuple[str, ...]]:
+        resolved_provider = provider_name or self._default_provider_name()
+        if not resolved_provider:
+            return "", ()
+        provider = self._get_provider(resolved_provider)
+        selected_session_ids = self._select_relevant_session_ids(provider, task)
+        if not selected_session_ids:
+            return "", ()
+        details = [provider.get_session(session_id) for session_id in selected_session_ids]
+        context_lines = _collect_relevant_context_lines(task, details, "detailed")[:max_lines]
+        if not context_lines:
+            return "", selected_session_ids
+        lines = ["## External Session Context", *(f"- {line}" for line in context_lines)]
+        return "\n".join(lines), selected_session_ids
+
     def _workspace_facts(self, task: str) -> tuple[str, ...]:
         facts: list[str] = []
         try:
@@ -434,27 +486,27 @@ class ContextBuilderService:
         prompt_tokens = _tokenize(task)
 
         for summary in summaries:
+            detail = provider.get_session(summary.session_id)
             score = 0
-            haystacks = [
-                summary.title.lower(),
-                summary.preview.lower(),
-                (summary.workspace_path or "").lower(),
-                os.path.basename(summary.source_path or "").lower(),
-            ]
+            haystacks = _session_haystacks(summary, detail)
             for token in prompt_tokens:
-                if any(token in haystack for haystack in haystacks):
-                    score += 3
+                if any(_token_matches(token, haystack) for haystack in haystacks):
+                    score += 4
             session_workspace = (summary.workspace_path or "").lower()
             if session_workspace:
                 if session_workspace == workspace_path:
-                    score += 10
+                    score += 5
                 elif workspace_name and workspace_name in session_workspace:
-                    score += 6
+                    score += 3
+                else:
+                    score -= 1
             if "devenv" in " ".join(haystacks):
                 score += 1
+            score += 6 * _exact_prompt_hits(prompt_tokens, haystacks)
+            score += min(_best_message_overlap(prompt_tokens, detail), 8)
             scored.append((score, summary))
 
-        scored.sort(key=lambda item: (-item[0], item[1].updated_at), reverse=False)
+        scored.sort(key=lambda item: (item[0], item[1].updated_at), reverse=True)
         selected = [summary.session_id for score, summary in scored if score > 0][:3]
         if not selected:
             selected = [summary.session_id for _score, summary in sorted(scored, key=lambda item: item[1].updated_at, reverse=True)[:2]]
@@ -487,19 +539,25 @@ def _extract_session_messages(*, row_type: str | None, payload: dict[str, Any], 
     messages: list[ExternalSessionMessage] = []
     if row_type == "event_msg" and payload.get("type") == "agent_message":
         text = _normalize_whitespace(str(payload.get("message") or ""))
-        if text:
+        if text and not _is_noise_message_content(text):
             messages.append(ExternalSessionMessage(role="assistant", content=text, timestamp=timestamp))
+    elif row_type == "event_msg" and payload.get("type") == "user_message":
+        text = _normalize_whitespace(str(payload.get("message") or ""))
+        if text and not _is_noise_message_content(text):
+            messages.append(ExternalSessionMessage(role="user", content=text, timestamp=timestamp))
     elif row_type == "event_msg" and payload.get("type") == "task_complete":
         text = _normalize_whitespace(str(payload.get("last_agent_message") or ""))
-        if text:
+        if text and not _is_noise_message_content(text):
             messages.append(ExternalSessionMessage(role="assistant", content=text, timestamp=timestamp))
     elif row_type == "response_item" and payload.get("type") == "message":
         role = str(payload.get("role") or "assistant")
+        if role not in {"user", "assistant"}:
+            return messages
         for item in payload.get("content") or ():
             if not isinstance(item, dict):
                 continue
             text = _normalize_whitespace(str(item.get("text") or ""))
-            if text:
+            if text and not _is_noise_message_content(text):
                 messages.append(ExternalSessionMessage(role=role, content=text, timestamp=timestamp))
     elif row_type == "response_item" and payload.get("type") == "custom_tool_call":
         tool_name = str(payload.get("name") or "").strip()
@@ -508,6 +566,16 @@ def _extract_session_messages(*, row_type: str | None, payload: dict[str, Any], 
                 ExternalSessionMessage(
                     role="tool",
                     content=f"Applied tool call: {tool_name}",
+                    timestamp=timestamp,
+                )
+            )
+    elif row_type == "response_item" and payload.get("type") == "function_call_output":
+        output_text = _normalize_whitespace(str(payload.get("output") or ""))
+        if output_text and not _is_noise_message_content(output_text):
+            messages.append(
+                ExternalSessionMessage(
+                    role="tool",
+                    content=_truncate_tool_output(output_text),
                     timestamp=timestamp,
                 )
             )
@@ -526,20 +594,25 @@ def _collect_relevant_context_lines(
         if summary.title.strip():
             candidates.append(f"Session '{summary.title}' targeted workspace {summary.workspace_path or 'unknown workspace'}.")
         for message in detail.messages:
-            if message.role not in {"user", "assistant"}:
+            if message.role not in {"user", "assistant", "tool"}:
                 continue
             content = _normalize_whitespace(message.content)
             if not content or content in seen:
                 continue
             seen.add(content)
-            prefix = "User asked:" if message.role == "user" else "Assistant reported:"
+            if message.role == "user":
+                prefix = "User asked:"
+            elif message.role == "assistant":
+                prefix = "Assistant reported:"
+            else:
+                prefix = "Tool output noted:"
             candidates.append(f"{prefix} {content}")
 
     prompt_tokens = _tokenize(task)
     scored: list[tuple[int, str]] = []
     for line in candidates:
         lowered = line.lower()
-        overlap = sum(2 for token in prompt_tokens if token in lowered)
+        overlap = sum(2 for token in prompt_tokens if _token_matches(token, lowered))
         overlap += 1 if "workspace" in lowered else 0
         overlap += 1 if "file" in lowered or "frontend" in lowered or "backend" in lowered else 0
         scored.append((overlap, line))
@@ -613,7 +686,63 @@ def _normalize_whitespace(text: str) -> str:
 
 
 def _tokenize(text: str) -> set[str]:
-    return {token for token in re.findall(r"[a-z0-9_]+", text.lower()) if len(token) >= 3}
+    return {
+        token
+        for token in re.findall(r"[a-z0-9_]+", text.lower())
+        if len(token) >= 3 and token not in COMMON_CONTEXT_TOKENS
+    }
+
+
+def _is_noise_message_content(text: str) -> bool:
+    lowered = text.strip().lower()
+    return lowered.startswith("<environment_context>") or lowered.startswith("<permissions instructions>") or lowered.startswith("<collaboration_mode>") or lowered.startswith("<skills_instructions>")
+
+
+def _token_matches(token: str, haystack: str) -> bool:
+    if token in haystack:
+        return True
+    if token.endswith("ers") and token[:-3] and token[:-3] in haystack:
+        return True
+    if token.endswith("er") and token[:-2] and token[:-2] in haystack:
+        return True
+    return False
+
+
+def _session_haystacks(summary: ExternalSessionSummary, detail: ExternalSessionDetail) -> list[str]:
+    haystacks = [
+        summary.title.lower(),
+        summary.preview.lower(),
+        (summary.workspace_path or "").lower(),
+        os.path.basename(summary.source_path or "").lower(),
+    ]
+    haystacks.extend(_normalize_whitespace(message.content).lower() for message in detail.messages[:MAX_SESSION_MESSAGES])
+    return haystacks
+
+
+def _best_message_overlap(prompt_tokens: set[str], detail: ExternalSessionDetail) -> int:
+    best = 0
+    for message in detail.messages:
+        lowered = _normalize_whitespace(message.content).lower()
+        overlap = sum(1 for token in prompt_tokens if _token_matches(token, lowered))
+        if overlap > best:
+            best = overlap
+    return best
+
+
+def _exact_prompt_hits(prompt_tokens: set[str], haystacks: list[str]) -> int:
+    exact_hits = 0
+    for token in prompt_tokens:
+        pattern = re.compile(rf"\b{re.escape(token)}\b")
+        if any(pattern.search(haystack) for haystack in haystacks):
+            exact_hits += 1
+    return exact_hits
+
+
+def _truncate_tool_output(text: str, max_chars: int = 900) -> str:
+    cleaned = text.strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return f"{cleaned[: max_chars - 3].rstrip()}..."
 
 
 def _timestamp_from_path(path: Path) -> str:
