@@ -231,6 +231,8 @@ class ContextBuilderServiceTest(unittest.TestCase):
 
         self.assertTrue(any(message.role == "tool" for message in detail.messages))
         self.assertIn("backend action", result.prompt.lower())
+        self.assertNotIn("chunk id", result.prompt.lower())
+        self.assertNotIn("operation not permitted", result.prompt.lower())
 
     def test_opencode_provider_reports_not_configured(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -512,6 +514,52 @@ class ContextBuilderServiceTest(unittest.TestCase):
             )
 
         self.assertEqual(result.session_ids[0], exact_match_session)
+
+    def test_prepare_prompt_returns_no_sessions_when_query_has_no_real_match(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "28"
+            sessions_dir.mkdir(parents=True)
+            (codex_root / "session_index.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"id": "session-devenv", "thread_name": "Integrate Devenv", "updated_at": "2026-06-28T12:00:00Z"}),
+                        json.dumps({"id": "session-review", "thread_name": "Review fixes", "updated_at": "2026-06-28T13:00:00Z"}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / "rollout-2026-06-28T12-00-00-session-devenv.jsonl").write_text(
+                json.dumps({"timestamp": "2026-06-28T11:59:00Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Worked on the Devenv context builder."}})
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / "rollout-2026-06-28T13-00-00-session-review.jsonl").write_text(
+                json.dumps({"timestamp": "2026-06-28T12:59:00Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Fixed review comments in another repo."}})
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            result = service.prepare_prompt(
+                PreparedPromptRequest(
+                    task="Do you know about Project Atlas?",
+                    provider="codex",
+                    include_workspace_scan=False,
+                    include_prior_context=True,
+                )
+            )
+
+        self.assertEqual(result.session_ids, ())
 
 
 if __name__ == "__main__":
