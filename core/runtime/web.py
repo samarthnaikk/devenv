@@ -45,6 +45,7 @@ class DevenvWebApp:
             memory=self.kernel.memory,
             provider_configs=config.external_session_configs,
         )
+        self.kernel.context_builder = self.context_builder
 
     def create_handler(self):
         return partial(DevenvRequestHandler, app=self)
