@@ -128,6 +128,10 @@ textarea {
   border: 1px solid rgba(47, 122, 120, 0.14);
 }
 
+.status-pill-select {
+  gap: 10px;
+}
+
 .status-pill-toggle {
   cursor: pointer;
   user-select: none;
@@ -159,6 +163,19 @@ textarea {
   color: var(--text);
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.78rem;
+}
+
+.status-select {
+  min-width: 136px;
+  border: 1px solid rgba(47, 122, 120, 0.16);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: 2px;
+}
+
+.status-select:disabled {
+  opacity: 0.55;
 }
 
 .status-warning {

@@ -42,3 +42,18 @@ class RunDiagnosticsToolTest(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertEqual(result.data["issues"][0]["function"], "bad")
+
+    def test_frontend_mode_checks_calendar_bundle(self) -> None:
+        frontend_root = self.root / "frontend"
+        frontend_root.mkdir()
+        (frontend_root / "index.html").write_text(
+            '<link rel="stylesheet" href="styles.css" />\n<div id="calendar-grid" class="calendar-grid"></div>\n<script src="script.js"></script>\n',
+            encoding="utf-8",
+        )
+        (frontend_root / "styles.css").write_text(".calendar-day { color: white; }\n", encoding="utf-8")
+        (frontend_root / "script.js").write_text("function renderCalendar() {}\n", encoding="utf-8")
+
+        result = self.tool.execute(mode="frontend", target_path=str(frontend_root))
+
+        self.assertTrue(result.success)
+        self.assertTrue(result.data["passed"])

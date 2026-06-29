@@ -17,7 +17,7 @@ class RunDiagnosticsTool(BaseTool):
     name = "run_diagnostics"
     description = "Run summarized tests, syntax checks, and lightweight type diagnostics."
 
-    supported_modes: tuple[str, ...] = ("tests", "lint", "types")
+    supported_modes: tuple[str, ...] = ("tests", "lint", "types", "frontend")
 
     def input_schema(self) -> dict[str, object]:
         return {
@@ -51,6 +51,8 @@ class RunDiagnosticsTool(BaseTool):
                 return self._run_tests(target)
             if mode == "lint":
                 return self._run_lint(target)
+            if mode == "frontend":
+                return self._run_frontend(target)
             return self._run_types(target)
         except (FileNotFoundError, OSError, SyntaxError, ValueError) as exc:
             logger.error("run_diagnostics failed: target=%s mode=%s error=%s", target_path, mode, exc)
@@ -124,6 +126,51 @@ class RunDiagnosticsTool(BaseTool):
                 "passed": success,
                 "issues": issues,
                 "python_version": sys.version.split()[0],
+            },
+        )
+
+    def _run_frontend(self, target: Path) -> ToolResult:
+        root = target if target.is_dir() else target.parent
+        html_path = root / "index.html"
+        css_path = root / "styles.css"
+        js_path = root / "script.js"
+        missing = [str(path.name) for path in (html_path, css_path, js_path) if not path.exists()]
+        issues: list[str] = []
+
+        if not missing:
+            html_text = html_path.read_text(encoding="utf-8")
+            css_text = css_path.read_text(encoding="utf-8")
+            js_text = js_path.read_text(encoding="utf-8")
+            if 'href="styles.css"' not in html_text:
+                issues.append("index.html does not link styles.css")
+            if 'src="script.js"' not in html_text:
+                issues.append("index.html does not load script.js")
+            if "calendar-grid" not in html_text:
+                issues.append("index.html is missing the calendar grid container")
+            if "calendar-day" not in css_text:
+                issues.append("styles.css is missing calendar day styling")
+            if "renderCalendar" not in js_text:
+                issues.append("script.js is missing renderCalendar")
+
+        success = not missing and not issues
+        detail_parts: list[str] = []
+        if missing:
+            detail_parts.append(f"missing files: {', '.join(missing)}")
+        if issues:
+            detail_parts.append(f"issues: {'; '.join(issues)}")
+        if not detail_parts:
+            detail_parts.append("frontend diagnostics passed")
+        output = f"run_diagnostics frontend completed: {'; '.join(detail_parts)}"
+        logger.info("Ran diagnostics frontend: target=%s success=%s missing=%s issues=%s", target, success, missing, len(issues))
+        return ToolResult(
+            success=success,
+            output=output,
+            data={
+                "mode": "frontend",
+                "target_path": str(root),
+                "passed": success,
+                "missing_files": missing,
+                "issues": issues,
             },
         )
 

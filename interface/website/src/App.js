@@ -8,6 +8,7 @@ import {
   fetchHealth,
   prepareContextPrompt,
   runTurn,
+  updateModel,
 } from "./api.js";
 import { ContextBuilderPanel } from "./components/ContextBuilderPanel.js";
 import { FilePreviewPanel } from "./components/FilePreviewPanel.js";
@@ -35,7 +36,7 @@ export function App() {
   const [isRunning, setIsRunning] = React.useState(false);
   const [bootError, setBootError] = React.useState("");
   const [usage, setUsage] = React.useState({});
-  const [healthMeta, setHealthMeta] = React.useState({ provider: "", model: "" });
+  const [healthMeta, setHealthMeta] = React.useState({ provider: "", model: "", availableModels: [] });
   const [blueprint, setBlueprint] = React.useState(null);
   const [runtimeState, setRuntimeState] = React.useState("PLANNING");
   const [stageTraces, setStageTraces] = React.useState([]);
@@ -45,7 +46,7 @@ export function App() {
   const [usageWindow, setUsageWindow] = React.useState([]);
   const [rateLimitInfo, setRateLimitInfo] = React.useState(null);
   const [clock, setClock] = React.useState(Date.now());
-  const [planModeEnabled, setPlanModeEnabled] = React.useState(false);
+  const [planningMode, setPlanningMode] = React.useState("auto");
   const [localOnlyEnabled, setLocalOnlyEnabled] = React.useState(false);
   const [showThinking, setShowThinking] = React.useState(false);
   const [contextSources, setContextSources] = React.useState([]);
@@ -84,6 +85,7 @@ export function App() {
         setHealthMeta({
           provider: healthPayload.ai_provider || "",
           model: healthPayload.ai_model || "",
+          availableModels: healthPayload.available_models || [],
         });
         setTree(normalizeEntries(filePayload.entries));
         const sources = contextPayload.sources || [];
@@ -168,14 +170,23 @@ export function App() {
       workspacePath: health.workspace_path,
       provider: activeProvider,
       model: activeModel,
+      availableModels: healthMeta.availableModels,
       usage,
       contextBudget,
-      planModeEnabled,
-      onPlanModeChange: setPlanModeEnabled,
+      planningMode,
+      onPlanningModeChange: setPlanningMode,
       localOnlyEnabled,
       onLocalOnlyChange: setLocalOnlyEnabled,
       showThinking,
       onShowThinkingChange: setShowThinking,
+      onModelChange: async (nextModel) => {
+        const payload = await updateModel(nextModel);
+        setHealthMeta((current) => ({
+          ...current,
+          model: payload.ai_model || nextModel,
+          availableModels: payload.available_models || current.availableModels,
+        }));
+      },
     }),
     React.createElement(
       "main",
@@ -358,7 +369,6 @@ export function App() {
 
           try {
             const aggregateLogs = [];
-            const planningMode = planModeEnabled ? "force_plan" : "force_direct";
             let continuePlan = false;
             let result = null;
             const refreshThinking = (pending) => {

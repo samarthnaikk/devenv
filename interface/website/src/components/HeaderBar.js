@@ -4,21 +4,21 @@ export function HeaderBar({
   workspacePath,
   provider,
   model,
+  availableModels,
   usage,
   contextBudget,
-  planModeEnabled,
-  onPlanModeChange,
+  planningMode,
+  onPlanningModeChange,
   localOnlyEnabled,
   onLocalOnlyChange,
   showThinking,
   onShowThinkingChange,
+  onModelChange,
 }) {
   const chips = [
-    { label: "Plan Mode", value: planModeEnabled ? "On" : "Off", isToggle: true },
     { label: "Local", value: localOnlyEnabled ? "On" : "Off", isLocalToggle: true },
     { label: "Show Thinking", value: showThinking ? "On" : "Off", isThinkingToggle: true },
     { label: "Provider", value: provider || "Unknown" },
-    { label: "Model", value: model || "Unknown" },
     { label: "Tokens", value: String(usage?.total_tokens || 0) },
     { label: "Context Left", value: contextBudget?.remainingLabel || "Unknown" },
     { label: "Resets", value: contextBudget?.resetLabel || "Idle" },
@@ -37,6 +37,39 @@ export function HeaderBar({
     React.createElement(
       "div",
       { className: "status-strip" },
+      React.createElement(
+        "label",
+        { className: "status-pill status-pill-select" },
+        React.createElement("span", { className: "status-label" }, "Planning"),
+        React.createElement(
+          "select",
+          {
+            className: "status-select",
+            value: planningMode || "auto",
+            onChange: (event) => onPlanningModeChange?.(event.target.value),
+          },
+          React.createElement("option", { value: "auto" }, "Auto"),
+          React.createElement("option", { value: "force_plan" }, "Plan"),
+          React.createElement("option", { value: "force_direct" }, "Direct")
+        )
+      ),
+      React.createElement(
+        "label",
+        { className: "status-pill status-pill-select" },
+        React.createElement("span", { className: "status-label" }, "Model"),
+        React.createElement(
+          "select",
+          {
+            className: "status-select",
+            value: model || "",
+            disabled: localOnlyEnabled,
+            onChange: (event) => onModelChange?.(event.target.value),
+          },
+          (availableModels?.length ? availableModels : [model || ""]).map((modelName) =>
+            React.createElement("option", { key: modelName, value: modelName }, modelName || "Unknown")
+          )
+        )
+      ),
       contextBudget?.isLow
         ? React.createElement(
             "div",
@@ -45,13 +78,13 @@ export function HeaderBar({
           )
         : null,
       chips.map((chip) =>
-        chip.isToggle || chip.isLocalToggle || chip.isThinkingToggle
+        chip.isLocalToggle || chip.isThinkingToggle
           ? React.createElement(
               "label",
               {
                 key: chip.label,
                 className: `status-pill status-pill-toggle${
-                  (chip.isToggle ? planModeEnabled : chip.isLocalToggle ? localOnlyEnabled : showThinking) ? " enabled" : ""
+                  (chip.isLocalToggle ? localOnlyEnabled : showThinking) ? " enabled" : ""
                 }`,
               },
               React.createElement("span", { className: "status-label" }, chip.label),
@@ -60,12 +93,10 @@ export function HeaderBar({
                 { className: "status-toggle-value" },
                 React.createElement("input", {
                   type: "checkbox",
-                  checked: Boolean(chip.isToggle ? planModeEnabled : chip.isLocalToggle ? localOnlyEnabled : showThinking),
+                  checked: Boolean(chip.isLocalToggle ? localOnlyEnabled : showThinking),
                   onChange: (event) =>
-                    chip.isToggle
-                      ? onPlanModeChange?.(event.target.checked)
-                      : chip.isLocalToggle
-                        ? onLocalOnlyChange?.(event.target.checked)
+                    chip.isLocalToggle
+                      ? onLocalOnlyChange?.(event.target.checked)
                       : onShowThinkingChange?.(event.target.checked),
                 }),
                 React.createElement("span", { className: "status-value" }, chip.value)

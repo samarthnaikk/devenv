@@ -345,7 +345,8 @@ class DevenvKernel:
         system_logs: list[str],
         max_consecutive_tools: int,
     ) -> tuple[ExecutionBlueprint, list[dict[str, Any]], StageTrace]:
-        if continue_plan and self._can_continue_active_plan(user_prompt):
+        should_resume_plan = planning_mode is not PlanningMode.FORCE_DIRECT and (continue_plan or self._is_plan_continue_request(user_prompt))
+        if should_resume_plan and self._can_continue_active_plan(user_prompt):
             blueprint = self.active_blueprint or self._build_direct_blueprint(user_prompt)
             trace = StageTrace(
                 stage=ProcessStage.CHECKPOINT_CREATION.value,
@@ -553,6 +554,7 @@ class DevenvKernel:
             results.append(VerificationResult(checkpoint_id=checkpoint.task_id, mode="chat", success=success, details=details))
             logs.append(details)
         else:
+            diagnostics_target = self._resolve_verification_target_path(checkpoint, checkpoint_steps)
             file_check = self._verify_file_artifact(checkpoint, checkpoint_steps)
             if file_check is not None:
                 results.append(file_check)
@@ -561,8 +563,8 @@ class DevenvKernel:
 
             diagnostics_tool = self.tools.get("run_diagnostics")
             if diagnostics_tool is not None and checkpoint.verification_mode in {"code", "frontend"}:
-                diagnostics_target = self._resolve_verification_target_path(checkpoint, checkpoint_steps)
-                for mode in ("tests", "types"):
+                diagnostic_modes = ("frontend", "lint") if checkpoint.verification_mode == "frontend" else ("tests", "types", "lint")
+                for mode in diagnostic_modes:
                     result = diagnostics_tool.execute(mode=mode, target_path=diagnostics_target)
                     details = result.output
                     results.append(
@@ -593,7 +595,10 @@ class DevenvKernel:
             success=success,
             summary="Verification passed" if success else "Verification failed",
             logs=logs,
-            payload={"verification_mode": checkpoint.verification_mode},
+            payload={
+                "verification_mode": checkpoint.verification_mode,
+                "target_path": diagnostics_target if checkpoint.verification_mode != "chat" else None,
+            },
         )
         return success, trace, results
 
@@ -635,12 +640,21 @@ class DevenvKernel:
         candidate = Path(path_hint)
         if not candidate.is_absolute():
             candidate = Path(self.workspace_path) / candidate
-        success = candidate.exists() or candidate.parent.exists()
+        details = f"Artifact check for {candidate}: "
+        if checkpoint.verification_mode == "frontend":
+            root = candidate if candidate.is_dir() else candidate.parent
+            required = [root / "index.html", root / "styles.css", root / "script.js"]
+            missing = [path.name for path in required if not path.exists()]
+            success = not missing
+            details += "ok" if success else f"missing {', '.join(missing)}"
+        else:
+            success = candidate.exists() or candidate.parent.exists()
+            details += "ok" if success else "missing"
         return VerificationResult(
             checkpoint_id=checkpoint.task_id,
             mode="file",
             success=success,
-            details=f"Artifact check for {candidate}: {'ok' if success else 'missing'}",
+            details=details,
         )
 
     def _append_repair_checkpoint(self, blueprint: ExecutionBlueprint, *, checkpoint_id: int, reason: str) -> tuple[ExecutionBlueprint, bool]:
@@ -1372,9 +1386,53 @@ class DevenvKernel:
         return self._requires_planning(user_prompt)
 
     def _can_continue_active_plan(self, user_prompt: str) -> bool:
-        if self.active_blueprint is None or self.active_plan_prompt != user_prompt:
+        if self.active_blueprint is None:
             return False
-        return _next_incomplete_task_index(self.active_blueprint) is not None
+        if _next_incomplete_task_index(self.active_blueprint) is None:
+            return False
+        if self._is_plan_exit_request(user_prompt):
+            return False
+        if self.active_plan_prompt == user_prompt:
+            return True
+        if self._is_plan_continue_request(user_prompt):
+            return True
+        if not self.active_plan_prompt:
+            return False
+        active_tokens = set(_prompt_keywords(self.active_plan_prompt))
+        current_tokens = set(_prompt_keywords(user_prompt))
+        if not active_tokens or not current_tokens:
+            return False
+        overlap = len(active_tokens & current_tokens) / max(min(len(active_tokens), len(current_tokens)), 1)
+        return overlap >= 0.6
+
+    def _is_plan_exit_request(self, user_prompt: str) -> bool:
+        text = user_prompt.lower()
+        exit_markers = (
+            "exit plan mode",
+            "leave plan mode",
+            "stop planning",
+            "don't plan",
+            "dont plan",
+            "no plan",
+            "just answer",
+            "just tell me",
+        )
+        return any(marker in text for marker in exit_markers)
+
+    def _is_plan_continue_request(self, user_prompt: str) -> bool:
+        text = user_prompt.lower()
+        continue_markers = (
+            "continue",
+            "resume",
+            "keep going",
+            "go on",
+            "carry on",
+            "proceed",
+            "next checkpoint",
+            "finish the plan",
+            "finish it",
+        )
+        return any(marker in text for marker in continue_markers)
 
     def _execution_checkpoint_indexes(self, blueprint: ExecutionBlueprint) -> list[int]:
         start_index = _next_incomplete_task_index(blueprint)
@@ -1482,12 +1540,13 @@ class DevenvKernel:
             target_root = Path(target_path)
             file_name: str | None = None
             content: str | None = None
+            wants_dark_theme = any(token in lowered_prompt or token in lowered_task for token in ("dark theme", "dark mode"))
             if "index.html" in lowered_task or ("html" in lowered_task and "calendar" in lowered_prompt):
                 file_name = "index.html"
                 content = _local_calendar_html(target_path)
             elif "styles.css" in lowered_task or ("css" in lowered_task and "calendar" in lowered_prompt):
                 file_name = "styles.css"
-                content = _local_calendar_css()
+                content = _local_calendar_css(dark_theme=wants_dark_theme)
             elif "script.js" in lowered_task or ("javascript" in lowered_task) or ("js" in lowered_task and "calendar" in lowered_prompt):
                 file_name = "script.js"
                 content = _local_calendar_js()
@@ -2395,7 +2454,133 @@ def _local_calendar_html(target_path: str) -> str:
 """
 
 
-def _local_calendar_css() -> str:
+def _local_calendar_css(*, dark_theme: bool = False) -> str:
+    if dark_theme:
+        return """:root {
+  color-scheme: dark;
+  --bg: #11161d;
+  --panel: rgba(24, 32, 43, 0.96);
+  --border: rgba(132, 148, 173, 0.22);
+  --text: #f2f5f8;
+  --muted: #97a6ba;
+  --accent: #7cc7ff;
+  --accent-soft: rgba(124, 199, 255, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(124, 199, 255, 0.12), transparent 28%),
+    linear-gradient(180deg, #0d131a 0%, #151d27 100%);
+  color: var(--text);
+}
+
+.calendar-app {
+  max-width: 960px;
+  margin: 48px auto;
+  padding: 24px;
+}
+
+.calendar-header,
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.calendar-header {
+  grid-template-columns: 92px 1fr 92px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.calendar-header button {
+  border: 1px solid var(--border);
+  background: rgba(18, 25, 35, 0.92);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.calendar-kicker {
+  margin: 0 0 4px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+}
+
+.calendar-header h1 {
+  margin: 0;
+  font-size: 32px;
+}
+
+.calendar-panel {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--panel);
+  padding: 20px;
+  box-shadow: 0 20px 40px rgba(3, 7, 12, 0.34);
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.calendar-weekdays {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.calendar-grid {
+  min-height: 420px;
+}
+
+.calendar-day {
+  border: 1px solid var(--border);
+  background: rgba(15, 22, 32, 0.88);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 12px;
+  min-height: 88px;
+}
+
+.calendar-day.is-today {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.calendar-day.is-empty {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+@media (max-width: 720px) {
+  .calendar-app {
+    margin: 20px auto;
+    padding: 16px;
+  }
+
+  .calendar-header {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .calendar-header h1 {
+    font-size: 24px;
+  }
+}
+"""
+
     return """:root {
   color-scheme: light;
   --bg: #f6f4ef;
@@ -2609,3 +2794,7 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 """
+
+
+def _prompt_keywords(text: str) -> list[str]:
+    return [token for token in re.findall(r"[a-z0-9]+", text.lower()) if len(token) > 2]

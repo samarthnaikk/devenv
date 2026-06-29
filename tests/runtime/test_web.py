@@ -72,6 +72,7 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(health["status"], "ok")
         self.assertEqual(health["ai_provider"], "Groq")
         self.assertEqual(health["ai_model"], "fake-groq-model")
+        self.assertIn("fake-groq-model", health["available_models"])
         self.assertTrue(health["context_builder_enabled"])
         self.assertIn("context_sources", health)
         self.assertEqual(files["entries"][0]["name"], "README.md")
@@ -138,6 +139,21 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(captured["planning_mode"], PlanningMode.FORCE_PLAN)
         self.assertTrue(captured["continue_plan"])
         self.assertTrue(captured["local_only"])
+
+    def test_set_model_updates_health_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+
+            payload = app.set_model("llama-3.1-8b-instant")
+            health = app.build_health_payload()
+
+        self.assertEqual(payload["ai_model"], "llama-3.1-8b-instant")
+        self.assertEqual(health["ai_model"], "llama-3.1-8b-instant")
+        self.assertIn("llama-3.1-8b-instant", health["available_models"])
 
     def test_context_builder_payload_helpers_expose_sessions_and_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

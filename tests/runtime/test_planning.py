@@ -240,7 +240,14 @@ class PlanningKernelTest(unittest.TestCase):
 
     def test_verification_scopes_diagnostics_to_checkpoint_target(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
-            (Path(tempdir) / "calendar" / "frontend").mkdir(parents=True)
+            frontend = Path(tempdir) / "calendar" / "frontend"
+            frontend.mkdir(parents=True)
+            (frontend / "index.html").write_text(
+                '<link rel="stylesheet" href="styles.css" />\n<div id="calendar-grid" class="calendar-grid"></div>\n<script src="script.js"></script>\n',
+                encoding="utf-8",
+            )
+            (frontend / "styles.css").write_text(".calendar-day { color: white; }\n", encoding="utf-8")
+            (frontend / "script.js").write_text("function renderCalendar() {}\n", encoding="utf-8")
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
             diagnostics = CapturingDiagnosticsTool()
             kernel.register_tool(diagnostics)
@@ -262,7 +269,7 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertTrue(success)
         self.assertEqual(len(diagnostics.calls), 2)
         self.assertTrue(all(call["target_path"].endswith("calendar/frontend") for call in diagnostics.calls))
-        self.assertEqual([result.mode for result in results], ["file", "tests", "types"])
+        self.assertEqual([result.mode for result in results], ["file", "frontend", "lint"])
 
     def test_scaffold_request_uses_tiny_execution_scope_and_trimmed_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -305,6 +312,37 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertTrue(kernel._should_plan("how does the repo work?", PlanningMode.FORCE_PLAN))
         self.assertFalse(kernel._should_plan("create a frontend folder", PlanningMode.FORCE_DIRECT))
 
+    def test_can_continue_active_plan_from_follow_up_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.active_plan_prompt = "Build the calendar frontend in html css js"
+            kernel.active_blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [x] Add index.html\n- [ ] Add styles.css",
+                tasks=[
+                    CheckpointTask(task_id=1, description="Add index.html", is_completed=True),
+                    CheckpointTask(task_id=2, description="Add styles.css"),
+                ],
+                active_task_pointer=1,
+            )
+
+            can_continue = kernel._can_continue_active_plan("continue with the calendar frontend plan")
+
+        self.assertTrue(can_continue)
+
+    def test_can_exit_active_plan_from_follow_up_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.active_plan_prompt = "Build the calendar frontend in html css js"
+            kernel.active_blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [ ] Add index.html",
+                tasks=[CheckpointTask(task_id=1, description="Add index.html")],
+                active_task_pointer=0,
+            )
+
+            can_continue = kernel._can_continue_active_plan("exit plan mode and just answer")
+
+        self.assertFalse(can_continue)
+
     def test_force_plan_executes_one_checkpoint_per_turn(self) -> None:
         ai = FakeAI(
             [
@@ -344,6 +382,39 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertEqual(second.final_response, "Added main.py.")
         self.assertEqual([task.is_completed for task in second.blueprint.tasks], [True, True])
         self.assertEqual(second.state, AgentState.VERIFYING.name)
+
+    def test_follow_up_continue_prompt_resumes_active_plan(self) -> None:
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="- [ ] Create calendar folder\n- [ ] Add main.py",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+                AIResponse(
+                    content="Created the calendar folder.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+                AIResponse(
+                    content="Added main.py.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
+            first = kernel.execute_turn("Create a calendar app", planning_mode=PlanningMode.FORCE_PLAN)
+            second = kernel.execute_turn("continue", planning_mode=PlanningMode.AUTO)
+
+        self.assertEqual(first.final_response, "Created the calendar folder.")
+        self.assertEqual(second.final_response, "Added main.py.")
+        self.assertEqual([task.is_completed for task in second.blueprint.tasks], [True, True])
 
     def test_auto_planning_executes_one_checkpoint_per_turn(self) -> None:
         ai = FakeAI(

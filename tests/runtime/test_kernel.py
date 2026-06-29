@@ -655,6 +655,33 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("calendar-weekdays", html_content)
         self.assertIn("calendar styling", second.final_response or "")
 
+    def test_local_only_dark_theme_calendar_writes_dark_css(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(WriteFileTool())
+            first = kernel.execute_turn(
+                "create a dark theme frontend folder in calendar with html css and js",
+                planning_mode=PlanningMode.FORCE_PLAN,
+                local_only=True,
+            )
+            second = kernel.execute_turn(
+                "create a dark theme frontend folder in calendar with html css and js",
+                planning_mode=PlanningMode.FORCE_PLAN,
+                continue_plan=True,
+                local_only=True,
+            )
+
+            css_path = Path(tempdir) / "calendar" / "frontend" / "styles.css"
+            css_content = css_path.read_text(encoding="utf-8")
+
+        self.assertIsNotNone(first.blueprint)
+        self.assertIn("color-scheme: dark", css_content)
+        self.assertIn("--bg: #11161d", css_content)
+        self.assertIn("calendar styling", second.final_response or "")
+
     def test_memory_persists_across_kernel_sessions(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             first_memory = MemoryEngine(

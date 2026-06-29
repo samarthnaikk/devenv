@@ -2,6 +2,14 @@ export async function fetchHealth() {
   return request("/api/health");
 }
 
+export async function updateModel(model) {
+  return request("/api/model", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model }),
+  });
+}
+
 export async function fetchContextSources() {
   return request("/api/context-sources");
 }
@@ -32,7 +40,7 @@ export async function fetchFile(path) {
   return request(`/api/file${query}`);
 }
 
-export async function runTurn(prompt, planningMode = "force_direct", continuePlan = false, localOnly = false) {
+export async function runTurn(prompt, planningMode = "auto", continuePlan = false, localOnly = false) {
   return request("/api/turn", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

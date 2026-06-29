@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -17,6 +18,11 @@ from .tooling import build_runtime_tools
 from .workspace import WorkspaceBrowser
 
 logger = logging.getLogger(__name__)
+DEFAULT_WEB_MODELS = (
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "moonshotai/kimi-k2-instruct",
+)
 
 
 class DevenvWebApp:
@@ -64,9 +70,19 @@ class DevenvWebApp:
             "status": "ok",
             "ai_provider": "Groq",
             "ai_model": model,
+            "available_models": self._available_models(current_model=model),
             "context_builder_enabled": True,
             "context_sources": [source.to_dict() for source in self.context_builder.list_sources()],
         }
+
+    def _available_models(self, *, current_model: str) -> list[str]:
+        configured = os.getenv("DEVENV_AVAILABLE_MODELS", "")
+        configured_models = [item.strip() for item in configured.split(",") if item.strip()]
+        ordered: list[str] = []
+        for model_name in [current_model, *configured_models, *DEFAULT_WEB_MODELS]:
+            if model_name and model_name not in ordered:
+                ordered.append(model_name)
+        return ordered
 
     def build_files_payload(self, relative_path: str = "") -> dict[str, object]:
         return {
@@ -130,6 +146,17 @@ class DevenvWebApp:
         )
         return result.to_dict()
 
+    def set_model(self, model: str) -> dict[str, object]:
+        cleaned = model.strip()
+        if not cleaned:
+            raise ValueError("Missing required field: model")
+        self.kernel.ai.model = cleaned
+        return {
+            "ai_provider": "Groq",
+            "ai_model": cleaned,
+            "available_models": self._available_models(current_model=cleaned),
+        }
+
 
 class DevenvRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, app: DevenvWebApp, **kwargs):
@@ -187,6 +214,18 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
                 self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
                 return
             self._write_json(HTTPStatus.OK, prepared)
+            return
+        if parsed.path == "/api/model":
+            model = payload.get("model")
+            if not isinstance(model, str):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "Missing required field: model"})
+                return
+            try:
+                result = self.app.set_model(model)
+            except ValueError as exc:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                return
+            self._write_json(HTTPStatus.OK, result)
             return
         if parsed.path != "/api/turn":
             self.send_error(HTTPStatus.NOT_FOUND)
