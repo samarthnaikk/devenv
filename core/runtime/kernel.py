@@ -2193,13 +2193,17 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     if _is_memory_follow_up_question(user_prompt) and sections["external"]:
         ordered_follow_up = _ordered_follow_up_lines(user_prompt, sections["external"])
         if ordered_follow_up:
-            if len(ordered_follow_up) >= 2 and _follow_up_line_score(ordered_follow_up[0].lower()) >= 2 and _follow_up_line_score(ordered_follow_up[1].lower()) >= 2:
-                return "Yes.\n\n" + "\n\n".join(ordered_follow_up[:2])
+            shaped_follow_up = [_humanize_recalled_line(line, user_prompt) for line in ordered_follow_up]
+            shaped_follow_up = [line for line in shaped_follow_up if line]
+            if not shaped_follow_up:
+                return None
+            if len(shaped_follow_up) >= 2 and _follow_up_line_score(ordered_follow_up[0].lower()) >= 2 and _follow_up_line_score(ordered_follow_up[1].lower()) >= 2:
+                return "Yes. The main issues were: " + "; ".join(shaped_follow_up[:2])
             if _follow_up_line_score(ordered_follow_up[0].lower()) >= 2:
-                return f"Yes. {ordered_follow_up[0]}"
-            if len(ordered_follow_up) == 1:
-                return f"Yes. {ordered_follow_up[0]}"
-            return "Yes.\n\n" + "\n\n".join(ordered_follow_up[:3])
+                return f"Yes. {shaped_follow_up[0]}"
+            if len(shaped_follow_up) == 1:
+                return f"Yes. {shaped_follow_up[0]}"
+            return "Yes.\n\n" + "\n\n".join(shaped_follow_up[:3])
     primary_lines = sections["external"] or sections["retrieved"]
     working_lines = sections["working"]
     bullet_lines: list[tuple[str, str]] = []
@@ -2260,13 +2264,19 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         return None
     if query_entities:
         cleaned = [line for line in cleaned if any(entity in line.lower() for entity in query_entities)] or cleaned
+    shaped = [_humanize_recalled_line(line, user_prompt) for line in cleaned]
+    shaped = [line for line in shaped if line]
+    if not shaped:
+        return None
     if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
-        if len(cleaned) == 1:
-            return f"Yes. {cleaned[0]}"
-        return "Yes.\n\n" + "\n\n".join(cleaned[:3])
-    if len(cleaned) == 1:
-        return cleaned[0]
-    return "\n\n".join(cleaned)
+        if _has_explicit_memory_subject(user_prompt):
+            return f"Yes. {shaped[0]}"
+        if len(shaped) == 1:
+            return f"Yes. {shaped[0]}"
+        return "Yes.\n\n" + "\n\n".join(shaped[:3])
+    if len(shaped) == 1:
+        return shaped[0]
+    return "\n\n".join(shaped)
 
 
 def _memory_context_sections(memory_context: str) -> dict[str, list[str]]:
@@ -2325,6 +2335,28 @@ def _clean_memory_line(line: str) -> str:
     cleaned = re.sub(r"^\[[^\]]+\]\s*", "", cleaned)
     cleaned = re.sub(r"^(episodic memory|episode)\s+[a-f0-9-]+:\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^(assistant|user|tool):\s*", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip()
+
+
+def _humanize_recalled_line(line: str, user_prompt: str) -> str:
+    cleaned = re.sub(r"^(user asked|assistant reported):\s*", "", line.strip(), flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return ""
+    if _is_memory_follow_up_question(user_prompt):
+        cleaned = cleaned.replace(" -> ", ": ")
+        cleaned = cleaned.replace(" · ", "; ")
+        cleaned = cleaned.replace(" doesnt work", " did not work")
+        cleaned = cleaned.replace(" doesnt ", " did not ")
+        cleaned = cleaned.replace(" doesnt", " did not")
+    if cleaned.startswith("The first sweep shows there is already "):
+        cleaned = cleaned.replace("The first sweep shows there is already ", "", 1)
+    if " I’m " in cleaned:
+        cleaned = cleaned.split(" I’m ", 1)[0].rstrip(" .,;")
+    if " I'll " in cleaned:
+        cleaned = cleaned.split(" I'll ", 1)[0].rstrip(" .,;")
+    if " I’ll " in cleaned:
+        cleaned = cleaned.split(" I’ll ", 1)[0].rstrip(" .,;")
     return cleaned.strip()
 
 

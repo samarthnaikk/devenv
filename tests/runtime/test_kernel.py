@@ -628,6 +628,7 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("Create Workspace", answer or "")
         self.assertIn("DRIP pipeline chat", answer or "")
         self.assertNotIn("Episodic Memory", answer or "")
+        self.assertNotIn("User asked:", answer or "")
 
     def test_retrieve_memory_context_uses_recent_conversation_for_follow_up_matching(self) -> None:
         memory = FakeMemory()
@@ -756,6 +757,22 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIsNotNone(result.final_response)
         self.assertIn("Create Workspace", result.final_response or "")
         self.assertIn("DRIP pipeline chat", result.final_response or "")
+
+    def test_answer_from_retrieved_memory_humanizes_project_summary(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "do you remember codeguide? what was it about?",
+            "\n".join(
+                [
+                    "## External Session Context",
+                    "- Assistant reported: The first sweep shows there is already a candidate-practice CodeGuide backend and worker plumbing in place, including a `task_practice_code_evaluate` path that calls `task_getgit_checkpoints`. I’m narrowing in on what’s incomplete rather than layering on a parallel one.",
+                ]
+            ),
+        )
+
+        self.assertIsNotNone(answer)
+        self.assertIn("candidate-practice CodeGuide backend", answer or "")
+        self.assertNotIn("The first sweep shows", answer or "")
+        self.assertNotIn("I’m narrowing", answer or "")
 
     def test_local_directory_summary_is_not_persisted_to_episodic_memory(self) -> None:
         memory = FakeMemory()
