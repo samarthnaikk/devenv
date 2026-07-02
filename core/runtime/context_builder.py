@@ -117,6 +117,9 @@ class CodexSessionProvider(ExternalSessionProvider):
     def __init__(self, config: ExternalSessionProviderConfig) -> None:
         super().__init__(config)
         self._detail_cache: dict[str, ExternalSessionDetail] = {}
+        self._session_file_map: dict[str, Path] | None = None
+        self._history_preview_cache: dict[str, str] | None = None
+        self._summary_cache: dict[str, ExternalSessionSummary] = {}
 
     def health(self) -> ExternalSourceHealth:
         available = self.config.enabled and self.root.exists()
@@ -144,38 +147,33 @@ class CodexSessionProvider(ExternalSessionProvider):
 
         summaries: list[ExternalSessionSummary] = []
         by_id = self._load_index_records()
+        session_files = self._session_files_by_id()
         discovered_ids: set[str] = set()
         if by_id:
             for session_id, record in by_id.items():
-                source_path = self._find_session_file(session_id)
+                source_path = session_files.get(session_id)
                 detail = self._detail_cache.get(session_id)
-                if detail is None and source_path is not None:
-                    detail = self._parse_session_file(session_file=source_path)
-                preview = (detail.summary.preview if detail is not None else "") or self._preview_from_history(session_id)
-                summaries.append(
-                    ExternalSessionSummary(
-                        provider=self.name,
-                        session_id=session_id,
-                        title=str(record.get("thread_name") or "Untitled session"),
-                        updated_at=str(record.get("updated_at") or ""),
-                        workspace_path=detail.summary.workspace_path if detail is not None else None,
-                        source_path=str(source_path) if source_path else None,
-                        message_count=detail.summary.message_count if detail is not None else 0,
-                        preview=preview,
-                    )
-                )
+                summary = detail.summary if detail is not None else self._summary_from_index_record(session_id, record, source_path)
+                summaries.append(summary)
                 discovered_ids.add(session_id)
-            for session_file in sorted(self.root.glob(self.config.session_glob), reverse=True):
-                detail = self._parse_session_file(session_file)
-                if detail.summary.session_id in discovered_ids:
+            for session_id, session_file in sorted(session_files.items(), key=lambda item: str(item[1]), reverse=True):
+                if session_id in discovered_ids:
                     continue
-                summaries.append(detail.summary)
+                summary = self._detail_cache.get(session_id)
+                if summary is not None:
+                    summaries.append(summary.summary)
+                    continue
+                summaries.append(self._summary_from_session_file(session_file))
             summaries.sort(key=lambda item: item.updated_at, reverse=True)
             return summaries
 
-        for session_file in sorted(self.root.glob(self.config.session_glob), reverse=True):
-            detail = self._parse_session_file(session_file)
-            summaries.append(detail.summary)
+        for _session_id, session_file in sorted(session_files.items(), key=lambda item: str(item[1]), reverse=True):
+            session_id = _session_id_from_file(session_file)
+            detail = self._detail_cache.get(session_id)
+            if detail is not None:
+                summaries.append(detail.summary)
+                continue
+            summaries.append(self._summary_from_session_file(session_file))
         return summaries
 
     def get_session(self, session_id: str) -> ExternalSessionDetail:
@@ -222,16 +220,28 @@ class CodexSessionProvider(ExternalSessionProvider):
         return records
 
     def _find_session_file(self, session_id: str) -> Path | None:
-        pattern = f"*{session_id}*.jsonl"
+        return self._session_files_by_id().get(session_id)
+
+    def _session_files_by_id(self) -> dict[str, Path]:
+        if self._session_file_map is not None:
+            return self._session_file_map
+        mapping: dict[str, Path] = {}
         for path in self.root.glob(self.config.session_glob):
-            if path.match(pattern) or session_id in path.name:
-                return path
-        return None
+            session_id = _session_id_from_file(path)
+            if session_id and session_id not in mapping:
+                mapping[session_id] = path
+        self._session_file_map = mapping
+        return mapping
 
     def _preview_from_history(self, session_id: str) -> str:
+        if self._history_preview_cache is None:
+            self._history_preview_cache = {}
         history_path = self.root / "history.jsonl"
         if not history_path.exists():
             return ""
+        cached = self._history_preview_cache.get(session_id)
+        if cached is not None:
+            return cached
         for raw_line in reversed(history_path.read_text(encoding="utf-8").splitlines()):
             try:
                 payload = json.loads(raw_line)
@@ -241,8 +251,66 @@ class CodexSessionProvider(ExternalSessionProvider):
                 continue
             text = _normalize_whitespace(str(payload.get("text") or ""))
             if text and not _is_noise_message_content(text):
-                return text[:220]
+                preview = text[:220]
+                self._history_preview_cache[session_id] = preview
+                return preview
+        self._history_preview_cache[session_id] = ""
         return ""
+
+    def _summary_from_index_record(self, session_id: str, record: dict[str, Any], source_path: Path | None) -> ExternalSessionSummary:
+        cached = self._summary_cache.get(session_id)
+        if cached is not None:
+            return cached
+        source_summary = self._summary_from_session_file(source_path) if source_path is not None else None
+        summary = ExternalSessionSummary(
+            provider=self.name,
+            session_id=session_id,
+            title=str(record.get("thread_name") or (source_summary.title if source_summary else "Untitled session")),
+            updated_at=str(record.get("updated_at") or (source_summary.updated_at if source_summary else "")),
+            workspace_path=source_summary.workspace_path if source_summary is not None else None,
+            source_path=str(source_path) if source_path else None,
+            message_count=source_summary.message_count if source_summary is not None else 0,
+            preview=(source_summary.preview if source_summary is not None else "") or self._preview_from_history(session_id),
+        )
+        self._summary_cache[session_id] = summary
+        return summary
+
+    def _summary_from_session_file(self, session_file: Path) -> ExternalSessionSummary:
+        session_id = _session_id_from_file(session_file)
+        cached = self._summary_cache.get(session_id)
+        if cached is not None:
+            return cached
+
+        title = session_file.stem
+        updated_at = _timestamp_from_path(session_file)
+        workspace_path = None
+        for raw_line in session_file.read_text(encoding="utf-8").splitlines():
+            try:
+                row = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("type") != "session_meta":
+                continue
+            payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+            if payload:
+                session_id = str(payload.get("session_id") or payload.get("id") or session_id)
+                title = str(payload.get("title") or payload.get("thread_name") or title)
+                updated_at = str(payload.get("timestamp") or row.get("timestamp") or updated_at)
+                workspace_path = payload.get("cwd") or workspace_path
+            break
+
+        summary = ExternalSessionSummary(
+            provider=self.name,
+            session_id=session_id,
+            title=_normalize_whitespace(title) or "Untitled session",
+            updated_at=updated_at,
+            workspace_path=workspace_path,
+            source_path=str(session_file),
+            message_count=0,
+            preview=self._preview_from_history(session_id),
+        )
+        self._summary_cache[session_id] = summary
+        return summary
 
     def _parse_session_file(self, session_file: Path) -> ExternalSessionDetail:
         session_id = _session_id_from_file(session_file)
@@ -547,12 +615,63 @@ class ContextBuilderService:
         if not prompt_tokens:
             return []
         focus_tokens = _focus_tokens(task)
+        preliminary: list[dict[str, Any]] = []
+        recent_window = 12
+        for index, summary in enumerate(summaries):
+            identity_haystacks = _session_identity_haystacks(summary)
+            summary_haystacks = identity_haystacks + [summary.preview.lower()]
+            summary_token_hits = sum(1 for token in prompt_tokens if any(_token_matches(token, haystack) for haystack in summary_haystacks))
+            summary_exact_hits = _exact_prompt_hits(prompt_tokens, summary_haystacks)
+            identity_token_hits = sum(1 for token in prompt_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
+            identity_exact_hits = _exact_prompt_hits(prompt_tokens, identity_haystacks)
+            identity_focus_hits = sum(1 for token in focus_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
+            issue_bonus = 0
+            if any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews"}):
+                issue_terms = ("bug", "bugs", "fix", "fixed", "review", "reviews")
+                if any(term in summary.title.lower() for term in issue_terms):
+                    issue_bonus += 6
+                elif any(term in summary.preview.lower() for term in issue_terms):
+                    issue_bonus += 3
+            summary_score = (
+                (identity_exact_hits * 14)
+                + (identity_token_hits * 8)
+                + (summary_exact_hits * 4)
+                + (summary_token_hits * 2)
+                + issue_bonus
+            )
+            preliminary.append(
+                {
+                    "summary": summary,
+                    "summary_score": summary_score,
+                    "summary_token_hits": summary_token_hits,
+                    "identity_focus_hits": identity_focus_hits,
+                    "recent_rank": index,
+                }
+            )
+
+        preliminary.sort(key=lambda item: (item["summary_score"], -item["recent_rank"], item["summary"].updated_at), reverse=True)
+        candidate_ids: list[str] = []
+        for item in preliminary[:12]:
+            session_id = item["summary"].session_id
+            if session_id not in candidate_ids:
+                candidate_ids.append(session_id)
+        for item in preliminary:
+            if item["summary_score"] <= 0 and item["recent_rank"] >= recent_window:
+                continue
+            session_id = item["summary"].session_id
+            if session_id not in candidate_ids:
+                candidate_ids.append(session_id)
+            if len(candidate_ids) >= max(recent_window, 12):
+                break
 
         scored: list[dict[str, Any]] = []
         workspace_name = Path(self.workspace_path).name.lower()
         workspace_path = self.workspace_path.lower()
 
-        for summary in summaries:
+        for session_id in candidate_ids:
+            summary = next((item["summary"] for item in preliminary if item["summary"].session_id == session_id), None)
+            if summary is None:
+                continue
             detail = provider.get_session(summary.session_id)
             identity_haystacks = _session_identity_haystacks(summary)
             haystacks = _session_haystacks(summary, detail)
@@ -729,17 +848,41 @@ def _collect_relevant_context_lines(
     candidates.extend(content_candidates)
 
     prompt_tokens = _tokenize(task)
+    prompt_entities = {
+        token.lower()
+        for token in re.findall(r"[a-z0-9]+(?:[-_/][a-z0-9]+)+", task.lower())
+        if len(token) >= 3
+    }
     lowered_task = task.lower()
     scored: list[tuple[int, str]] = []
     for line in candidates:
         lowered = line.lower()
         overlap = sum(2 for token in prompt_tokens if _token_matches(token, lowered))
+        entity_overlap = any(entity in lowered for entity in prompt_entities)
         if line.startswith("User asked:"):
             overlap += 3 if any(token in lowered_task for token in ("bug", "bugs", "review", "reviews", "fix", "fixed")) else 0
         if line.startswith("Assistant reported:"):
             overlap += 3 if any(token in lowered_task for token in ("what was it about", "what was that about", "remember about")) else 1
+            if prompt_entities and not entity_overlap and not any(marker in lowered for marker in ("bug", "review", "fix", "workspace", "pipeline chat", "salesforce", "create workspace")):
+                overlap -= 5
         if "bug" in lowered or "review" in lowered or "fix" in lowered:
             overlap += 3
+        if "i’m grounding" in lowered or "i'm grounding" in lowered:
+            overlap -= 6
+        if "i’m tracing" in lowered or "i'm tracing" in lowered:
+            overlap -= 5
+        if "i’m checking" in lowered or "i'm checking" in lowered:
+            overlap -= 4
+        if "i’m going to" in lowered or "i'm going to" in lowered:
+            overlap -= 4
+        if "i’ve confirmed this is" in lowered or "i've confirmed this is" in lowered:
+            overlap -= 4
+        if "i’ve already found concrete anchors" in lowered or "i've already found concrete anchors" in lowered:
+            overlap -= 5
+        if "decision-complete" in lowered:
+            overlap -= 4
+        if "this matches the app route" in lowered:
+            overlap -= 5
         if "context from my ide setup" in lowered or "## active file:" in lowered:
             overlap -= 5
         if line.startswith("Session '"):

@@ -588,6 +588,24 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("get-drip", answer or "")
         self.assertNotIn("Sharmil", answer or "")
 
+    def test_answer_from_retrieved_memory_prefers_issue_summary_over_session_path_for_named_project(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "hey, do you remember about get-drip project?",
+            "\n".join(
+                [
+                    "## External Session Context",
+                    "- Session 'Fix 7 bugs' targeted workspace /Users/samarthnaik/Desktop/LoopedIn/get-drip.",
+                    "- User asked: Create Workspace -> accept the https link and convert it internally.",
+                    "- User asked: DRIP pipeline chat does not work and test/publish should be reachable after approvals.",
+                ]
+            ),
+        )
+
+        self.assertIsNotNone(answer)
+        self.assertIn("get-drip", answer or "")
+        self.assertIn("Create Workspace accepting https links", answer or "")
+        self.assertNotIn("Session 'Fix 7 bugs'", answer or "")
+
     def test_answer_from_retrieved_memory_uses_working_memory_for_follow_up(self) -> None:
         answer = _answer_from_retrieved_memory(
             "we had a few reviews and bugs to be fixed? can you tell exactly what were those?",
@@ -610,6 +628,43 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("Create Workspace", answer or "")
         self.assertIn("pipeline chat", answer or "")
         self.assertNotIn('"type": "function"', answer or "")
+
+    def test_answer_from_retrieved_memory_follow_up_prefers_workspace_subject_over_generic_hyphenated_token(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "we had a few reviews and bugs to be fixed? can you tell exactly what were those?",
+            "\n".join(
+                [
+                    "## Working Memory",
+                    "- assistant: Yes. get-drip came up in prior sessions.",
+                    "## External Session Context",
+                    "- Assistant reported: I’m grounding in the app first so we can turn those 7 bug notes into a decision-complete fix plan.",
+                    "- Session 'Fix 7 bugs' targeted workspace /Users/samarthnaik/Desktop/LoopedIn/get-drip.",
+                    "- User asked: Create Workspace -> accept the https link and convert it internally.",
+                ]
+            ),
+        )
+
+        self.assertIsNotNone(answer)
+        self.assertIn("In get-drip", answer or "")
+        self.assertNotIn("decision-complete", answer or "")
+
+    def test_answer_from_retrieved_memory_rejects_progress_status_for_named_project_recall(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "hey, do you remember about get-drip project?",
+            "\n".join(
+                [
+                    "## External Session Context",
+                    "- Assistant reported: I’ve confirmed the Convex schema entrypoints. Next I’m reading the main schema and scanning code references.",
+                    "- Session 'Fix 7 bugs' targeted workspace /Users/samarthnaik/Desktop/LoopedIn/get-drip.",
+                    "- User asked: Create Workspace -> accept the https link and convert it internally.",
+                ]
+            ),
+        )
+
+        self.assertIsNotNone(answer)
+        self.assertIn("get-drip", answer or "")
+        self.assertIn("Create Workspace accepting https links", answer or "")
+        self.assertNotIn("Convex schema entrypoints", answer or "")
 
     def test_answer_from_retrieved_memory_prefers_external_context_over_generic_retrieved_memory(self) -> None:
         answer = _answer_from_retrieved_memory(

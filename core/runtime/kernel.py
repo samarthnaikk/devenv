@@ -2199,7 +2199,7 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
                 return None
             synthesized_issues = _summarize_follow_up_issues(shaped_follow_up)
             if synthesized_issues:
-                subject = _infer_memory_subject(sections["external"] + sections["working"] + sections["retrieved"])
+                subject = _infer_memory_subject(sections["working"] + sections["external"] + sections["retrieved"])
                 if subject:
                     return f"Yes. In {subject}, the main issues were {synthesized_issues}."
                 return f"Yes. The main issues were {synthesized_issues}."
@@ -2245,6 +2245,11 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
                 overlap += 1
             elif line_lower.startswith("session '"):
                 overlap -= 1
+        elif _is_memory_recall_question(user_prompt):
+            if line_lower.startswith("assistant reported:"):
+                overlap += 3
+            elif line_lower.startswith("session '"):
+                overlap -= 2
         if source == "memory":
             overlap += 1
         ranked.append((overlap, token_overlap, source, line))
@@ -2268,7 +2273,7 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     cleaned = [line for line in cleaned if line and _is_high_signal_memory_answer(line, user_prompt)]
     if not cleaned:
         return None
-    if query_entities:
+    if query_entities and not (_is_memory_recall_question(user_prompt) and _has_explicit_memory_subject(user_prompt)):
         cleaned = [line for line in cleaned if any(entity in line.lower() for entity in query_entities)] or cleaned
     shaped = [_humanize_recalled_line(line, user_prompt) for line in cleaned]
     shaped = [line for line in shaped if line]
@@ -2276,6 +2281,14 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         return None
     if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
         if _has_explicit_memory_subject(user_prompt):
+            subject = _preferred_memory_subject(user_prompt, sections["external"] + sections["working"] + sections["retrieved"])
+            issue_summary = _summarize_follow_up_issues(shaped)
+            if subject and issue_summary:
+                return f"Yes. {subject} came up in prior sessions about {issue_summary}."
+            if shaped[0].startswith("Session '"):
+                descriptive = next((line for line in shaped if not line.startswith("Session '")), None)
+                if descriptive:
+                    return f"Yes. {descriptive}"
             return f"Yes. {shaped[0]}"
         if len(shaped) == 1:
             return f"Yes. {shaped[0]}"
@@ -2555,6 +2568,7 @@ def _extract_tool_payload_json(output: str) -> dict[str, Any] | list[Any] | None
 
 def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
     lowered = candidate.lower()
+    normalized = re.sub(r"^(assistant reported|user asked):\s*", "", lowered)
     prompt_lowered = user_prompt.lower()
     reject_markers = (
         '{"type": "function"',
@@ -2573,6 +2587,23 @@ def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
     )
     if any(marker in lowered for marker in reject_markers):
         return False
+    if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
+        low_signal_prefixes = (
+            "i’m grounding",
+            "i'm grounding",
+            "i’m tracing",
+            "i'm tracing",
+            "i’m checking",
+            "i'm checking",
+            "i’m going to",
+            "i'm going to",
+            "i’ve confirmed",
+            "i've confirmed",
+            "next i’m",
+            "next i'm",
+        )
+        if normalized.startswith(low_signal_prefixes):
+            return False
     if lowered.startswith("{") or lowered.startswith("["):
         return False
     if ("how does" in prompt_lowered or "how do" in prompt_lowered or "why does" in prompt_lowered) and "i inspected" in lowered:
@@ -2621,14 +2652,40 @@ def _memory_context_entities(memory_context: str) -> set[str]:
     return entities
 
 
+_GENERIC_MEMORY_SUBJECTS = {
+    "decision-complete",
+    "feature-structured",
+    "test-activate",
+    "task-getgit-checkpoints",
+}
+
+
 def _infer_memory_subject(lines: list[str]) -> str | None:
     for line in lines:
+        lowered_line = line.lower()
+        if any(marker in lowered_line for marker in ('"path":', '{"type": "function"', '"name": "list_directory"')):
+            continue
+        for match in re.findall(r"/[A-Za-z0-9._/-]+", line):
+            basename = Path(match).name.lower()
+            if basename and ("-" in basename or "_" in basename) and basename not in _GENERIC_MEMORY_SUBJECTS:
+                return basename
+    for line in lines:
+        lowered_line = line.lower()
+        if any(marker in lowered_line for marker in ('"path":', '{"type": "function"', '"name": "list_directory"')):
+            continue
         matches = re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)+", line.lower())
         for match in matches:
-            if match.startswith("rollout-"):
+            if match.startswith("rollout-") or match in _GENERIC_MEMORY_SUBJECTS:
                 continue
             return match
     return None
+
+
+def _preferred_memory_subject(user_prompt: str, lines: list[str]) -> str | None:
+    explicit_entities = sorted(_memory_query_entities(user_prompt), key=len, reverse=True)
+    if explicit_entities:
+        return explicit_entities[0]
+    return _infer_memory_subject(lines)
 
 
 def _ordered_follow_up_lines(user_prompt: str, external_lines: list[str]) -> list[str]:
@@ -2795,7 +2852,9 @@ def _memory_subject_hints(text: str) -> list[str]:
     generic = {
         "assistant",
         "context",
+        "decision-complete",
         "desktop",
+        "feature-structured",
         "project",
         "remember",
         "reported",
@@ -2803,6 +2862,7 @@ def _memory_subject_hints(text: str) -> list[str]:
         "session",
         "samarthnaik",
         "targeted",
+        "test-activate",
         "user",
         "users",
         "workspace",
