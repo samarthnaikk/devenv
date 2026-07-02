@@ -58,6 +58,11 @@ class FailingMemory(FakeMemory):
         raise RuntimeError("memory offline")
 
 
+class EmptyMemory(FakeMemory):
+    def retrieve_context(self, current_prompt: str, top_k: int = 5) -> FakeRetrievalResult:
+        return FakeRetrievalResult(markdown_context="")
+
+
 class FakeAI:
     def __init__(self, responses: list[AIResponse] | None = None) -> None:
         self.responses = list(responses or [])
@@ -605,6 +610,25 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("review feedback", answer or "")
         self.assertNotIn('"type": "function"', answer or "")
 
+    def test_answer_from_retrieved_memory_prefers_external_context_over_generic_retrieved_memory(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "we had a few reviews and bugs to be fixed? can you tell exactly what were those?",
+            "\n".join(
+                [
+                    "## Retrieved Memory",
+                    "- [episode] Episodic Memory 8ef3e3bc: we had a few reviews and bugs to be fixed? can you tell exactly what were those?",
+                    "## External Session Context",
+                    "- User asked: Create Workspace -> accept the https link and convert it internally.",
+                    "- User asked: DRIP pipeline chat does not work and test/publish should be reachable after approvals.",
+                ]
+            ),
+        )
+
+        self.assertIsNotNone(answer)
+        self.assertIn("Create Workspace", answer or "")
+        self.assertIn("DRIP pipeline chat", answer or "")
+        self.assertNotIn("Episodic Memory", answer or "")
+
     def test_retrieve_memory_context_uses_recent_conversation_for_follow_up_matching(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])
@@ -647,7 +671,91 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("get-drip", memory_context)
         self.assertEqual(metadata["external_context_state"], "reused_prior_context")
-        self.assertIn("Recent conversation context:", metadata["external_context_query"])
+        self.assertIn("Referenced context:", metadata["external_context_query"])
+        self.assertIn("get-drip", metadata["external_context_query"])
+
+    def test_retrieve_memory_context_does_not_treat_named_project_question_as_follow_up(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "04" / "24"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-codeguide"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Integrate CodeGuide with GetGit", "updated_at": "2026-04-24T19:16:23Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-04-24T19-16-23-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-04-24T19:16:23Z", "type": "session_meta", "payload": {"id": session_id, "cwd": "/Users/samarthnaik/Desktop/work/hirex-frontend"}}),
+                        json.dumps({"timestamp": "2026-04-24T19:16:24Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "CodeGuide was about integrating its flow with GetGit and ai_services without duplicating logic."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.ephemeral_history = [
+                {"role": "user", "content": "hey, do you remember about get-drip project?"},
+                {"role": "assistant", "content": "Yes. Session 'rollout-1' targeted workspace /Users/samarthnaik/Desktop/LoopedIn/get-drip."},
+            ]
+            kernel.context_builder = ContextBuilderService(
+                tempdir,
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+
+            _memory_context, metadata = kernel._retrieve_memory_context("do you remember codeguide? what was it about?")
+
+        self.assertEqual(metadata["external_context_state"], "reused_prior_context")
+        self.assertEqual(metadata["external_context_query"], "do you remember codeguide? what was it about?")
+
+    def test_local_only_follow_up_memory_question_stays_in_direct_answer_mode(self) -> None:
+        memory = EmptyMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "07" / "02"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-get-drip"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Fix 7 bugs", "updated_at": "2026-07-02T11:52:11Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-02T13-12-12-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-02T13:12:12Z", "type": "session_meta", "payload": {"id": session_id, "cwd": "/Users/samarthnaik/Desktop/LoopedIn/get-drip"}}),
+                        json.dumps({"timestamp": "2026-07-02T13:12:13Z", "type": "event_msg", "payload": {"type": "user_message", "message": "Create Workspace should accept the https link and convert it internally."}}),
+                        json.dumps({"timestamp": "2026-07-02T13:12:14Z", "type": "event_msg", "payload": {"type": "user_message", "message": "DRIP pipeline chat does not work and test/publish should be reachable after approvals."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.context_builder = ContextBuilderService(
+                tempdir,
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            kernel.execute_turn("hey, do you remember about get-drip project?", local_only=True)
+            result = kernel.execute_turn(
+                "we had a few reviews and bugs to be fixed? can you tell exactly what were those?",
+                local_only=True,
+            )
+
+        self.assertIsNotNone(result.final_response)
+        self.assertIn("Create Workspace", result.final_response or "")
+        self.assertIn("DRIP pipeline chat", result.final_response or "")
 
     def test_local_directory_summary_is_not_persisted_to_episodic_memory(self) -> None:
         memory = FakeMemory()

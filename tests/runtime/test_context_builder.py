@@ -759,6 +759,65 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertEqual(result.metadata["context_match_state"], "reused_prior_context")
         self.assertIn("CodeGuide", result.prompt)
 
+    def test_prepare_prompt_prefers_external_project_session_over_current_meta_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "devenv"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "07" / "03"
+            sessions_dir.mkdir(parents=True)
+            meta_id = "session-meta"
+            project_id = "session-project"
+            (codex_root / "session_index.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"id": meta_id, "thread_name": "Match Codex Mac UI", "updated_at": "2026-07-03T00:48:26Z"}),
+                        json.dumps({"id": project_id, "thread_name": "Fix 7 bugs", "updated_at": "2026-07-02T11:52:11Z"}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-03T00-48-26-{meta_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-03T00:48:26Z", "type": "session_meta", "payload": {"id": meta_id, "cwd": str(workspace)}}),
+                        json.dumps({"timestamp": "2026-07-03T00:48:27Z", "type": "event_msg", "payload": {"type": "user_message", "message": "hey, do you remember about get-drip project?"}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-02T13-12-12-{project_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-02T13:12:12Z", "type": "session_meta", "payload": {"id": project_id, "cwd": "/Users/samarthnaik/Desktop/LoopedIn/get-drip"}}),
+                        json.dumps({"timestamp": "2026-07-02T13:12:13Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "get-drip still had bugs around root URL redirects and Convex generated imports."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            result = service.prepare_prompt(
+                PreparedPromptRequest(
+                    task="hey, do you remember about get-drip project?",
+                    provider="codex",
+                    include_workspace_scan=False,
+                    include_prior_context=True,
+                )
+            )
+
+        self.assertEqual(result.session_ids, (project_id,))
+        self.assertNotIn(meta_id, result.session_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

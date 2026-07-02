@@ -16,6 +16,7 @@ from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.tools.base import BaseTool
 
+from .context_builder import ContextBuilderService
 from .context_stage import build_context_packet
 from .local_router import LocalIntentRouter
 from .local_model import load_local_small_model
@@ -94,6 +95,11 @@ class DevenvKernel:
         self.local_router = LocalIntentRouter()
         self.local_small_model = load_local_small_model()
         self.tool_client = tool_client or self._build_tool_client(db_path=db_path, vector_dir=vector_dir)
+        try:
+            self.context_builder = ContextBuilderService(self.workspace_path, memory=self.memory)
+        except Exception as exc:
+            logger.warning("Failed to initialize external context builder; continuing without it: error=%s", exc)
+            self.context_builder = None
 
     def register_tool(self, tool: BaseTool) -> None:
         self.tools[tool.name] = tool
@@ -133,6 +139,28 @@ class DevenvKernel:
         total_usage: dict[str, int] = {}
         self.state = AgentState.PLANNING
         system_logs.append(f"State: {self.state.name}")
+        if local_only and (_is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt)):
+            direct_response = self._run_local_only_direct_turn(
+                user_prompt=user_prompt,
+                memory_context=memory_context,
+                steps=steps,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+            )
+            conversation.append({"role": "assistant", "content": direct_response})
+            self._finalize_turn(user_prompt, direct_response, conversation, metadata=turn_metadata)
+            return RuntimeTurnResult(
+                final_response=direct_response,
+                steps=steps,
+                total_usage=total_usage,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                stage_traces=stage_traces,
+                verification_results=verification_results,
+                metadata=turn_metadata,
+                state=self.state.name,
+                blueprint=self.active_blueprint,
+            )
         blueprint, planning_conversation, creation_trace = self._checkpoint_creation_stage(
             user_prompt=user_prompt,
             memory_context=memory_context,
@@ -1353,6 +1381,8 @@ class DevenvKernel:
 
     def _requires_planning(self, user_prompt: str) -> bool:
         text = user_prompt.lower()
+        if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
+            return False
         if self._is_scaffold_request(text):
             return True
 
@@ -2160,7 +2190,13 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         return None
 
     sections = _memory_context_sections(memory_context)
-    primary_lines = sections["retrieved"] + sections["external"]
+    if _is_memory_follow_up_question(user_prompt) and sections["external"]:
+        ordered_follow_up = _ordered_follow_up_lines(user_prompt, sections["external"])
+        if ordered_follow_up:
+            if len(ordered_follow_up) == 1:
+                return f"Yes. {ordered_follow_up[0]}"
+            return "Yes.\n\n" + "\n\n".join(ordered_follow_up[:3])
+    primary_lines = sections["external"] or sections["retrieved"]
     working_lines = sections["working"]
     bullet_lines: list[tuple[str, str]] = []
     for line in primary_lines:
@@ -2188,6 +2224,13 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         token_overlap = sum(1 for token in prompt_tokens if token in line_lower)
         overlap = token_overlap
         overlap += sum(6 for entity in query_entities if entity in line_lower)
+        if _is_memory_follow_up_question(user_prompt):
+            if line_lower.startswith("user asked:"):
+                overlap += 4
+            elif line_lower.startswith("assistant reported:"):
+                overlap += 1
+            elif line_lower.startswith("session '"):
+                overlap -= 1
         if source == "memory":
             overlap += 1
         ranked.append((overlap, token_overlap, source, line))
@@ -2197,7 +2240,10 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     if best_overlap <= 0:
         return None
 
-    selected_ranked = [item for item in ranked[:4] if item[0] == best_overlap or item[0] > 0]
+    if _is_memory_follow_up_question(user_prompt):
+        selected_ranked = ranked[:3]
+    else:
+        selected_ranked = [item for item in ranked[:4] if item[0] == best_overlap or item[0] > 0]
     if any(source == "memory" and token_overlap == 0 for _overlap, token_overlap, source, _line in selected_ranked):
         primary_with_tokens = [item for item in selected_ranked if item[2] == "memory" or item[1] > 0]
         selected_ranked = primary_with_tokens or selected_ranked
@@ -2478,6 +2524,49 @@ def _memory_context_entities(memory_context: str) -> set[str]:
     return entities
 
 
+def _ordered_follow_up_lines(user_prompt: str, external_lines: list[str]) -> list[str]:
+    preferred_markers = (
+        "->",
+        "accept",
+        "coming soon",
+        "doesnt work",
+        "does not work",
+        "pipeline chat",
+        "test and publish",
+        "test/publish",
+        "review",
+        "bug",
+        "fix",
+    )
+    cleaned_pairs: list[tuple[str, str]] = []
+    for raw_line in external_lines:
+        cleaned = _clean_memory_line(raw_line)
+        if cleaned and _is_high_signal_memory_answer(cleaned, user_prompt):
+            cleaned_pairs.append((raw_line.lower(), cleaned))
+    if not cleaned_pairs:
+        return []
+
+    user_lines = [cleaned for raw, cleaned in cleaned_pairs if raw.startswith("user asked:")]
+    marked_assistant_lines = [
+        cleaned
+        for raw, cleaned in cleaned_pairs
+        if raw.startswith("assistant reported:") and any(marker in raw for marker in preferred_markers)
+    ]
+    remaining_lines = [
+        cleaned
+        for raw, cleaned in cleaned_pairs
+        if cleaned not in user_lines and cleaned not in marked_assistant_lines and not raw.startswith("session '")
+    ]
+    session_lines = [cleaned for raw, cleaned in cleaned_pairs if raw.startswith("session '")]
+
+    ordered: list[str] = []
+    for group in (user_lines, marked_assistant_lines, remaining_lines, session_lines):
+        for line in group:
+            if line not in ordered:
+                ordered.append(line)
+    return ordered
+
+
 def _is_memory_recall_question(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     return any(
@@ -2504,25 +2593,95 @@ def _is_memory_follow_up_question(user_prompt: str) -> bool:
         "a few reviews",
         "a few bugs",
     )
-    return any(marker in lowered for marker in referential_markers)
+    if not any(marker in lowered for marker in referential_markers):
+        return False
+    return not _has_explicit_memory_subject(user_prompt)
 
 
 def _compose_external_memory_query(user_prompt: str, conversation: list[dict[str, Any]]) -> str:
     if not _is_memory_follow_up_question(user_prompt):
         return user_prompt
-    recent_messages: list[str] = []
+    recent_hints: list[str] = []
     for message in reversed(conversation[-6:]):
         role = str(message.get("role") or "")
         content = str(message.get("content") or "").strip()
         if role not in {"user", "assistant"} or not content or content == user_prompt:
             continue
-        recent_messages.append(content)
-        if len(recent_messages) >= 3:
+        for hint in _memory_subject_hints(content):
+            if hint not in recent_hints:
+                recent_hints.append(hint)
+        if len(recent_hints) >= 4:
             break
-    if not recent_messages:
+    if not recent_hints:
         return user_prompt
-    recent_messages.reverse()
-    return "\n".join([user_prompt, "Recent conversation context:", *recent_messages])
+    hyphenated_hints = [hint for hint in recent_hints if "-" in hint]
+    if hyphenated_hints:
+        recent_hints = hyphenated_hints
+    filtered_hints = [hint for hint in recent_hints if not re.fullmatch(r"[0-9a-f]{6,}", hint)]
+    if filtered_hints:
+        recent_hints = filtered_hints
+    return "\n".join([user_prompt, f"Referenced context: {' '.join(recent_hints[:4])}"])
+
+
+def _has_explicit_memory_subject(user_prompt: str) -> bool:
+    generic = {
+        "about",
+        "again",
+        "bugs",
+        "exactly",
+        "fixed",
+        "issue",
+        "issues",
+        "know",
+        "project",
+        "remember",
+        "review",
+        "reviews",
+        "tell",
+        "those",
+        "what",
+    }
+    if _memory_query_entities(user_prompt):
+        return True
+    return any(
+        token not in generic
+        for token in re.findall(r"[a-z0-9_]+", user_prompt.lower())
+        if len(token) >= 5
+    )
+
+
+def _memory_subject_hints(text: str) -> list[str]:
+    generic = {
+        "assistant",
+        "context",
+        "desktop",
+        "project",
+        "remember",
+        "reported",
+        "rollout",
+        "session",
+        "samarthnaik",
+        "targeted",
+        "user",
+        "users",
+        "workspace",
+    }
+    hints: list[str] = []
+    for match in re.findall(r"/[A-Za-z0-9._/-]+", text):
+        basename = Path(match).name.lower().strip(".,:;!?)(")
+        if len(basename) >= 3 and basename not in generic and basename not in hints:
+            hints.append(basename)
+    for entity in sorted(_memory_query_entities(text)):
+        if "/" in entity or entity.startswith("rollout-"):
+            continue
+        if entity not in generic and entity not in hints:
+            hints.append(entity)
+    for token in re.findall(r"[a-z0-9_]+", text.lower()):
+        if len(token) < 5 or token in generic or token.startswith("rollout") or re.fullmatch(r"[0-9a-f]{6,}", token):
+            continue
+        if token not in hints:
+            hints.append(token)
+    return hints
 
 
 def _summarize_symbol_outline(file_name: str, payload: dict[str, Any] | list[Any] | None) -> str | None:

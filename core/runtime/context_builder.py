@@ -45,6 +45,7 @@ COMMON_CONTEXT_TOKENS = {
     "previous",
     "project",
     "projects",
+    "remember",
     "session",
     "sessions",
     "some",
@@ -71,6 +72,22 @@ COMMON_CONTEXT_TOKENS = {
     "fixed",
     "update",
     "get",
+}
+
+FOCUS_CONTEXT_TOKENS = COMMON_CONTEXT_TOKENS | {
+    "assistant",
+    "asked",
+    "bug",
+    "bugs",
+    "context",
+    "conversation",
+    "exactly",
+    "recent",
+    "reported",
+    "rollout",
+    "targeted",
+    "those",
+    "workspace",
 }
 
 
@@ -529,6 +546,7 @@ class ContextBuilderService:
         prompt_tokens = _tokenize(task)
         if not prompt_tokens:
             return []
+        focus_tokens = _focus_tokens(task)
 
         scored: list[dict[str, Any]] = []
         workspace_name = Path(self.workspace_path).name.lower()
@@ -536,43 +554,66 @@ class ContextBuilderService:
 
         for summary in summaries:
             detail = provider.get_session(summary.session_id)
+            identity_haystacks = _session_identity_haystacks(summary)
             haystacks = _session_haystacks(summary, detail)
             token_hits = sum(1 for token in prompt_tokens if any(_token_matches(token, haystack) for haystack in haystacks))
             exact_hits = _exact_prompt_hits(prompt_tokens, haystacks)
+            identity_token_hits = sum(1 for token in prompt_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
+            identity_exact_hits = _exact_prompt_hits(prompt_tokens, identity_haystacks)
+            identity_focus_hits = sum(1 for token in focus_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
             best_overlap = _best_message_overlap(prompt_tokens, detail)
             workspace_bonus = 0
+            issue_bonus = 0
             session_workspace = (summary.workspace_path or "").lower()
             if session_workspace:
                 if session_workspace == workspace_path:
-                    workspace_bonus += 5
+                    workspace_bonus += 5 if identity_focus_hits > 0 or identity_exact_hits > 0 else -12
                 elif workspace_name and workspace_name in session_workspace:
-                    workspace_bonus += 3
+                    workspace_bonus += 3 if identity_focus_hits > 0 or identity_exact_hits > 0 else -6
                 else:
-                    workspace_bonus -= 1
-            if "devenv" in " ".join(haystacks):
-                workspace_bonus += 1
+                    workspace_bonus += 1
+            if focus_tokens and session_workspace == workspace_path and identity_focus_hits == 0:
+                continue
+            if any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews"}):
+                issue_terms = ("bug", "bugs", "fix", "fixed", "review", "reviews")
+                if any(term in summary.title.lower() for term in issue_terms):
+                    issue_bonus += 10
+                elif any(term in haystack for haystack in haystacks for term in issue_terms):
+                    issue_bonus += 4
 
-            content_score = (exact_hits * 6) + (token_hits * 3) + min(best_overlap * 2, 8)
-            strong_match = exact_hits >= 1 or best_overlap >= 2 or token_hits >= 2
+            content_score = (
+                (identity_exact_hits * 14)
+                + (identity_token_hits * 8)
+                + (exact_hits * 3)
+                + (token_hits * 2)
+                + min(best_overlap * 2, 8)
+            )
+            strong_match = identity_exact_hits >= 1 or identity_token_hits >= 1 or exact_hits >= 1 or best_overlap >= 2 or token_hits >= 2
             scored.append(
                 {
                     "summary": summary,
                     "detail": detail,
                     "content_score": content_score,
-                    "score": content_score + workspace_bonus,
+                    "score": content_score + workspace_bonus + issue_bonus,
                     "strong_match": strong_match,
                     "exact_hits": exact_hits,
                     "token_hits": token_hits,
+                    "identity_exact_hits": identity_exact_hits,
+                    "identity_token_hits": identity_token_hits,
+                    "identity_focus_hits": identity_focus_hits,
                     "best_overlap": best_overlap,
                 }
             )
 
         scored.sort(key=lambda item: (item["strong_match"], item["score"], item["summary"].updated_at), reverse=True)
-        return [
+        selected = [
             item
             for item in scored
             if item["strong_match"] and item["content_score"] >= MIN_SESSION_CONTENT_SCORE and item["score"] > 0
-        ][:3]
+        ]
+        if focus_tokens and any(item["identity_focus_hits"] > 0 for item in selected):
+            selected = [item for item in selected if item["identity_focus_hits"] > 0]
+        return selected[:3]
 
     def _selection_metadata(self, selected_matches: list[dict[str, Any]]) -> dict[str, Any]:
         if not selected_matches:
@@ -585,8 +626,8 @@ class ContextBuilderService:
         return {
             "context_match_state": "reused_prior_context",
             "context_match_reason": (
-                f"Matched {len(selected_matches)} prior session(s) using meaningful token overlap "
-                f"({best['token_hits']} token hits, {best['exact_hits']} exact hits)."
+                f"Matched {len(selected_matches)} prior session(s) using project identity and token overlap "
+                f"({best['identity_token_hits']} identity hits, {best['token_hits']} token hits)."
             ),
             "context_match_score": best["score"],
         }
@@ -667,13 +708,14 @@ def _collect_relevant_context_lines(
     output_format: str,
 ) -> tuple[str, ...]:
     candidates: list[str] = []
+    content_candidates: list[str] = []
     seen: set[str] = set()
     for detail in details:
         summary = detail.summary
         if summary.title.strip():
             candidates.append(f"Session '{summary.title}' targeted workspace {summary.workspace_path or 'unknown workspace'}.")
         for message in detail.messages:
-            if message.role not in {"user", "assistant", "tool"}:
+            if message.role not in {"user", "assistant"}:
                 continue
             content = _compact_context_content(message.role, message.content)
             if not content or content in seen:
@@ -681,17 +723,27 @@ def _collect_relevant_context_lines(
             seen.add(content)
             if message.role == "user":
                 prefix = "User asked:"
-            elif message.role == "assistant":
-                prefix = "Assistant reported:"
             else:
-                prefix = "Tool output noted:"
-            candidates.append(f"{prefix} {content}")
+                prefix = "Assistant reported:"
+            content_candidates.append(f"{prefix} {content}")
+    candidates.extend(content_candidates)
 
     prompt_tokens = _tokenize(task)
+    lowered_task = task.lower()
     scored: list[tuple[int, str]] = []
     for line in candidates:
         lowered = line.lower()
         overlap = sum(2 for token in prompt_tokens if _token_matches(token, lowered))
+        if line.startswith("User asked:"):
+            overlap += 3 if any(token in lowered_task for token in ("bug", "bugs", "review", "reviews", "fix", "fixed")) else 0
+        if line.startswith("Assistant reported:"):
+            overlap += 3 if any(token in lowered_task for token in ("what was it about", "what was that about", "remember about")) else 1
+        if "bug" in lowered or "review" in lowered or "fix" in lowered:
+            overlap += 3
+        if "context from my ide setup" in lowered or "## active file:" in lowered:
+            overlap -= 5
+        if line.startswith("Session '"):
+            overlap -= 1
         overlap += 1 if "workspace" in lowered else 0
         overlap += 1 if "file" in lowered or "frontend" in lowered or "backend" in lowered else 0
         scored.append((overlap, line))
@@ -699,6 +751,10 @@ def _collect_relevant_context_lines(
     selected = [line for score, line in scored if score > 0][:MAX_CONTEXT_LINES]
     if not selected:
         selected = [line for _score, line in scored[:MAX_CONTEXT_LINES]]
+    if any(not line.startswith("Session '") for line in selected):
+        session_summaries = [line for line in selected if line.startswith("Session '")]
+        detail_lines = [line for line in selected if not line.startswith("Session '")]
+        selected = detail_lines + session_summaries[:1]
     if output_format == "detailed":
         return tuple(selected[:MAX_CONTEXT_LINES])
     return tuple(selected[:5])
@@ -799,14 +855,33 @@ def _contains_whole_token(token: str, haystack: str) -> bool:
 
 
 def _session_haystacks(summary: ExternalSessionSummary, detail: ExternalSessionDetail) -> list[str]:
+    haystacks = _session_identity_haystacks(summary)
+    haystacks.append(summary.preview.lower())
+    haystacks.extend(_normalize_whitespace(message.content).lower() for message in detail.messages[:MAX_SESSION_MESSAGES])
+    return haystacks
+
+
+def _session_identity_haystacks(summary: ExternalSessionSummary) -> list[str]:
     haystacks = [
         summary.title.lower(),
-        summary.preview.lower(),
         (summary.workspace_path or "").lower(),
         os.path.basename(summary.source_path or "").lower(),
     ]
-    haystacks.extend(_normalize_whitespace(message.content).lower() for message in detail.messages[:MAX_SESSION_MESSAGES])
     return haystacks
+
+
+def _focus_tokens(text: str) -> set[str]:
+    tokens = {
+        token
+        for token in _tokenize(text)
+        if len(token) >= 5 and token not in FOCUS_CONTEXT_TOKENS
+    }
+    path_tokens = {
+        Path(match).name.lower()
+        for match in re.findall(r"/[A-Za-z0-9._/-]+", text)
+        if Path(match).name and Path(match).name.lower() not in FOCUS_CONTEXT_TOKENS
+    }
+    return tokens | path_tokens
 
 
 def _best_message_overlap(prompt_tokens: set[str], detail: ExternalSessionDetail) -> int:
