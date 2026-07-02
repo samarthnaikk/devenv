@@ -561,6 +561,85 @@ class ContextBuilderServiceTest(unittest.TestCase):
 
         self.assertEqual(result.session_ids, ())
 
+    def test_prepare_prompt_treats_short_greeting_as_new_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "28"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-devenv"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Integrate Devenv", "updated_at": "2026-06-28T12:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-28T12-00-00-{session_id}.jsonl").write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2026-06-28T11:59:00Z",
+                        "type": "event_msg",
+                        "payload": {"type": "agent_message", "message": "Worked on the Devenv context builder."},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            result = service.prepare_prompt(
+                PreparedPromptRequest(
+                    task="hi",
+                    provider="codex",
+                    include_workspace_scan=False,
+                    include_prior_context=True,
+                )
+            )
+
+        self.assertEqual(result.session_ids, ())
+        self.assertEqual(result.metadata["context_match_state"], "new_context")
+
+    def test_runtime_memory_context_reports_reused_prior_context_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "28"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-memory"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Infinite memory retrieval", "updated_at": "2026-06-28T12:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-28T12-00-00-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-06-28T11:59:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": str(workspace)}}),
+                        json.dumps({"timestamp": "2026-06-28T11:59:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Need better retrieval from prior Codex sessions and prompt generation."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            context, session_ids, metadata = service.build_runtime_memory_context("Improve retrieval from prior Codex sessions.")
+
+        self.assertIn("External Session Context", context)
+        self.assertEqual(session_ids, (session_id,))
+        self.assertEqual(metadata["context_match_state"], "reused_prior_context")
+
 
 if __name__ == "__main__":
     unittest.main()

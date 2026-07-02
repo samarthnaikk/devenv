@@ -7,30 +7,24 @@ const state = {
   isRunning: false,
   bootError: "",
   healthMeta: { provider: "", model: "", availableModels: [] },
-  blueprint: null,
-  runtimeState: "PLANNING",
-  stageTraces: [],
-  verificationResults: [],
   usageWindow: [],
   rateLimitInfo: null,
-  planningMode: "auto",
-  localOnlyEnabled: false,
   showThinking: false,
   clock: Date.now(),
   theme: loadTheme(),
   toast: "",
+  retrievalStatus: {
+    mode: "new_context",
+    label: "New context",
+    detail: "No prior Devenv session has been reused yet.",
+  },
 };
 
 const root = document.getElementById("root");
 const SUGGESTIONS = [
-  "Build a classic Snake game in this repo.",
-  "Find and fix a bug in my code.",
-  "Summarize this app in a one-page note.",
-];
-const REASONING_OPTIONS = [
-  { value: "force_direct", label: "High" },
-  { value: "auto", label: "Medium" },
-  { value: "force_plan", label: "Max" },
+  "Do you remember anything about the old retrieval logic for this project?",
+  "What prior Codex session context is relevant to infinite memory here?",
+  "Is this a new context or does it match an older Devenv session?",
 ];
 
 let renderQueued = false;
@@ -45,16 +39,17 @@ async function bootstrap() {
     const nextRateLimitInfo =
       state.rateLimitInfo && state.rateLimitInfo.resetAt > nextClock ? state.rateLimitInfo : null;
 
-    if (
-      nextClock !== state.clock &&
-      (state.isRunning || nextRateLimitInfo || nextUsageWindow.length !== state.usageWindow.length)
-    ) {
-      state.clock = nextClock;
-      state.usageWindow = nextUsageWindow;
-      state.rateLimitInfo = nextRateLimitInfo;
+    const shouldRender =
+      state.isRunning ||
+      Boolean(nextRateLimitInfo) ||
+      nextUsageWindow.length !== state.usageWindow.length ||
+      nextClock !== state.clock;
+
+    state.clock = nextClock;
+    state.usageWindow = nextUsageWindow;
+    state.rateLimitInfo = nextRateLimitInfo;
+    if (shouldRender) {
       scheduleRender();
-    } else {
-      state.clock = nextClock;
     }
   }, 1000);
 
@@ -104,7 +99,6 @@ function bindEvents() {
       state.prompt = event.target.value;
       syncComposerState();
       autosizeComposer(event.target);
-      return;
     }
   });
 
@@ -118,32 +112,7 @@ function bindEvents() {
     }
   });
 
-  root.addEventListener("change", async (event) => {
-    if (event.target.matches("[data-permissions-select]")) {
-      state.localOnlyEnabled = event.target.value === "local";
-      scheduleRender({ preserveComposerFocus: true });
-      return;
-    }
-
-    if (event.target.matches("[data-model-select]")) {
-      const payload = await request("/api/model", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: event.target.value }),
-      });
-      state.healthMeta.model = payload.ai_model || event.target.value;
-      state.healthMeta.availableModels = payload.available_models || state.healthMeta.availableModels;
-      showToast("Model updated");
-      scheduleRender({ preserveComposerFocus: true });
-      return;
-    }
-
-    if (event.target.matches("[data-reasoning-select]")) {
-      state.planningMode = event.target.value;
-      scheduleRender({ preserveComposerFocus: true });
-      return;
-    }
-
+  root.addEventListener("change", (event) => {
     if (event.target.matches("[data-thinking-toggle]")) {
       state.showThinking = Boolean(event.target.checked);
       scheduleRender({ preserveComposerFocus: true });
@@ -169,11 +138,12 @@ async function handleAction(action) {
   if (action === "new-thread") {
     state.prompt = "";
     state.transcript = [];
-    state.blueprint = null;
-    state.runtimeState = "PLANNING";
-    state.stageTraces = [];
-    state.verificationResults = [];
-    showToast("Started a new thread");
+    state.retrievalStatus = {
+      mode: "new_context",
+      label: "New context",
+      detail: "No prior Devenv session has been reused yet.",
+    };
+    showToast("Started a new retrieval thread");
     scheduleRender({ focusComposer: true });
     return;
   }
@@ -183,16 +153,13 @@ async function handleAction(action) {
       showToast("Nothing to copy yet");
       return;
     }
-
     const transcriptText = state.transcript
-      .filter((entry) => entry.role !== "thinking" || state.showThinking)
       .map((entry) => `${roleLabel(entry)}\n${String(entry.content || "").trim()}`)
       .join("\n\n");
-
     try {
       await navigator.clipboard.writeText(transcriptText);
       showToast("Thread copied");
-    } catch (error) {
+    } catch {
       showToast("Clipboard access failed");
     }
   }
@@ -208,107 +175,83 @@ async function submitPrompt() {
   state.prompt = "";
   const thinkingId = `thinking-${Date.now()}`;
   const pendingLogs = [
-    createLogEntry("system", `Prompt submitted: ${nextPrompt}`),
-    createLogEntry("ai", "Waiting for runtime response..."),
+    createLogEntry("system", "Checking Devenv memory"),
+    createLogEntry("ai", "Looking for prior session matches"),
   ];
   state.transcript.push({ id: `user-${Date.now()}`, role: "user", content: nextPrompt });
   state.transcript.push({ id: thinkingId, role: "thinking", content: formatThinkingBlock(pendingLogs), pending: true });
   scheduleRender({ focusComposer: true });
 
   try {
-    const aggregateLogs = [];
-    let continuePlan = false;
-    let autoContinueCount = 0;
     let result = null;
-
-    do {
-      while (true) {
-        try {
-          result = await request("/api/turn", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              prompt: nextPrompt,
-              planning_mode: state.planningMode,
-              continue_plan: continuePlan,
-              local_only: state.localOnlyEnabled,
-            }),
-          });
-          break;
-        } catch (error) {
-          const parsedRateLimit = parseRateLimitError(error.message);
-          if (!parsedRateLimit) {
-            throw error;
-          }
-
-          state.rateLimitInfo = parsedRateLimit;
-          const retryEntry = createLogEntry(
-            "error",
-            `Rate limit reached. Retrying in ${formatDuration(parsedRateLimit.retryMs)}`
-          );
-          aggregateLogs.push(retryEntry);
-          updateThinkingEntry(thinkingId, formatThinkingBlock(aggregateLogs), true);
-          scheduleRender({ preserveComposerFocus: true });
-          await waitForCooldown(parsedRateLimit.resetAt, (remainingMs) => {
-            retryEntry.message = `Rate limit reached. Retrying in ${formatDuration(remainingMs)}`;
-            updateThinkingEntry(thinkingId, formatThinkingBlock(aggregateLogs), true);
-            scheduleRender({ preserveComposerFocus: true });
-          });
-          retryEntry.message = "Cooldown finished. Retrying request now.";
+    while (true) {
+      try {
+        result = await request("/api/turn", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: nextPrompt,
+            planning_mode: "auto",
+            continue_plan: false,
+            local_only: false,
+          }),
+        });
+        break;
+      } catch (error) {
+        const parsedRateLimit = parseRateLimitError(error.message);
+        if (!parsedRateLimit) {
+          throw error;
         }
+        state.rateLimitInfo = parsedRateLimit;
+        updateThinkingEntry(
+          thinkingId,
+          formatThinkingBlock([
+            createLogEntry("system", "Rate limit reached"),
+            createLogEntry("ai", `Retrying in ${formatDuration(parsedRateLimit.retryMs)}`),
+          ]),
+          true
+        );
+        scheduleRender({ preserveComposerFocus: true });
+        await waitForCooldown(parsedRateLimit.resetAt, (remainingMs) => {
+          updateThinkingEntry(
+            thinkingId,
+            formatThinkingBlock([
+              createLogEntry("system", "Rate limit reached"),
+              createLogEntry("ai", `Retrying in ${formatDuration(remainingMs)}`),
+            ]),
+            true
+          );
+          scheduleRender({ preserveComposerFocus: true });
+        });
       }
+    }
 
-      aggregateLogs.push(...buildLogEntries(result));
-      state.blueprint = result.blueprint || null;
-      state.runtimeState = result.state || "PLANNING";
-      state.stageTraces = result.stage_traces || [];
-      state.verificationResults = result.verification_results || [];
-      state.usageWindow = [...state.usageWindow, { timestamp: Date.now(), totalTokens: result.total_usage?.total_tokens || 0 }].filter(
-        (entry) => Date.now() - entry.timestamp < 60000
-      );
-      continuePlan = shouldAutoContinue(result, autoContinueCount);
-      autoContinueCount += continuePlan ? 1 : 0;
-      updateThinkingEntry(thinkingId, formatThinkingBlock(aggregateLogs), continuePlan);
-      scheduleRender({ preserveComposerFocus: true });
-    } while (continuePlan);
-
-    state.transcript = state.transcript.map((entry) =>
-      entry.id === thinkingId ? { ...entry, content: formatThinkingBlock(aggregateLogs), pending: false } : entry
+    state.usageWindow = [...state.usageWindow, { timestamp: Date.now(), totalTokens: result.total_usage?.total_tokens || 0 }].filter(
+      (entry) => Date.now() - entry.timestamp < 60000
     );
+    state.retrievalStatus = buildRetrievalStatus(result.metadata || {});
+    updateThinkingEntry(thinkingId, formatThinkingFromResult(result), false);
+    state.transcript = state.transcript.map((entry) => (entry.id === thinkingId ? { ...entry, pending: false } : entry));
     state.transcript.push({
       id: `assistant-${Date.now()}`,
       role: result?.error_message ? "error" : "assistant",
-      content: result?.error_message || selectVisibleAssistantResponse(result, aggregateLogs),
+      content: selectVisibleAssistantResponse(result),
     });
     state.rateLimitInfo = null;
   } catch (error) {
     const parsedRateLimit = parseRateLimitError(error.message);
-    state.transcript = state.transcript.map((entry) =>
-      entry.id === thinkingId
-        ? {
-            ...entry,
-            pending: false,
-            content: formatThinkingBlock([
-              createLogEntry("system", `Prompt submitted: ${nextPrompt}`),
-              createLogEntry("error", `Request failed: ${error.message}`),
-            ]),
-          }
-        : entry
+    updateThinkingEntry(
+      thinkingId,
+      formatThinkingBlock([
+        createLogEntry("system", "Memory retrieval failed"),
+        createLogEntry("error", error.message),
+      ]),
+      false
     );
     state.transcript.push({
       id: `assistant-${Date.now()}`,
       role: parsedRateLimit ? "error" : "assistant",
-      content: parsedRateLimit
-        ? [
-            "Rate limit reached.",
-            "",
-            `TPM limit: ${parsedRateLimit.limit}`,
-            `Used: ${parsedRateLimit.used}`,
-            `Requested: ${parsedRateLimit.requested}`,
-            `Retry in: ${formatDuration(parsedRateLimit.retryMs)}`,
-            `Resets at: ${formatTimestamp(parsedRateLimit.resetAt)}`,
-          ].join("\n")
-        : `Request failed: ${error.message}`,
+      content: parsedRateLimit ? "Rate limit reached while checking Devenv memory." : `Request failed: ${error.message}`,
     });
     if (parsedRateLimit) {
       state.rateLimitInfo = parsedRateLimit;
@@ -341,7 +284,6 @@ function scheduleRender(options = {}) {
 
 function render(options = {}) {
   const composerState = captureComposerState();
-
   document.body.dataset.theme = state.theme;
 
   if (state.bootError) {
@@ -350,48 +292,40 @@ function render(options = {}) {
   }
 
   if (!state.health) {
-    root.innerHTML = `<div class="loading-shell">Booting Codex workspace...</div>`;
+    root.innerHTML = `<div class="loading-shell">Booting Devenv memory retrieval...</div>`;
     return;
   }
 
   const contextBudget = buildContextBudget(state.usageWindow, state.rateLimitInfo);
-  const provider = state.localOnlyEnabled ? "Local" : state.healthMeta.provider;
-  const model = state.localOnlyEnabled ? "heuristic-runtime" : state.healthMeta.model;
-  const branchName = state.blueprint?.target_branch || "main";
-  const visibleMessages = state.transcript.filter((item) => item.role !== "thinking" || state.showThinking);
+  const provider = state.healthMeta.provider || "Unknown";
 
   root.innerHTML = `
     <div class="app-shell chat-shell">
       <main class="chat-main">
         <section class="content-panel terminal-panel${state.transcript.length ? " has-messages" : ""}">
-          <div class="codex-window-chrome" aria-hidden="true">
-            <div class="mac-controls">
-              <span class="mac-dot red"></span>
-              <span class="mac-dot yellow"></span>
-              <span class="mac-dot green"></span>
+          <div class="codex-window-chrome">
+            <div class="brand-slot">
+              <span class="brand-name">Devenv</span>
             </div>
-            <div class="thread-title">${state.transcript.length ? "Current thread" : "New chat"}</div>
+            <div class="thread-title">${state.transcript.length ? "Memory thread" : "New memory lookup"}</div>
             <div class="top-actions">
-              <button type="button" class="ghost-action" data-action="theme">${state.theme === "dark" ? "Light" : "Dark"}</button>
-              <button type="button" class="ghost-action" data-action="new-thread">Open</button>
-              <button type="button" class="ghost-action" data-action="copy-thread">Commit</button>
+              <button type="button" class="ghost-action icon-action" data-action="theme" aria-label="Toggle theme">
+                ${state.theme === "dark" ? sunIcon() : moonIcon()}
+              </button>
+              <button type="button" class="ghost-action" data-action="new-thread">New</button>
+              <button type="button" class="ghost-action" data-action="copy-thread">Copy</button>
             </div>
           </div>
           <div class="terminal-scroll-region">
             ${
               state.transcript.length
-                ? renderTranscript(visibleMessages)
+                ? renderTranscript()
                 : `
                   <div class="codex-empty-state">
                     <div class="hero-stack">
-                      <div class="codex-glyph" aria-hidden="true">
-                        <svg viewBox="0 0 28 28" fill="none">
-                          <path d="M10.1 22.2c-3.1 0-5.8-2.5-5.8-5.7 0-2.9 2-5.2 4.8-5.7.7-3.2 3.4-5.4 6.9-5.4 4 0 7.2 3.1 7.2 7.1v.3c1.7.8 2.8 2.5 2.8 4.5 0 2.7-2.2 4.9-5 4.9H10.1Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                          <path d="M12 14h.01M17 14h.01" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                      </div>
-                      <h1 class="hero-title">What should we build?</h1>
-                      <div class="hero-subtitle">${escapeHtml(projectName(state.health.workspace_path || "Project"))}</div>
+                      <div class="codex-glyph" aria-hidden="true">${devenvCloudIcon()}</div>
+                      <h1 class="hero-title">What should we recall?</h1>
+                      <div class="hero-subtitle">Focused on Devenv infinite-memory retrieval from prior Codex sessions.</div>
                     </div>
                     <div class="suggestion-row">
                       ${SUGGESTIONS.map(
@@ -412,41 +346,26 @@ function render(options = {}) {
                 placeholder="${escapeAttribute(
                   isCoolingDown()
                     ? `Cooldown active. Input unlocks in ${formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))}.`
-                    : "Ask Codex anything, @ to use files, / for commands"
+                    : "Ask Devenv what it remembers from earlier Codex sessions"
                 )}"
                 ${isCoolingDown() ? "disabled" : ""}
               >${escapeHtml(state.prompt)}</textarea>
               <div class="composer-toolbar">
                 <div class="composer-toolbar-left">
-                  <label class="toolbar-select compact">
-                    <span>Permissions</span>
-                    <select data-permissions-select>
-                      <option value="default" ${state.localOnlyEnabled ? "" : "selected"}>Default permissions</option>
-                      <option value="local" ${state.localOnlyEnabled ? "selected" : ""}>Work locally</option>
-                    </select>
-                  </label>
-                  <label class="toolbar-select compact">
-                    <span>Model</span>
-                    <select data-model-select ${state.localOnlyEnabled ? "disabled" : ""}>
-                      ${renderModelOptions(model)}
-                    </select>
-                  </label>
-                  <label class="toolbar-select compact">
-                    <span>Reasoning</span>
-                    <select data-reasoning-select>
-                      ${REASONING_OPTIONS.map(
-                        (option) =>
-                          `<option value="${option.value}" ${state.planningMode === option.value ? "selected" : ""}>${option.label}</option>`
-                      ).join("")}
-                    </select>
-                  </label>
+                  <div class="status-chip">
+                    <span class="status-chip-label">Context</span>
+                    <strong>${escapeHtml(state.retrievalStatus.label)}</strong>
+                  </div>
+                  <div class="status-chip status-chip-detail">
+                    ${escapeHtml(state.retrievalStatus.detail)}
+                  </div>
                 </div>
                 <div class="composer-toolbar-right">
                   <label class="terminal-toggle inline-toggle${state.showThinking ? " enabled" : ""}">
                     <input type="checkbox" data-thinking-toggle ${state.showThinking ? "checked" : ""} />
-                    <span>Show thinking</span>
+                    <span>Show raw thinking</span>
                   </label>
-                  <div class="composer-meta">${escapeHtml(`${provider || "Unknown"} · ${contextBudget.remainingLabel} · ${branchName}`)}</div>
+                  <div class="composer-meta">${escapeHtml(`${provider} · ${contextBudget.remainingLabel}`)}</div>
                   <button
                     class="terminal-submit composer-submit"
                     type="submit"
@@ -456,13 +375,13 @@ function render(options = {}) {
                     isCoolingDown()
                       ? formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))
                       : state.isRunning
-                        ? "Working"
-                        : "Send"
+                        ? "Searching"
+                        : "Ask"
                   }</button>
                 </div>
               </div>
             </div>
-            <div class="composer-hint">Press Cmd/Ctrl + Enter to send</div>
+            <div class="composer-hint">Press Cmd/Ctrl + Enter to search memory</div>
           </form>
           ${state.toast ? `<div class="toast-banner">${escapeHtml(state.toast)}</div>` : ""}
         </section>
@@ -478,92 +397,112 @@ function render(options = {}) {
   syncComposerState();
 }
 
-function renderTranscript(messages) {
+function renderTranscript() {
   return `
     <div class="chat-thread">
-      ${messages
-        .map(
-          (item) => `
+      ${state.transcript
+        .map((item) => {
+          const body =
+            item.role === "thinking" && !state.showThinking ? renderThinkingSummary(item.content, item.pending) : renderRichText(item.content);
+          return `
             <article class="thread-message ${item.role}">
               <div class="thread-message-role">${escapeHtml(roleLabel(item))}</div>
-              <div class="thread-message-body markdown-body">${renderRichText(item.content)}</div>
+              <div class="thread-message-body markdown-body">${body}</div>
             </article>
-          `
-        )
+          `;
+        })
         .join("")}
-      ${
-        state.blueprint?.tasks?.length
-          ? `
-            <aside class="thread-plan-summary">
-              <div class="thread-plan-heading">Plan</div>
-              <div class="thread-plan-state">${escapeHtml(state.runtimeState || "Ready")}</div>
-              <ul class="thread-plan-list">
-                ${state.blueprint.tasks
-                  .map((task) => `<li>${escapeHtml(`${task.is_completed ? "Done" : "Next"}: ${task.description}`)}</li>`)
-                  .join("")}
-              </ul>
-              ${
-                state.stageTraces.length
-                  ? `<div class="thread-plan-meta">${escapeHtml(
-                      state.stageTraces.map((trace) => `${trace.stage}: ${trace.summary}`).join(" · ")
-                    )}</div>`
-                  : ""
-              }
-              ${
-                state.verificationResults.length
-                  ? `<div class="thread-plan-meta">${
-                      state.verificationResults.every((entry) => entry.success) ? "Verification passed" : "Verification pending"
-                    }</div>`
-                  : ""
-              }
-            </aside>
-          `
-          : ""
-      }
     </div>
   `;
 }
 
-function renderModelOptions(activeModel) {
-  const models = state.healthMeta.availableModels?.length ? state.healthMeta.availableModels : [activeModel || ""];
-  return models
-    .map(
-      (modelName) =>
-        `<option value="${escapeAttribute(modelName)}" ${activeModel === modelName ? "selected" : ""}>${escapeHtml(
-          simplifyModelLabel(modelName)
-        )}</option>`
-    )
-    .join("");
+function renderThinkingSummary(content, pending) {
+  const steps = parseThinkingEntries(content);
+  const selected = steps.slice(-4);
+  const headline = pending ? "Devenv is checking memory" : "Devenv finished checking memory";
+  return `
+    <div class="thinking-card">
+      <strong>${escapeHtml(headline)}</strong>
+      <ul>
+        ${selected.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+      </ul>
+    </div>
+  `;
 }
 
-function renderRichText(content) {
-  const text = String(content || "");
-  if (text.includes("```")) {
-    return text
-      .split(/```/)
-      .map((chunk, index) => (index % 2 ? `<pre><code>${escapeHtml(chunk.replace(/^\w+\n/, ""))}</code></pre>` : renderParagraphs(chunk)))
-      .join("");
+function parseThinkingEntries(content) {
+  return String(content || "")
+    .split("\n")
+    .map((line) => line.replace(/^```(?:text)?/, "").replace(/```$/, "").trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/^[A-Z_]+\s+/, ""))
+    .map(humanizeThinkingLine);
+}
+
+function humanizeThinkingLine(line) {
+  const lowered = line.toLowerCase();
+  if (lowered.includes("queued prompt")) {
+    return "Queued your lookup";
   }
-  return renderParagraphs(text);
+  if (lowered.includes("memory context chars")) {
+    return "Built the memory context packet";
+  }
+  if (lowered.includes("prior-session")) {
+    return "Matched prior Devenv sessions";
+  }
+  if (lowered.includes("new context")) {
+    return "Detected a new context";
+  }
+  if (lowered.includes("checkpoint blueprint") || lowered.includes("checkpoint")) {
+    return "Reasoned through the retrieval flow";
+  }
+  if (lowered.includes("verification passed")) {
+    return "Verified the response";
+  }
+  if (lowered.includes("waiting for runtime response")) {
+    return "Waiting for Devenv runtime";
+  }
+  if (lowered.includes("retrying in")) {
+    return line;
+  }
+  return line;
 }
 
-function renderParagraphs(text) {
-  return String(text || "")
-    .split(/\n{2,}/)
-    .map((block) => {
-      const trimmed = block.trim();
-      if (!trimmed) {
-        return "";
+function formatThinkingFromResult(result) {
+  const lines = [];
+  const metadata = result.metadata || {};
+  if (metadata.external_context_state === "reused_prior_context") {
+    lines.push(createLogEntry("system", `Prior-session match found in ${metadata.external_context_session_count || 0} session(s)`));
+  } else {
+    lines.push(createLogEntry("system", "New context detected; no strong prior-session match reused"));
+  }
+  if (Array.isArray(result.stage_traces) && result.stage_traces.length) {
+    for (const trace of result.stage_traces.slice(0, 5)) {
+      if (trace.summary) {
+        lines.push(createLogEntry("ai", trace.summary));
       }
-      if (trimmed.startsWith("- ")) {
-        return `<ul>${trimmed
-          .split("\n")
-          .map((line) => `<li>${escapeHtml(line.replace(/^- /, ""))}</li>`)
-          .join("")}</ul>`;
-      }
-      return `<p>${escapeHtml(trimmed).replace(/\n/g, "<br />")}</p>`;
-    })
-    .join("");
+    }
+  }
+  if (!lines.length) {
+    lines.push(createLogEntry("ai", "Retrieved Devenv memory context"));
+  }
+  return formatThinkingBlock(lines);
+}
+
+function buildRetrievalStatus(metadata) {
+  if (metadata.external_context_state === "reused_prior_context") {
+    const count = Number(metadata.external_context_session_count || 0);
+    return {
+      mode: "reused_prior_context",
+      label: count > 0 ? `Reused prior context${count > 1 ? ` (${count})` : ""}` : "Reused prior context",
+      detail: metadata.external_context_reason || "A prior Devenv session matched this request.",
+    };
+  }
+  return {
+    mode: "new_context",
+    label: "New context",
+    detail: metadata.external_context_reason || "No strong prior Devenv session match was found.",
+  };
 }
 
 function syncComposerState() {
@@ -619,44 +558,60 @@ function roleLabel(item) {
     return "You";
   }
   if (item.role === "thinking") {
-    return state.showThinking ? "Thinking" : "Working";
+    return "Devenv status";
   }
   if (item.role === "error") {
-    return "System";
+    return "Devenv";
   }
-  return "Codex";
-}
-
-function simplifyModelLabel(modelName) {
-  const value = String(modelName || "").trim();
-  return value ? value.replace(/^.*\//, "").replace(/-/g, " ") : "Unknown";
-}
-
-function projectName(workspacePath) {
-  const cleaned = String(workspacePath || "").replace(/\\/g, "/");
-  const parts = cleaned.split("/").filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : "Project";
+  return "Devenv";
 }
 
 function createLogEntry(source, message) {
   return { source, message };
 }
 
-function buildLogEntries(result) {
-  const systemLogs = result.system_logs?.length
-    ? result.system_logs.filter((entry) => !entry.startsWith("Plan checkpoints:")).map((entry) => createLogEntry("system", entry))
-    : [createLogEntry("system", "No runtime system logs were returned for this turn.")];
-  const aiLogs = result.ai_logs?.length
-    ? result.ai_logs.map((entry) => createLogEntry("ai", entry))
-    : [createLogEntry("ai", "No AI-side trace was emitted for this turn.")];
-  const stepLogs = (result.steps || []).map((step, index) =>
-    createLogEntry(step.success ? "system" : "error", `Step ${index + 1}: ${step.tool_name} ${step.success ? "completed successfully" : "failed"}`)
-  );
-  return [...systemLogs, ...aiLogs, ...stepLogs];
-}
-
 function formatThinkingBlock(entries) {
   return ["```text", ...entries.map((entry) => `${String(entry.source).toUpperCase()}  ${entry.message}`), "```"].join("\n");
+}
+
+function renderRichText(content) {
+  const text = String(content || "");
+  if (text.includes("```")) {
+    return text
+      .split(/```/)
+      .map((chunk, index) => (index % 2 ? `<pre><code>${escapeHtml(chunk.replace(/^\w+\n/, ""))}</code></pre>` : renderParagraphs(chunk)))
+      .join("");
+  }
+  return renderParagraphs(text);
+}
+
+function renderParagraphs(text) {
+  return String(text || "")
+    .split(/\n{2,}/)
+    .map((block) => {
+      const trimmed = block.trim();
+      if (!trimmed) {
+        return "";
+      }
+      if (trimmed.startsWith("- ")) {
+        return `<ul>${trimmed
+          .split("\n")
+          .map((line) => `<li>${escapeHtml(line.replace(/^- /, ""))}</li>`)
+          .join("")}</ul>`;
+      }
+      return `<p>${escapeHtml(trimmed).replace(/\n/g, "<br />")}</p>`;
+    })
+    .join("");
+}
+
+function selectVisibleAssistantResponse(result) {
+  if (result?.final_response && String(result.final_response).trim()) {
+    return String(result.final_response).trim();
+  }
+  if (result?.error_message && String(result.error_message).trim()) {
+    return String(result.error_message).trim();
+  }
+  return "No memory answer was returned.";
 }
 
 function parseRateLimitError(message) {
@@ -667,7 +622,6 @@ function parseRateLimitError(message) {
   if (!limitMatch || !usedMatch || !requestedMatch || !retryMatch) {
     return null;
   }
-
   const retryMs = Math.ceil(Number(retryMatch[1]) * 1000);
   return {
     limit: Number(limitMatch[1]),
@@ -686,37 +640,6 @@ function buildContextBudget(usageWindow, rateLimitInfo) {
     remaining,
     remainingLabel: `${remaining}/${limit}`,
   };
-}
-
-function shouldAutoContinue(result, autoContinueCount) {
-  const hasIncompleteTasks = Boolean(result?.blueprint?.tasks?.some((task) => !task.is_completed));
-  if (!hasIncompleteTasks || result?.state !== "EXECUTING" || autoContinueCount >= 24) {
-    return false;
-  }
-  return !(result?.system_logs || []).some((entry) => String(entry).includes("Verification failed"));
-}
-
-function selectVisibleAssistantResponse(result, aggregateLogs) {
-  if (!result?.blueprint) {
-    return result?.final_response || "No assistant response returned.";
-  }
-
-  const completedTasks = result.blueprint.tasks?.filter((task) => task.is_completed) || [];
-  const verificationLines = aggregateLogs
-    .filter((entry) => entry.source === "system" && String(entry.message).startsWith("Verification "))
-    .map((entry) => `- ${entry.message}`);
-
-  const sections = ["Completed execution plan:", ...completedTasks.map((task) => `- ${task.description}`)];
-  if (verificationLines.length) {
-    sections.push("", "Verification:", ...verificationLines);
-  }
-  if (Array.isArray(result.stage_traces) && result.stage_traces.length) {
-    sections.push("", "Pipeline:", ...result.stage_traces.map((trace) => `- ${trace.stage}: ${trace.summary}`));
-  }
-  if (!result.blueprint.verification_passed) {
-    sections.push("", "Some verification checks still need attention.");
-  }
-  return sections.join("\n");
 }
 
 async function waitForCooldown(resetAt, onTick) {
@@ -741,14 +664,6 @@ function formatDuration(milliseconds) {
   return minutes ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
 }
 
-function formatTimestamp(timestamp) {
-  return new Date(timestamp).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
 async function request(url, options = {}) {
   const response = await fetch(url, options);
   const payload = await response.json();
@@ -763,6 +678,10 @@ function isCoolingDown() {
 }
 
 function loadTheme() {
+  const forcedTheme = new URLSearchParams(window.location.search).get("theme");
+  if (forcedTheme === "dark" || forcedTheme === "light") {
+    return forcedTheme;
+  }
   try {
     return window.localStorage.getItem(STORAGE_THEME_KEY) === "dark" ? "dark" : "light";
   } catch {
@@ -786,6 +705,32 @@ function showToast(message) {
     scheduleRender({ preserveComposerFocus: true });
   }, 1600);
   scheduleRender({ preserveComposerFocus: true });
+}
+
+function moonIcon() {
+  return `
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M13.9 2.8a6.8 6.8 0 1 0 3.3 12.8A7.9 7.9 0 1 1 13.9 2.8Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+}
+
+function sunIcon() {
+  return `
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <circle cx="10" cy="10" r="3.5" stroke="currentColor" stroke-width="1.7"/>
+      <path d="M10 1.8V4M10 16v2.2M18.2 10H16M4 10H1.8M15.9 4.1 14.3 5.7M5.7 14.3 4.1 15.9M15.9 15.9 14.3 14.3M5.7 5.7 4.1 4.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    </svg>
+  `;
+}
+
+function devenvCloudIcon() {
+  return `
+    <svg viewBox="0 0 28 28" fill="none">
+      <path d="M10.1 22.2c-3.1 0-5.8-2.5-5.8-5.7 0-2.9 2-5.2 4.8-5.7.7-3.2 3.4-5.4 6.9-5.4 4 0 7.2 3.1 7.2 7.1v.3c1.7.8 2.8 2.5 2.8 4.5 0 2.7-2.2 4.9-5 4.9H10.1Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M12 14h.01M17 14h.01" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
 }
 
 function escapeHtml(value) {

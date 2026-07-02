@@ -25,6 +25,7 @@ MAX_SESSION_MESSAGES = 10
 MAX_CONTEXT_LINES = 8
 MAX_WORKSPACE_FACTS = 8
 MAX_README_CHARS = 500
+MIN_SESSION_CONTENT_SCORE = 6
 COMMON_CONTEXT_TOKENS = {
     "about",
     "again",
@@ -36,6 +37,10 @@ COMMON_CONTEXT_TOKENS = {
     "have",
     "into",
     "just",
+    "hello",
+    "help",
+    "hey",
+    "hi",
     "know",
     "previous",
     "project",
@@ -64,6 +69,7 @@ COMMON_CONTEXT_TOKENS = {
     "reviews",
     "fix",
     "fixed",
+    "update",
 }
 
 
@@ -368,9 +374,22 @@ class ContextBuilderService:
         provider_name = request.provider or self._default_provider_name()
         details: list[ExternalSessionDetail] = []
         selected_session_ids: tuple[str, ...] = request.session_ids
+        selection_metadata: dict[str, Any] = {
+            "context_match_state": "new_context",
+            "context_match_reason": "No strong prior-session match was found.",
+        }
         if request.include_prior_context and provider_name:
             provider = self._get_provider(provider_name)
-            selected_session_ids = request.session_ids or self._select_relevant_session_ids(provider, request.task)
+            if request.session_ids:
+                selected_session_ids = request.session_ids
+                selection_metadata = {
+                    "context_match_state": "reused_prior_context" if selected_session_ids else "new_context",
+                    "context_match_reason": "Prior-session context was selected manually." if selected_session_ids else "No prior session was selected manually.",
+                }
+            else:
+                selected_matches = self._select_relevant_sessions(provider, request.task)
+                selected_session_ids = tuple(match["summary"].session_id for match in selected_matches)
+                selection_metadata = self._selection_metadata(selected_matches)
             details = [provider.get_session(session_id) for session_id in selected_session_ids]
 
         context_lines = _collect_relevant_context_lines(request.task, details, request.output_format)
@@ -398,6 +417,7 @@ class ContextBuilderService:
                 "selected_session_count": len(selected_session_ids),
                 "selection_mode": "manual" if request.session_ids else "automatic",
                 "output_format": request.output_format,
+                **selection_metadata,
             },
         )
 
@@ -407,20 +427,22 @@ class ContextBuilderService:
         *,
         provider_name: str | None = None,
         max_lines: int = 6,
-    ) -> tuple[str, tuple[str, ...]]:
+    ) -> tuple[str, tuple[str, ...], dict[str, Any]]:
         resolved_provider = provider_name or self._default_provider_name()
         if not resolved_provider:
-            return "", ()
+            return "", (), {"context_match_state": "new_context", "context_match_reason": "No external session provider is available."}
         provider = self._get_provider(resolved_provider)
-        selected_session_ids = self._select_relevant_session_ids(provider, task)
+        selected_matches = self._select_relevant_sessions(provider, task)
+        selected_session_ids = tuple(match["summary"].session_id for match in selected_matches)
+        selection_metadata = self._selection_metadata(selected_matches)
         if not selected_session_ids:
-            return "", ()
+            return "", (), selection_metadata
         details = [provider.get_session(session_id) for session_id in selected_session_ids]
         context_lines = _collect_relevant_context_lines(task, details, "detailed")[:max_lines]
         if not context_lines:
-            return "", selected_session_ids
+            return "", selected_session_ids, selection_metadata
         lines = ["## External Session Context", *(f"- {line}" for line in context_lines)]
-        return "\n".join(lines), selected_session_ids
+        return "\n".join(lines), selected_session_ids, selection_metadata
 
     def _workspace_facts(self, task: str) -> tuple[str, ...]:
         facts: list[str] = []
@@ -489,45 +511,77 @@ class ContextBuilderService:
         return next(iter(self.providers), None)
 
     def _select_relevant_session_ids(self, provider: ExternalSessionProvider, task: str) -> tuple[str, ...]:
+        return tuple(match["summary"].session_id for match in self._select_relevant_sessions(provider, task))
+
+    def _select_relevant_sessions(self, provider: ExternalSessionProvider, task: str) -> list[dict[str, Any]]:
         summaries = provider.list_sessions()
         if not summaries:
-            return ()
+            return []
 
-        scored: list[tuple[int, int, ExternalSessionSummary]] = []
+        prompt_tokens = _tokenize(task)
+        if not prompt_tokens:
+            return []
+
+        scored: list[dict[str, Any]] = []
         workspace_name = Path(self.workspace_path).name.lower()
         workspace_path = self.workspace_path.lower()
-        prompt_tokens = _tokenize(task)
 
         for summary in summaries:
             detail = provider.get_session(summary.session_id)
-            score = 0
-            content_score = 0
             haystacks = _session_haystacks(summary, detail)
-            for token in prompt_tokens:
-                if any(_token_matches(token, haystack) for haystack in haystacks):
-                    content_score += 4
+            token_hits = sum(1 for token in prompt_tokens if any(_token_matches(token, haystack) for haystack in haystacks))
+            exact_hits = _exact_prompt_hits(prompt_tokens, haystacks)
+            best_overlap = _best_message_overlap(prompt_tokens, detail)
+            workspace_bonus = 0
             session_workspace = (summary.workspace_path or "").lower()
             if session_workspace:
                 if session_workspace == workspace_path:
-                    score += 5
+                    workspace_bonus += 5
                 elif workspace_name and workspace_name in session_workspace:
-                    score += 3
+                    workspace_bonus += 3
                 else:
-                    score -= 1
+                    workspace_bonus -= 1
             if "devenv" in " ".join(haystacks):
-                score += 1
-            content_score += 6 * _exact_prompt_hits(prompt_tokens, haystacks)
-            content_score += min(_best_message_overlap(prompt_tokens, detail), 8)
-            score += content_score
-            scored.append((content_score, score, summary))
+                workspace_bonus += 1
 
-        scored.sort(key=lambda item: (item[1], item[2].updated_at), reverse=True)
-        selected = [
-            summary.session_id
-            for content_score, score, summary in scored
-            if (content_score > 0 and score > 0) or (not prompt_tokens and score > 0)
+            content_score = (exact_hits * 6) + (token_hits * 3) + min(best_overlap * 2, 8)
+            strong_match = exact_hits >= 1 or best_overlap >= 2 or token_hits >= 2
+            scored.append(
+                {
+                    "summary": summary,
+                    "detail": detail,
+                    "content_score": content_score,
+                    "score": content_score + workspace_bonus,
+                    "strong_match": strong_match,
+                    "exact_hits": exact_hits,
+                    "token_hits": token_hits,
+                    "best_overlap": best_overlap,
+                }
+            )
+
+        scored.sort(key=lambda item: (item["strong_match"], item["score"], item["summary"].updated_at), reverse=True)
+        return [
+            item
+            for item in scored
+            if item["strong_match"] and item["content_score"] >= MIN_SESSION_CONTENT_SCORE and item["score"] > 0
         ][:3]
-        return tuple(selected)
+
+    def _selection_metadata(self, selected_matches: list[dict[str, Any]]) -> dict[str, Any]:
+        if not selected_matches:
+            return {
+                "context_match_state": "new_context",
+                "context_match_reason": "No strong prior-session match was found.",
+                "context_match_score": 0,
+            }
+        best = selected_matches[0]
+        return {
+            "context_match_state": "reused_prior_context",
+            "context_match_reason": (
+                f"Matched {len(selected_matches)} prior session(s) using meaningful token overlap "
+                f"({best['token_hits']} token hits, {best['exact_hits']} exact hits)."
+            ),
+            "context_match_score": best["score"],
+        }
 
 
 def _provider_from_config(config: ExternalSessionProviderConfig) -> ExternalSessionProvider:

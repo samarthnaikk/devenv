@@ -122,7 +122,8 @@ class DevenvKernel:
         conversation.append({"role": "user", "content": user_prompt})
 
         self._record_working_memory(conversation)
-        memory_context = self._retrieve_memory_context(user_prompt)
+        memory_context, retrieval_metadata = self._retrieve_memory_context(user_prompt)
+        turn_metadata.update(retrieval_metadata)
         logger.info("Retrieved memory context: chars=%s", len(memory_context))
         system_logs.append(f"Memory context chars: {len(memory_context)}")
         system_logs.append(f"Planning mode: {planning_mode.value}")
@@ -1927,8 +1928,14 @@ class DevenvKernel:
         except Exception as exc:
             logger.warning("Failed to record working memory; continuing: error=%s", exc)
 
-    def _retrieve_memory_context(self, user_prompt: str) -> str:
+    def _retrieve_memory_context(self, user_prompt: str) -> tuple[str, dict[str, Any]]:
         memory_context = ""
+        metadata: dict[str, Any] = {
+            "external_context_state": "new_context",
+            "external_context_reason": "No strong prior-session match was found.",
+            "external_context_session_count": 0,
+            "external_context_session_ids": [],
+        }
         try:
             result = self.memory.retrieve_context(user_prompt)
             self._persist_last_retrieval_trace(getattr(result, "trace", None))
@@ -1937,17 +1944,25 @@ class DevenvKernel:
             logger.warning("Memory retrieval failed; continuing without memory context: error=%s", exc)
         external_builder = getattr(self, "context_builder", None)
         if external_builder is None or not hasattr(external_builder, "build_runtime_memory_context"):
-            return memory_context
+            return memory_context, metadata
         try:
-            external_context, _session_ids = external_builder.build_runtime_memory_context(user_prompt)
+            external_context, session_ids, selection_metadata = external_builder.build_runtime_memory_context(user_prompt)
+            metadata.update(
+                {
+                    "external_context_state": selection_metadata.get("context_match_state", metadata["external_context_state"]),
+                    "external_context_reason": selection_metadata.get("context_match_reason", metadata["external_context_reason"]),
+                    "external_context_session_count": len(session_ids),
+                    "external_context_session_ids": list(session_ids),
+                }
+            )
         except Exception as exc:
             logger.warning("External session retrieval failed; continuing without session context: error=%s", exc)
-            return memory_context
+            return memory_context, metadata
         if not external_context.strip():
-            return memory_context
+            return memory_context, metadata
         if not memory_context.strip():
-            return external_context
-        return f"{memory_context.rstrip()}\n\n{external_context}"
+            return external_context, metadata
+        return f"{memory_context.rstrip()}\n\n{external_context}", metadata
 
     def _persist_last_retrieval_trace(self, trace: Any) -> None:
         if trace is None:
