@@ -640,6 +640,82 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertEqual(session_ids, (session_id,))
         self.assertEqual(metadata["context_match_state"], "reused_prior_context")
 
+    def test_prepare_prompt_matches_hyphenated_project_from_workspace_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "28"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-get-drip"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Unrelated title", "updated_at": "2026-06-28T12:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-28T12-00-00-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-06-28T11:59:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": "/Users/samarthnaik/Desktop/LoopedIn/get-drip"}}),
+                        json.dumps({"timestamp": "2026-06-28T11:59:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "The project had Convex generation issues and onboarding routes."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            result = service.prepare_prompt(
+                PreparedPromptRequest(
+                    task="Do you remember the get-drip project?",
+                    provider="codex",
+                    include_workspace_scan=False,
+                    include_prior_context=True,
+                )
+            )
+
+        self.assertEqual(result.session_ids, (session_id,))
+        self.assertEqual(result.metadata["context_match_state"], "reused_prior_context")
+
+    def test_list_sessions_includes_unindexed_session_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "06" / "28"
+            sessions_dir.mkdir(parents=True)
+            indexed_id = "session-indexed"
+            unindexed_id = "session-unindexed"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": indexed_id, "thread_name": "Indexed session", "updated_at": "2026-06-28T12:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-28T12-00-00-{indexed_id}.jsonl").write_text(
+                json.dumps({"timestamp": "2026-06-28T11:59:00Z", "type": "session_meta", "payload": {"id": indexed_id, "cwd": str(workspace)}}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-06-28T12-30-00-{unindexed_id}.jsonl").write_text(
+                json.dumps({"timestamp": "2026-06-28T12:29:00Z", "type": "session_meta", "payload": {"id": unindexed_id, "cwd": "/tmp/other"}}) + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            session_ids = {session.session_id for session in service.list_sessions("codex")}
+
+        self.assertIn(indexed_id, session_ids)
+        self.assertIn(unindexed_id, session_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

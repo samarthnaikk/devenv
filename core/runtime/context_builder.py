@@ -70,6 +70,7 @@ COMMON_CONTEXT_TOKENS = {
     "fix",
     "fixed",
     "update",
+    "get",
 }
 
 
@@ -126,6 +127,7 @@ class CodexSessionProvider(ExternalSessionProvider):
 
         summaries: list[ExternalSessionSummary] = []
         by_id = self._load_index_records()
+        discovered_ids: set[str] = set()
         if by_id:
             for session_id, record in by_id.items():
                 source_path = self._find_session_file(session_id)
@@ -145,6 +147,12 @@ class CodexSessionProvider(ExternalSessionProvider):
                         preview=preview,
                     )
                 )
+                discovered_ids.add(session_id)
+            for session_file in sorted(self.root.glob(self.config.session_glob), reverse=True):
+                detail = self._parse_session_file(session_file)
+                if detail.summary.session_id in discovered_ids:
+                    continue
+                summaries.append(detail.summary)
             summaries.sort(key=lambda item: item.updated_at, reverse=True)
             return summaries
 
@@ -757,11 +765,18 @@ def _normalize_whitespace(text: str) -> str:
 
 
 def _tokenize(text: str) -> set[str]:
-    return {
+    normalized = text.lower()
+    tokens = {
         token
-        for token in re.findall(r"[a-z0-9_]+", text.lower())
+        for token in re.findall(r"[a-z0-9_]+", normalized)
         if len(token) >= 3 and token not in COMMON_CONTEXT_TOKENS
     }
+    compound_tokens = {
+        token
+        for token in re.findall(r"[a-z0-9]+(?:[-_/][a-z0-9]+)+", normalized)
+        if token not in COMMON_CONTEXT_TOKENS
+    }
+    return tokens | compound_tokens
 
 
 def _is_noise_message_content(text: str) -> bool:

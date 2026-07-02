@@ -2168,11 +2168,13 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     if not bullet_lines:
         return None
 
-    prompt_tokens = {token for token in re.findall(r"[a-z0-9_]+", user_prompt.lower()) if len(token) >= 4}
+    prompt_tokens = _memory_query_tokens(user_prompt)
+    prompt_entities = _memory_query_entities(user_prompt)
     ranked: list[tuple[int, str]] = []
     for line in bullet_lines:
         line_lower = line.lower()
         overlap = sum(1 for token in prompt_tokens if token in line_lower)
+        overlap += sum(6 for entity in prompt_entities if entity in line_lower)
         ranked.append((overlap, line))
     ranked.sort(key=lambda item: item[0], reverse=True)
 
@@ -2187,6 +2189,12 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     cleaned = [line for line in cleaned if line and _is_high_signal_memory_answer(line, user_prompt)]
     if not cleaned:
         return None
+    if prompt_entities:
+        cleaned = [line for line in cleaned if any(entity in line.lower() for entity in prompt_entities)] or cleaned
+    if _is_memory_recall_question(user_prompt):
+        if len(cleaned) == 1:
+            return f"Yes. {cleaned[0]}"
+        return "Yes.\n\n" + "\n\n".join(cleaned[:3])
     if len(cleaned) == 1:
         return cleaned[0]
     return "\n\n".join(cleaned)
@@ -2396,6 +2404,49 @@ def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
     if ("how does" in prompt_lowered or "how do" in prompt_lowered or "why does" in prompt_lowered) and "i inspected" in lowered:
         return False
     return True
+
+
+def _memory_query_tokens(user_prompt: str) -> set[str]:
+    common = {
+        "about",
+        "again",
+        "anything",
+        "does",
+        "know",
+        "project",
+        "remember",
+        "that",
+        "this",
+        "what",
+    }
+    tokens = {
+        token
+        for token in re.findall(r"[a-z0-9_]+", user_prompt.lower())
+        if len(token) >= 4 and token not in common
+    }
+    return tokens | _memory_query_entities(user_prompt)
+
+
+def _memory_query_entities(user_prompt: str) -> set[str]:
+    return {
+        token.lower()
+        for token in re.findall(r"[a-z0-9]+(?:[-_/][a-z0-9]+)+", user_prompt.lower())
+        if len(token) >= 3
+    }
+
+
+def _is_memory_recall_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "do you remember",
+            "remember about",
+            "what do you remember",
+            "do you know about",
+            "what do you know about",
+        )
+    )
 
 
 def _summarize_symbol_outline(file_name: str, payload: dict[str, Any] | list[Any] | None) -> str | None:

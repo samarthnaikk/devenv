@@ -564,6 +564,25 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIsNone(answer)
 
+    def test_answer_from_retrieved_memory_prefers_project_specific_recall(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "do you remember about that get-drip project?",
+            "\n".join(
+                [
+                    "## External Session Context",
+                    "- Session 'Project work' matched via Codex history.",
+                    "- Targeted workspace /Users/samarthnaik/Desktop/LoopedIn/get-drip for retrieval and prompt generation work.",
+                    "- Assistant reported: get-drip was the project where we were improving retrieval quality across stored sessions.",
+                    "- Assistant reported: Sharmil's reviews needed follow-up.",
+                ]
+            ),
+        )
+
+        self.assertIsNotNone(answer)
+        self.assertIn("Yes", answer or "")
+        self.assertIn("get-drip", answer or "")
+        self.assertNotIn("Sharmil", answer or "")
+
     def test_local_directory_summary_is_not_persisted_to_episodic_memory(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])
