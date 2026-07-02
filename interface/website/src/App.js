@@ -4,18 +4,8 @@ import { TerminalPanel } from "./components/TerminalPanel.js";
 
 export function App() {
   const [health, setHealth] = React.useState(null);
-  const [prompt, setPrompt] = React.useState("Do you know about Integrate Codex and OpenCode?");
-  const [transcript, setTranscript] = React.useState([
-    {
-      id: "intro",
-      role: "assistant",
-      content: [
-        "I’m connected to your workspace and prior Codex history.",
-        "",
-        "Ask about a past project, reviewer feedback, architecture decision, or anything Devenv may have seen before.",
-      ].join("\n"),
-    },
-  ]);
+  const [prompt, setPrompt] = React.useState("");
+  const [transcript, setTranscript] = React.useState([]);
   const [isRunning, setIsRunning] = React.useState(false);
   const [bootError, setBootError] = React.useState("");
   const [usage, setUsage] = React.useState({});
