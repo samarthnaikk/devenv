@@ -583,6 +583,72 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("get-drip", answer or "")
         self.assertNotIn("Sharmil", answer or "")
 
+    def test_answer_from_retrieved_memory_uses_working_memory_for_follow_up(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "we had a few reviews and bugs to be fixed? can you tell exactly what were those?",
+            "\n".join(
+                [
+                    "## Working Memory",
+                    "- user: hey, do you remember about get-drip project?",
+                    "- assistant: Yes. Session 'rollout-1' targeted workspace /Users/samarthnaik/Desktop/LoopedIn/get-drip.",
+                    "## External Session Context",
+                    "- Assistant reported: get-drip had review feedback to support workspace creation links and fix the DRIP pipeline chat flow.",
+                    "- Assistant reported: get-drip still had bugs around root URL redirects and Convex generated imports.",
+                    '- {"type": "function", "name": "list_directory", "parameters": {"path": "/Users/samarthnaik/Desktop/LoopedIn/get-dri", "mode": "recursive"}}',
+                ]
+            ),
+        )
+
+        self.assertIsNotNone(answer)
+        self.assertIn("Yes", answer or "")
+        self.assertIn("get-drip", answer or "")
+        self.assertIn("review feedback", answer or "")
+        self.assertNotIn('"type": "function"', answer or "")
+
+    def test_retrieve_memory_context_uses_recent_conversation_for_follow_up_matching(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "07" / "02"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-get-drip"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Fix 7 bugs", "updated_at": "2026-07-02T11:52:11Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-02T13-12-12-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-02T13:12:12Z", "type": "session_meta", "payload": {"id": session_id, "cwd": "/Users/samarthnaik/Desktop/LoopedIn/get-drip"}}),
+                        json.dumps({"timestamp": "2026-07-02T13:12:13Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "get-drip still had bugs around root URL redirects and Convex generated imports."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.ephemeral_history = [
+                {"role": "user", "content": "hey, do you remember about get-drip project?"},
+                {"role": "assistant", "content": "Yes. Session 'rollout-1' targeted workspace /Users/samarthnaik/Desktop/LoopedIn/get-drip."},
+            ]
+            kernel.context_builder = ContextBuilderService(
+                tempdir,
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+
+            memory_context, metadata = kernel._retrieve_memory_context(
+                "we had a few reviews and bugs to be fixed? can you tell exactly what were those?"
+            )
+
+        self.assertIn("get-drip", memory_context)
+        self.assertEqual(metadata["external_context_state"], "reused_prior_context")
+        self.assertIn("Recent conversation context:", metadata["external_context_query"])
+
     def test_local_directory_summary_is_not_persisted_to_episodic_memory(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])

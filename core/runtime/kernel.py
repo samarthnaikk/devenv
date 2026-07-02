@@ -1945,14 +1945,16 @@ class DevenvKernel:
         external_builder = getattr(self, "context_builder", None)
         if external_builder is None or not hasattr(external_builder, "build_runtime_memory_context"):
             return memory_context, metadata
+        external_query = _compose_external_memory_query(user_prompt, self.ephemeral_history)
         try:
-            external_context, session_ids, selection_metadata = external_builder.build_runtime_memory_context(user_prompt)
+            external_context, session_ids, selection_metadata = external_builder.build_runtime_memory_context(external_query)
             metadata.update(
                 {
                     "external_context_state": selection_metadata.get("context_match_state", metadata["external_context_state"]),
                     "external_context_reason": selection_metadata.get("context_match_reason", metadata["external_context_reason"]),
                     "external_context_session_count": len(session_ids),
                     "external_context_session_ids": list(session_ids),
+                    "external_context_query": external_query,
                 }
             )
         except Exception as exc:
@@ -2157,41 +2159,58 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     if not memory_context.strip():
         return None
 
-    lines = _memory_bullet_lines(memory_context)
-    bullet_lines = []
-    for line in lines:
+    sections = _memory_context_sections(memory_context)
+    primary_lines = sections["retrieved"] + sections["external"]
+    working_lines = sections["working"]
+    bullet_lines: list[tuple[str, str]] = []
+    for line in primary_lines:
         bullet = line.strip()
         bullet_lower = bullet.lower()
         if bullet_lower.startswith("prompt:") or bullet_lower.startswith("[workspace] workspace:"):
             continue
-        bullet_lines.append(bullet)
+        bullet_lines.append(("memory", bullet))
+    for line in working_lines:
+        bullet = line.strip()
+        bullet_lower = bullet.lower()
+        if bullet_lower.startswith("user:"):
+            continue
+        bullet_lines.append(("working", bullet))
     if not bullet_lines:
         return None
 
     prompt_tokens = _memory_query_tokens(user_prompt)
     prompt_entities = _memory_query_entities(user_prompt)
-    ranked: list[tuple[int, str]] = []
-    for line in bullet_lines:
+    inferred_entities = _memory_context_entities(memory_context)
+    query_entities = prompt_entities or inferred_entities
+    ranked: list[tuple[int, int, str, str]] = []
+    for source, line in bullet_lines:
         line_lower = line.lower()
-        overlap = sum(1 for token in prompt_tokens if token in line_lower)
-        overlap += sum(6 for entity in prompt_entities if entity in line_lower)
-        ranked.append((overlap, line))
+        token_overlap = sum(1 for token in prompt_tokens if token in line_lower)
+        overlap = token_overlap
+        overlap += sum(6 for entity in query_entities if entity in line_lower)
+        if source == "memory":
+            overlap += 1
+        ranked.append((overlap, token_overlap, source, line))
     ranked.sort(key=lambda item: item[0], reverse=True)
 
     best_overlap = ranked[0][0]
     if best_overlap <= 0:
         return None
 
-    selected = [line for overlap, line in ranked[:3] if overlap == best_overlap or overlap > 0]
+    selected_ranked = [item for item in ranked[:4] if item[0] == best_overlap or item[0] > 0]
+    if any(source == "memory" and token_overlap == 0 for _overlap, token_overlap, source, _line in selected_ranked):
+        primary_with_tokens = [item for item in selected_ranked if item[2] == "memory" or item[1] > 0]
+        selected_ranked = primary_with_tokens or selected_ranked
+    selected = [line for _overlap, _token_overlap, _source, line in selected_ranked[:3]]
     if not selected:
         return None
     cleaned = [_clean_memory_line(line) for line in selected]
     cleaned = [line for line in cleaned if line and _is_high_signal_memory_answer(line, user_prompt)]
     if not cleaned:
         return None
-    if prompt_entities:
-        cleaned = [line for line in cleaned if any(entity in line.lower() for entity in prompt_entities)] or cleaned
-    if _is_memory_recall_question(user_prompt):
+    if query_entities:
+        cleaned = [line for line in cleaned if any(entity in line.lower() for entity in query_entities)] or cleaned
+    if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
         if len(cleaned) == 1:
             return f"Yes. {cleaned[0]}"
         return "Yes.\n\n" + "\n\n".join(cleaned[:3])
@@ -2200,19 +2219,24 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     return "\n\n".join(cleaned)
 
 
-def _memory_bullet_lines(memory_context: str) -> list[str]:
-    supported_headers = ("## Retrieved Memory", "## External Session Context")
-    lines: list[str] = []
-    active = False
+def _memory_context_sections(memory_context: str) -> dict[str, list[str]]:
+    lines = {"working": [], "retrieved": [], "external": []}
+    active_section: str | None = None
     for raw_line in memory_context.splitlines():
         stripped = raw_line.strip()
-        if stripped in supported_headers:
-            active = True
+        if stripped == "## Working Memory":
+            active_section = "working"
             continue
-        if active and stripped.startswith("## "):
-            active = False
-        if active and stripped.startswith("- "):
-            lines.append(stripped[2:].strip())
+        if stripped == "## Retrieved Memory":
+            active_section = "retrieved"
+            continue
+        if stripped == "## External Session Context":
+            active_section = "external"
+            continue
+        if stripped.startswith("## "):
+            active_section = None
+        if active_section and stripped.startswith("- "):
+            lines[active_section].append(stripped[2:].strip())
     return lines
 
 
@@ -2250,6 +2274,7 @@ def _clean_memory_line(line: str) -> str:
         cleaned = cleaned.split("|", 1)[1].strip()
     cleaned = re.sub(r"^\[[^\]]+\]\s*", "", cleaned)
     cleaned = re.sub(r"^(episodic memory|episode)\s+[a-f0-9-]+:\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(assistant|user|tool):\s*", "", cleaned, flags=re.IGNORECASE)
     return cleaned.strip()
 
 
@@ -2389,6 +2414,10 @@ def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
     lowered = candidate.lower()
     prompt_lowered = user_prompt.lower()
     reject_markers = (
+        '{"type": "function"',
+        '"type":"function"',
+        '"name": "list_directory"',
+        '"name":"list_directory"',
         'relative_path',
         '"depth":',
         '"is_dir":',
@@ -2400,6 +2429,8 @@ def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
         "locally. relevant paths i found:",
     )
     if any(marker in lowered for marker in reject_markers):
+        return False
+    if lowered.startswith("{") or lowered.startswith("["):
         return False
     if ("how does" in prompt_lowered or "how do" in prompt_lowered or "why does" in prompt_lowered) and "i inspected" in lowered:
         return False
@@ -2435,6 +2466,18 @@ def _memory_query_entities(user_prompt: str) -> set[str]:
     }
 
 
+def _memory_context_entities(memory_context: str) -> set[str]:
+    sections = _memory_context_sections(memory_context)
+    entities: set[str] = set()
+    for line in [*sections["working"], *sections["retrieved"], *sections["external"]]:
+        entities.update(
+            token.lower()
+            for token in re.findall(r"[a-z0-9]+(?:[-_/][a-z0-9]+)+", line.lower())
+            if len(token) >= 3
+        )
+    return entities
+
+
 def _is_memory_recall_question(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     return any(
@@ -2447,6 +2490,39 @@ def _is_memory_recall_question(user_prompt: str) -> bool:
             "what do you know about",
         )
     )
+
+
+def _is_memory_follow_up_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    referential_markers = (
+        "what were those",
+        "tell exactly what",
+        "what was it about",
+        "what was that about",
+        "those bugs",
+        "those reviews",
+        "a few reviews",
+        "a few bugs",
+    )
+    return any(marker in lowered for marker in referential_markers)
+
+
+def _compose_external_memory_query(user_prompt: str, conversation: list[dict[str, Any]]) -> str:
+    if not _is_memory_follow_up_question(user_prompt):
+        return user_prompt
+    recent_messages: list[str] = []
+    for message in reversed(conversation[-6:]):
+        role = str(message.get("role") or "")
+        content = str(message.get("content") or "").strip()
+        if role not in {"user", "assistant"} or not content or content == user_prompt:
+            continue
+        recent_messages.append(content)
+        if len(recent_messages) >= 3:
+            break
+    if not recent_messages:
+        return user_prompt
+    recent_messages.reverse()
+    return "\n".join([user_prompt, "Recent conversation context:", *recent_messages])
 
 
 def _summarize_symbol_outline(file_name: str, payload: dict[str, Any] | list[Any] | None) -> str | None:

@@ -29,6 +29,12 @@ const SUGGESTIONS = [
 
 let renderQueued = false;
 let toastTimeoutId = null;
+const RUNNING_STATUS_FRAMES = [
+  "Scanning stored sessions",
+  "Matching prior projects",
+  "Collecting relevant details",
+  "Drafting the memory answer",
+];
 
 bootstrap();
 
@@ -375,11 +381,12 @@ function render(options = {}) {
                     isCoolingDown()
                       ? formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))
                       : state.isRunning
-                        ? "Searching"
+                        ? runningButtonLabel()
                         : "Ask"
                   }</button>
                 </div>
               </div>
+              ${state.isRunning ? `<div class="composer-running-line">${renderRunningTicker()}</div>` : ""}
             </div>
             <div class="composer-hint">Press Cmd/Ctrl + Enter to search memory</div>
           </form>
@@ -423,6 +430,7 @@ function renderThinkingSummary(content, pending) {
   return `
     <div class="thinking-card">
       <strong>${escapeHtml(headline)}</strong>
+      ${pending ? `<div class="thinking-live-row">${renderRunningTicker()}</div>` : ""}
       <ul>
         ${selected.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
       </ul>
@@ -487,6 +495,23 @@ function formatThinkingFromResult(result) {
     lines.push(createLogEntry("ai", "Retrieved Devenv memory context"));
   }
   return formatThinkingBlock(lines);
+}
+
+function renderRunningTicker() {
+  return `
+    <span class="thinking-live-indicator" aria-hidden="true"></span>
+    <span class="thinking-live-text">${escapeHtml(currentRunningFrame())}</span>
+  `;
+}
+
+function currentRunningFrame() {
+  const index = Math.floor(state.clock / 1200) % RUNNING_STATUS_FRAMES.length;
+  return RUNNING_STATUS_FRAMES[index];
+}
+
+function runningButtonLabel() {
+  const dots = ".".repeat((Math.floor(state.clock / 350) % 3) + 1);
+  return `Searching${dots}`;
 }
 
 function buildRetrievalStatus(metadata) {
