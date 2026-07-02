@@ -139,6 +139,24 @@ class DevenvKernel:
         total_usage: dict[str, int] = {}
         self.state = AgentState.PLANNING
         system_logs.append(f"State: {self.state.name}")
+        if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
+            direct_memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
+            if direct_memory_answer is not None:
+                ai_logs.append("Direct memory answer assembled from retrieved context")
+                conversation.append({"role": "assistant", "content": direct_memory_answer})
+                self._finalize_turn(user_prompt, direct_memory_answer, conversation, metadata=turn_metadata)
+                return RuntimeTurnResult(
+                    final_response=direct_memory_answer,
+                    steps=steps,
+                    total_usage=total_usage,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                    stage_traces=stage_traces,
+                    verification_results=verification_results,
+                    metadata=turn_metadata,
+                    state=self.state.name,
+                    blueprint=self.active_blueprint,
+                )
         if local_only and (_is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt)):
             direct_response = self._run_local_only_direct_turn(
                 user_prompt=user_prompt,

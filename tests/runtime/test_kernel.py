@@ -814,6 +814,49 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("Create Workspace accepting https links", result.final_response or "")
         self.assertIn("DRIP pipeline chat flow not working", result.final_response or "")
 
+    def test_memory_recall_and_follow_up_use_direct_answer_mode_in_normal_app_flow(self) -> None:
+        memory = EmptyMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "07" / "02"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-get-drip"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Fix 7 bugs", "updated_at": "2026-07-02T11:52:11Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-02T13-12-12-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-02T13:12:12Z", "type": "session_meta", "payload": {"id": session_id, "cwd": "/Users/samarthnaik/Desktop/LoopedIn/get-drip"}}),
+                        json.dumps({"timestamp": "2026-07-02T13:12:13Z", "type": "event_msg", "payload": {"type": "user_message", "message": "Create Workspace should accept the https link and convert it internally. Salesforce should be marked coming soon or disabled."}}),
+                        json.dumps({"timestamp": "2026-07-02T13:12:14Z", "type": "event_msg", "payload": {"type": "user_message", "message": "DRIP pipeline chat does not work and test/publish should be reachable after approvals."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.context_builder = ContextBuilderService(
+                tempdir,
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+
+            first = kernel.execute_turn("hey, do you remember about get-drip project?", local_only=False)
+            second = kernel.execute_turn(
+                "we had a few reviews and bugs to be fixed? can you tell exactly what were those?",
+                local_only=False,
+            )
+
+        self.assertIn("get-drip", first.final_response or "")
+        self.assertIn("Create Workspace", second.final_response or "")
+        self.assertIn("DRIP pipeline chat", second.final_response or "")
+
     def test_answer_from_retrieved_memory_humanizes_project_summary(self) -> None:
         answer = _answer_from_retrieved_memory(
             "do you remember codeguide? what was it about?",
