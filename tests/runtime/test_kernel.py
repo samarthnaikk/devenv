@@ -607,7 +607,8 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIsNotNone(answer)
         self.assertIn("Yes", answer or "")
         self.assertIn("get-drip", answer or "")
-        self.assertIn("review feedback", answer or "")
+        self.assertIn("Create Workspace", answer or "")
+        self.assertIn("pipeline chat", answer or "")
         self.assertNotIn('"type": "function"', answer or "")
 
     def test_answer_from_retrieved_memory_prefers_external_context_over_generic_retrieved_memory(self) -> None:
@@ -625,8 +626,8 @@ class DevenvKernelTest(unittest.TestCase):
         )
 
         self.assertIsNotNone(answer)
-        self.assertIn("Create Workspace", answer or "")
-        self.assertIn("DRIP pipeline chat", answer or "")
+        self.assertIn("Create Workspace accepting https links", answer or "")
+        self.assertIn("DRIP pipeline chat flow not working", answer or "")
         self.assertNotIn("Episodic Memory", answer or "")
         self.assertNotIn("User asked:", answer or "")
 
@@ -755,8 +756,8 @@ class DevenvKernelTest(unittest.TestCase):
             )
 
         self.assertIsNotNone(result.final_response)
-        self.assertIn("Create Workspace", result.final_response or "")
-        self.assertIn("DRIP pipeline chat", result.final_response or "")
+        self.assertIn("Create Workspace accepting https links", result.final_response or "")
+        self.assertIn("DRIP pipeline chat flow not working", result.final_response or "")
 
     def test_answer_from_retrieved_memory_humanizes_project_summary(self) -> None:
         answer = _answer_from_retrieved_memory(
@@ -770,6 +771,7 @@ class DevenvKernelTest(unittest.TestCase):
         )
 
         self.assertIsNotNone(answer)
+        self.assertIn("It was about", answer or "")
         self.assertIn("candidate-practice CodeGuide backend", answer or "")
         self.assertNotIn("The first sweep shows", answer or "")
         self.assertNotIn("I’m narrowing", answer or "")

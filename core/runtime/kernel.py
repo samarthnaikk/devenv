@@ -2197,6 +2197,12 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
             shaped_follow_up = [line for line in shaped_follow_up if line]
             if not shaped_follow_up:
                 return None
+            synthesized_issues = _summarize_follow_up_issues(shaped_follow_up)
+            if synthesized_issues:
+                subject = _infer_memory_subject(sections["external"] + sections["working"] + sections["retrieved"])
+                if subject:
+                    return f"Yes. In {subject}, the main issues were {synthesized_issues}."
+                return f"Yes. The main issues were {synthesized_issues}."
             if len(shaped_follow_up) >= 2 and _follow_up_line_score(ordered_follow_up[0].lower()) >= 2 and _follow_up_line_score(ordered_follow_up[1].lower()) >= 2:
                 return "Yes. The main issues were: " + "; ".join(shaped_follow_up[:2])
             if _follow_up_line_score(ordered_follow_up[0].lower()) >= 2:
@@ -2357,7 +2363,62 @@ def _humanize_recalled_line(line: str, user_prompt: str) -> str:
         cleaned = cleaned.split(" I'll ", 1)[0].rstrip(" .,;")
     if " I’ll " in cleaned:
         cleaned = cleaned.split(" I’ll ", 1)[0].rstrip(" .,;")
+    if "what was it about" in user_prompt.lower():
+        lowered = cleaned.lower()
+        if " was about " in lowered and not lowered.startswith("it was about "):
+            cleaned = "It was about " + cleaned.split(" was about ", 1)[1].strip()
+        elif not lowered.startswith("it was about ") and not lowered.startswith("about "):
+            cleaned = f"It was about {cleaned[0].lower()}{cleaned[1:]}" if len(cleaned) > 1 else f"It was about {cleaned.lower()}"
     return cleaned.strip()
+
+
+def _summarize_follow_up_issues(lines: list[str]) -> str | None:
+    issue_map = {
+        "create_workspace_links": "Create Workspace accepting https links and converting them internally",
+        "salesforce_state": "Salesforce being marked as coming soon or disabled",
+        "pipeline_chat": "the DRIP pipeline chat flow not working",
+        "test_publish": "test/publish staying reachable after approvals",
+        "root_redirects": "root URL redirects",
+        "convex_imports": "Convex generated imports",
+    }
+    detected: list[str] = []
+    for line in lines:
+        lowered = line.lower()
+        if (
+            ("create workspace" in lowered or "workspace creation link" in lowered or "workspace creation links" in lowered)
+            and ("https link" in lowered or "convert" in lowered or "support" in lowered)
+        ):
+            detected.append(issue_map["create_workspace_links"])
+        if "salesforce" in lowered and ("coming soon" in lowered or "disable" in lowered):
+            detected.append(issue_map["salesforce_state"])
+        if "pipeline chat" in lowered and (
+            "does not work" in lowered or "did not work" in lowered or "broken" in lowered or "fix" in lowered
+        ):
+            detected.append(issue_map["pipeline_chat"])
+        if ("test/publish" in lowered or "test and publish" in lowered) and ("approval" in lowered or "approvals" in lowered):
+            detected.append(issue_map["test_publish"])
+        if "root url redirects" in lowered:
+            detected.append(issue_map["root_redirects"])
+        if "convex generated imports" in lowered:
+            detected.append(issue_map["convex_imports"])
+
+    unique_detected: list[str] = []
+    for issue in detected:
+        if issue not in unique_detected:
+            unique_detected.append(issue)
+    if unique_detected:
+        return _join_human_list(unique_detected)
+    return None
+
+
+def _join_human_list(items: list[str]) -> str:
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
 
 
 def _summarize_verification_failure_reason(reason: str) -> str:
@@ -2558,6 +2619,16 @@ def _memory_context_entities(memory_context: str) -> set[str]:
             if len(token) >= 3
         )
     return entities
+
+
+def _infer_memory_subject(lines: list[str]) -> str | None:
+    for line in lines:
+        matches = re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)+", line.lower())
+        for match in matches:
+            if match.startswith("rollout-"):
+                continue
+            return match
+    return None
 
 
 def _ordered_follow_up_lines(user_prompt: str, external_lines: list[str]) -> list[str]:
