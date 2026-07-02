@@ -2193,6 +2193,10 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     if _is_memory_follow_up_question(user_prompt) and sections["external"]:
         ordered_follow_up = _ordered_follow_up_lines(user_prompt, sections["external"])
         if ordered_follow_up:
+            if len(ordered_follow_up) >= 2 and _follow_up_line_score(ordered_follow_up[0].lower()) >= 2 and _follow_up_line_score(ordered_follow_up[1].lower()) >= 2:
+                return "Yes.\n\n" + "\n\n".join(ordered_follow_up[:2])
+            if _follow_up_line_score(ordered_follow_up[0].lower()) >= 2:
+                return f"Yes. {ordered_follow_up[0]}"
             if len(ordered_follow_up) == 1:
                 return f"Yes. {ordered_follow_up[0]}"
             return "Yes.\n\n" + "\n\n".join(ordered_follow_up[:3])
@@ -2546,12 +2550,23 @@ def _ordered_follow_up_lines(user_prompt: str, external_lines: list[str]) -> lis
     if not cleaned_pairs:
         return []
 
-    user_lines = [cleaned for raw, cleaned in cleaned_pairs if raw.startswith("user asked:")]
-    marked_assistant_lines = [
-        cleaned
+    preferred_user_pairs = [
+        (raw, cleaned)
+        for raw, cleaned in cleaned_pairs
+        if raw.startswith("user asked:") and any(marker in raw for marker in preferred_markers)
+    ]
+    if preferred_user_pairs:
+        preferred_user_pairs.sort(key=lambda item: (_follow_up_line_score(item[0]), len(item[1])), reverse=True)
+        user_lines = [cleaned for _raw, cleaned in preferred_user_pairs[:2]]
+    else:
+        user_lines = [cleaned for raw, cleaned in cleaned_pairs if raw.startswith("user asked:")][:2]
+    marked_assistant_pairs = [
+        (raw, cleaned)
         for raw, cleaned in cleaned_pairs
         if raw.startswith("assistant reported:") and any(marker in raw for marker in preferred_markers)
     ]
+    marked_assistant_pairs.sort(key=lambda item: (_follow_up_line_score(item[0]), len(item[1])), reverse=True)
+    marked_assistant_lines = [cleaned for _raw, cleaned in marked_assistant_pairs[:2]]
     remaining_lines = [
         cleaned
         for raw, cleaned in cleaned_pairs
@@ -2565,6 +2580,29 @@ def _ordered_follow_up_lines(user_prompt: str, external_lines: list[str]) -> lis
             if line not in ordered:
                 ordered.append(line)
     return ordered
+
+
+def _follow_up_line_score(lowered_line: str) -> int:
+    score = 0
+    if "create workspace" in lowered_line:
+        score += 6
+    if "->" in lowered_line:
+        score += 3
+    for marker in (
+        "accept",
+        "coming soon",
+        "doesnt work",
+        "does not work",
+        "pipeline chat",
+        "test and publish",
+        "test/publish",
+        "review",
+        "bug",
+        "fix",
+    ):
+        if marker in lowered_line:
+            score += 1
+    return score
 
 
 def _is_memory_recall_question(user_prompt: str) -> bool:
