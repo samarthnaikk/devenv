@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "devenv1a"
+name = "devenv-ai"
 version = "0.1.0"
 description = "Local-first coding agent foundations."
 readme = "README.md"
