@@ -1455,9 +1455,9 @@ function sanitizeAssistantResponse(content) {
   }
   const replay = extractReadableReplayText(text);
   if (replay.isReplay) {
-    return replay.text;
+    return collapseRepeatedBlocks(replay.text);
   }
-  return text;
+  return collapseRepeatedBlocks(text);
 }
 
 function extractReadableReplayText(content) {
@@ -1530,6 +1530,27 @@ function normalizeReplayError(message) {
     return "Permission to use a required tool call was denied.";
   }
   return cleaned.endsWith(".") ? cleaned : `${cleaned}.`;
+}
+
+function collapseRepeatedBlocks(content) {
+  const text = String(content || "").trim();
+  if (!text) {
+    return "";
+  }
+  const blocks = text
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+  if (!blocks.length) {
+    return text;
+  }
+  const deduped = [];
+  for (const block of blocks) {
+    if (!deduped.length || deduped[deduped.length - 1] !== block) {
+      deduped.push(block);
+    }
+  }
+  return deduped.join("\n\n");
 }
 
 function parseRateLimitError(message) {

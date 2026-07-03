@@ -64,12 +64,27 @@ def _normalize_replay_error(message: str) -> str:
     return f"{cleaned}."
 
 
+def _collapse_repeated_blocks(content: str | None) -> str | None:
+    raw = str(content or "").strip()
+    if not raw:
+        return None
+    blocks = [block.strip() for block in raw.split("\n\n") if block.strip()]
+    if not blocks:
+        return raw
+    deduped_blocks: list[str] = []
+    for block in blocks:
+        if not deduped_blocks or deduped_blocks[-1] != block:
+            deduped_blocks.append(block)
+    collapsed = "\n\n".join(deduped_blocks).strip()
+    return collapsed or raw
+
+
 def _sanitize_replay_text(content: object) -> str | None:
     raw = str(content or "").strip()
     if not raw:
         return None
     if not raw.startswith("{") or "\n" not in raw:
-        return raw
+        return _collapse_repeated_blocks(raw)
 
     readable_lines: list[str] = []
     replay_errors: list[str] = []
@@ -123,10 +138,10 @@ def _sanitize_replay_text(content: object) -> str | None:
         if line and line not in unique_lines:
             unique_lines.append(line)
     if unique_lines:
-        return "\n\n".join(unique_lines)
+        return _collapse_repeated_blocks("\n\n".join(unique_lines))
 
     if replay_errors:
-        return replay_errors[0]
+        return _collapse_repeated_blocks(replay_errors[0])
     if tool_failures:
         return "A required tool call was unavailable while replaying that answer."
     return "I couldn't produce a readable answer from that replay."

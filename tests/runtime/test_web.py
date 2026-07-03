@@ -350,6 +350,34 @@ class DevenvWebAppTest(unittest.TestCase):
 
         self.assertEqual(result["final_response"], "Permission to use a required tool call was denied.")
 
+    def test_run_turn_collapses_repeated_final_response_blocks(self) -> None:
+        repeated = (
+            "Confidently, get-drip was described as a Convex-backed app, and the work focused on Create Workspace "
+            "accepting https links and converting them internally and Salesforce being marked as coming soon or disabled, "
+            "and the DRIP pipeline chat flow not working. What remains unclear is a cleaner one-line architecture summary beyond those clues."
+        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.kernel.execute_turn = lambda prompt, **kwargs: type(
+                "Result",
+                (),
+                {
+                    "to_dict": lambda self: {
+                        "final_response": f"{repeated}\n\n{repeated}\n\n{repeated}",
+                        "total_usage": {},
+                        "metadata": {"backend_used": "opencode", "budget_state": {"blocked": False}},
+                    }
+                },
+            )()
+
+            result = app.run_turn("hello")
+
+        self.assertEqual(result["final_response"], repeated)
+
     def test_health_payload_exposes_indexing_progress_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir)
