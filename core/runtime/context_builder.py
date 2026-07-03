@@ -447,10 +447,17 @@ class ContextBuilderService:
         self.workspace = WorkspaceBrowser(self.workspace_path)
         self.memory = memory
         self.provider_configs = provider_configs or _default_provider_configs()
+        self.runtime_allowed_providers: set[str] | None = None
         self.providers = {
             config.provider: _provider_from_config(config)
             for config in self.provider_configs
         }
+
+    def set_runtime_allowed_providers(self, providers: set[str] | list[str] | tuple[str, ...] | None) -> None:
+        if providers is None:
+            self.runtime_allowed_providers = None
+            return
+        self.runtime_allowed_providers = {provider for provider in providers if provider in self.providers}
 
     def list_sources(self) -> list[ExternalSourceHealth]:
         return [provider.health() for provider in self.providers.values()]
@@ -524,6 +531,10 @@ class ContextBuilderService:
         resolved_provider = provider_name or self._default_provider_name()
         if not resolved_provider:
             return "", (), {"context_match_state": "new_context", "context_match_reason": "No external session provider is available."}
+        if self.runtime_allowed_providers is not None and resolved_provider not in self.runtime_allowed_providers:
+            return "", (), {"context_match_state": "new_context", "context_match_reason": f"External {resolved_provider} access has not been granted."}
+        if self.runtime_allowed_providers == set():
+            return "", (), {"context_match_state": "new_context", "context_match_reason": "External session access has not been granted."}
         provider = self._get_provider(resolved_provider)
         selected_matches = self._select_relevant_sessions(provider, task)
         selected_session_ids = tuple(match["summary"].session_id for match in selected_matches)

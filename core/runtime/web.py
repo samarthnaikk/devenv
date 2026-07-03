@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sysconfig
+import inspect
 from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -26,6 +27,32 @@ DEFAULT_WEB_MODELS = (
 )
 
 
+class AccessPolicy:
+    def __init__(self) -> None:
+        self.session_access: dict[str, bool] = {"codex": False, "opencode": False}
+        self.backend_access: dict[str, bool] = {"opencode": False}
+
+    def set_session_access(self, provider: str, allowed: bool) -> dict[str, object]:
+        self.session_access[provider] = allowed
+        return self.snapshot()
+
+    def set_backend_access(self, backend: str, allowed: bool) -> dict[str, object]:
+        self.backend_access[backend] = allowed
+        return self.snapshot()
+
+    def can_access_provider(self, provider: str) -> bool:
+        return bool(self.session_access.get(provider, False))
+
+    def can_use_backend(self, backend: str) -> bool:
+        return bool(self.backend_access.get(backend, False))
+
+    def snapshot(self) -> dict[str, object]:
+        return {
+            "session_access": dict(self.session_access),
+            "backend_access": dict(self.backend_access),
+        }
+
+
 class DevenvWebApp:
     def __init__(self, config: RunConfig, port: int = 4173, *, memory=None, ai=None) -> None:
         self.config = config
@@ -46,7 +73,9 @@ class DevenvWebApp:
             memory=self.kernel.memory,
             provider_configs=config.external_session_configs,
         )
+        self.context_builder.set_runtime_allowed_providers(set())
         self.kernel.context_builder = self.context_builder
+        self.access_policy = AccessPolicy()
 
     def create_handler(self):
         return partial(DevenvRequestHandler, app=self)
@@ -65,16 +94,21 @@ class DevenvWebApp:
 
     def build_health_payload(self) -> dict[str, object]:
         model = getattr(self.kernel.ai, "model", "unknown")
+        ai_statuses = getattr(self.kernel.ai, "status", lambda: {})()
+        active_backend = "opencode" if self.access_policy.can_use_backend("opencode") and ai_statuses.get("opencode", None) and ai_statuses["opencode"].available else "groq"
         return {
             "workspace_path": self.config.workspace_path,
             "port": self.port,
             "tools": sorted(self.kernel.tools),
             "status": "ok",
-            "ai_provider": "Groq",
+            "ai_provider": getattr(self.kernel.ai, "provider_label", "Groq"),
             "ai_model": model,
             "available_models": self._available_models(current_model=model),
             "context_builder_enabled": True,
             "context_sources": [source.to_dict() for source in self.context_builder.list_sources()],
+            "access_policy": self.access_policy.snapshot(),
+            "ai_backends": {name: status.to_dict() for name, status in ai_statuses.items()},
+            "active_backend": active_backend,
         }
 
     def _available_models(self, *, current_model: str) -> list[str]:
@@ -98,15 +132,18 @@ class DevenvWebApp:
     def build_context_sources_payload(self) -> dict[str, object]:
         return {
             "sources": [source.to_dict() for source in self.context_builder.list_sources()],
+            "access_policy": self.access_policy.snapshot(),
         }
 
     def build_context_sessions_payload(self, provider_name: str) -> dict[str, object]:
+        self._require_provider_access(provider_name)
         return {
             "provider": provider_name,
             "sessions": [session.to_dict() for session in self.context_builder.list_sessions(provider_name)],
         }
 
     def build_context_session_payload(self, provider_name: str, session_id: str) -> dict[str, object]:
+        self._require_provider_access(provider_name)
         detail = self.context_builder.get_session(provider_name, session_id)
         return detail.to_dict()
 
@@ -138,26 +175,56 @@ class DevenvWebApp:
         planning_mode: PlanningMode = PlanningMode.AUTO,
         continue_plan: bool = False,
         local_only: bool = False,
+        backend_preference: str = "auto",
+        session_budget_tokens: int | None = None,
     ) -> dict[str, object]:
-        result = self.kernel.execute_turn(
-            prompt,
-            max_consecutive_tools=max_consecutive_tools or self.config.max_consecutive_tools,
-            planning_mode=planning_mode,
-            continue_plan=continue_plan,
-            local_only=local_only,
-        )
+        execute_turn = self.kernel.execute_turn
+        kwargs = {
+            "max_consecutive_tools": max_consecutive_tools or self.config.max_consecutive_tools,
+            "planning_mode": planning_mode,
+            "continue_plan": continue_plan,
+            "local_only": local_only,
+        }
+        parameters = inspect.signature(execute_turn).parameters
+        if "backend_preference" in parameters:
+            kwargs["backend_preference"] = backend_preference
+        if "opencode_enabled" in parameters:
+            kwargs["opencode_enabled"] = self.access_policy.can_use_backend("opencode")
+        if "session_budget_tokens" in parameters:
+            kwargs["session_budget_tokens"] = session_budget_tokens
+        result = execute_turn(prompt, **kwargs)
         return result.to_dict()
 
     def set_model(self, model: str) -> dict[str, object]:
         cleaned = model.strip()
         if not cleaned:
             raise ValueError("Missing required field: model")
-        self.kernel.ai.model = cleaned
+        if hasattr(self.kernel.ai, "set_model"):
+            self.kernel.ai.set_model(cleaned)
+        else:
+            self.kernel.ai.model = cleaned
         return {
-            "ai_provider": "Groq",
+            "ai_provider": getattr(self.kernel.ai, "provider_label", "Groq"),
             "ai_model": cleaned,
             "available_models": self._available_models(current_model=cleaned),
         }
+
+    def update_session_access(self, provider: str, allowed: bool) -> dict[str, object]:
+        if provider not in {"codex", "opencode"}:
+            raise ValueError("provider must be one of: codex, opencode")
+        snapshot = self.access_policy.set_session_access(provider, allowed)
+        allowed_providers = {name for name, permitted in self.access_policy.session_access.items() if permitted}
+        self.context_builder.set_runtime_allowed_providers(allowed_providers)
+        return snapshot
+
+    def update_backend_access(self, backend: str, allowed: bool) -> dict[str, object]:
+        if backend != "opencode":
+            raise ValueError("backend must be: opencode")
+        return self.access_policy.set_backend_access(backend, allowed)
+
+    def _require_provider_access(self, provider_name: str) -> None:
+        if not self.access_policy.can_access_provider(provider_name):
+            raise PermissionError(f"Access to {provider_name} sessions requires explicit user permission.")
 
 
 class DevenvRequestHandler(SimpleHTTPRequestHandler):
@@ -217,6 +284,32 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
                 return
             self._write_json(HTTPStatus.OK, prepared)
             return
+        if parsed.path == "/api/session-access":
+            provider = payload.get("provider")
+            allowed = payload.get("allowed")
+            if not isinstance(provider, str) or not isinstance(allowed, bool):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "provider and allowed are required"})
+                return
+            try:
+                result = self.app.update_session_access(provider, allowed)
+            except ValueError as exc:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                return
+            self._write_json(HTTPStatus.OK, result)
+            return
+        if parsed.path == "/api/backend-access":
+            backend = payload.get("backend")
+            allowed = payload.get("allowed")
+            if not isinstance(backend, str) or not isinstance(allowed, bool):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "backend and allowed are required"})
+                return
+            try:
+                result = self.app.update_backend_access(backend, allowed)
+            except ValueError as exc:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                return
+            self._write_json(HTTPStatus.OK, result)
+            return
         if parsed.path == "/api/model":
             model = payload.get("model")
             if not isinstance(model, str):
@@ -259,6 +352,14 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
         if not isinstance(local_only, bool):
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": "local_only must be a boolean"})
             return
+        backend_preference = payload.get("backend_preference", "auto")
+        if not isinstance(backend_preference, str):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "backend_preference must be a string"})
+            return
+        session_budget_tokens = payload.get("session_budget_tokens")
+        if session_budget_tokens is not None and not isinstance(session_budget_tokens, int):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "session_budget_tokens must be an integer"})
+            return
 
         try:
             result = self.app.run_turn(
@@ -267,8 +368,10 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
                 planning_mode=planning_mode,
                 continue_plan=continue_plan,
                 local_only=local_only,
+                backend_preference=backend_preference,
+                session_budget_tokens=session_budget_tokens,
             )
-        except RuntimeError as exc:
+        except (RuntimeError, PermissionError) as exc:
             self._write_json(HTTPStatus.BAD_GATEWAY, {"error": str(exc)})
             return
         self._write_json(HTTPStatus.OK, result)

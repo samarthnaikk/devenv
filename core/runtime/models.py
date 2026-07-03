@@ -144,6 +144,7 @@ class RuntimeTurnResult:
     state: str = AgentState.PLANNING.name
     blueprint: ExecutionBlueprint | None = None
     error_message: str | None = None
+    elapsed_ms: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -158,6 +159,7 @@ class RuntimeTurnResult:
             "state": self.state,
             "blueprint": self.blueprint.to_dict() if self.blueprint else None,
             "error_message": self.error_message,
+            "elapsed_ms": self.elapsed_ms,
         }
 
 

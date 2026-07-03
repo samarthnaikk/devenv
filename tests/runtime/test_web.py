@@ -191,6 +191,7 @@ class DevenvWebAppTest(unittest.TestCase):
             )
 
             sources = app.build_context_sources_payload()
+            app.update_session_access("codex", True)
             sessions = app.build_context_sessions_payload("codex")
             detail = app.build_context_session_payload("codex", session_id)
             prepared = app.build_prepared_prompt_payload(

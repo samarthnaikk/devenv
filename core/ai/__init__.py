@@ -1,4 +1,5 @@
 from .engine import AICore
-from .models import AIResponse, ToolCallRequest
+from .models import AIBackendStatus, AIResponse, ToolCallRequest
+from .routing import OpenCodeAICore, RoutingAICore
 
-__all__ = ["AICore", "AIResponse", "ToolCallRequest"]
+__all__ = ["AICore", "AIBackendStatus", "AIResponse", "OpenCodeAICore", "RoutingAICore", "ToolCallRequest"]

@@ -11,7 +11,7 @@ from difflib import get_close_matches
 from pathlib import Path
 from typing import Any
 
-from core.ai import AICore
+from core.ai import AICore, RoutingAICore
 from core.ai.models import AIResponse, ToolCallRequest
 from core.env import load_dotenv
 from core.memory import MemoryEngine
@@ -107,6 +107,7 @@ class DevenvKernel:
         self._context_builder = _CONTEXT_BUILDER_SENTINEL
         self._last_consolidation_wall_time = 0.0
         self._exact_logged_answer_cache: dict[str, str | None] = {}
+        self.session_usage_totals: dict[str, int] = {}
 
     def register_tool(self, tool: BaseTool) -> None:
         self.tools[tool.name] = tool
@@ -121,7 +122,7 @@ class DevenvKernel:
     @property
     def ai(self) -> AICore | Any:
         if self._ai is _AI_SENTINEL:
-            ai = AICore()
+            ai = RoutingAICore(workspace_path=self.workspace_path)
             for tool in self.tools.values():
                 ai.register_tool(tool)
             self._ai = ai
@@ -145,11 +146,7 @@ class DevenvKernel:
     @property
     def context_builder(self):
         if self._context_builder is _CONTEXT_BUILDER_SENTINEL:
-            try:
-                self._context_builder = ContextBuilderService(self.workspace_path, memory=self.memory)
-            except Exception as exc:
-                logger.warning("Failed to initialize external context builder; continuing without it: error=%s", exc)
-                self._context_builder = None
+            self._context_builder = None
         return self._context_builder
 
     @context_builder.setter
@@ -163,8 +160,12 @@ class DevenvKernel:
         planning_mode: PlanningMode = PlanningMode.AUTO,
         continue_plan: bool = False,
         local_only: bool = False,
+        backend_preference: str = "auto",
+        opencode_enabled: bool = False,
+        session_budget_tokens: int | None = None,
     ) -> RuntimeTurnResult:
         logger.info("Starting runtime turn: workspace=%s prompt=%s", self.workspace_path, user_prompt)
+        turn_started_at = time.perf_counter()
         ai_logs = [f"Queued prompt: {user_prompt}"]
         system_logs = [f"Workspace: {self.workspace_path}"]
         stage_traces: list[StageTrace] = []
@@ -174,7 +175,33 @@ class DevenvKernel:
             "external_context_reason": "No strong prior-session match was found.",
             "external_context_session_count": 0,
             "external_context_session_ids": [],
+            "backend_preference": backend_preference,
+            "backend_used": "local" if local_only else "groq",
+            "backend_fallback": "",
         }
+        if hasattr(self.ai, "set_backend_preference"):
+            self.ai.set_backend_preference(backend_preference, opencode_enabled=opencode_enabled)
+        if session_budget_tokens is not None and self.session_usage_totals.get("total_tokens", 0) >= session_budget_tokens:
+            turn_metadata["budget_state"] = {
+                "blocked": True,
+                "limit": session_budget_tokens,
+                "used": self.session_usage_totals.get("total_tokens", 0),
+                "remaining": 0,
+            }
+            return RuntimeTurnResult(
+                final_response=None,
+                steps=[],
+                total_usage=dict(self.session_usage_totals),
+                ai_logs=ai_logs,
+                system_logs=system_logs + ["Session token budget reached before starting a new turn."],
+                stage_traces=stage_traces,
+                verification_results=verification_results,
+                metadata=turn_metadata,
+                state=self.state.name,
+                blueprint=self.active_blueprint,
+                error_message="Session token budget reached. Increase the budget to continue.",
+                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+            )
         conversation = list(self.ephemeral_history)
         conversation.append({"role": "user", "content": user_prompt})
 
@@ -203,6 +230,7 @@ class DevenvKernel:
                     metadata=turn_metadata,
                     state=self.state.name,
                     blueprint=self.active_blueprint,
+                    elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
                 )
 
         self._record_working_memory(conversation)
@@ -238,6 +266,7 @@ class DevenvKernel:
                 metadata=turn_metadata,
                 state=self.state.name,
                 blueprint=self.active_blueprint,
+                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
             )
         if _should_try_direct_memory_answer(user_prompt):
             direct_memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
@@ -256,6 +285,7 @@ class DevenvKernel:
                     metadata=turn_metadata,
                     state=self.state.name,
                     blueprint=self.active_blueprint,
+                    elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
                 )
         blueprint, planning_conversation, creation_trace = self._checkpoint_creation_stage(
             user_prompt=user_prompt,
@@ -289,6 +319,7 @@ class DevenvKernel:
                 metadata=turn_metadata,
                 state=self.state.name,
                 blueprint=self.active_blueprint,
+                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
             )
 
         checkpoint = blueprint.tasks[active_index]
@@ -348,6 +379,7 @@ class DevenvKernel:
                 state=self.state.name,
                 blueprint=self.active_blueprint,
                 error_message=str(exc),
+                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
             )
 
         self.active_blueprint = updated_blueprint
@@ -412,6 +444,7 @@ class DevenvKernel:
                 metadata=turn_metadata,
                 state=self.state.name,
                 blueprint=self.active_blueprint,
+                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
             )
 
         if _next_incomplete_task_index(self.active_blueprint) is None:
@@ -430,6 +463,18 @@ class DevenvKernel:
             metadata=turn_metadata,
         )
         system_logs.append("Turn completed and stored in memory")
+        if hasattr(self.ai, "last_backend_used"):
+            turn_metadata["backend_used"] = getattr(self.ai, "last_backend_used", turn_metadata["backend_used"])
+            turn_metadata["backend_fallback"] = getattr(self.ai, "last_backend_fallback", "")
+        _merge_usage(self.session_usage_totals, total_usage)
+        if session_budget_tokens is not None:
+            used = self.session_usage_totals.get("total_tokens", 0)
+            turn_metadata["budget_state"] = {
+                "blocked": used >= session_budget_tokens,
+                "limit": session_budget_tokens,
+                "used": used,
+                "remaining": max(session_budget_tokens - used, 0),
+            }
         return RuntimeTurnResult(
             final_response=final_response,
             steps=steps,
@@ -441,6 +486,7 @@ class DevenvKernel:
             metadata=turn_metadata,
             state=self.state.name,
             blueprint=self.active_blueprint,
+            elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
         )
 
     def _build_tool_client(self, *, db_path: str, vector_dir: str):
