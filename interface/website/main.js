@@ -814,6 +814,7 @@ function renderAccessCard() {
   const opencodeBackendAllowed = Boolean(state.accessPolicy.backend_access?.opencode);
   const groq = state.backends.groq || {};
   const opencode = state.backends.opencode || {};
+  const indexing = state.health?.indexing || null;
   return `
     <section class="rail-card">
       <div class="rail-card-header">
@@ -847,7 +848,35 @@ function renderAccessCard() {
         <div><strong>Groq:</strong> ${escapeHtml(groq.available ? "Configured" : "Missing key")}</div>
         <div><strong>Fallback:</strong> ${escapeHtml(opencodeBackendAllowed ? "Groq on OpenCode failure" : "Groq primary")}</div>
       </div>
+      ${renderIndexStatus(indexing)}
     </section>
+  `;
+}
+
+function renderIndexStatus(indexing) {
+  if (!indexing) {
+    return "";
+  }
+  const percent = Math.max(0, Math.min(100, Number(indexing.percent || 0)));
+  const processed = Number(indexing.processed_sessions || 0);
+  const total = Number(indexing.total_sessions || 0);
+  const eta = indexing.eta_seconds != null ? formatDuration(Number(indexing.eta_seconds || 0) * 1000) : "Estimating…";
+  return `
+    <div class="index-status-card">
+      <div class="index-status-head">
+        <strong>Session chunking</strong>
+        <span>${escapeHtml(indexing.completed ? "Ready" : indexing.active ? "Indexing" : "Idle")}</span>
+      </div>
+      <div class="index-status-copy">${escapeHtml(indexing.message || "Waiting for provider access.")}</div>
+      <div class="mini-progress-track" aria-hidden="true">
+        <div class="mini-progress-fill" style="width:${percent}%;"></div>
+      </div>
+      <div class="index-status-meta">
+        <span>${escapeHtml(`${percent}%`)}</span>
+        <span>${escapeHtml(total ? `${processed}/${total}` : "0/0")}</span>
+        <span>${escapeHtml(`ETA ${eta}`)}</span>
+      </div>
+    </div>
   `;
 }
 
