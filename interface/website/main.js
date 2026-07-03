@@ -220,6 +220,12 @@ async function handleAction(action, element) {
     return;
   }
 
+  if (action === "refresh-sessions") {
+    await refreshProviderSessions(state.selectedProvider);
+    showToast(`Refreshed ${state.selectedProvider} sessions`);
+    return;
+  }
+
   if (action === "apply-budget") {
     const nextValue = Number.parseInt(state.budgetInput, 10);
     state.sessionBudgetTokens = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : null;
@@ -721,6 +727,7 @@ function renderSessionsCard() {
           <div class="panel-label">Sessions</div>
           <h2 class="rail-title">Browsable history</h2>
         </div>
+        <button type="button" class="context-action-button" data-action="refresh-sessions" ${state.sessionLoading ? "disabled" : ""}>Refresh</button>
       </div>
       <label class="provider-select-label">
         <span>Provider</span>
@@ -729,6 +736,9 @@ function renderSessionsCard() {
           <option value="opencode" ${provider === "opencode" ? "selected" : ""}>OpenCode</option>
         </select>
       </label>
+      <div class="panel-caption">
+        ${escapeHtml(`${provider.toUpperCase()} · ${(state.providerSessions[provider] || []).length} loaded session(s)`)}
+      </div>
       ${
         !allowed
           ? `<div class="rail-empty">Grant ${escapeHtml(provider)} access to load its sessions.</div>`

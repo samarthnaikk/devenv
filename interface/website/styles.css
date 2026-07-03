@@ -150,6 +150,12 @@ select {
   letter-spacing: 0.08em;
 }
 
+.panel-caption {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .brand-name {
   font-weight: 700;
   letter-spacing: 0.02em;
