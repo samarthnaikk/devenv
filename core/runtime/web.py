@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sysconfig
 from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -29,7 +30,7 @@ class DevenvWebApp:
     def __init__(self, config: RunConfig, port: int = 4173, *, memory=None, ai=None) -> None:
         self.config = config
         self.port = port
-        self.static_root = Path("interface/website").resolve()
+        self.static_root = _resolve_static_root()
         self.kernel = DevenvKernel(
             workspace_path=config.workspace_path,
             db_path=config.db_path,
@@ -323,6 +324,32 @@ def main() -> int:
     app = DevenvWebApp(config=config, port=args.port)
     app.serve()
     return 0
+
+
+def _resolve_static_root() -> Path:
+    env_override = os.getenv("DEVENV_STATIC_ROOT", "").strip()
+    if env_override:
+        candidate = Path(env_override).expanduser().resolve()
+        if _is_valid_static_root(candidate):
+            return candidate
+
+    package_root = Path(__file__).resolve().parents[2]
+    source_candidate = package_root / "interface" / "website"
+    if _is_valid_static_root(source_candidate):
+        return source_candidate
+
+    data_candidate = Path(sysconfig.get_path("data")).resolve() / "share" / "devenv" / "interface" / "website"
+    if _is_valid_static_root(data_candidate):
+        return data_candidate
+
+    raise FileNotFoundError(
+        "Devenv web static assets were not found. "
+        "Set DEVENV_STATIC_ROOT or reinstall the package with bundled web assets."
+    )
+
+
+def _is_valid_static_root(path: Path) -> bool:
+    return path.is_dir() and (path / "index.html").is_file() and (path / "main.js").is_file() and (path / "styles.css").is_file()
 
 
 if __name__ == "__main__":

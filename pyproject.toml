@@ -8,6 +8,14 @@ version = "0.1.0"
 description = "Local-first coding agent foundations."
 readme = "README.md"
 requires-python = ">=3.12"
+authors = [
+    { name = "Devenv Contributors" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "lancedb>=0.16.0",
     "mcp[cli]>=1.28.0",
@@ -22,3 +30,11 @@ devenv-mcp = "core.runtime.mcp_server:main"
 
 [tool.setuptools.packages.find]
 include = ["core*"]
+
+[tool.setuptools.data-files]
+"share/devenv/interface/website" = [
+    "interface/website/index.html",
+    "interface/website/dash.html",
+    "interface/website/main.js",
+    "interface/website/styles.css",
+]
