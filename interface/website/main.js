@@ -1456,16 +1456,21 @@ function sanitizeAssistantResponse(content) {
   if (!text) {
     return "";
   }
-  const replayText = extractReadableReplayText(text);
-  return replayText || text;
+  const replay = extractReadableReplayText(text);
+  if (replay.isReplay) {
+    return replay.text;
+  }
+  return text;
 }
 
 function extractReadableReplayText(content) {
   const text = String(content || "").trim();
   if (!text || !text.startsWith("{") || !text.includes("\n")) {
-    return "";
+    return { isReplay: false, text: "" };
   }
   const readableParts = [];
+  const errors = [];
+  const toolFailures = [];
   for (const rawLine of text.split("\n")) {
     const line = rawLine.trim();
     if (!line) {
@@ -1486,6 +1491,19 @@ function extractReadableReplayText(content) {
     }
     if (payload.payload && payload.payload.type === "agent_message" && payload.payload.message) {
       readableParts.push(String(payload.payload.message).trim());
+      continue;
+    }
+    if (payload.type === "error" && payload.error && typeof payload.error === "object") {
+      const errorData = payload.error.data && typeof payload.error.data === "object" ? payload.error.data : {};
+      errors.push(normalizeReplayError(errorData.message || payload.error.message || payload.error.name || ""));
+      continue;
+    }
+    if (payload.type === "tool_use" && payload.part && payload.part.tool === "invalid") {
+      const state = payload.part.state && typeof payload.part.state === "object" ? payload.part.state : {};
+      const input = state.input && typeof state.input === "object" ? state.input : {};
+      if (input.error) {
+        toolFailures.push(String(input.error).trim());
+      }
     }
   }
   const uniqueParts = [];
@@ -1494,7 +1512,27 @@ function extractReadableReplayText(content) {
       uniqueParts.push(part);
     }
   }
-  return uniqueParts.join("\n\n");
+  if (uniqueParts.length) {
+    return { isReplay: true, text: uniqueParts.join("\n\n") };
+  }
+  if (errors.length) {
+    return { isReplay: true, text: errors[0] };
+  }
+  if (toolFailures.length) {
+    return { isReplay: true, text: "A required tool call was unavailable while replaying that answer." };
+  }
+  return { isReplay: true, text: "I couldn't produce a readable answer from that replay." };
+}
+
+function normalizeReplayError(message) {
+  const cleaned = String(message || "").trim().replace(/\s+/g, " ");
+  if (!cleaned) {
+    return "I couldn't complete that replayed answer.";
+  }
+  if (cleaned.toLowerCase().includes("user rejected permission to use this specific tool call")) {
+    return "Permission to use a required tool call was denied.";
+  }
+  return cleaned.endsWith(".") ? cleaned : `${cleaned}.`;
 }
 
 function parseRateLimitError(message) {

@@ -304,6 +304,52 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(result["error_message"], "Execution tool limit reached before the checkpoint completed.")
         self.assertEqual(result["blueprint"]["tasks"][0]["description"], "Build frontend")
 
+    def test_run_turn_sanitizes_replay_json_error_payloads(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.kernel.execute_turn = lambda prompt, **kwargs: type(
+                "Result",
+                (),
+                {
+                    "to_dict": lambda self: {
+                        "final_response": "\n".join(
+                            [
+                                json.dumps({"type": "step_start", "timestamp": 1}),
+                                json.dumps(
+                                    {
+                                        "type": "tool_use",
+                                        "part": {
+                                            "type": "tool",
+                                            "tool": "invalid",
+                                            "state": {"input": {"error": "Model tried to call unavailable tool 'search_text'."}},
+                                        },
+                                    }
+                                ),
+                                json.dumps(
+                                    {
+                                        "type": "error",
+                                        "error": {
+                                            "name": "UnknownError",
+                                            "data": {"message": "The user rejected permission to use this specific tool call."},
+                                        },
+                                    }
+                                ),
+                            ]
+                        ),
+                        "total_usage": {},
+                        "metadata": {"backend_used": "groq", "budget_state": {"blocked": False}},
+                    }
+                },
+            )()
+
+            result = app.run_turn("hello")
+
+        self.assertEqual(result["final_response"], "Permission to use a required tool call was denied.")
+
     def test_health_payload_exposes_indexing_progress_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir)

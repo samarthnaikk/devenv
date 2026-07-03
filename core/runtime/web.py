@@ -53,6 +53,85 @@ class AccessPolicy:
         }
 
 
+def _normalize_replay_error(message: str) -> str:
+    cleaned = " ".join(str(message or "").split())
+    if not cleaned:
+        return "I couldn't complete that replayed answer."
+    if "user rejected permission to use this specific tool call" in cleaned.lower():
+        return "Permission to use a required tool call was denied."
+    if cleaned.endswith("."):
+        return cleaned
+    return f"{cleaned}."
+
+
+def _sanitize_replay_text(content: object) -> str | None:
+    raw = str(content or "").strip()
+    if not raw:
+        return None
+    if not raw.startswith("{") or "\n" not in raw:
+        return raw
+
+    readable_lines: list[str] = []
+    replay_errors: list[str] = []
+    tool_failures: list[str] = []
+    for raw_line in raw.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+
+        part = payload.get("part")
+        if isinstance(part, dict) and part.get("type") == "text":
+            text_value = str(part.get("text") or "").strip()
+            if text_value:
+                readable_lines.append(text_value)
+            continue
+
+        event_payload = payload.get("payload")
+        if isinstance(event_payload, dict) and event_payload.get("type") == "agent_message":
+            message = str(event_payload.get("message") or "").strip()
+            if message:
+                readable_lines.append(message)
+            continue
+
+        if payload.get("type") == "error":
+            error_payload = payload.get("error")
+            if isinstance(error_payload, dict):
+                replay_errors.append(
+                    _normalize_replay_error(
+                        str((error_payload.get("data") or {}).get("message") or error_payload.get("message") or error_payload.get("name") or "")
+                    )
+                )
+            continue
+
+        if payload.get("type") == "tool_use" and isinstance(part, dict) and part.get("tool") == "invalid":
+            state = part.get("state")
+            if isinstance(state, dict):
+                input_payload = state.get("input")
+                if isinstance(input_payload, dict):
+                    error_message = str(input_payload.get("error") or "").strip()
+                    if error_message:
+                        tool_failures.append(error_message)
+
+    unique_lines: list[str] = []
+    for line in readable_lines:
+        if line and line not in unique_lines:
+            unique_lines.append(line)
+    if unique_lines:
+        return "\n\n".join(unique_lines)
+
+    if replay_errors:
+        return replay_errors[0]
+    if tool_failures:
+        return "A required tool call was unavailable while replaying that answer."
+    return "I couldn't produce a readable answer from that replay."
+
+
 class DevenvWebApp:
     def __init__(self, config: RunConfig, port: int = 4173, *, memory=None, ai=None) -> None:
         self.config = config
@@ -196,6 +275,8 @@ class DevenvWebApp:
         if "session_budget_tokens" in parameters:
             kwargs["session_budget_tokens"] = session_budget_tokens
         result = execute_turn(prompt, **kwargs).to_dict()
+        result["final_response"] = _sanitize_replay_text(result.get("final_response"))
+        result["error_message"] = _sanitize_replay_text(result.get("error_message"))
         metadata = dict(result.get("metadata") or {})
         result["backend_used"] = metadata.get("backend_used", "groq")
         result["budget_state"] = metadata.get("budget_state")
