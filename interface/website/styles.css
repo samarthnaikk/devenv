@@ -1021,6 +1021,14 @@ body[data-theme="dark"] .usage-chart.cumulative .usage-line {
   overflow-wrap: anywhere;
 }
 
+.inline-markdown p,
+.inline-markdown ul,
+.inline-markdown ol,
+.inline-markdown pre,
+.inline-markdown blockquote {
+  margin-bottom: 0;
+}
+
 .markdown-body ul,
 .markdown-body ol {
   padding-left: 20px;
@@ -1057,6 +1065,13 @@ body[data-theme="dark"] .usage-chart.cumulative .usage-line {
   padding-left: 14px;
   border-left: 3px solid var(--border-strong);
   color: var(--muted);
+}
+
+.markdown-body a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
 }
 
 @media (max-width: 920px) {

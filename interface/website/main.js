@@ -628,7 +628,7 @@ function render(options = {}) {
                       <div class="hero-stack">
                         <div class="codex-glyph" aria-hidden="true">${devenvCloudIcon()}</div>
                         <h1 class="hero-title">What should we recall?</h1>
-                        <div class="hero-subtitle">Ask Devenv to search memory, inspect prior sessions, or route turns through OpenCode with explicit consent.</div>
+                        <div class="hero-subtitle markdown-body">Ask Devenv to search memory, inspect prior sessions, or route turns through OpenCode with explicit consent.</div>
                       </div>
                       <div class="suggestion-row">
                         ${SUGGESTIONS.map(
@@ -661,8 +661,8 @@ function render(options = {}) {
                       <span class="status-chip-label">Context</span>
                       <strong>${escapeHtml(state.retrievalStatus.label)}</strong>
                     </div>
-                    <div class="status-chip status-chip-detail">
-                      ${escapeHtml(state.retrievalStatus.detail)}
+                    <div class="status-chip status-chip-detail markdown-body inline-markdown">
+                      ${renderRichText(state.retrievalStatus.detail)}
                     </div>
                   </div>
                   <div class="composer-toolbar-right">
@@ -689,9 +689,9 @@ function render(options = {}) {
                 </div>
                 ${state.isRunning ? `<div class="composer-running-line">${renderRunningTicker(currentPendingThinkingContent())}</div>` : ""}
               </div>
-              <div class="composer-hint">Press Cmd/Ctrl + Enter to search memory</div>
+              <div class="composer-hint markdown-body inline-markdown">${renderRichText("Press Cmd/Ctrl + Enter to search memory")}</div>
             </form>
-            ${state.toast ? `<div class="toast-banner">${escapeHtml(state.toast)}</div>` : ""}
+            ${state.toast ? `<div class="toast-banner markdown-body inline-markdown">${renderRichText(state.toast)}</div>` : ""}
           </section>
           <aside class="side-rail">
             ${renderAccessCard()}
@@ -746,7 +746,7 @@ function renderStartupShell(indexing) {
       <div class="startup-card">
         <div class="startup-kicker">${escapeHtml(providerLabel)} CHUNKING</div>
         <h1 class="startup-title">Preparing session memory</h1>
-        <p class="startup-copy">${escapeHtml(message)}</p>
+        <div class="startup-copy markdown-body">${renderRichText(message)}</div>
         <div class="startup-progress-track" aria-hidden="true">
           <div class="startup-progress-fill" style="width:${percent}%;"></div>
         </div>
@@ -833,7 +833,9 @@ function renderAccessCard() {
       <div class="backend-card">
         <div class="backend-copy">
           <strong>Current backend</strong>
-          <span>${escapeHtml(activeBackendLabel)}${state.preferredBackend !== "auto" ? ` · preferred ${escapeHtml(preferredBackendLabel)}` : ""}</span>
+          <span class="markdown-body inline-markdown">${renderRichText(
+            `${activeBackendLabel}${state.preferredBackend !== "auto" ? ` · preferred ${preferredBackendLabel}` : ""}`
+          )}</span>
         </div>
         <div class="backend-actions">
           <select class="backend-select" data-backend-select>
@@ -846,7 +848,7 @@ function renderAccessCard() {
         </div>
       </div>
       <div class="backend-summary">
-        <div><strong>OpenCode:</strong> ${escapeHtml(opencode.detail || (opencode.available ? "Available" : "Unavailable"))}</div>
+        <div class="markdown-body inline-markdown">${renderRichText(`**OpenCode:** ${opencode.detail || (opencode.available ? "Available" : "Unavailable")}`)}</div>
       </div>
     </section>
   `;
@@ -854,11 +856,13 @@ function renderAccessCard() {
 
 function renderProviderAccessRow(provider, label, allowed) {
   return `
-    <div class="provider-row">
-      <div class="provider-copy">
-        <strong>${escapeHtml(label)}</strong>
-        <span>${allowed ? "Granted" : "Permission required before Devenv can read these sessions."}</span>
-      </div>
+      <div class="provider-row">
+        <div class="provider-copy">
+          <strong>${escapeHtml(label)}</strong>
+          <span class="markdown-body inline-markdown">${renderRichText(
+            allowed ? "Granted" : "Permission required before Devenv can read these sessions."
+          )}</span>
+        </div>
       <button
         type="button"
         class="context-action-button ${allowed ? "" : "primary"}"
@@ -930,15 +934,13 @@ function renderProviderSessionGroup(provider, label) {
       <div class="provider-group-header">
         <div class="provider-group-copy">
           <strong>${escapeHtml(label)}</strong>
-          <div class="panel-caption provider-group-caption">${
+          <div class="panel-caption provider-group-caption markdown-body inline-markdown">${renderRichText(
             allowed
-              ? escapeHtml(
-                  visible
-                    ? `${sessions.length} loaded session${sessions.length === 1 ? "" : "s"}`
-                    : "Hidden until you choose to view it"
-                )
-              : escapeHtml("Grant access before loading sessions")
-          }</div>
+              ? visible
+                ? `${sessions.length} loaded session${sessions.length === 1 ? "" : "s"}`
+                : "Hidden until you choose to view it"
+              : "Grant access before loading sessions"
+          )}</div>
         </div>
         <button
           type="button"
@@ -952,9 +954,9 @@ function renderProviderSessionGroup(provider, label) {
       </div>
       ${
         !allowed
-          ? `<div class="rail-empty">Grant ${escapeHtml(label)} access to load these sessions.</div>`
+          ? `<div class="rail-empty markdown-body">Grant ${escapeHtml(label)} access to load these sessions.</div>`
           : !visible
-            ? `<div class="rail-empty compact">${escapeHtml(label)} history stays collapsed until you open it.</div>`
+            ? `<div class="rail-empty compact markdown-body">${renderRichText(`${label} history stays collapsed until you open it.`)}</div>`
             : `
             <div class="session-list ${state.sessionLoading ? "loading" : ""}">
               ${
@@ -971,7 +973,7 @@ function renderProviderSessionGroup(provider, label) {
                           >
                             <strong>${escapeHtml(session.title || "Untitled session")}</strong>
                             <span>${escapeHtml(session.updated_at || session.workspace_path || "Unknown update time")}</span>
-                            <p>${escapeHtml(session.preview || session.workspace_path || "No preview available.")}</p>
+                            <div class="markdown-body inline-markdown"><p>${renderInlineMarkdown(session.preview || session.workspace_path || "No preview available.")}</p></div>
                           </button>
                         `
                       )
@@ -1019,12 +1021,12 @@ function renderUsageCard(contextBudget) {
         <div class="chart-block">
           <div class="chart-label">Per-turn tokens</div>
           ${renderUsageBars(state.usageWindow)}
-          <div class="chart-footer">${escapeHtml(usageSummary.turnsLabel)}</div>
+          <div class="chart-footer markdown-body inline-markdown">${renderRichText(usageSummary.turnsLabel)}</div>
         </div>
         <div class="chart-block">
           <div class="chart-label">Session token trend</div>
           ${renderCumulativeUsageChart(state.usageWindow)}
-          <div class="context-note">${escapeHtml(usageSummary.sessionLabel)}</div>
+          <div class="context-note markdown-body inline-markdown">${renderRichText(usageSummary.sessionLabel)}</div>
         </div>
       </div>
       <div class="budget-editor">
@@ -1034,15 +1036,17 @@ function renderUsageCard(contextBudget) {
         </label>
         <button type="button" class="context-action-button primary" data-action="apply-budget">Apply</button>
       </div>
-      <div class="budget-status ${budgetState.blocked ? "blocked" : ""}">
-        ${escapeHtml(budgetState.label)}
+      <div class="budget-status markdown-body inline-markdown ${budgetState.blocked ? "blocked" : ""}">
+        ${renderRichText(budgetState.label)}
       </div>
       ${budgetState.blocked ? `<button type="button" class="context-action-button" data-action="increase-budget" data-increase="1000">Increase by 1000</button>` : ""}
       <div class="runtime-summary">
         ${
           state.isRunning
             ? renderRunningTicker(currentPendingThinkingContent())
-            : `<span class="thinking-live-text">${escapeHtml(formatBackendLabel(state.activeBackend))} ready · ${escapeHtml(contextBudget.remainingLabel)} in the current minute</span>`
+            : `<div class="thinking-live-text markdown-body inline-markdown">${renderRichText(
+                `${formatBackendLabel(state.activeBackend)} ready · ${contextBudget.remainingLabel} in the current minute`
+              )}</div>`
         }
       </div>
     </section>
@@ -1095,7 +1099,7 @@ function renderThinkingSummary(content, pending) {
       ${
         pending
           ? `<div class="thinking-live-row">${renderRunningTicker(content)}</div>`
-          : `<div class="thinking-collapsed-note">${escapeHtml(latest)}</div>`
+          : `<div class="thinking-collapsed-note markdown-body inline-markdown">${renderRichText(latest)}</div>`
       }
     </div>
   `;
@@ -1361,6 +1365,12 @@ function renderParagraphs(text) {
           .map((line) => `<li>${renderInlineMarkdown(line.replace(/^- /, ""))}</li>`)
           .join("")}</ul>`;
       }
+      if (/^\d+\.\s/.test(trimmed)) {
+        return `<ol>${trimmed
+          .split("\n")
+          .map((line) => `<li>${renderInlineMarkdown(line.replace(/^\d+\.\s/, ""))}</li>`)
+          .join("")}</ol>`;
+      }
       if (trimmed.startsWith("> ")) {
         return `<blockquote>${trimmed
           .split("\n")
@@ -1373,7 +1383,11 @@ function renderParagraphs(text) {
 }
 
 function renderInlineMarkdown(text) {
-  return escapeHtml(text || "").replace(/`([^`]+)`/g, "<code>$1</code>");
+  return escapeHtml(text || "")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^\*])\*([^*]+)\*/g, "$1<em>$2</em>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
 function renderCumulativeUsageChart(entries) {
