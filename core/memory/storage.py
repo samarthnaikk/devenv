@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -38,6 +39,8 @@ SCHEMA_STATEMENTS = (
         timestamp REAL NOT NULL,
         associated_node_id TEXT,
         raw_interaction TEXT NOT NULL,
+        external_context_query TEXT,
+        agent_response TEXT,
         FOREIGN KEY (associated_node_id) REFERENCES memory_nodes(node_id) ON DELETE SET NULL
     )
     """,
@@ -82,6 +85,14 @@ class SQLiteMemoryStore:
         with self.transaction() as connection:
             for statement in SCHEMA_STATEMENTS:
                 connection.execute(statement)
+            columns = {str(row["name"]) for row in connection.execute("PRAGMA table_info(episodic_logs)").fetchall()}
+            if "external_context_query" not in columns:
+                connection.execute("ALTER TABLE episodic_logs ADD COLUMN external_context_query TEXT")
+            if "agent_response" not in columns:
+                connection.execute("ALTER TABLE episodic_logs ADD COLUMN agent_response TEXT")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_episodic_logs_external_context_query ON episodic_logs(external_context_query)"
+            )
 
     def upsert_node(self, node: MemoryNode) -> None:
         with self.transaction() as connection:
@@ -167,13 +178,15 @@ class SQLiteMemoryStore:
         return cursor.rowcount > 0
 
     def insert_log(self, log: EpisodicLog) -> None:
+        external_context_query = _extract_external_context_query(log.raw_interaction)
+        agent_response = _extract_agent_response(log.raw_interaction)
         with self.transaction() as connection:
             connection.execute(
                 """
-                INSERT INTO episodic_logs (log_id, timestamp, associated_node_id, raw_interaction)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO episodic_logs (log_id, timestamp, associated_node_id, raw_interaction, external_context_query, agent_response)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (log.log_id, log.timestamp, log.associated_node_id, log.raw_interaction),
+                (log.log_id, log.timestamp, log.associated_node_id, log.raw_interaction, external_context_query, agent_response),
             )
 
     def list_logs_since(self, since: float) -> list[EpisodicLog]:
@@ -188,6 +201,181 @@ class SQLiteMemoryStore:
                 (since,),
             ).fetchall()
         return [EpisodicLog(**dict(row)) for row in rows]
+
+    def search_logs(self, terms: list[str], limit: int = 5) -> list[EpisodicLog]:
+        cleaned_terms = [term.strip().lower() for term in terms if term and term.strip()]
+        if not cleaned_terms:
+            return []
+
+        score_sql = " + ".join("(CASE WHEN lower(raw_interaction) LIKE ? THEN 1 ELSE 0 END)" for _ in cleaned_terms)
+        where_sql = " OR ".join("lower(raw_interaction) LIKE ?" for _ in cleaned_terms)
+        score_params = [f"%{term}%" for term in cleaned_terms]
+        where_params = [f"%{term}%" for term in cleaned_terms]
+
+        with self.transaction() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT log_id, timestamp, associated_node_id, raw_interaction
+                FROM episodic_logs
+                WHERE {where_sql}
+                ORDER BY ({score_sql}) DESC, timestamp DESC
+                LIMIT ?
+                """,
+                (*where_params, *score_params, limit),
+            ).fetchall()
+        return [EpisodicLog(**dict(row)) for row in rows]
+
+    def search_logs_for_external_query(self, query: str, limit: int = 5) -> list[EpisodicLog]:
+        cleaned_query = query.strip()
+        if not cleaned_query:
+            return []
+
+        with self.transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT log_id, timestamp, associated_node_id, raw_interaction
+                FROM episodic_logs
+                WHERE external_context_query = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (cleaned_query, limit),
+            ).fetchall()
+            if not rows:
+                escaped_query = cleaned_query.replace("\\", "\\\\").replace('"', '\\"')
+                pattern = f'%\"external_context_query\": \"{escaped_query}\"%'
+                rows = connection.execute(
+                    """
+                    SELECT log_id, timestamp, associated_node_id, raw_interaction
+                    FROM episodic_logs
+                    WHERE raw_interaction LIKE ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                    """,
+                    (pattern, limit),
+                ).fetchall()
+                if rows:
+                    connection.executemany(
+                        """
+                        UPDATE episodic_logs
+                        SET external_context_query = ?
+                        WHERE log_id = ? AND external_context_query IS NULL
+                        """,
+                        [(cleaned_query, str(row["log_id"])) for row in rows],
+                    )
+        return [EpisodicLog(**dict(row)) for row in rows]
+
+    def search_agent_responses_for_external_query(self, query: str, limit: int = 5) -> list[str]:
+        cleaned_query = query.strip()
+        if not cleaned_query:
+            return []
+
+        with self.transaction() as connection:
+            direct_rows = connection.execute(
+                """
+                SELECT agent_response
+                FROM episodic_logs
+                WHERE external_context_query = ?
+                  AND agent_response IS NOT NULL
+                  AND agent_response != ''
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (cleaned_query, limit),
+            ).fetchall()
+            direct_responses = [str(row["agent_response"]).strip() for row in direct_rows if str(row["agent_response"]).strip()]
+            if direct_responses:
+                return direct_responses
+
+            rows = connection.execute(
+                """
+                SELECT log_id, raw_interaction
+                FROM episodic_logs
+                WHERE external_context_query = ?
+                  AND (agent_response IS NULL OR agent_response = '')
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (cleaned_query, limit),
+            ).fetchall()
+            responses: list[str] = []
+            missing_backfills: list[tuple[str, str]] = []
+            for row in rows:
+                agent_response = _extract_agent_response(str(row["raw_interaction"]) or "") or ""
+                if agent_response:
+                    missing_backfills.append((agent_response, str(row["log_id"])))
+                    responses.append(agent_response)
+            if responses:
+                if missing_backfills:
+                    connection.executemany(
+                        """
+                        UPDATE episodic_logs
+                        SET agent_response = ?
+                        WHERE log_id = ? AND (agent_response IS NULL OR agent_response = '')
+                        """,
+                        missing_backfills,
+                    )
+                return responses
+
+            escaped_query = cleaned_query.replace("\\", "\\\\").replace('"', '\\"')
+            pattern = f'%\"external_context_query\": \"{escaped_query}\"%'
+            fallback_rows = connection.execute(
+                """
+                SELECT log_id, raw_interaction
+                FROM episodic_logs
+                WHERE raw_interaction LIKE ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (pattern, limit),
+            ).fetchall()
+            fallback_responses: list[str] = []
+            backfills: list[tuple[str, str, str]] = []
+            for row in fallback_rows:
+                raw_interaction = str(row["raw_interaction"]) or ""
+                agent_response = _extract_agent_response(raw_interaction) or ""
+                if agent_response:
+                    fallback_responses.append(agent_response)
+                    backfills.append((cleaned_query, agent_response, str(row["log_id"])))
+            if backfills:
+                connection.executemany(
+                    """
+                    UPDATE episodic_logs
+                    SET external_context_query = ?, agent_response = ?
+                    WHERE log_id = ?
+                    """,
+                    backfills,
+                )
+            return fallback_responses
+
+    def search_nodes(self, terms: list[str], limit: int = 5) -> list[MemoryNode]:
+        cleaned_terms = [term.strip().lower() for term in terms if term and term.strip()]
+        if not cleaned_terms:
+            return []
+
+        score_sql = " + ".join(
+            "(CASE WHEN lower(label) LIKE ? OR lower(summary) LIKE ? THEN 1 ELSE 0 END)" for _ in cleaned_terms
+        )
+        where_sql = " OR ".join("(lower(label) LIKE ? OR lower(summary) LIKE ?)" for _ in cleaned_terms)
+        score_params: list[str] = []
+        where_params: list[str] = []
+        for term in cleaned_terms:
+            pattern = f"%{term}%"
+            where_params.extend([pattern, pattern])
+            score_params.extend([pattern, pattern])
+
+        with self.transaction() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT node_id, parent_id, label, category, summary, created_at, last_accessed, access_count
+                FROM memory_nodes
+                WHERE {where_sql}
+                ORDER BY ({score_sql}) DESC, last_accessed DESC
+                LIMIT ?
+                """,
+                (*where_params, *score_params, limit),
+            ).fetchall()
+        return [_row_to_node(row) for row in rows]
 
     def get_state(self, key: str) -> str | None:
         with self.transaction() as connection:
@@ -281,3 +469,34 @@ def _row_to_node(row: sqlite3.Row) -> MemoryNode:
         last_accessed=float(row["last_accessed"]),
         access_count=int(row["access_count"]),
     )
+
+
+def _extract_external_context_query(raw_interaction: str) -> str | None:
+    try:
+        payload = json.loads(raw_interaction)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    query = metadata.get("external_context_query")
+    if not isinstance(query, str):
+        return None
+    cleaned = query.strip()
+    return cleaned or None
+
+
+def _extract_agent_response(raw_interaction: str) -> str | None:
+    try:
+        payload = json.loads(raw_interaction)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    agent = payload.get("agent")
+    if not isinstance(agent, str):
+        return None
+    cleaned = agent.strip()
+    return cleaned or None

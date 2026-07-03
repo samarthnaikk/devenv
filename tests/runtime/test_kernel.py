@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 from core.ai.models import AIResponse, ToolCallRequest
 from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
+from core.memory.models import EpisodicLog
+from core.memory.storage import SQLiteMemoryStore
 from core.memory.vector_index import InMemoryVectorIndex
 from core.runtime import DevenvKernel
 from core.runtime.context_builder import ContextBuilderService
@@ -244,6 +248,30 @@ class DevenvKernelTest(unittest.TestCase):
         memory_context = ai.chat_calls[0]["memory_context"] or ""
         self.assertIn("## Context Packet", memory_context)
         self.assertIn("Project Atlas", memory_context)
+
+    def test_execute_turn_skips_repeat_consolidation_within_cooldown(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(content="First answer", tool_calls=(), finish_reason="stop", usage={"prompt_tokens": 4}),
+                AIResponse(content="Second answer", tool_calls=(), finish_reason="stop", usage={"prompt_tokens": 4}),
+            ]
+        )
+        previous = os.environ.get("DEVENV_CONSOLIDATION_COOLDOWN_SECONDS")
+        os.environ["DEVENV_CONSOLIDATION_COOLDOWN_SECONDS"] = "900"
+        try:
+            with tempfile.TemporaryDirectory() as tempdir:
+                kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+                kernel.local_router = _disabled_router()
+                kernel.execute_turn("Explain the repo")
+                kernel.execute_turn("Explain the repo again")
+        finally:
+            if previous is None:
+                os.environ.pop("DEVENV_CONSOLIDATION_COOLDOWN_SECONDS", None)
+            else:
+                os.environ["DEVENV_CONSOLIDATION_COOLDOWN_SECONDS"] = previous
+
+        self.assertEqual(memory.consolidation_runs, 1)
 
     def test_local_only_mode_can_answer_from_external_session_context(self) -> None:
         memory = FakeMemory()
@@ -1132,6 +1160,328 @@ class DevenvKernelTest(unittest.TestCase):
             result = kernel.execute_turn("What was the calendar project backend?", local_only=True)
 
         self.assertIn("FastAPI", result.final_response or "")
+
+    def test_local_only_turn_does_not_require_remote_ai_initialization(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="## Retrieved Memory\n- [episode] GetGit used a Flask backend with server.py and a rag folder."
+        )
+        previous = os.environ.get("GROQ_API_KEY")
+        os.environ.pop("GROQ_API_KEY", None)
+        try:
+            with tempfile.TemporaryDirectory() as tempdir:
+                kernel = DevenvKernel(tempdir, memory=memory, ai=None)
+                result = kernel.execute_turn("What architecture did GetGit use?", local_only=True)
+        finally:
+            if previous is not None:
+                os.environ["GROQ_API_KEY"] = previous
+
+        self.assertIn("Flask", result.final_response or "")
+
+    def test_local_only_direct_turn_skips_lazy_tooling_helpers(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="## Retrieved Memory\n- [episode] GetGit used a Flask backend with server.py and a rag folder."
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            with mock.patch("core.runtime.kernel.ContextBuilderService", side_effect=AssertionError("context builder should stay lazy")):
+                with mock.patch.object(DevenvKernel, "_build_tool_client", side_effect=AssertionError("tool client should stay lazy")):
+                    kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+                    result = kernel.execute_turn("What architecture did GetGit use?", local_only=True)
+
+        self.assertIn("Flask", result.final_response or "")
+
+    def test_local_only_direct_turn_can_skip_retrieval_with_exact_logged_answer(self) -> None:
+        class FakeStore:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def search_logs(self, terms: list[str], limit: int = 5) -> list[EpisodicLog]:
+                self.calls += 1
+                return [
+                    EpisodicLog(
+                        log_id="good-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "agent": "GetGit was described as a Flask backend, with a `server.py` entrypoint, and RAG-related components.",
+                                "metadata": {"external_context_query": "What architecture did GetGit use?"},
+                            }
+                        ),
+                    )
+                ]
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        memory.retrieve_context = lambda current_prompt, top_k=5: (_ for _ in ()).throw(AssertionError("retrieve_context should be skipped"))
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel.execute_turn("What architecture did GetGit use?", local_only=True)
+
+        self.assertEqual(
+            result.final_response,
+            "GetGit was described as a Flask backend, with a `server.py` entrypoint, and RAG-related components.",
+        )
+        self.assertEqual(memory.logs, [])
+        self.assertEqual(memory.working_memory_calls, [])
+
+    def test_local_only_exact_logged_answer_cache_skips_repeat_store_lookup(self) -> None:
+        class FakeStore:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def search_logs(self, terms: list[str], limit: int = 5) -> list[EpisodicLog]:
+                self.calls += 1
+                return [
+                    EpisodicLog(
+                        log_id="good-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "agent": "GetGit was described as a Flask backend, with a `server.py` entrypoint, and RAG-related components.",
+                                "metadata": {"external_context_query": "What architecture did GetGit use?"},
+                            }
+                        ),
+                    )
+                ]
+
+        memory = FakeMemory()
+        store = FakeStore()
+        memory.store = store
+        memory.retrieve_context = lambda current_prompt, top_k=5: (_ for _ in ()).throw(AssertionError("retrieve_context should be skipped"))
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            first = kernel.execute_turn("What architecture did GetGit use?", local_only=True)
+            second = kernel.execute_turn("What architecture did GetGit use?", local_only=True)
+
+        self.assertIn("Flask", first.final_response or "")
+        self.assertEqual(second.final_response, first.final_response)
+        self.assertEqual(store.calls, 1)
+
+    def test_local_only_exact_logged_answer_prefers_exact_query_store_lookup(self) -> None:
+        class FakeStore:
+            def search_logs_for_external_query(self, query: str, limit: int = 5) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="good-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "agent": "No. GetGit was described as a Flask/RAG-style backend, while get-drip was described as a Convex-backed app.",
+                                "metadata": {"external_context_query": "Does get-drip use the same architecture as GetGit?"},
+                            }
+                        ),
+                    )
+                ]
+
+            def search_logs(self, terms: list[str], limit: int = 5) -> list[EpisodicLog]:
+                raise AssertionError("broad search_logs should not be needed when exact query lookup succeeds")
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        memory.retrieve_context = lambda current_prompt, top_k=5: (_ for _ in ()).throw(AssertionError("retrieve_context should be skipped"))
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel.execute_turn("Does get-drip use the same architecture as GetGit?", local_only=True)
+
+        self.assertEqual(
+            result.final_response,
+            "No. GetGit was described as a Flask/RAG-style backend, while get-drip was described as a Convex-backed app.",
+        )
+
+    def test_sqlite_store_search_logs_for_external_query_finds_newly_inserted_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            store = SQLiteMemoryStore(f"{tempdir}/memory.db")
+            store.insert_log(
+                EpisodicLog(
+                    log_id="log-1",
+                    timestamp=1.0,
+                    associated_node_id=None,
+                    raw_interaction=json.dumps(
+                        {
+                            "user": "Does get-drip use the same architecture as GetGit?",
+                            "agent": "No. GetGit was described as a Flask/RAG-style backend, while get-drip was described as a Convex-backed app.",
+                            "metadata": {"external_context_query": "Does get-drip use the same architecture as GetGit?"},
+                        }
+                    ),
+                )
+            )
+
+            rows = store.search_logs_for_external_query("Does get-drip use the same architecture as GetGit?")
+
+        self.assertEqual(len(rows), 1)
+        self.assertIn("Convex-backed app", rows[0].raw_interaction)
+
+    def test_sqlite_store_search_logs_for_external_query_finds_legacy_log_without_indexed_value(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            store = SQLiteMemoryStore(f"{tempdir}/memory.db")
+            raw_interaction = json.dumps(
+                {
+                    "user": "What architecture did GetGit use?",
+                    "agent": "GetGit was described as a Flask backend, with a `server.py` entrypoint, and RAG-related components.",
+                    "metadata": {"external_context_query": "What architecture did GetGit use?"},
+                }
+            )
+            with store.transaction() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO episodic_logs (log_id, timestamp, associated_node_id, raw_interaction, external_context_query)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    ("legacy-1", 1.0, None, raw_interaction, None),
+                )
+
+            rows = store.search_logs_for_external_query("What architecture did GetGit use?")
+
+        self.assertEqual(len(rows), 1)
+        self.assertIn("server.py", rows[0].raw_interaction)
+
+    def test_sqlite_store_search_logs_for_external_query_backfills_legacy_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            store = SQLiteMemoryStore(f"{tempdir}/memory.db")
+            query = "What architecture did GetGit use?"
+            raw_interaction = json.dumps(
+                {
+                    "user": query,
+                    "agent": "GetGit was described as a Flask backend, with a `server.py` entrypoint, and RAG-related components.",
+                    "metadata": {"external_context_query": query},
+                }
+            )
+            with store.transaction() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO episodic_logs (log_id, timestamp, associated_node_id, raw_interaction, external_context_query)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    ("legacy-2", 1.0, None, raw_interaction, None),
+                )
+
+            first_rows = store.search_logs_for_external_query(query)
+            with store.transaction() as connection:
+                backfilled = connection.execute(
+                    "SELECT external_context_query FROM episodic_logs WHERE log_id = ?",
+                    ("legacy-2",),
+                ).fetchone()
+            second_rows = store.search_logs_for_external_query(query)
+
+        self.assertEqual(len(first_rows), 1)
+        self.assertEqual(str(backfilled["external_context_query"]), query)
+        self.assertEqual(len(second_rows), 1)
+
+    def test_sqlite_store_search_agent_responses_for_external_query_backfills_legacy_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            store = SQLiteMemoryStore(f"{tempdir}/memory.db")
+            query = "What architecture did GetGit use?"
+            response = "GetGit was described as a Flask backend, with a `server.py` entrypoint, and RAG-related components."
+            raw_interaction = json.dumps(
+                {
+                    "user": query,
+                    "agent": response,
+                    "metadata": {"external_context_query": query},
+                }
+            )
+            with store.transaction() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO episodic_logs (log_id, timestamp, associated_node_id, raw_interaction, external_context_query, agent_response)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    ("legacy-3", 1.0, None, raw_interaction, None, None),
+                )
+
+            first_responses = store.search_agent_responses_for_external_query(query)
+            with store.transaction() as connection:
+                backfilled = connection.execute(
+                    "SELECT external_context_query, agent_response FROM episodic_logs WHERE log_id = ?",
+                    ("legacy-3",),
+                ).fetchone()
+            second_responses = store.search_agent_responses_for_external_query(query)
+
+        self.assertEqual(first_responses, [response])
+        self.assertEqual(str(backfilled["external_context_query"]), query)
+        self.assertEqual(str(backfilled["agent_response"]), response)
+        self.assertEqual(second_responses, [response])
+
+    def test_sqlite_store_search_agent_responses_for_external_query_uses_stored_response_without_json_parse(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            store = SQLiteMemoryStore(f"{tempdir}/memory.db")
+            query = "What architecture did GetGit use?"
+            response = "GetGit was described as a Flask backend, with a `server.py` entrypoint, and RAG-related components."
+            with store.transaction() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO episodic_logs (log_id, timestamp, associated_node_id, raw_interaction, external_context_query, agent_response)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    ("indexed-1", 1.0, None, "{not-json", query, response),
+                )
+
+            responses = store.search_agent_responses_for_external_query(query)
+
+        self.assertEqual(responses, [response])
+
+    def test_direct_memory_answer_handles_architecture_question_without_ai(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="## Retrieved Memory\n- [episode] GetGit used a Flask backend with server.py and a rag folder."
+        )
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("What architecture did GetGit use?")
+
+        self.assertIn("Flask", result.final_response or "")
+        self.assertIn("server.py", result.final_response or "")
+
+    def test_local_only_prefers_clean_exact_logged_project_answer(self) -> None:
+        class FakeStore:
+            def search_logs(self, terms: list[str], limit: int = 5) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="bad-1",
+                        timestamp=2.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "agent": "`README.md` references Flask, RAG. Preview: # GetGit ...",
+                                "metadata": {"external_context_query": "Does get-drip use the same architecture as GetGit?"},
+                            }
+                        ),
+                    ),
+                    EpisodicLog(
+                        log_id="good-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "agent": "No. GetGit was described as a Flask/RAG-style backend, while get-drip was described as a Convex-backed app.",
+                                "metadata": {"external_context_query": "Does get-drip use the same architecture as GetGit?"},
+                            }
+                        ),
+                    ),
+                ]
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(markdown_context="")
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("Does get-drip use the same architecture as GetGit?", local_only=True)
+
+        self.assertEqual(
+            result.final_response,
+            "No. GetGit was described as a Flask/RAG-style backend, while get-drip was described as a Convex-backed app.",
+        )
 
     def test_local_only_planning_executes_without_ai(self) -> None:
         memory = FakeMemory()

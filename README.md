@@ -207,3 +207,5 @@ The README should be clear about what is still future scope from the PRDs:
 - The code is organized to keep memory logic decoupled from future UI or agent layers.
 - Tests use dependency injection heavily so memory behavior can be verified without external services.
 - The local-first constraint from the PRDs is preserved in the package design: raw logs, structured memory, and vector lookup are intended to live on the user machine.
+
+./.venv/bin/python -m core.runtime.web sample-test

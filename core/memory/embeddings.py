@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -30,7 +31,9 @@ class SentenceTransformerEmbedder:
                     "sentence-transformers is required for the production embedder. "
                     "Inject a fake embedder in tests or install the dependency."
                 ) from exc
-            self._model = SentenceTransformer(self.model_name)
+            os.environ.setdefault("HF_HUB_OFFLINE", "1")
+            os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+            self._model = SentenceTransformer(self.model_name, local_files_only=True)
 
         vector = self._model.encode(text, normalize_embeddings=True)
         return [float(value) for value in vector]

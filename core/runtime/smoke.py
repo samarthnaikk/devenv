@@ -17,6 +17,7 @@ def main() -> int:
     parser.add_argument("--db-path", default="memory.db")
     parser.add_argument("--vector-dir", default="vectors")
     parser.add_argument("--max-consecutive-tools", type=int, default=5)
+    parser.add_argument("--local-only", action="store_true")
     parser.add_argument("--log-level", default=None)
     args = parser.parse_args()
 
@@ -28,7 +29,11 @@ def main() -> int:
     )
     for tool in build_runtime_tools(kernel.memory):
         kernel.register_tool(tool)
-    result = kernel.execute_turn(args.prompt, max_consecutive_tools=args.max_consecutive_tools)
+    result = kernel.execute_turn(
+        args.prompt,
+        max_consecutive_tools=args.max_consecutive_tools,
+        local_only=args.local_only,
+    )
     kernel.close()
     print(json.dumps(
         {

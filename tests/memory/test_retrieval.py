@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import time
 import unittest
+from dataclasses import dataclass
 
 from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
@@ -145,6 +146,35 @@ class RetrievalFlowTest(unittest.TestCase):
 
         self.assertIn("calendar project", result.markdown_context.lower())
         self.assertIn("python backend", result.markdown_context.lower())
+
+    def test_skips_rehydration_when_vector_index_is_already_persisted(self) -> None:
+        @dataclass
+        class CountingEmbedder:
+            dimension: int = 8
+            calls: int = 0
+
+            def embed(self, text: str) -> list[float]:
+                self.calls += 1
+                return [0.0] * self.dimension
+
+        class PersistedVectorIndex(InMemoryVectorIndex):
+            def has_persisted_state(self) -> bool:
+                return True
+
+        self.engine.add_episodic_log(
+            "The calendar project used a React frontend and Python backend.",
+            "Stored for future recall.",
+            metadata={"workspace_path": self.tempdir.name},
+        )
+
+        embedder = CountingEmbedder()
+        reopened = MemoryEngine(
+            db_path=f"{self.tempdir.name}/memory.db",
+            vector_dir=f"{self.tempdir.name}/vectors",
+            embedder=embedder,
+            vector_index=PersistedVectorIndex(),
+        )
+        self.assertEqual(embedder.calls, 0)
 
 
 if __name__ == "__main__":

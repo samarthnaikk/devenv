@@ -138,6 +138,8 @@ class MemoryEngine(MemoryEngineInterface):
         self.working_memory.record(messages=messages, active_state=active_state)
 
     def _rehydrate_vector_index(self) -> None:
+        if self.vector_index.has_persisted_state():
+            return
         for node in self.store.list_nodes():
             self.vector_index.upsert(node.node_id, node.summary, self.embedder.embed(node.summary))
 

@@ -42,6 +42,21 @@ class LocalIntentRouter:
         if not text:
             return LocalRouteDecision(False, 0.0, 0.0, 0.0, "empty prompt")
 
+        if os.getenv("DEVENV_USE_EMBEDDING_ROUTER") != "1":
+            lowered = text.lower()
+            knowledge_hits = sum(
+                1
+                for token in ("how", "why", "what", "explain", "tell", "remember", "backend", "architecture", "project", "repo")
+                if token in lowered
+            )
+            mutation_hits = sum(
+                1
+                for token in ("create", "make", "add", "fix", "edit", "update", "modify", "remove", "implement", "write")
+                if token in lowered
+            )
+            use_local = knowledge_hits >= 2 and mutation_hits == 0
+            return LocalRouteDecision(use_local, float(knowledge_hits - mutation_hits), float(knowledge_hits), float(mutation_hits), "heuristic")
+
         try:
             embeddings = _embedding_model().encode(
                 [text, *KNOWLEDGE_PROTOTYPES, *REMOTE_PROTOTYPES],

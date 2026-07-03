@@ -23,7 +23,9 @@ export function ContextBuilderPanel({
   statusMessage,
 }) {
   const currentSource = sources.find((source) => source.provider === selectedProvider) || null;
-  const activeCount = activeSessionIds.length;
+  const matchedSessions = activeSessionIds.length
+    ? sessions.filter((session) => activeSessionIds.includes(session.session_id))
+    : sessions.slice(0, 6);
 
   return React.createElement(
     "section",
@@ -38,8 +40,8 @@ export function ContextBuilderPanel({
         React.createElement("h2", { className: "terminal-title" }, "Prepare Codex Prompt"),
         React.createElement(
           "p",
-          { className: "sidebar-caption" },
-          "Browse local agent sessions, pull the relevant context, and generate a ready-to-paste prompt for Codex."
+          { className: "context-builder-note" },
+          "Devenv automatically matches prior sessions and builds the prompt for copy-paste."
         )
       ),
       React.createElement(
@@ -61,7 +63,7 @@ export function ContextBuilderPanel({
             className: "context-action-button primary",
             type: "button",
             onClick: onGeneratePrompt,
-            disabled: isPreparing || !builderTask.trim(),
+            disabled: isPreparing,
           },
           isPreparing ? "Preparing..." : "Generate Prompt"
         )
@@ -87,7 +89,11 @@ export function ContextBuilderPanel({
         )
       ),
       currentSource
-        ? React.createElement("div", { className: "context-source-chip" }, currentSource.summary || "Provider ready")
+        ? React.createElement(
+            "div",
+            { className: "context-source-chip" },
+            `${currentSource.summary || "Provider ready"}`
+          )
         : null,
       React.createElement(
         "label",
@@ -107,25 +113,25 @@ export function ContextBuilderPanel({
           checked: includePriorContext,
           onChange: (event) => onIncludePriorContextChange(event.target.checked),
         }),
-        React.createElement("span", null, "Include prior session context")
+        React.createElement("span", null, "Include prior context")
       )
     ),
     React.createElement(
       "div",
-      { className: "context-builder-grid" },
+      { className: "context-builder-body" },
       React.createElement(
-        "div",
-        { className: "context-sessions-column" },
+        "section",
+        { className: "context-section-card" },
         React.createElement(
           "div",
           { className: "context-section-heading" },
-          `Known Sessions${activeCount ? ` (${activeCount} used last time)` : ""}`
+          activeSessionIds.length ? `Auto-matched Sessions (${activeSessionIds.length})` : "Recent Sessions"
         ),
         React.createElement(
           "div",
           { className: "context-session-list" },
-          sessions.length
-            ? sessions.map((session) =>
+          matchedSessions.length
+            ? matchedSessions.map((session) =>
                 React.createElement(
                   "button",
                   {
@@ -138,7 +144,11 @@ export function ContextBuilderPanel({
                     "div",
                     { className: "context-session-copy" },
                     React.createElement("strong", null, session.title || "Untitled session"),
-                    React.createElement("span", null, session.updated_at || "Unknown update time"),
+                    React.createElement(
+                      "span",
+                      null,
+                      session.updated_at || session.workspace_path || "Unknown update time"
+                    ),
                     React.createElement(
                       "p",
                       null,
@@ -151,19 +161,23 @@ export function ContextBuilderPanel({
         )
       ),
       React.createElement(
-        "div",
-        { className: "context-detail-column" },
+        "section",
+        { className: "context-section-card" },
         React.createElement("div", { className: "context-section-heading" }, "Session Detail"),
         sessionDetail
           ? React.createElement(
               "div",
               { className: "context-session-detail" },
               React.createElement("strong", null, sessionDetail.summary?.title || "Untitled session"),
-              React.createElement("span", null, sessionDetail.summary?.workspace_path || "No workspace hint"),
+              React.createElement(
+                "span",
+                null,
+                sessionDetail.summary?.workspace_path || sessionDetail.summary?.updated_at || "No workspace hint"
+              ),
               React.createElement(
                 "div",
                 { className: "context-message-list" },
-                (sessionDetail.messages || []).slice(0, 6).map((message, index) =>
+                (sessionDetail.messages || []).slice(0, 8).map((message, index) =>
                   React.createElement(
                     "article",
                     { key: `${message.role}-${index}`, className: `context-message ${message.role}` },
@@ -173,18 +187,22 @@ export function ContextBuilderPanel({
                 )
               )
             )
-          : React.createElement("div", { className: "tree-empty" }, "Devenv will pick relevant prior sessions automatically.")
+          : React.createElement(
+              "div",
+              { className: "tree-empty" },
+              "Generate a prompt and Devenv will show the best-matching session history here."
+            )
       ),
       React.createElement(
-        "div",
-        { className: "context-prompt-column" },
+        "section",
+        { className: "context-section-card context-prompt-card" },
         React.createElement("div", { className: "context-section-heading" }, "Prompt Preview"),
         React.createElement("textarea", {
           className: "context-task-input",
           rows: 4,
           value: builderTask,
           onChange: (event) => onBuilderTaskChange(event.target.value),
-          placeholder: "Describe what you want Codex to do with this context...",
+          placeholder: "Describe what you want Codex to do. Leave this blank to use the current chat prompt.",
         }),
         React.createElement("textarea", {
           className: "context-prompt-output",

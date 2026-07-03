@@ -28,12 +28,15 @@ class SentenceTransformerLocalModel(LocalSmallModel):
     model_name = "sentence-transformers/all-MiniLM-L6-v2"
 
     def __init__(self) -> None:
-        self._model = _embedding_model()
+        self._model = None
 
     def distill(self, prompt: str, candidates: list[str], *, max_lines: int = 6) -> LocalModelSelection:
         clean_candidates = [candidate.strip() for candidate in candidates if candidate and candidate.strip()]
         if not clean_candidates:
             return LocalModelSelection(summary="", selected_lines=(), used_fallback=False, model_name=self.model_name)
+
+        if self._model is None:
+            self._model = _embedding_model()
 
         embeddings = self._model.encode(
             [prompt, *clean_candidates],

@@ -18,6 +18,9 @@ class VectorIndex(Protocol):
     def query(self, vector: list[float], top_k: int, min_similarity: float) -> list[VectorMatch]:
         ...
 
+    def has_persisted_state(self) -> bool:
+        ...
+
 
 @dataclass
 class LanceDBVectorIndex:
@@ -63,6 +66,21 @@ class LanceDBVectorIndex:
                 )
         matches.sort(key=lambda item: item.similarity, reverse=True)
         return matches[:top_k]
+
+    def has_persisted_state(self) -> bool:
+        try:
+            import lancedb
+        except ImportError:
+            return False
+
+        if self._db is None:
+            self._db = lancedb.connect(self.vector_dir)
+
+        try:
+            self._db.open_table(self.table_name)
+        except Exception:
+            return False
+        return True
 
     def _coerce_similarity(
         self,
@@ -123,6 +141,9 @@ class InMemoryVectorIndex:
         matches.sort(key=lambda item: item.similarity, reverse=True)
         return matches[:top_k]
 
+    def has_persisted_state(self) -> bool:
+        return False
+
 
 def _cosine_similarity(left: list[float], right: list[float]) -> float:
     if not left or not right or len(left) != len(right):
@@ -134,4 +155,3 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
     if left_magnitude == 0.0 or right_magnitude == 0.0:
         return 0.0
     return numerator / (left_magnitude * right_magnitude)
-

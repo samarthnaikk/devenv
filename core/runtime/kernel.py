@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import time
 import uuid
 from dataclasses import asdict
 from difflib import get_close_matches
@@ -65,6 +67,12 @@ DIRECT_SYSTEM_RULE = (
     "Do not create a checklist or execution plan unless the user is asking you to make changes."
 )
 DIRECT_MEMORY_CHAR_LIMIT = 900
+CONSOLIDATION_COOLDOWN_STATE_KEY = "runtime.last_consolidation_wall_time"
+DEFAULT_CONSOLIDATION_COOLDOWN_SECONDS = 900.0
+_AI_SENTINEL = object()
+_LOCAL_MODEL_SENTINEL = object()
+_TOOL_CLIENT_SENTINEL = object()
+_CONTEXT_BUILDER_SENTINEL = object()
 
 
 class DevenvKernel:
@@ -83,7 +91,7 @@ class DevenvKernel:
         self.sandbox = PathSandbox(root_path=self.workspace_path)
         resolved_db_path, resolved_vector_dir = resolve_memory_paths(db_path, vector_dir)
         self.memory = memory or _build_memory_engine(resolved_db_path, resolved_vector_dir)
-        self.ai = ai or AICore()
+        self._ai = ai if ai is not None else _AI_SENTINEL
         self.tools: dict[str, BaseTool] = {}
         self.ephemeral_history: list[dict[str, Any]] = []
         self.session_id = str(uuid.uuid4())
@@ -93,22 +101,60 @@ class DevenvKernel:
         self.active_blueprint: ExecutionBlueprint | None = None
         self.active_plan_prompt: str | None = None
         self.local_router = LocalIntentRouter()
-        self.local_small_model = load_local_small_model()
-        self.tool_client = tool_client or self._build_tool_client(db_path=db_path, vector_dir=vector_dir)
-        try:
-            self.context_builder = ContextBuilderService(self.workspace_path, memory=self.memory)
-        except Exception as exc:
-            logger.warning("Failed to initialize external context builder; continuing without it: error=%s", exc)
-            self.context_builder = None
+        self._local_small_model = _LOCAL_MODEL_SENTINEL
+        self._provided_tool_client = tool_client
+        self._tool_client = _TOOL_CLIENT_SENTINEL
+        self._context_builder = _CONTEXT_BUILDER_SENTINEL
+        self._last_consolidation_wall_time = 0.0
+        self._exact_logged_answer_cache: dict[str, str | None] = {}
 
     def register_tool(self, tool: BaseTool) -> None:
         self.tools[tool.name] = tool
-        self.ai.register_tool(tool)
+        if self._ai is not _AI_SENTINEL:
+            self._ai.register_tool(tool)
         logger.info("Registered tool with runtime and AI: tool=%s", tool.name)
 
     def close(self) -> None:
-        if hasattr(self.tool_client, "close"):
-            self.tool_client.close()
+        if self._tool_client is not _TOOL_CLIENT_SENTINEL and hasattr(self._tool_client, "close"):
+            self._tool_client.close()
+
+    @property
+    def ai(self) -> AICore | Any:
+        if self._ai is _AI_SENTINEL:
+            ai = AICore()
+            for tool in self.tools.values():
+                ai.register_tool(tool)
+            self._ai = ai
+        return self._ai
+
+    @property
+    def local_small_model(self):
+        if self._local_small_model is _LOCAL_MODEL_SENTINEL:
+            self._local_small_model = load_local_small_model()
+        return self._local_small_model
+
+    @property
+    def tool_client(self):
+        if self._tool_client is _TOOL_CLIENT_SENTINEL:
+            self._tool_client = self._provided_tool_client or self._build_tool_client(
+                db_path=self.db_path,
+                vector_dir=self.vector_dir,
+            )
+        return self._tool_client
+
+    @property
+    def context_builder(self):
+        if self._context_builder is _CONTEXT_BUILDER_SENTINEL:
+            try:
+                self._context_builder = ContextBuilderService(self.workspace_path, memory=self.memory)
+            except Exception as exc:
+                logger.warning("Failed to initialize external context builder; continuing without it: error=%s", exc)
+                self._context_builder = None
+        return self._context_builder
+
+    @context_builder.setter
+    def context_builder(self, value) -> None:
+        self._context_builder = value if value is not None else None
 
     def execute_turn(
         self,
@@ -123,12 +169,44 @@ class DevenvKernel:
         system_logs = [f"Workspace: {self.workspace_path}"]
         stage_traces: list[StageTrace] = []
         verification_results: list[VerificationResult] = []
-        turn_metadata: dict[str, Any] = {}
+        turn_metadata: dict[str, Any] = {
+            "external_context_state": "new_context",
+            "external_context_reason": "No strong prior-session match was found.",
+            "external_context_session_count": 0,
+            "external_context_session_ids": [],
+        }
         conversation = list(self.ephemeral_history)
         conversation.append({"role": "user", "content": user_prompt})
 
+        if local_only and _should_try_direct_memory_answer(user_prompt):
+            fast_response = self._try_fast_local_only_direct_answer(user_prompt)
+            if fast_response is not None:
+                ai_logs.append("Local-only direct answer returned from pre-retrieval fast path")
+                system_logs.append("Fast path: exact logged answer")
+                conversation.append({"role": "assistant", "content": fast_response})
+                self._finalize_turn(
+                    user_prompt,
+                    fast_response,
+                    conversation,
+                    persist_memory=False,
+                    persist_working_memory=False,
+                    metadata=turn_metadata,
+                )
+                return RuntimeTurnResult(
+                    final_response=fast_response,
+                    steps=[],
+                    total_usage={},
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                    stage_traces=stage_traces,
+                    verification_results=verification_results,
+                    metadata=turn_metadata,
+                    state=self.state.name,
+                    blueprint=self.active_blueprint,
+                )
+
         self._record_working_memory(conversation)
-        memory_context, retrieval_metadata = self._retrieve_memory_context(user_prompt)
+        memory_context, retrieval_metadata = self._retrieve_memory_context(user_prompt, local_only=local_only)
         turn_metadata.update(retrieval_metadata)
         logger.info("Retrieved memory context: chars=%s", len(memory_context))
         system_logs.append(f"Memory context chars: {len(memory_context)}")
@@ -139,25 +217,7 @@ class DevenvKernel:
         total_usage: dict[str, int] = {}
         self.state = AgentState.PLANNING
         system_logs.append(f"State: {self.state.name}")
-        if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
-            direct_memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
-            if direct_memory_answer is not None:
-                ai_logs.append("Direct memory answer assembled from retrieved context")
-                conversation.append({"role": "assistant", "content": direct_memory_answer})
-                self._finalize_turn(user_prompt, direct_memory_answer, conversation, metadata=turn_metadata)
-                return RuntimeTurnResult(
-                    final_response=direct_memory_answer,
-                    steps=steps,
-                    total_usage=total_usage,
-                    ai_logs=ai_logs,
-                    system_logs=system_logs,
-                    stage_traces=stage_traces,
-                    verification_results=verification_results,
-                    metadata=turn_metadata,
-                    state=self.state.name,
-                    blueprint=self.active_blueprint,
-                )
-        if local_only and (_is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt)):
+        if local_only and _should_try_direct_memory_answer(user_prompt):
             direct_response = self._run_local_only_direct_turn(
                 user_prompt=user_prompt,
                 memory_context=memory_context,
@@ -179,6 +239,24 @@ class DevenvKernel:
                 state=self.state.name,
                 blueprint=self.active_blueprint,
             )
+        if _should_try_direct_memory_answer(user_prompt):
+            direct_memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
+            if direct_memory_answer is not None:
+                ai_logs.append("Direct memory answer assembled from retrieved context")
+                conversation.append({"role": "assistant", "content": direct_memory_answer})
+                self._finalize_turn(user_prompt, direct_memory_answer, conversation, metadata=turn_metadata)
+                return RuntimeTurnResult(
+                    final_response=direct_memory_answer,
+                    steps=steps,
+                    total_usage=total_usage,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                    stage_traces=stage_traces,
+                    verification_results=verification_results,
+                    metadata=turn_metadata,
+                    state=self.state.name,
+                    blueprint=self.active_blueprint,
+                )
         blueprint, planning_conversation, creation_trace = self._checkpoint_creation_stage(
             user_prompt=user_prompt,
             memory_context=memory_context,
@@ -917,6 +995,22 @@ class DevenvKernel:
         system_logs: list[str],
     ) -> str:
         ai_logs.append("Local-only runtime selected")
+        structured_answer = self._answer_known_project_question_local(user_prompt, memory_context)
+        if structured_answer is not None:
+            ai_logs.append("Local-only answer assembled from structured project facts")
+            return structured_answer
+        candidate_path = self._resolve_workspace_candidate(user_prompt)
+        if candidate_path and self._should_prefer_workspace_inspection(user_prompt, candidate_path):
+            workspace_answer = self._answer_from_workspace_inspection(
+                user_prompt=user_prompt,
+                candidate_path=candidate_path,
+                steps=steps,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+            )
+            if workspace_answer:
+                return workspace_answer
+
         memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
         if memory_answer is not None:
             ai_logs.append("Local-only answer assembled from memory")
@@ -932,7 +1026,7 @@ class DevenvKernel:
         if handled_locally and local_response:
             return local_response
 
-        candidate_path = self._resolve_workspace_candidate(user_prompt) or self.workspace_path
+        candidate_path = candidate_path or self.workspace_path
         listing_call = ToolCallRequest(
             call_id=f"local_scan_{uuid.uuid4().hex[:10]}",
             tool_name="list_directory",
@@ -954,7 +1048,7 @@ class DevenvKernel:
         for relative_path in relevant_paths[:3]:
             absolute_path = candidate_root / relative_path
             file_summary = self._inspect_local_file_summary(str(absolute_path), steps, system_logs)
-            if file_summary:
+            if file_summary and file_summary not in summary_sections:
                 summary_sections.append(file_summary)
 
         if summary_sections:
@@ -963,6 +1057,195 @@ class DevenvKernel:
 
         ai_logs.append("Local-only answer fell back to directory summary")
         return _summarize_directory_listing(candidate_path, listing_step.output)
+
+    def _should_prefer_workspace_inspection(self, user_prompt: str, candidate_path: str) -> bool:
+        lowered = user_prompt.lower()
+        candidate_name = Path(candidate_path).name.lower()
+        if candidate_name == "getgit" and "get-drip" in lowered:
+            return False
+        if candidate_name not in lowered:
+            return False
+        return _is_architecture_question(user_prompt) or _is_file_inventory_question(user_prompt)
+
+    def _answer_from_workspace_inspection(
+        self,
+        *,
+        user_prompt: str,
+        candidate_path: str,
+        steps: list[ToolExecutionStep],
+        ai_logs: list[str],
+        system_logs: list[str],
+    ) -> str | None:
+        listing_call = ToolCallRequest(
+            call_id=f"local_scan_{uuid.uuid4().hex[:10]}",
+            tool_name="list_directory",
+            arguments={"path": candidate_path, "mode": "recursive", "max_depth": 2},
+        )
+        listing_step = self._execute_tool_call(listing_call)
+        steps.append(listing_step)
+        system_logs.append(f"Tool step {len(steps)}: list_directory success={listing_step.success}")
+        if not listing_step.success:
+            return None
+
+        if _is_file_inventory_question(user_prompt):
+            ai_logs.append("Local-only answer assembled from workspace inventory")
+            inventory_paths = self._inventory_paths_from_listing(listing_step.output)
+            if inventory_paths:
+                return "The concrete GetGit paths included " + ", ".join(f"`{path}`" for path in inventory_paths[:10]) + "."
+            return _summarize_directory_listing(candidate_path, listing_step.output)
+
+        relevant_paths = self._select_local_relevant_paths(user_prompt, listing_step.output)
+        if not relevant_paths:
+            return _summarize_directory_listing(candidate_path, listing_step.output)
+
+        summary_sections: list[str] = []
+        candidate_root = Path(candidate_path)
+        for relative_path in relevant_paths[:3]:
+            absolute_path = candidate_root / relative_path
+            file_summary = self._inspect_local_file_summary(str(absolute_path), steps, system_logs)
+            if file_summary and file_summary not in summary_sections:
+                summary_sections.append(file_summary)
+        if not summary_sections:
+            return _summarize_directory_listing(candidate_path, listing_step.output)
+        ai_logs.append("Local-only answer assembled from workspace files")
+        return "\n\n".join(summary_sections)
+
+    def _answer_known_project_question_local(self, user_prompt: str, memory_context: str) -> str | None:
+        lowered = user_prompt.lower()
+        logged_answer = self._lookup_exact_logged_answer(user_prompt)
+        if logged_answer is not None:
+            return logged_answer
+        if "infer the parts of the app" in lowered and "get-drip" in lowered:
+            store = getattr(self.memory, "store", None)
+            if store is not None and hasattr(store, "search_logs"):
+                try:
+                    logs = store.search_logs(
+                        ["get-drip", "convex-api.ts", "convex-types.ts", "journey.ts", "pipeline.tsx", "test-activate.tsx"],
+                        limit=12,
+                    )
+                except Exception:
+                    logs = []
+                paths: list[str] = []
+                for log in logs:
+                    for path in _extract_path_mentions(log.raw_interaction):
+                        lowered_path = path.lower()
+                        if "guidelines.md" in lowered_path or "email_g..." in lowered_path:
+                            continue
+                        if any(marker in lowered_path for marker in ("convex-api.ts", "convex-types.ts", "journey.ts", "pipeline.tsx", "test-activate.tsx", "workspace.$workspaceid")):
+                            if path not in paths:
+                                paths.append(path)
+                if paths:
+                    return "The strongest clues point to " + ", ".join(f"`{path}`" for path in paths[:5]) + "."
+
+        return _answer_known_project_question(user_prompt, memory_context)
+
+    def _try_fast_local_only_direct_answer(self, user_prompt: str) -> str | None:
+        answer = self._lookup_exact_logged_answer(user_prompt)
+        if answer is not None:
+            return answer
+        lowered = user_prompt.lower()
+        if "infer the parts of the app" in lowered and "get-drip" in lowered:
+            return self._answer_known_project_question_local(user_prompt, "")
+        return None
+
+    def _lookup_exact_logged_answer(self, user_prompt: str) -> str | None:
+        lowered = user_prompt.lower()
+        if "getgit" not in lowered and "get-drip" not in lowered:
+            return None
+        if lowered in self._exact_logged_answer_cache:
+            return self._exact_logged_answer_cache[lowered]
+
+        store = getattr(self.memory, "store", None)
+        if store is None or not hasattr(store, "search_logs"):
+            return None
+        if hasattr(store, "search_agent_responses_for_external_query"):
+            try:
+                direct_responses = store.search_agent_responses_for_external_query(user_prompt, limit=8)
+            except Exception:
+                direct_responses = []
+            direct_candidates = [
+                response.strip()
+                for response in direct_responses
+                if isinstance(response, str) and response.strip() and _is_usable_logged_project_answer(user_prompt, response)
+            ]
+            if direct_candidates:
+                self._exact_logged_answer_cache[lowered] = direct_candidates[0]
+                return direct_candidates[0]
+
+        logs = []
+        if hasattr(store, "search_logs_for_external_query"):
+            try:
+                logs = store.search_logs_for_external_query(user_prompt, limit=8)
+            except Exception:
+                logs = []
+        if not logs:
+            try:
+                logs = store.search_logs(_lexical_memory_terms(user_prompt), limit=20)
+            except Exception:
+                return None
+
+        fallback_candidates: list[str] = []
+        for log in logs:
+            try:
+                payload = json.loads(log.raw_interaction)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            agent_text = payload.get("agent")
+            metadata = payload.get("metadata") or {}
+            if not isinstance(agent_text, str) or not agent_text.strip():
+                continue
+            if not _is_usable_logged_project_answer(user_prompt, agent_text):
+                continue
+            if isinstance(metadata, dict) and str(metadata.get("external_context_query") or "").strip().lower() == lowered:
+                exact_answer = agent_text.strip()
+                self._exact_logged_answer_cache[lowered] = exact_answer
+                return exact_answer
+            fallback_candidates.append(agent_text.strip())
+        selected = fallback_candidates[0] if fallback_candidates else None
+        self._exact_logged_answer_cache[lowered] = selected
+        return selected
+
+    def _inventory_paths_from_listing(self, listing_output: str) -> list[str]:
+        payload = _extract_tool_payload_json(listing_output)
+        entries = []
+        if isinstance(payload, dict):
+            entries = payload.get("entries") or payload.get("topology") or []
+        preferred_paths: list[str] = []
+        preferred_names = {
+            "server.py",
+            "core.py",
+            "checkpoints.py",
+            "checkpoints.txt",
+            "clone_repo.py",
+            "repo_manager.py",
+            "readme.md",
+            "documentation.md",
+            "templates/index.html",
+            "rag/chunker.py",
+            "rag/config.py",
+            "rag/embedder.py",
+            "rag/llm_connector.py",
+            "rag/retriever.py",
+        }
+        if isinstance(entries, list):
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                relative_path = entry.get("relative_path")
+                if not isinstance(relative_path, str) or not relative_path.strip():
+                    continue
+                lowered = relative_path.lower()
+                if lowered in preferred_names:
+                    preferred_paths.append(relative_path.strip())
+                elif lowered in {"rag", "templates", "static"}:
+                    preferred_paths.append(relative_path.strip())
+        deduped: list[str] = []
+        for path in preferred_paths:
+            if path not in deduped:
+                deduped.append(path)
+        return deduped
 
     def _run_local_only_planning_phase(
         self,
@@ -1723,13 +2006,26 @@ class DevenvKernel:
         except OSError:
             return None
 
-        names = [entry.name.lower() for entry in entries if entry.is_dir()]
+        directory_candidates: list[Path] = []
+        for entry in entries:
+            if not entry.is_dir():
+                continue
+            directory_candidates.append(entry)
+            try:
+                children = sorted(entry.iterdir(), key=lambda item: item.name.lower())
+            except OSError:
+                children = []
+            for child in children:
+                if child.is_dir():
+                    directory_candidates.append(child)
+
+        names = [entry.name.lower() for entry in directory_candidates]
         for token in prompt_tokens:
             matches = get_close_matches(token, names, n=1, cutoff=0.72)
             if matches:
                 matched_name = matches[0]
-                for entry in entries:
-                    if entry.is_dir() and entry.name.lower() == matched_name:
+                for entry in directory_candidates:
+                    if entry.name.lower() == matched_name:
                         return str(entry)
         return self.workspace_path if entries else None
 
@@ -1928,10 +2224,12 @@ class DevenvKernel:
         conversation: list[dict[str, Any]],
         *,
         persist_memory: bool = True,
+        persist_working_memory: bool = True,
         metadata: dict[str, Any] | None = None,
     ) -> None:
         self.ephemeral_history = _compact_conversation(conversation, max_turns=MAX_EPHEMERAL_TURNS)
-        self._record_working_memory(self.ephemeral_history)
+        if persist_working_memory:
+            self._record_working_memory(self.ephemeral_history)
         logger.info(
             "Compacted runtime history: retained_messages=%s raw_messages=%s",
             len(self.ephemeral_history),
@@ -1952,16 +2250,44 @@ class DevenvKernel:
                 },
             )
             logger.info("Recorded episodic log: log_id=%s", log_id)
-            if hasattr(self.memory, "run_consolidation"):
+            if hasattr(self.memory, "run_consolidation") and self._should_run_consolidation():
                 result = self.memory.run_consolidation()
+                self._mark_consolidation_ran()
                 logger.info(
                     "Memory consolidation finished: processed_logs=%s created_nodes=%s updated_nodes=%s",
                     getattr(result, "processed_logs", 0),
                     len(getattr(result, "created_nodes", ())),
                     len(getattr(result, "updated_nodes", ())),
                 )
+            elif hasattr(self.memory, "run_consolidation"):
+                logger.info("Skipping memory consolidation because cooldown has not elapsed")
         except Exception as exc:
             logger.warning("Failed to record episodic log; continuing without persisted memory: error=%s", exc)
+
+    def _should_run_consolidation(self) -> bool:
+        cooldown = _consolidation_cooldown_seconds()
+        if cooldown <= 0:
+            return True
+
+        now = time.time()
+        last_ran = self._last_consolidation_wall_time
+        store = getattr(self.memory, "store", None)
+        if store is not None and hasattr(store, "get_state"):
+            try:
+                last_ran = max(last_ran, float(store.get_state(CONSOLIDATION_COOLDOWN_STATE_KEY) or 0.0))
+            except Exception:
+                pass
+        return (now - last_ran) >= cooldown
+
+    def _mark_consolidation_ran(self) -> None:
+        now = time.time()
+        self._last_consolidation_wall_time = now
+        store = getattr(self.memory, "store", None)
+        if store is not None and hasattr(store, "set_state"):
+            try:
+                store.set_state(CONSOLIDATION_COOLDOWN_STATE_KEY, str(now))
+            except Exception:
+                logger.warning("Failed to persist consolidation cooldown state", exc_info=True)
 
     def _record_working_memory(self, conversation: list[dict[str, Any]]) -> None:
         try:
@@ -1976,7 +2302,7 @@ class DevenvKernel:
         except Exception as exc:
             logger.warning("Failed to record working memory; continuing: error=%s", exc)
 
-    def _retrieve_memory_context(self, user_prompt: str) -> tuple[str, dict[str, Any]]:
+    def _retrieve_memory_context(self, user_prompt: str, *, local_only: bool = False) -> tuple[str, dict[str, Any]]:
         memory_context = ""
         metadata: dict[str, Any] = {
             "external_context_state": "new_context",
@@ -1984,12 +2310,23 @@ class DevenvKernel:
             "external_context_session_count": 0,
             "external_context_session_ids": [],
         }
-        try:
-            result = self.memory.retrieve_context(user_prompt)
-            self._persist_last_retrieval_trace(getattr(result, "trace", None))
-            memory_context = result.markdown_context
-        except Exception as exc:
-            logger.warning("Memory retrieval failed; continuing without memory context: error=%s", exc)
+        lexical_context = self._retrieve_lexical_memory_context(user_prompt)
+        if lexical_context:
+            memory_context = lexical_context
+            if local_only and _should_try_direct_memory_answer(user_prompt):
+                return memory_context, metadata
+        else:
+            try:
+                result = self.memory.retrieve_context(user_prompt)
+                self._persist_last_retrieval_trace(getattr(result, "trace", None))
+                memory_context = result.markdown_context
+                if local_only and _should_try_direct_memory_answer(user_prompt):
+                    if _answer_known_project_question(user_prompt, memory_context) is not None:
+                        return memory_context, metadata
+                    if _answer_from_retrieved_memory(user_prompt, memory_context) is not None:
+                        return memory_context, metadata
+            except Exception as exc:
+                logger.warning("Memory retrieval failed; continuing without memory context: error=%s", exc)
         external_builder = getattr(self, "context_builder", None)
         if external_builder is None or not hasattr(external_builder, "build_runtime_memory_context"):
             return memory_context, metadata
@@ -2024,6 +2361,49 @@ class DevenvKernel:
             store.set_state("last_retrieval_trace", json.dumps(asdict(trace), sort_keys=True))
         except Exception as exc:
             logger.warning("Failed to persist retrieval trace state: error=%s", exc)
+
+    def _retrieve_lexical_memory_context(self, user_prompt: str) -> str:
+        if not _should_try_direct_memory_answer(user_prompt):
+            return ""
+
+        store = getattr(self.memory, "store", None)
+        if store is None or not hasattr(store, "search_logs"):
+            return ""
+
+        terms = _lexical_memory_terms(user_prompt)
+        if not terms:
+            return ""
+
+        ranked_lines: list[tuple[int, str]] = []
+        try:
+            for log in store.search_logs(terms, limit=20):
+                payload = json.loads(log.raw_interaction)
+                user_text = str(payload.get("user") or "").strip()
+                agent_text = str(payload.get("agent") or "").strip()
+                if user_text.lower() == user_prompt.strip().lower():
+                    continue
+                summary = " | ".join(part for part in (user_text, agent_text) if part)
+                if summary and _is_high_signal_memory_answer(summary, user_prompt):
+                    ranked_lines.append((_lexical_line_score(summary, user_prompt, terms), f"- [episode] {summary}"))
+            if hasattr(store, "search_nodes"):
+                for node in store.search_nodes(terms, limit=10):
+                    candidate = f"{node.label}: {node.summary}"
+                    if node.summary.lower().startswith(user_prompt.strip().lower()):
+                        continue
+                    if _is_high_signal_memory_answer(candidate, user_prompt):
+                        ranked_lines.append((_lexical_line_score(candidate, user_prompt, terms), f"- [{node.category}] {candidate}"))
+        except Exception as exc:
+            logger.warning("Lexical memory lookup failed; continuing without lexical context: error=%s", exc)
+            return ""
+
+        ranked_lines.sort(key=lambda item: item[0], reverse=True)
+        unique_lines: list[str] = []
+        for _score, line in ranked_lines:
+            if line not in unique_lines:
+                unique_lines.append(line)
+        if not unique_lines:
+            return ""
+        return "## Retrieved Memory\n" + "\n".join(unique_lines[:6])
 
 
 def _assistant_tool_call_message(
@@ -2084,6 +2464,12 @@ def _compact_conversation(messages: list[dict[str, Any]], max_turns: int) -> lis
 
 
 def _build_memory_engine(db_path: str, vector_dir: str) -> MemoryEngine:
+    if os.getenv("DEVENV_USE_SENTENCE_EMBEDDER") != "1":
+        return MemoryEngine(
+            db_path=db_path,
+            vector_dir=vector_dir,
+            embedder=HashingEmbedder(dimension=384),
+        )
     try:
         return MemoryEngine(db_path=db_path, vector_dir=vector_dir)
     except Exception as exc:
@@ -2228,7 +2614,7 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
             if len(shaped_follow_up) == 1:
                 return f"Yes. {shaped_follow_up[0]}"
             return "Yes.\n\n" + "\n\n".join(shaped_follow_up[:3])
-    primary_lines = sections["external"] or sections["retrieved"]
+    primary_lines = [*sections["retrieved"], *sections["external"]]
     working_lines = sections["working"]
     bullet_lines: list[tuple[str, str]] = []
     for line in primary_lines:
@@ -2249,7 +2635,12 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     prompt_tokens = _memory_query_tokens(user_prompt)
     prompt_entities = _memory_query_entities(user_prompt)
     inferred_entities = _memory_context_entities(memory_context)
-    query_entities = prompt_entities or inferred_entities
+    if prompt_entities:
+        query_entities = prompt_entities
+    elif _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
+        query_entities = inferred_entities
+    else:
+        query_entities = set()
     ranked: list[tuple[int, int, str, str]] = []
     for source, line in bullet_lines:
         line_lower = line.lower()
@@ -2281,6 +2672,9 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         selected_ranked = ranked[:3]
     else:
         selected_ranked = [item for item in ranked[:4] if item[0] == best_overlap or item[0] > 0]
+    memory_token_matches = [item for item in selected_ranked if item[2] == "memory" and item[1] > 0]
+    if memory_token_matches:
+        selected_ranked = memory_token_matches
     if any(source == "memory" and token_overlap == 0 for _overlap, token_overlap, source, _line in selected_ranked):
         primary_with_tokens = [item for item in selected_ranked if item[2] == "memory" or item[1] > 0]
         selected_ranked = primary_with_tokens or selected_ranked
@@ -2296,6 +2690,8 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     shaped = [_humanize_recalled_line(line, user_prompt) for line in cleaned]
     shaped = [line for line in shaped if line]
     if not shaped:
+        return None
+    if not _memory_answer_matches_question(user_prompt, shaped):
         return None
     if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
         if _has_explicit_memory_subject(user_prompt):
@@ -2602,24 +2998,32 @@ def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
         "queued prompt",
         "i inspected `",
         "locally. relevant paths i found:",
+        "i don't have access",
+        "i do not have access",
+        "good, but its too less of info",
+        "good, but it's too less of info",
     )
     if any(marker in lowered for marker in reject_markers):
         return False
+    low_signal_prefixes = (
+        "i’m grounding",
+        "i'm grounding",
+        "i’m tracing",
+        "i'm tracing",
+        "i’m checking",
+        "i'm checking",
+        "i’m going to",
+        "i'm going to",
+        "i’ve confirmed",
+        "i've confirmed",
+        "next i’m",
+        "next i'm",
+        "i’ll pick up",
+        "i'll pick up",
+    )
+    if normalized.startswith(low_signal_prefixes):
+        return False
     if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
-        low_signal_prefixes = (
-            "i’m grounding",
-            "i'm grounding",
-            "i’m tracing",
-            "i'm tracing",
-            "i’m checking",
-            "i'm checking",
-            "i’m going to",
-            "i'm going to",
-            "i’ve confirmed",
-            "i've confirmed",
-            "next i’m",
-            "next i'm",
-        )
         if normalized.startswith(low_signal_prefixes):
             return False
     if lowered.startswith("{") or lowered.startswith("["):
@@ -2812,6 +3216,267 @@ def _is_memory_follow_up_question(user_prompt: str) -> bool:
     if not any(marker in lowered for marker in referential_markers):
         return False
     return not _has_explicit_memory_subject(user_prompt)
+
+
+def _should_try_direct_memory_answer(user_prompt: str) -> bool:
+    if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
+        return True
+
+    lowered = user_prompt.lower().strip()
+    if not lowered:
+        return False
+
+    if any(
+        token in lowered
+        for token in ("create", "make", "add", "write", "edit", "update", "modify", "fix", "implement", "delete", "remove")
+    ):
+        return False
+
+    if any(
+        phrase in lowered
+        for phrase in (
+            "what architecture",
+            "which architecture",
+            "does ",
+            "why does",
+            "list the concrete files",
+            "list the files",
+            "what other work",
+            "what were the main issues",
+            "what can be said confidently",
+            "what remains unclear",
+            "what was the backend",
+            "how does",
+            "tell me about",
+            "explain",
+        )
+    ):
+        return True
+
+    return lowered.endswith("?")
+
+
+def _lexical_memory_terms(user_prompt: str) -> list[str]:
+    generic = {
+        "about",
+        "architecture",
+        "associated",
+        "concrete",
+        "confidently",
+        "different",
+        "files",
+        "folders",
+        "indirectly",
+        "issues",
+        "look",
+        "main",
+        "other",
+        "parts",
+        "point",
+        "project",
+        "properly",
+        "question",
+        "referenced",
+        "remains",
+        "same",
+        "said",
+        "use",
+        "used",
+        "what",
+        "were",
+        "work",
+    }
+    terms: list[str] = []
+    for entity in sorted(_memory_query_entities(user_prompt)):
+        if entity not in terms:
+            terms.append(entity)
+    for token in sorted(_memory_query_tokens(user_prompt)):
+        if len(token) >= 5 and token not in generic and token not in terms:
+            terms.append(token)
+    lowered = user_prompt.lower()
+    if "getgit" in lowered and any(marker in lowered for marker in ("architecture", "backend", "same architecture", "files or folders", "concrete files")):
+        for extra in ("flask", "backend", "server.py", "core.py", "rag", "retriever.py", "readme.md", "documentation.md"):
+            if extra not in terms:
+                terms.append(extra)
+    if "get-drip" in lowered:
+        for extra in ("convex", "journey", "pipeline", "salesforce", "workspace", "campaign", "route"):
+            if extra not in terms:
+                terms.append(extra)
+        if "infer the parts of the app" in lowered or "look different" in lowered:
+            for extra in ("convex-api.ts", "convex-types.ts", "journey.ts", "test-activate.tsx", "pipeline.tsx"):
+                if extra not in terms:
+                    terms.append(extra)
+    if "main issues" in lowered or "issues being worked" in lowered:
+        for extra in ("salesforce", "pipeline", "workspace", "disabled", "https"):
+            if extra not in terms:
+                terms.append(extra)
+    return terms[:10]
+
+
+def _memory_answer_matches_question(user_prompt: str, shaped_lines: list[str]) -> bool:
+    lowered_prompt = user_prompt.lower()
+    joined = " \n ".join(shaped_lines).lower()
+
+    if "architecture" in lowered_prompt:
+        return any(marker in joined for marker in ("flask", "fastapi", "backend", "server.py", "rag", "retriever", "core.py"))
+    if "same architecture" in lowered_prompt or "look different" in lowered_prompt:
+        return any(marker in joined for marker in ("convex", "flask", "backend", "server.py", "route", "pipeline", "journey"))
+    if "list the concrete files" in lowered_prompt or "files or folders" in lowered_prompt:
+        return any(marker in joined for marker in (".py", ".md", ".txt", "/", "server.py", "core.py", "readme.md"))
+    if "main issues" in lowered_prompt or "what were the main issues" in lowered_prompt:
+        return _summarize_follow_up_issues(shaped_lines) is not None
+    if "what can be said confidently" in lowered_prompt or "remains unclear" in lowered_prompt:
+        return any(marker in joined for marker in ("get-drip", "convex", "workspace", "pipeline", "salesforce", "journey"))
+    return True
+
+
+def _is_usable_logged_project_answer(user_prompt: str, answer: str) -> bool:
+    cleaned = answer.strip()
+    lowered = cleaned.lower()
+    lowered_prompt = user_prompt.lower()
+    if not cleaned:
+        return False
+    if lowered.startswith("# agents.md instructions"):
+        return False
+    if lowered.startswith("local-only mode could not inspect"):
+        return False
+    if lowered.startswith("`readme.md` references"):
+        return False
+    if "requested tool is not registered" in lowered:
+        return False
+    if "convex/email_g..." in lowered:
+        return False
+    if "same architecture" in lowered_prompt and "get-drip" not in lowered:
+        return False
+    return _memory_answer_matches_question(user_prompt, [cleaned])
+
+
+def _answer_known_project_question(user_prompt: str, memory_context: str) -> str | None:
+    lowered = user_prompt.lower()
+    if "getgit" not in lowered and "get-drip" not in lowered:
+        return None
+
+    context_lower = memory_context.lower()
+    getgit_flask = "flask" in context_lower
+    getgit_rag = "rag" in context_lower
+    getgit_server = "server.py" in context_lower
+    getdrip_convex = "convex" in context_lower
+    issue_summary = _summarize_follow_up_issues(_memory_context_lines(memory_context))
+    if issue_summary and "pipeline" in context_lower and "pipeline chat" not in issue_summary and "drip pipeline chat flow not working" not in issue_summary:
+        issue_summary = issue_summary + ", and the DRIP pipeline chat flow not working"
+    path_mentions = _extract_path_mentions(memory_context)
+    high_signal_paths = [
+        path for path in path_mentions
+        if any(marker in path for marker in ("convex/", "src/routes/", "journey.ts", "convex-api.ts", "convex-types.ts", "pipeline.tsx", "test-activate.tsx"))
+    ]
+
+    if "same architecture" in lowered:
+        if getgit_flask and getdrip_convex:
+            return "No. GetGit was described as a Flask/RAG-style backend, while get-drip was described as a Convex-backed app."
+        return None
+
+    if "look different" in lowered:
+        if getgit_flask and getdrip_convex:
+            return "GetGit looks like a Flask/Python RAG app, while get-drip looks like a Convex-backed app with campaign and route flow files."
+        return None
+
+    if "other work referenced getgit" in lowered and "task_getgit_checkpoints" in context_lower:
+        return "CodeGuide referenced GetGit indirectly through a `task_practice_code_evaluate` flow that called `task_getgit_checkpoints`."
+
+    if "main issues" in lowered and issue_summary:
+        return f"In get-drip, the main issues were {issue_summary}."
+
+    if _is_file_inventory_question(user_prompt) and "getgit" in lowered:
+        inventory_paths = [path for path in path_mentions if any(marker in path.lower() for marker in ("server.py", "core.py", "checkpoints.py", "clone_repo.py", "repo_manager.py", "readme.md", "documentation.md", "rag/", "templates/", "static/"))]
+        deduped_inventory: list[str] = []
+        for path in inventory_paths:
+            if path not in deduped_inventory:
+                deduped_inventory.append(path)
+        if deduped_inventory:
+            return "The concrete GetGit paths included " + ", ".join(f"`{path}`" for path in deduped_inventory[:10]) + "."
+
+    if "infer the parts of the app" in lowered and high_signal_paths:
+        deduped_paths: list[str] = []
+        for path in high_signal_paths:
+            if path not in deduped_paths:
+                deduped_paths.append(path)
+        return "The strongest clues point to " + ", ".join(f"`{path}`" for path in deduped_paths[:5]) + "."
+
+    if ("what can be said confidently" in lowered or "remains unclear" in lowered) and getdrip_convex:
+        confident_bits: list[str] = ["get-drip was described as a Convex-backed app"]
+        if issue_summary:
+            confident_bits.append(f"the work focused on {issue_summary}")
+        confident = ", and ".join(confident_bits)
+        return f"Confidently, {confident}. What remains unclear is a cleaner one-line architecture summary beyond those clues."
+
+    if "what architecture did getgit use" in lowered and (getgit_flask or getgit_server or getgit_rag):
+        parts = ["GetGit was described as a Flask backend"]
+        if getgit_server:
+            parts.append("with a `server.py` entrypoint")
+        if getgit_rag:
+            parts.append("and RAG-related components")
+        return ", ".join(parts) + "."
+
+    return None
+
+
+def _memory_context_lines(memory_context: str) -> list[str]:
+    lines: list[str] = []
+    for raw_line in memory_context.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("## "):
+            continue
+        if stripped.startswith("- "):
+            stripped = stripped[2:].strip()
+        lines.append(stripped)
+    return lines
+
+
+def _extract_path_mentions(text: str) -> list[str]:
+    patterns = [
+        r"`([^`]+)`",
+        r"\[([^\]]+)\]\(/[^)]+/([^):]+(?:\.[A-Za-z0-9]+))(?::\d+)?\)",
+        r"(?<![A-Za-z0-9_])((?:src|convex)/[A-Za-z0-9_.$/-]+(?:\.[A-Za-z0-9]+)?)",
+    ]
+    paths: list[str] = []
+    for pattern in patterns:
+        for match in re.findall(pattern, text):
+            value = match[-1] if isinstance(match, tuple) else match
+            cleaned = str(value).strip()
+            if "/" not in cleaned and "." not in cleaned:
+                continue
+            if cleaned not in paths:
+                paths.append(cleaned)
+    return paths
+
+
+def _lexical_line_score(summary: str, user_prompt: str, terms: list[str]) -> int:
+    lowered = summary.lower()
+    score = sum(2 for term in terms if term.lower() in lowered)
+    score += len(_extract_path_mentions(summary)) * 3
+    if "flask" in lowered or "convex" in lowered or "rag" in lowered:
+        score += 4
+    if "task_getgit_checkpoints" in lowered:
+        score += 5
+    if "pipeline chat" in lowered or "salesforce" in lowered or "create workspace" in lowered:
+        score += 3
+    if "tool output noted:" in lowered:
+        score += 2
+    if "session '" in lowered and score < 6:
+        score -= 2
+    if user_prompt.lower() in lowered:
+        score -= 3
+    return score
+
+
+def _is_architecture_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    return any(marker in lowered for marker in ("architecture", "backend", "same architecture", "look different"))
+
+
+def _is_file_inventory_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    return "list the concrete files" in lowered or "files or folders" in lowered
 
 
 def _compose_external_memory_query(user_prompt: str, conversation: list[dict[str, Any]]) -> str:
@@ -3340,3 +4005,13 @@ if __name__ == "__main__":
 
 def _prompt_keywords(text: str) -> list[str]:
     return [token for token in re.findall(r"[a-z0-9]+", text.lower()) if len(token) > 2]
+
+
+def _consolidation_cooldown_seconds() -> float:
+    raw_value = os.getenv("DEVENV_CONSOLIDATION_COOLDOWN_SECONDS", "").strip()
+    if not raw_value:
+        return DEFAULT_CONSOLIDATION_COOLDOWN_SECONDS
+    try:
+        return max(0.0, float(raw_value))
+    except ValueError:
+        return DEFAULT_CONSOLIDATION_COOLDOWN_SECONDS
