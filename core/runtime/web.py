@@ -95,9 +95,7 @@ class DevenvWebApp:
     def build_health_payload(self) -> dict[str, object]:
         model = getattr(self.kernel.ai, "model", "unknown")
         ai_statuses = getattr(self.kernel.ai, "status", lambda: {})()
-        opencode_status = ai_statuses.get("opencode")
-        opencode_active = self.access_policy.can_use_backend("opencode") and (opencode_status is None or opencode_status.available)
-        active_backend = "opencode" if opencode_active else "groq"
+        active_backend = getattr(self.kernel.ai, "last_backend_used", "groq")
         active_provider_label = "OpenCode CLI" if active_backend == "opencode" else "Groq"
         return {
             "workspace_path": self.config.workspace_path,
@@ -112,6 +110,7 @@ class DevenvWebApp:
             "access_policy": self.access_policy.snapshot(),
             "ai_backends": {name: status.to_dict() for name, status in ai_statuses.items()},
             "active_backend": active_backend,
+            "preferred_backend": getattr(self.kernel.ai, "preferred_backend", "auto"),
         }
 
     def _available_models(self, *, current_model: str) -> list[str]:

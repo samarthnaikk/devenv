@@ -369,7 +369,7 @@ class CodexSessionProvider(ExternalSessionProvider):
                     messages.insert(0, message)
 
         messages = [message for message in messages if message.content.strip()]
-        messages = messages[:MAX_SESSION_MESSAGES]
+        messages = messages[-MAX_SESSION_MESSAGES:]
         if not preview:
             preview = next((message.content[:220] for message in messages if message.content.strip()), "")
         if not updated_at:

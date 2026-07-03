@@ -1,5 +1,6 @@
 const STORAGE_THEME_KEY = "devenv-ui-theme";
 const STORAGE_ACCESS_KEY = "devenv-ui-access";
+const STORAGE_BACKEND_KEY = "devenv-ui-backend";
 
 const state = {
   health: null,
@@ -23,7 +24,7 @@ const state = {
   persistedAccess: loadPersistedAccess(),
   backends: {},
   activeBackend: "groq",
-  preferredBackend: "auto",
+  preferredBackend: loadPreferredBackend(),
   selectedProvider: "codex",
   visibleSessionProviders: { codex: false, opencode: false },
   providerSessions: { codex: [], opencode: [] },
@@ -149,6 +150,7 @@ function bindEvents() {
     }
     if (event.target.matches("[data-backend-select]")) {
       state.preferredBackend = event.target.value || "auto";
+      persistPreferredBackend(state.preferredBackend);
       scheduleRender({ preserveComposerFocus: true });
     }
   });
@@ -194,6 +196,22 @@ async function handleAction(action, element) {
     try {
       await navigator.clipboard.writeText(transcriptText);
       showToast("Thread copied");
+    } catch {
+      showToast("Clipboard access failed");
+    }
+    return;
+  }
+
+  if (action === "copy-message") {
+    const messageId = element?.getAttribute("data-message-id") || "";
+    const message = state.transcript.find((entry) => entry.id === messageId);
+    if (!message) {
+      showToast("Message not found");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(String(message.content || "").trim());
+      showToast(`${roleLabel(message)} copied`);
     } catch {
       showToast("Clipboard access failed");
     }
@@ -331,6 +349,7 @@ async function submitPrompt() {
     const turnTokens = Number(result.total_usage?.total_tokens || 0);
     state.latestTurnTokens = turnTokens;
     state.latestElapsedMs = Number(result.elapsed_ms || Date.now() - state.runStartedAt);
+    state.activeBackend = result.backend_used || result.metadata?.backend_used || state.activeBackend;
     state.usageWindow = [...state.usageWindow, { timestamp: Date.now(), totalTokens: turnTokens }].filter(
       (entry) => Date.now() - entry.timestamp < 60000
     );
@@ -387,8 +406,9 @@ async function refreshHealth() {
   state.accessPolicy = healthPayload.access_policy || state.accessPolicy;
   state.backends = healthPayload.ai_backends || {};
   state.activeBackend = healthPayload.active_backend || "groq";
-  if (state.preferredBackend === "auto") {
-    state.preferredBackend = state.accessPolicy.backend_access?.opencode ? "opencode" : "auto";
+  if (!isValidBackendPreference(state.preferredBackend)) {
+    state.preferredBackend = healthPayload.preferred_backend || "auto";
+    persistPreferredBackend(state.preferredBackend);
   }
   if (!state.selectedProvider) {
     state.selectedProvider = "codex";
@@ -457,7 +477,10 @@ async function updateBackendAccess(backend, allowed) {
     });
     state.accessPolicy = payload;
     persistAccess(state.accessPolicy);
-    state.preferredBackend = allowed ? "opencode" : "auto";
+    if (!allowed && state.preferredBackend === "opencode") {
+      state.preferredBackend = "auto";
+      persistPreferredBackend(state.preferredBackend);
+    }
     await refreshHealth();
     showToast(`OpenCode backend ${allowed ? "enabled" : "disabled"}`);
   } finally {
@@ -672,13 +695,40 @@ function renderTranscript() {
               : renderRichText(item.content);
           return `
             <article class="thread-message ${item.role}">
-              <div class="thread-message-role">${escapeHtml(roleLabel(item))}</div>
+              <div class="thread-message-header">
+                <div class="thread-message-role">${escapeHtml(roleLabel(item))}</div>
+                ${
+                  item.role === "user" || item.role === "assistant" || item.role === "error"
+                    ? `
+                        <button
+                          type="button"
+                          class="message-copy-button"
+                          data-action="copy-message"
+                          data-message-id="${escapeAttribute(item.id)}"
+                          aria-label="Copy ${escapeAttribute(roleLabel(item))} message"
+                          title="Copy"
+                        >
+                          ${copyIcon()}
+                        </button>
+                      `
+                    : ""
+                }
+              </div>
               <div class="thread-message-body markdown-body">${body}</div>
             </article>
           `;
         })
         .join("")}
     </div>
+  `;
+}
+
+function copyIcon() {
+  return `
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.8"></rect>
+      <path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
   `;
 }
 
@@ -1378,6 +1428,25 @@ function persistAccess(accessPolicy) {
   try {
     window.localStorage.setItem(STORAGE_ACCESS_KEY, JSON.stringify(accessPolicy));
   } catch {}
+}
+
+function loadPreferredBackend() {
+  try {
+    const value = window.localStorage.getItem(STORAGE_BACKEND_KEY) || "auto";
+    return isValidBackendPreference(value) ? value : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+function persistPreferredBackend(value) {
+  try {
+    window.localStorage.setItem(STORAGE_BACKEND_KEY, isValidBackendPreference(value) ? value : "auto");
+  } catch {}
+}
+
+function isValidBackendPreference(value) {
+  return value === "auto" || value === "groq" || value === "opencode";
 }
 
 function showToast(message) {

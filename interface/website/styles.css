@@ -307,11 +307,43 @@ select {
   margin-bottom: 28px;
 }
 
-.thread-message-role {
+.thread-message-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 8px;
+}
+
+.thread-message-role {
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 600;
+}
+
+.message-copy-button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.message-copy-button:hover {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.message-copy-button svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .thread-message-body {

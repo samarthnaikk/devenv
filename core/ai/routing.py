@@ -175,7 +175,7 @@ class RoutingAICore:
         tool_names: Iterable[str] | None = None,
     ) -> AIResponse:
         statuses = self.status()
-        wants_opencode = self.preferred_backend == "opencode" or (self.preferred_backend == "auto" and self.opencode_enabled)
+        wants_opencode = self.opencode_enabled and self.preferred_backend in {"auto", "opencode"}
         if wants_opencode and statuses["opencode"].available:
             try:
                 response = self.opencode_ai.chat(
