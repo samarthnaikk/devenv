@@ -62,6 +62,20 @@ Start the local MCP tool server:
 devenv-mcp --workspace .
 ```
 
+## Screenshots
+
+### Startup chunking
+
+![Startup chunking progress](./docs/screenshots/devenv-startup-chunking.png)
+
+### Web UI, dark theme
+
+![Devenv web UI in dark theme](./docs/screenshots/devenv-web-dark.png)
+
+### Web UI, light theme
+
+![Devenv web UI in light theme](./docs/screenshots/devenv-web-light.png)
+
 ## Installed Commands
 
 After installation, the package exposes these commands:
