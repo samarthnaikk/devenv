@@ -246,7 +246,7 @@ async function handleAction(action, element) {
 
 async function submitPrompt() {
   const nextPrompt = state.prompt.trim();
-  if (!nextPrompt || state.isRunning || isCoolingDown()) {
+  if (!nextPrompt || state.isRunning || isCoolingDown() || isBudgetBlocked()) {
     return;
   }
 
@@ -575,9 +575,11 @@ function render(options = {}) {
                   placeholder="${escapeAttribute(
                     isCoolingDown()
                       ? `Cooldown active. Input unlocks in ${formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))}.`
-                      : "Ask Devenv what it remembers from earlier Codex or OpenCode sessions"
+                      : isBudgetBlocked()
+                        ? "Session budget reached. Increase the limit in the right rail to continue."
+                        : "Ask Devenv what it remembers from earlier Codex or OpenCode sessions"
                   )}"
-                  ${isCoolingDown() ? "disabled" : ""}
+                  ${isCoolingDown() || isBudgetBlocked() ? "disabled" : ""}
                 >${escapeHtml(state.prompt)}</textarea>
                 <div class="composer-toolbar">
                   <div class="composer-toolbar-left">
@@ -599,10 +601,12 @@ function render(options = {}) {
                       class="terminal-submit composer-submit"
                       type="submit"
                       data-submit
-                      ${state.isRunning || isCoolingDown() || !state.prompt.trim() ? "disabled" : ""}
+                      ${state.isRunning || isCoolingDown() || isBudgetBlocked() || !state.prompt.trim() ? "disabled" : ""}
                     >${
                       isCoolingDown()
                         ? formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))
+                        : isBudgetBlocked()
+                          ? "Blocked"
                         : state.isRunning
                           ? runningButtonLabel()
                           : "Ask"
@@ -993,7 +997,7 @@ function buildRetrievalStatus(metadata) {
 function syncComposerState() {
   const button = root.querySelector("[data-submit]");
   if (button) {
-    button.disabled = state.isRunning || isCoolingDown() || !state.prompt.trim();
+    button.disabled = state.isRunning || isCoolingDown() || isBudgetBlocked() || !state.prompt.trim();
   }
   const textarea = root.querySelector("[data-prompt-input]");
   if (textarea && textarea.value !== state.prompt) {
@@ -1180,6 +1184,10 @@ async function request(url, options = {}) {
 
 function isCoolingDown() {
   return Boolean(state.rateLimitInfo && state.rateLimitInfo.resetAt > state.clock);
+}
+
+function isBudgetBlocked() {
+  return Boolean(state.sessionBudgetTokens && state.sessionUsageTotal >= state.sessionBudgetTokens);
 }
 
 function loadTheme() {
