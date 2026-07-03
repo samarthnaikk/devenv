@@ -714,6 +714,45 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertNotIn("Episodic Memory", answer or "")
         self.assertNotIn("User asked:", answer or "")
 
+    def test_answer_from_retrieved_memory_formats_bug_list_as_markdown_sections(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "give get-drip bug list",
+            "\n".join(
+                [
+                    "## External Session Context",
+                    "- Assistant reported: get-drip had review feedback to support workspace creation links and fix the DRIP pipeline chat flow.",
+                    "- Assistant reported: get-drip still had bugs around root URL redirects and Convex generated imports.",
+                    "- Assistant reported: ISSUE-001 Critical Security Authentication bypass.",
+                    "- Assistant reported: ISSUE-002 Critical Security Open email relay.",
+                ]
+            ),
+        )
+
+        self.assertIsNotNone(answer)
+        self.assertIn("In get-drip, the recalled bug list was:", answer or "")
+        self.assertIn("**Core product bugs**", answer or "")
+        self.assertIn("- authentication bypass", answer or "")
+        self.assertIn("**PR review security findings**", answer or "")
+
+    def test_execute_turn_uses_direct_memory_answer_for_bug_list_prompt(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="\n".join(
+                [
+                    "## External Session Context",
+                    "- Assistant reported: get-drip had review feedback to support workspace creation links and fix the DRIP pipeline chat flow.",
+                    "- Assistant reported: get-drip still had bugs around root URL redirects and Convex generated imports.",
+                ]
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel.execute_turn("give get-drip bug list", local_only=False)
+
+        self.assertIn("recalled bug list", result.final_response or "")
+        self.assertIn("Core product bugs", result.final_response or "")
+
     def test_retrieve_memory_context_uses_recent_conversation_for_follow_up_matching(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])

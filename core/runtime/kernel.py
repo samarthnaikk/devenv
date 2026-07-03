@@ -2667,6 +2667,16 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         return None
 
     sections = _memory_context_sections(memory_context)
+    if _is_bug_list_question(user_prompt):
+        issue_lines = [
+            _humanize_recalled_line(_clean_memory_line(line), user_prompt)
+            for line in [*sections["working"], *sections["external"], *sections["retrieved"]]
+        ]
+        issue_lines = [line for line in issue_lines if line and _is_high_signal_memory_answer(line, user_prompt)]
+        issue_subject = _preferred_memory_subject(user_prompt, sections["external"] + sections["working"] + sections["retrieved"])
+        extracted_issues = _extract_follow_up_issues(issue_lines)
+        if extracted_issues:
+            return _format_issue_list_answer(issue_subject, extracted_issues)
     if _is_memory_follow_up_question(user_prompt) and sections["external"]:
         ordered_follow_up = _ordered_follow_up_lines(user_prompt, sections["external"])
         if ordered_follow_up:
@@ -2677,6 +2687,8 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
             synthesized_issues = _summarize_follow_up_issues(shaped_follow_up)
             if synthesized_issues:
                 subject = _infer_memory_subject(sections["working"] + sections["external"] + sections["retrieved"])
+                if _is_bug_list_question(user_prompt):
+                    return _format_issue_list_answer(subject, _extract_follow_up_issues(shaped_follow_up))
                 if subject:
                     return f"Yes. In {subject}, the main issues were {synthesized_issues}."
                 return f"Yes. The main issues were {synthesized_issues}."
@@ -2770,6 +2782,8 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         if _has_explicit_memory_subject(user_prompt):
             subject = _preferred_memory_subject(user_prompt, sections["external"] + sections["working"] + sections["retrieved"])
             issue_summary = _summarize_follow_up_issues(shaped)
+            if issue_summary and _is_bug_list_question(user_prompt):
+                return _format_issue_list_answer(subject, _extract_follow_up_issues(shaped))
             if subject and issue_summary:
                 return f"Yes. {subject} came up in prior sessions about {issue_summary}."
             if shaped[0].startswith("Session '"):
@@ -2872,7 +2886,7 @@ def _humanize_recalled_line(line: str, user_prompt: str) -> str:
     return cleaned.strip()
 
 
-def _summarize_follow_up_issues(lines: list[str]) -> str | None:
+def _extract_follow_up_issues(lines: list[str]) -> list[str]:
     issue_map = {
         "create_workspace_links": "Create Workspace accepting https links and converting them internally",
         "salesforce_state": "Salesforce being marked as coming soon or disabled",
@@ -2880,6 +2894,8 @@ def _summarize_follow_up_issues(lines: list[str]) -> str | None:
         "test_publish": "test/publish staying reachable after approvals",
         "root_redirects": "root URL redirects",
         "convex_imports": "Convex generated imports",
+        "auth_bypass": "authentication bypass",
+        "open_email_relay": "open email relay",
     }
     detected: list[str] = []
     for line in lines:
@@ -2901,14 +2917,59 @@ def _summarize_follow_up_issues(lines: list[str]) -> str | None:
             detected.append(issue_map["root_redirects"])
         if "convex generated imports" in lowered:
             detected.append(issue_map["convex_imports"])
+        if ("authentication bypass" in lowered or "auth bypass" in lowered) and "critical" in lowered:
+            detected.append(issue_map["auth_bypass"])
+        if "open email relay" in lowered:
+            detected.append(issue_map["open_email_relay"])
 
     unique_detected: list[str] = []
     for issue in detected:
         if issue not in unique_detected:
             unique_detected.append(issue)
-    if unique_detected:
-        return _join_human_list(unique_detected)
+    return unique_detected
+
+
+def _summarize_follow_up_issues(lines: list[str]) -> str | None:
+    issues = _extract_follow_up_issues(lines)
+    if issues:
+        return _join_human_list(issues)
     return None
+
+
+def _format_issue_list_answer(subject: str | None, issues: list[str]) -> str:
+    if not issues:
+        return "I could not recover a reliable bug list from prior context."
+    heading = f"In {subject}, the recalled bug list was:" if subject else "The recalled bug list was:"
+    grouped_sections: list[tuple[str, list[str]]] = []
+    product_issues = [
+        issue
+        for issue in issues
+        if issue
+        in {
+            "Create Workspace accepting https links and converting them internally",
+            "Salesforce being marked as coming soon or disabled",
+            "the DRIP pipeline chat flow not working",
+            "test/publish staying reachable after approvals",
+        }
+    ]
+    lingering_issues = [issue for issue in issues if issue in {"root URL redirects", "Convex generated imports"}]
+    security_issues = [issue for issue in issues if issue in {"authentication bypass", "open email relay"}]
+    remaining = [issue for issue in issues if issue not in product_issues and issue not in lingering_issues and issue not in security_issues]
+    if product_issues:
+        grouped_sections.append(("Core product bugs", product_issues))
+    if lingering_issues:
+        grouped_sections.append(("Lingering app issues", lingering_issues))
+    if security_issues:
+        grouped_sections.append(("PR review security findings", security_issues))
+    if remaining:
+        grouped_sections.append(("Other recalled issues", remaining))
+
+    lines = [heading, ""]
+    for title, section_issues in grouped_sections:
+        lines.append(f"**{title}**")
+        lines.extend(f"- {issue}" for issue in section_issues)
+        lines.append("")
+    return "\n".join(lines).strip()
 
 
 def _join_human_list(items: list[str]) -> str:
@@ -3316,6 +3377,23 @@ def _is_memory_follow_up_question(user_prompt: str) -> bool:
     return not _has_explicit_memory_subject(user_prompt)
 
 
+def _is_bug_list_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "bug list",
+            "list the bugs",
+            "exact bugs",
+            "what bugs did we fix",
+            "give get-drip bug list",
+            "give the bug list",
+            "main bugs",
+            "tracked bugs",
+        )
+    )
+
+
 def _should_try_direct_memory_answer(user_prompt: str) -> bool:
     if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
         return True
@@ -3347,6 +3425,10 @@ def _should_try_direct_memory_answer(user_prompt: str) -> bool:
             "how does",
             "tell me about",
             "explain",
+            "bug list",
+            "exact bugs",
+            "what bugs did we fix",
+            "list the bugs",
         )
     ):
         return True
@@ -3482,6 +3564,8 @@ def _answer_known_project_question(user_prompt: str, memory_context: str) -> str
         return "CodeGuide referenced GetGit indirectly through a `task_practice_code_evaluate` flow that called `task_getgit_checkpoints`."
 
     if "main issues" in lowered and issue_summary:
+        if _is_bug_list_question(user_prompt):
+            return _format_issue_list_answer("get-drip", _extract_follow_up_issues(_memory_context_lines(memory_context)))
         return f"In get-drip, the main issues were {issue_summary}."
 
     if _is_file_inventory_question(user_prompt) and "getgit" in lowered:
