@@ -171,6 +171,12 @@ async function handleAction(action, element) {
     return;
   }
 
+  if (action === "toggle-thinking-details") {
+    state.showThinking = !state.showThinking;
+    scheduleRender({ preserveComposerFocus: true });
+    return;
+  }
+
   if (action === "new-thread") {
     state.prompt = "";
     state.transcript = [];
@@ -638,7 +644,7 @@ function render(options = {}) {
                   <div class="composer-toolbar-right">
                     <label class="terminal-toggle inline-toggle${state.showThinking ? " enabled" : ""}">
                       <input type="checkbox" data-thinking-toggle ${state.showThinking ? "checked" : ""} />
-                      <span>Show raw thinking</span>
+                      <span>Show thinking details</span>
                     </label>
                     <div class="composer-meta">${escapeHtml(buildComposerMeta(provider, contextBudget))}</div>
                     <button
@@ -658,7 +664,7 @@ function render(options = {}) {
                     }</button>
                   </div>
                 </div>
-                ${state.isRunning ? `<div class="composer-running-line">${renderRunningTicker()}</div>` : ""}
+                ${state.isRunning ? `<div class="composer-running-line">${renderRunningTicker(currentPendingThinkingContent())}</div>` : ""}
               </div>
               <div class="composer-hint">Press Cmd/Ctrl + Enter to search memory</div>
             </form>
@@ -962,7 +968,11 @@ function renderUsageCard(contextBudget) {
       </div>
       ${budgetState.blocked ? `<button type="button" class="context-action-button" data-action="increase-budget" data-increase="1000">Increase by 1000</button>` : ""}
       <div class="runtime-summary">
-        ${state.isRunning ? renderRunningTicker() : `<span class="thinking-live-text">${escapeHtml(state.activeBackend)} backend ready · ${escapeHtml(contextBudget.remainingLabel)} in the current minute</span>`}
+        ${
+          state.isRunning
+            ? renderRunningTicker(currentPendingThinkingContent())
+            : `<span class="thinking-live-text">${escapeHtml(state.activeBackend)} backend ready · ${escapeHtml(contextBudget.remainingLabel)} in the current minute</span>`
+        }
       </div>
     </section>
   `;
@@ -1001,15 +1011,21 @@ function buildBudgetState() {
 
 function renderThinkingSummary(content, pending) {
   const steps = parseThinkingEntries(content);
-  const selected = steps.slice(-4);
+  const latest = steps[steps.length - 1] || (pending ? "Checking memory" : "Finished checking memory");
   const headline = pending ? "Devenv is checking memory" : "Devenv finished checking memory";
   return `
-    <div class="thinking-card">
-      <strong>${escapeHtml(headline)}</strong>
-      ${pending ? `<div class="thinking-live-row">${renderRunningTicker()}</div>` : ""}
-      <ul>
-        ${selected.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
-      </ul>
+    <div class="thinking-card thinking-card-collapsed">
+      <div class="thinking-card-topline">
+        <strong>${escapeHtml(headline)}</strong>
+        <button type="button" class="thinking-toggle-button" data-action="toggle-thinking-details">
+          Show details
+        </button>
+      </div>
+      ${
+        pending
+          ? `<div class="thinking-live-row">${renderRunningTicker(content)}</div>`
+          : `<div class="thinking-collapsed-note">${escapeHtml(latest)}</div>`
+      }
     </div>
   `;
 }
@@ -1019,14 +1035,19 @@ function renderThinkingDetail(content, pending) {
   const headline = pending ? "Live reasoning trace" : "Completed reasoning trace";
   return `
     <div class="thinking-card thinking-card-detailed">
-      <strong>${escapeHtml(headline)}</strong>
+      <div class="thinking-card-topline">
+        <strong>${escapeHtml(headline)}</strong>
+        <button type="button" class="thinking-toggle-button" data-action="toggle-thinking-details">
+          Close details
+        </button>
+      </div>
       <div class="thinking-detail-meta">
         <span data-live-elapsed>${escapeHtml(
           formatDuration(state.isRunning ? Date.now() - state.runStartedAt : state.latestElapsedMs || 0)
         )}</span>
         <span>${escapeHtml(state.activeBackend)}</span>
       </div>
-      ${pending ? `<div class="thinking-live-row">${renderRunningTicker()}</div>` : ""}
+      ${pending ? `<div class="thinking-live-row">${renderRunningTicker(content)}</div>` : ""}
       <ol class="thinking-step-list">
         ${steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
       </ol>
@@ -1099,14 +1120,23 @@ function formatThinkingFromResult(result) {
   return formatThinkingBlock(lines);
 }
 
-function renderRunningTicker() {
+function renderRunningTicker(content = "") {
   return `
-    <span class="thinking-live-indicator" aria-hidden="true"></span>
-    <span class="thinking-live-text" data-running-frame>${escapeHtml(currentRunningFrame())}</span>
+    <span class="thinking-live-indicator" aria-hidden="true">⚡</span>
+    <span class="thinking-live-text" data-running-frame>${escapeHtml(currentRunningFrame(content))}</span>
+    <span class="thinking-live-dots" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </span>
   `;
 }
 
-function currentRunningFrame() {
+function currentRunningFrame(content = "") {
+  const steps = parseThinkingEntries(content).filter(Boolean);
+  if (steps.length) {
+    const recentSteps = Array.from(new Set(steps.slice(-4)));
+    const index = Math.floor(state.clock / 1400) % recentSteps.length;
+    return recentSteps[index];
+  }
   const index = Math.floor(state.clock / 1200) % RUNNING_STATUS_FRAMES.length;
   return RUNNING_STATUS_FRAMES[index];
 }
@@ -1149,7 +1179,7 @@ function updateLiveRuntimeUI() {
   for (const node of root.querySelectorAll("[data-live-elapsed]")) {
     node.textContent = elapsed;
   }
-  const frame = currentRunningFrame();
+  const frame = currentRunningFrame(currentPendingThinkingContent());
   for (const node of root.querySelectorAll("[data-running-frame]")) {
     node.textContent = frame;
   }
@@ -1157,6 +1187,11 @@ function updateLiveRuntimeUI() {
   if (button) {
     button.textContent = runningButtonLabel();
   }
+}
+
+function currentPendingThinkingContent() {
+  const pendingEntry = [...state.transcript].reverse().find((entry) => entry.role === "thinking" && entry.pending);
+  return pendingEntry ? String(pendingEntry.content || "") : "";
 }
 
 function captureUIState() {
