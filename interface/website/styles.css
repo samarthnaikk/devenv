@@ -121,7 +121,6 @@ select {
   padding-right: 4px;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
   scrollbar-gutter: stable;
 }
 

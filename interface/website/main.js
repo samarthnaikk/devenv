@@ -513,7 +513,7 @@ function scheduleRender(options = {}) {
 }
 
 function render(options = {}) {
-  const composerState = captureComposerState();
+  const uiState = captureUIState();
   document.body.dataset.theme = state.theme;
 
   if (state.bootError) {
@@ -635,7 +635,7 @@ function render(options = {}) {
   if (textarea) {
     autosizeComposer(textarea);
   }
-  restoreComposerState(composerState, options);
+  restoreUIState(uiState, options);
   syncComposerState();
 }
 
@@ -1040,30 +1040,40 @@ function syncComposerState() {
   }
 }
 
-function captureComposerState() {
+function captureUIState() {
   const activeElement = document.activeElement;
   const textarea = root.querySelector("[data-prompt-input]");
-  const scroller = root.querySelector(".terminal-scroll-region");
+  const transcriptScroller = root.querySelector(".terminal-scroll-region");
+  const railScroller = root.querySelector(".side-rail");
   return {
     composerFocused: Boolean(activeElement && textarea && activeElement === textarea),
     selectionStart: textarea?.selectionStart ?? null,
     selectionEnd: textarea?.selectionEnd ?? null,
-    scrollTop: scroller?.scrollTop ?? 0,
-    nearBottom: scroller ? scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40 : false,
+    transcriptScrollTop: transcriptScroller?.scrollTop ?? 0,
+    transcriptNearBottom: transcriptScroller
+      ? transcriptScroller.scrollHeight - transcriptScroller.scrollTop - transcriptScroller.clientHeight < 40
+      : false,
+    railScrollTop: railScroller?.scrollTop ?? 0,
   };
 }
 
-function restoreComposerState(previous, options = {}) {
+function restoreUIState(previous, options = {}) {
   const textarea = root.querySelector("[data-prompt-input]");
-  const scroller = root.querySelector(".terminal-scroll-region");
-  if (scroller) {
-    scroller.scrollTop = previous?.nearBottom ? scroller.scrollHeight : previous?.scrollTop || 0;
+  const transcriptScroller = root.querySelector(".terminal-scroll-region");
+  const railScroller = root.querySelector(".side-rail");
+  if (transcriptScroller) {
+    transcriptScroller.scrollTop = previous?.transcriptNearBottom
+      ? transcriptScroller.scrollHeight
+      : previous?.transcriptScrollTop || 0;
+  }
+  if (railScroller) {
+    railScroller.scrollTop = previous?.railScrollTop || 0;
   }
   if (!textarea) {
     return;
   }
   if (options.focusComposer || options.preserveComposerFocus || previous?.composerFocused) {
-    textarea.focus();
+    textarea.focus({ preventScroll: true });
     const end = textarea.value.length;
     const start = options.moveCaretToEnd ? end : previous?.selectionStart ?? end;
     const finish = options.moveCaretToEnd ? end : previous?.selectionEnd ?? end;
