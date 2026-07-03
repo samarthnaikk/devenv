@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -10,6 +12,53 @@ from core.runtime.models import ExternalSessionProviderConfig, PreparedPromptReq
 
 
 class ContextBuilderServiceTest(unittest.TestCase):
+    @staticmethod
+    def _create_opencode_db(path: Path) -> None:
+        connection = sqlite3.connect(path)
+        try:
+            connection.executescript(
+                """
+                create table session (
+                    id text primary key,
+                    project_id text not null,
+                    parent_id text,
+                    slug text not null,
+                    directory text not null,
+                    title text not null,
+                    version text not null,
+                    share_url text,
+                    summary_additions integer,
+                    summary_deletions integer,
+                    summary_files integer,
+                    summary_diffs text,
+                    revert text,
+                    permission text,
+                    time_created integer not null,
+                    time_updated integer not null,
+                    time_compacting integer,
+                    time_archived integer,
+                    workspace_id text
+                );
+                create table message (
+                    id text primary key,
+                    session_id text not null,
+                    time_created integer not null,
+                    time_updated integer not null,
+                    data text not null
+                );
+                create table part (
+                    id text primary key,
+                    message_id text not null,
+                    session_id text not null,
+                    time_created integer not null,
+                    time_updated integer not null,
+                    data text not null
+                );
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
     def test_codex_provider_parses_session_index_and_detail(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir) / "workspace"
@@ -250,6 +299,122 @@ class ContextBuilderServiceTest(unittest.TestCase):
 
         self.assertFalse(health.available)
         self.assertEqual(sessions, [])
+
+    def test_opencode_provider_reads_sqlite_sessions_and_chunks_runtime_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+            db_path = Path(tempdir) / "opencode.db"
+            self._create_opencode_db(db_path)
+
+            connection = sqlite3.connect(db_path)
+            try:
+                connection.execute(
+                    "insert into session (id, project_id, parent_id, slug, directory, title, version, time_created, time_updated, workspace_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        "ses_getdrip_1",
+                        "proj_1",
+                        None,
+                        "get-drip-review",
+                        "/Users/samarthnaik/Desktop/LoopedIn/get-drip",
+                        "Review get-drip bugs",
+                        "1",
+                        1782809000000,
+                        1782809100000,
+                        None,
+                    ),
+                )
+                connection.execute(
+                    "insert into message (id, session_id, time_created, time_updated, data) values (?, ?, ?, ?, ?)",
+                    (
+                        "msg_user_1",
+                        "ses_getdrip_1",
+                        1782809001000,
+                        1782809001000,
+                        json.dumps({"role": "user"}),
+                    ),
+                )
+                connection.execute(
+                    "insert into part (id, message_id, session_id, time_created, time_updated, data) values (?, ?, ?, ?, ?, ?)",
+                    (
+                        "prt_user_1",
+                        "msg_user_1",
+                        "ses_getdrip_1",
+                        1782809001001,
+                        1782809001001,
+                        json.dumps({"type": "text", "text": "What exact bugs did we fix in get-drip?"}),
+                    ),
+                )
+                connection.execute(
+                    "insert into message (id, session_id, time_created, time_updated, data) values (?, ?, ?, ?, ?)",
+                    (
+                        "msg_assistant_1",
+                        "ses_getdrip_1",
+                        1782809002000,
+                        1782809002000,
+                        json.dumps({"role": "assistant"}),
+                    ),
+                )
+                connection.execute(
+                    "insert into part (id, message_id, session_id, time_created, time_updated, data) values (?, ?, ?, ?, ?, ?)",
+                    (
+                        "prt_reason_1",
+                        "msg_assistant_1",
+                        "ses_getdrip_1",
+                        1782809002001,
+                        1782809002001,
+                        json.dumps({"type": "reasoning", "text": "The PR review found an authentication bypass and an open email relay."}),
+                    ),
+                )
+                connection.execute(
+                    "insert into part (id, message_id, session_id, time_created, time_updated, data) values (?, ?, ?, ?, ?, ?)",
+                    (
+                        "prt_tool_1",
+                        "msg_assistant_1",
+                        "ses_getdrip_1",
+                        1782809002002,
+                        1782809002002,
+                        json.dumps(
+                            {
+                                "type": "tool",
+                                "tool": "bash",
+                                "state": {
+                                    "title": "Review findings",
+                                    "output": "ISSUE-001 Critical Security Authentication bypass. ISSUE-002 Critical Security Open email relay.",
+                                },
+                            }
+                        ),
+                    ),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="opencode", root_path=str(db_path)),
+                ),
+            )
+            sessions = service.list_sessions("opencode")
+            detail = service.get_session("opencode", "ses_getdrip_1")
+            service.set_runtime_allowed_providers({"opencode"})
+            for _ in range(40):
+                if service.indexing_status()["completed"]:
+                    break
+                time.sleep(0.05)
+            context, session_ids, metadata = service.build_runtime_memory_context(
+                "what exact bugs did we fix in get-drip?",
+                provider_name="opencode",
+                max_lines=6,
+            )
+
+        self.assertEqual(len(sessions), 1)
+        self.assertEqual(sessions[0].workspace_path, "/Users/samarthnaik/Desktop/LoopedIn/get-drip")
+        self.assertTrue(any("authentication bypass" in message.content.lower() for message in detail.messages))
+        self.assertEqual(session_ids, ("ses_getdrip_1",))
+        self.assertTrue(metadata["index_ready"])
+        self.assertIn("open email relay", context.lower())
 
     def test_prepare_prompt_merges_session_and_workspace_context(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
