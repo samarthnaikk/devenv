@@ -30,8 +30,8 @@ const state = {
   sessionDetails: {},
   sessionLoading: false,
   accessUpdating: false,
-  sessionBudgetTokens: null,
-  budgetInput: "",
+  sessionBudgetTokens: 25000,
+  budgetInput: "25000",
   sessionUsageTotal: 0,
   latestTurnTokens: 0,
   latestElapsedMs: 0,
@@ -598,7 +598,7 @@ function render(options = {}) {
                       <input type="checkbox" data-thinking-toggle ${state.showThinking ? "checked" : ""} />
                       <span>Show raw thinking</span>
                     </label>
-                    <div class="composer-meta">${escapeHtml(`${provider} · ${contextBudget.remainingLabel}`)}</div>
+                    <div class="composer-meta">${escapeHtml(buildComposerMeta(provider, contextBudget))}</div>
                     <button
                       class="terminal-submit composer-submit"
                       type="submit"
@@ -645,7 +645,11 @@ function renderTranscript() {
       ${state.transcript
         .map((item) => {
           const body =
-            item.role === "thinking" && !state.showThinking ? renderThinkingSummary(item.content, item.pending) : renderRichText(item.content);
+            item.role === "thinking"
+              ? state.showThinking
+                ? renderThinkingDetail(item.content, item.pending)
+                : renderThinkingSummary(item.content, item.pending)
+              : renderRichText(item.content);
           return `
             <article class="thread-message ${item.role}">
               <div class="thread-message-role">${escapeHtml(roleLabel(item))}</div>
@@ -806,6 +810,7 @@ function renderProviderSessionGroup(provider, label) {
 
 function renderUsageCard(contextBudget) {
   const budgetState = buildBudgetState();
+  const usageSummary = buildUsageSummary();
   return `
     <section class="rail-card">
       <div class="rail-card-header">
@@ -835,10 +840,12 @@ function renderUsageCard(contextBudget) {
         <div class="chart-block">
           <div class="chart-label">Per-turn tokens</div>
           ${renderUsageBars(state.usageWindow)}
+          <div class="chart-footer">${escapeHtml(usageSummary.turnsLabel)}</div>
         </div>
         <div class="chart-block">
-          <div class="chart-label">Recent token window</div>
-          <div class="context-note">${escapeHtml(contextBudget.remainingLabel)} remaining in the rolling limit view</div>
+          <div class="chart-label">Session token trend</div>
+          ${renderCumulativeUsageChart(state.usageWindow)}
+          <div class="context-note">${escapeHtml(usageSummary.sessionLabel)}</div>
         </div>
       </div>
       <div class="budget-editor">
@@ -853,30 +860,35 @@ function renderUsageCard(contextBudget) {
       </div>
       ${budgetState.blocked ? `<button type="button" class="context-action-button" data-action="increase-budget" data-increase="1000">Increase by 1000</button>` : ""}
       <div class="runtime-summary">
-        ${state.isRunning ? renderRunningTicker() : `<span class="thinking-live-text">${escapeHtml(state.activeBackend)} backend ready</span>`}
+        ${state.isRunning ? renderRunningTicker() : `<span class="thinking-live-text">${escapeHtml(state.activeBackend)} backend ready · ${escapeHtml(contextBudget.remainingLabel)} in the current minute</span>`}
       </div>
     </section>
   `;
 }
 
 function renderUsageBars(entries) {
-  if (!entries.length) {
-    return `<div class="rail-empty compact">No token samples yet.</div>`;
-  }
-  const maxValue = Math.max(...entries.map((entry) => entry.totalTokens), 1);
-  const bars = entries
-    .slice(-12)
+  const points = entries.slice(-12);
+  const maxValue = Math.max(...points.map((entry) => entry.totalTokens), 1);
+  const bars = points
     .map((entry, index) => {
       const height = Math.max(Math.round((entry.totalTokens / maxValue) * 52), 4);
       return `<rect x="${index * 12}" y="${60 - height}" width="8" height="${height}" rx="3"></rect>`;
     })
     .join("");
-  return `<svg class="usage-chart" viewBox="0 0 144 60" preserveAspectRatio="none">${bars}</svg>`;
+  const placeholders = Array.from({ length: Math.max(12 - points.length, 0) }, (_, index) => {
+    const x = (points.length + index) * 12;
+    return `<rect class="placeholder-bar" x="${x}" y="54" width="8" height="6" rx="3"></rect>`;
+  }).join("");
+  return `<svg class="usage-chart" viewBox="0 0 144 60" preserveAspectRatio="none">
+    <line class="usage-grid-line" x1="0" y1="59" x2="144" y2="59"></line>
+    ${placeholders}
+    ${bars}
+  </svg>`;
 }
 
 function buildBudgetState() {
   if (!state.sessionBudgetTokens) {
-    return { blocked: false, label: "No session token budget set." };
+    return { blocked: false, label: "Set a session token budget to avoid unexpected usage spikes." };
   }
   const remaining = Math.max(state.sessionBudgetTokens - state.sessionUsageTotal, 0);
   if (remaining <= 0) {
@@ -896,6 +908,24 @@ function renderThinkingSummary(content, pending) {
       <ul>
         ${selected.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
       </ul>
+    </div>
+  `;
+}
+
+function renderThinkingDetail(content, pending) {
+  const steps = parseThinkingEntries(content);
+  const headline = pending ? "Live reasoning trace" : "Completed reasoning trace";
+  return `
+    <div class="thinking-card thinking-card-detailed">
+      <strong>${escapeHtml(headline)}</strong>
+      <div class="thinking-detail-meta">
+        <span>${escapeHtml(formatDuration(state.isRunning ? Date.now() - state.runStartedAt : state.latestElapsedMs || 0))}</span>
+        <span>${escapeHtml(state.activeBackend)}</span>
+      </div>
+      ${pending ? `<div class="thinking-live-row">${renderRunningTicker()}</div>` : ""}
+      <ol class="thinking-step-list">
+        ${steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+      </ol>
     </div>
   `;
 }
@@ -1115,6 +1145,46 @@ function renderParagraphs(text) {
 
 function renderInlineMarkdown(text) {
   return escapeHtml(text || "").replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+function renderCumulativeUsageChart(entries) {
+  const points = entries.slice(-12);
+  const cumulative = [];
+  let running = 0;
+  for (const entry of points) {
+    running += entry.totalTokens;
+    cumulative.push(running);
+  }
+  const maxValue = Math.max(...cumulative, 1);
+  const path = cumulative
+    .map((value, index) => {
+      const x = points.length === 1 ? 72 : (index / Math.max(points.length - 1, 1)) * 144;
+      const y = 56 - (value / maxValue) * 44;
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(" ");
+  return `<svg class="usage-chart cumulative" viewBox="0 0 144 60" preserveAspectRatio="none">
+    <line class="usage-grid-line" x1="0" y1="59" x2="144" y2="59"></line>
+    ${path ? `<path class="usage-line" d="${path}"></path>` : `<path class="usage-line usage-line-empty" d="M 0 56 L 144 56"></path>`}
+  </svg>`;
+}
+
+function buildUsageSummary() {
+  const turns = state.usageWindow.length;
+  const sessionTotal = state.sessionUsageTotal || 0;
+  return {
+    turnsLabel: turns ? `${turns} recent turn${turns === 1 ? "" : "s"} sampled` : "Waiting for the first turn to plot usage",
+    sessionLabel: sessionTotal ? `${sessionTotal} total session tokens tracked so far` : "Session graph will rise as turns complete",
+  };
+}
+
+function buildComposerMeta(provider, contextBudget) {
+  const backendLabel = `${provider}`;
+  if (state.sessionBudgetTokens) {
+    const remaining = Math.max(state.sessionBudgetTokens - state.sessionUsageTotal, 0);
+    return `${backendLabel} · session budget ${remaining}/${state.sessionBudgetTokens}`;
+  }
+  return `${backendLabel} · minute window ${contextBudget.remainingLabel}`;
 }
 
 function selectVisibleAssistantResponse(result) {
