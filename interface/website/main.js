@@ -410,6 +410,7 @@ async function refreshHealth(options = {}) {
     return state.health;
   }
   state.healthRefreshPending = true;
+  const previousIndexing = state.health?.indexing || null;
   const healthPayload = await request("/api/health");
   try {
     state.health = healthPayload;
@@ -428,7 +429,9 @@ async function refreshHealth(options = {}) {
     if (!state.selectedProvider) {
       state.selectedProvider = "codex";
     }
-    if (!options.silent) {
+    const nextIndexing = healthPayload.indexing || null;
+    const indexingChanged = JSON.stringify(previousIndexing || {}) !== JSON.stringify(nextIndexing || {});
+    if (!options.silent || indexingChanged) {
       scheduleRender({ preserveComposerFocus: true });
     }
     return healthPayload;

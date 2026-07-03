@@ -697,8 +697,15 @@ class OpenCodeSessionProvider(ExternalSessionProvider):
 
     def health(self) -> ExternalSourceHealth:
         available = self.config.enabled and self.root.exists()
-        session_count = len(self.list_sessions()) if available else 0
-        summary = f"{session_count} OpenCode session(s) available" if available else "OpenCode archive not configured"
+        session_count = 0
+        summary = "OpenCode archive not configured"
+        if available:
+            try:
+                session_count = len(self.list_sessions())
+                summary = f"{session_count} OpenCode session(s) available"
+            except sqlite3.Error as exc:
+                available = False
+                summary = f"OpenCode archive unavailable: {exc}"
         return ExternalSourceHealth(
             provider=self.name,
             enabled=self.config.enabled,

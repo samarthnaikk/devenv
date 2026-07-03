@@ -347,6 +347,25 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertTrue(health["indexing"]["completed"])
         self.assertEqual(health["indexing"]["total_sessions"], 1)
 
+    def test_health_payload_tolerates_unreadable_opencode_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            bad_opencode_path = Path(tempdir) / "missing-opencode.db"
+            app = DevenvWebApp(
+                RunConfig(
+                    workspace_path=tempdir,
+                    external_session_configs=(
+                        ExternalSessionProviderConfig(provider="opencode", root_path=str(bad_opencode_path)),
+                    ),
+                ),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            health = app.build_health_payload()
+
+        self.assertEqual(len(health["context_sources"]), 1)
+        self.assertEqual(health["context_sources"][0]["provider"], "opencode")
+        self.assertFalse(health["context_sources"][0]["available"])
+
 
 if __name__ == "__main__":
     unittest.main()
