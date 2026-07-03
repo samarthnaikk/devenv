@@ -212,17 +212,19 @@ async function handleAction(action, element) {
 
   if (action === "select-session") {
     const sessionId = element?.getAttribute("data-session-id") || "";
+    const provider = element?.getAttribute("data-provider") || state.selectedProvider;
     if (!sessionId) {
       return;
     }
+    state.selectedProvider = provider;
     state.selectedSessionId = sessionId;
     await refreshSelectedSession();
     return;
   }
 
   if (action === "refresh-sessions") {
-    await refreshProviderSessions(state.selectedProvider);
-    showToast(`Refreshed ${state.selectedProvider} sessions`);
+    await refreshAllSessions();
+    showToast("Refreshed accessible sessions");
     return;
   }
 
@@ -720,10 +722,7 @@ function renderProviderAccessRow(provider, label, allowed) {
 }
 
 function renderSessionsCard() {
-  const provider = state.selectedProvider;
-  const allowed = Boolean(state.accessPolicy.session_access?.[provider]);
-  const sessions = state.providerSessions[provider] || [];
-  const detail = state.sessionDetails[`${provider}:${state.selectedSessionId}`] || null;
+  const detail = state.sessionDetails[`${state.selectedProvider}:${state.selectedSessionId}`] || null;
   return `
     <section class="rail-card">
       <div class="rail-card-header">
@@ -733,19 +732,48 @@ function renderSessionsCard() {
         </div>
         <button type="button" class="context-action-button" data-action="refresh-sessions" ${state.sessionLoading ? "disabled" : ""}>Refresh</button>
       </div>
-      <label class="provider-select-label">
-        <span>Provider</span>
-        <select class="backend-select" data-provider-select>
-          <option value="codex" ${provider === "codex" ? "selected" : ""}>Codex</option>
-          <option value="opencode" ${provider === "opencode" ? "selected" : ""}>OpenCode</option>
-        </select>
-      </label>
-      <div class="panel-caption">
-        ${escapeHtml(`${provider.toUpperCase()} · ${(state.providerSessions[provider] || []).length} loaded session(s)`)}
+      <div class="provider-group-stack">
+        ${renderProviderSessionGroup("codex", "Codex")}
+        ${renderProviderSessionGroup("opencode", "OpenCode")}
       </div>
+      <div class="session-detail">
+        ${
+          detail
+            ? `
+              <div class="session-detail-header">
+                <strong>${escapeHtml(detail.summary?.title || "Untitled session")}</strong>
+                <span>${escapeHtml(detail.summary?.workspace_path || detail.summary?.updated_at || "No workspace hint")}</span>
+              </div>
+              <div class="session-detail-messages">
+                ${(detail.messages || [])
+                  .slice(0, 10)
+                  .map(
+                    (message) => `
+                      <article class="context-message ${escapeAttribute(message.role)}">
+                        <div class="bubble-role">${escapeHtml(message.role)}</div>
+                        <div class="markdown-body">${renderRichText(message.content)}</div>
+                      </article>
+                    `
+                  )
+                  .join("")}
+              </div>
+            `
+            : `<div class="rail-empty">Select a session to inspect the transcript summary.</div>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function renderProviderSessionGroup(provider, label) {
+  const allowed = Boolean(state.accessPolicy.session_access?.[provider]);
+  const sessions = state.providerSessions[provider] || [];
+  return `
+    <section class="provider-session-group">
+      <div class="panel-caption">${escapeHtml(`${label} · ${sessions.length} loaded session(s)`)}</div>
       ${
         !allowed
-          ? `<div class="rail-empty">Grant ${escapeHtml(provider)} access to load its sessions.</div>`
+          ? `<div class="rail-empty">Grant ${escapeHtml(label)} access to load these sessions.</div>`
           : `
             <div class="session-list ${state.sessionLoading ? "loading" : ""}">
               ${
@@ -755,8 +783,9 @@ function renderSessionsCard() {
                         (session) => `
                           <button
                             type="button"
-                            class="session-card${state.selectedSessionId === session.session_id ? " selected" : ""}"
+                            class="session-card${state.selectedProvider === provider && state.selectedSessionId === session.session_id ? " selected" : ""}"
                             data-action="select-session"
+                            data-provider="${escapeAttribute(provider)}"
                             data-session-id="${escapeAttribute(session.session_id)}"
                           >
                             <strong>${escapeHtml(session.title || "Untitled session")}</strong>
@@ -767,31 +796,6 @@ function renderSessionsCard() {
                       )
                       .join("")
                   : `<div class="rail-empty">${state.sessionLoading ? "Loading sessions..." : "No sessions available."}</div>`
-              }
-            </div>
-            <div class="session-detail">
-              ${
-                detail
-                  ? `
-                    <div class="session-detail-header">
-                      <strong>${escapeHtml(detail.summary?.title || "Untitled session")}</strong>
-                      <span>${escapeHtml(detail.summary?.workspace_path || detail.summary?.updated_at || "No workspace hint")}</span>
-                    </div>
-                    <div class="session-detail-messages">
-                      ${(detail.messages || [])
-                        .slice(0, 10)
-                        .map(
-                          (message) => `
-                            <article class="context-message ${escapeAttribute(message.role)}">
-                              <div class="bubble-role">${escapeHtml(message.role)}</div>
-                              <div class="markdown-body">${renderRichText(message.content)}</div>
-                            </article>
-                          `
-                        )
-                        .join("")}
-                    </div>
-                  `
-                  : `<div class="rail-empty">Select a session to inspect the transcript summary.</div>`
               }
             </div>
           `

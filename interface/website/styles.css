@@ -559,9 +559,15 @@ body[data-theme="dark"] .composer-submit {
 .chart-stack,
 .session-detail,
 .session-detail-messages,
+.provider-group-stack,
 .backend-summary {
   display: grid;
   gap: 10px;
+}
+
+.provider-session-group {
+  display: grid;
+  gap: 8px;
 }
 
 .provider-copy,
