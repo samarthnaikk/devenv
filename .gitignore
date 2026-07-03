@@ -89,6 +89,8 @@ sample-test/*
 !sample-test/memory-demo/**
 !sample-test/tool-fixtures/
 !sample-test/tool-fixtures/**
+sample-test/**/__pycache__/
+sample-test/**/*.py[cod]
 memory.db
 *.db
 *.sqlite
