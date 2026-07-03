@@ -670,12 +670,6 @@ body[data-theme="dark"] .thinking-live-indicator {
   accent-color: var(--text);
 }
 
-.composer-meta {
-  color: var(--muted);
-  font-size: 0.78rem;
-  white-space: nowrap;
-}
-
 .composer-submit {
   border: 0;
   border-radius: 999px;

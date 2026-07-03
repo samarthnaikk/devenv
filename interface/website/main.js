@@ -23,7 +23,7 @@ const state = {
   accessPolicy: { session_access: { codex: false, opencode: false }, backend_access: { opencode: false } },
   persistedAccess: loadPersistedAccess(),
   backends: {},
-  activeBackend: "groq",
+  activeBackend: "opencode",
   preferredBackend: loadPreferredBackend(),
   selectedProvider: "codex",
   visibleSessionProviders: { codex: false, opencode: false },
@@ -421,7 +421,7 @@ async function refreshHealth(options = {}) {
     };
     state.accessPolicy = healthPayload.access_policy || state.accessPolicy;
     state.backends = healthPayload.ai_backends || {};
-    state.activeBackend = healthPayload.active_backend || "groq";
+    state.activeBackend = healthPayload.active_backend || "opencode";
     if (!isValidBackendPreference(state.preferredBackend)) {
       state.preferredBackend = healthPayload.preferred_backend || "auto";
       persistPreferredBackend(state.preferredBackend);
@@ -670,7 +670,6 @@ function render(options = {}) {
                       <input type="checkbox" data-thinking-toggle ${state.showThinking ? "checked" : ""} />
                       <span>Show thinking details</span>
                     </label>
-                    <div class="composer-meta">${escapeHtml(buildComposerMeta(provider, contextBudget))}</div>
                     <button
                       class="terminal-submit composer-submit"
                       type="submit"
@@ -825,7 +824,7 @@ function renderAccessCard() {
           <div class="panel-label">Access & Providers</div>
           <h2 class="rail-title">Consent and backend state</h2>
         </div>
-        <div class="backend-badge ${escapeAttribute(state.activeBackend)}">${escapeHtml(state.activeBackend)}</div>
+        <div class="backend-badge ${escapeAttribute(state.activeBackend)}">${escapeHtml(activeBackendLabel)}</div>
       </div>
       <div class="provider-grid">
         ${renderProviderAccessRow("codex", "Codex sessions", codexAllowed)}
@@ -840,7 +839,6 @@ function renderAccessCard() {
           <select class="backend-select" data-backend-select>
             <option value="auto" ${state.preferredBackend === "auto" ? "selected" : ""}>Auto</option>
             <option value="opencode" ${state.preferredBackend === "opencode" ? "selected" : ""}>OpenCode</option>
-            <option value="groq" ${state.preferredBackend === "groq" ? "selected" : ""}>Groq</option>
           </select>
           <button type="button" class="context-action-button ${opencodeBackendAllowed ? "" : "primary"}" data-action="${opencodeBackendAllowed ? "revoke-backend" : "grant-backend"}" ${state.accessUpdating ? "disabled" : ""}>
             ${opencodeBackendAllowed ? "Revoke" : "Grant"}
@@ -1044,7 +1042,7 @@ function renderUsageCard(contextBudget) {
         ${
           state.isRunning
             ? renderRunningTicker(currentPendingThinkingContent())
-            : `<span class="thinking-live-text">${escapeHtml(state.activeBackend)} backend ready · ${escapeHtml(contextBudget.remainingLabel)} in the current minute</span>`
+            : `<span class="thinking-live-text">${escapeHtml(formatBackendLabel(state.activeBackend))} ready · ${escapeHtml(contextBudget.remainingLabel)} in the current minute</span>`
         }
       </div>
     </section>
@@ -1118,7 +1116,7 @@ function renderThinkingDetail(content, pending) {
         <span data-live-elapsed>${escapeHtml(
           formatDuration(state.isRunning ? Date.now() - state.runStartedAt : state.latestElapsedMs || 0)
         )}</span>
-        <span>${escapeHtml(state.activeBackend)}</span>
+        <span>${escapeHtml(formatBackendLabel(state.activeBackend))}</span>
       </div>
       ${pending ? `<div class="thinking-live-row">${renderRunningTicker(content)}</div>` : ""}
       <ol class="thinking-step-list">
@@ -1173,12 +1171,6 @@ function formatThinkingFromResult(result) {
     lines.push(createLogEntry("system", `Prior-session match found in ${metadata.external_context_session_count || 0} session(s)`));
   } else {
     lines.push(createLogEntry("system", "New context detected; no strong prior-session match reused"));
-  }
-  if (metadata.backend_used) {
-    lines.push(createLogEntry("ai", `Backend used: ${metadata.backend_used}`));
-  }
-  if (metadata.backend_fallback) {
-    lines.push(createLogEntry("error", `Fallback: ${metadata.backend_fallback}`));
   }
   if (Array.isArray(result.stage_traces) && result.stage_traces.length) {
     for (const trace of result.stage_traces.slice(0, 5)) {
@@ -1417,21 +1409,12 @@ function buildUsageSummary() {
   };
 }
 
-function buildComposerMeta(provider, contextBudget) {
-  const selectedBackend = formatBackendLabel(state.preferredBackend);
-  const activeBackend = formatBackendLabel(state.activeBackend);
-  if (state.sessionBudgetTokens) {
-    return `${selectedBackend} selected · ${activeBackend} last used · budget used ${state.sessionUsageTotal}/${state.sessionBudgetTokens}`;
-  }
-  return `${selectedBackend} selected · ${activeBackend} last used · minute window ${contextBudget.remainingLabel}`;
-}
-
 function formatBackendLabel(value) {
   if (value === "opencode") {
     return "OpenCode";
   }
   if (value === "groq") {
-    return "Groq";
+    return "Devenv";
   }
   if (value === "auto") {
     return "Auto";
@@ -1655,7 +1638,7 @@ function persistPreferredBackend(value) {
 }
 
 function isValidBackendPreference(value) {
-  return value === "auto" || value === "groq" || value === "opencode";
+  return value === "auto" || value === "opencode";
 }
 
 function showToast(message) {
