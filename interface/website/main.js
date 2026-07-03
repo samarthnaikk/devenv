@@ -62,12 +62,17 @@ async function bootstrap() {
     const nextClock = Date.now();
     const nextUsageWindow = state.usageWindow.filter((entry) => nextClock - entry.timestamp < 60000);
     const nextRateLimitInfo = state.rateLimitInfo && state.rateLimitInfo.resetAt > nextClock ? state.rateLimitInfo : null;
-    const shouldRender = state.isRunning || Boolean(nextRateLimitInfo) || nextUsageWindow.length !== state.usageWindow.length;
+    const shouldRender =
+      nextUsageWindow.length !== state.usageWindow.length ||
+      Boolean(state.rateLimitInfo) !== Boolean(nextRateLimitInfo);
     state.clock = nextClock;
     state.usageWindow = nextUsageWindow;
     state.rateLimitInfo = nextRateLimitInfo;
+    if (state.isRunning) {
+      updateLiveRuntimeUI();
+    }
     if (shouldRender) {
-      scheduleRender();
+      scheduleRender({ preserveComposerFocus: true });
     }
   }, 1000);
 
@@ -617,6 +622,7 @@ function render(options = {}) {
                       class="terminal-submit composer-submit"
                       type="submit"
                       data-submit
+                      ${state.isRunning ? 'data-live-submit-label="true"' : ""}
                       ${state.isRunning || isCoolingDown() || isBudgetBlocked() || !state.prompt.trim() ? "disabled" : ""}
                     >${
                       isCoolingDown()
@@ -877,7 +883,9 @@ function renderUsageCard(contextBudget) {
         </div>
         <div class="metric-box">
           <span>Elapsed</span>
-          <strong>${escapeHtml(formatDuration(state.isRunning ? Date.now() - state.runStartedAt : state.latestElapsedMs || 0))}</strong>
+          <strong data-live-elapsed>${escapeHtml(
+            formatDuration(state.isRunning ? Date.now() - state.runStartedAt : state.latestElapsedMs || 0)
+          )}</strong>
         </div>
       </div>
       <div class="chart-stack">
@@ -963,7 +971,9 @@ function renderThinkingDetail(content, pending) {
     <div class="thinking-card thinking-card-detailed">
       <strong>${escapeHtml(headline)}</strong>
       <div class="thinking-detail-meta">
-        <span>${escapeHtml(formatDuration(state.isRunning ? Date.now() - state.runStartedAt : state.latestElapsedMs || 0))}</span>
+        <span data-live-elapsed>${escapeHtml(
+          formatDuration(state.isRunning ? Date.now() - state.runStartedAt : state.latestElapsedMs || 0)
+        )}</span>
         <span>${escapeHtml(state.activeBackend)}</span>
       </div>
       ${pending ? `<div class="thinking-live-row">${renderRunningTicker()}</div>` : ""}
@@ -1042,7 +1052,7 @@ function formatThinkingFromResult(result) {
 function renderRunningTicker() {
   return `
     <span class="thinking-live-indicator" aria-hidden="true"></span>
-    <span class="thinking-live-text">${escapeHtml(currentRunningFrame())}</span>
+    <span class="thinking-live-text" data-running-frame>${escapeHtml(currentRunningFrame())}</span>
   `;
 }
 
@@ -1081,6 +1091,21 @@ function syncComposerState() {
   if (textarea && textarea.value !== state.prompt) {
     textarea.value = state.prompt;
     autosizeComposer(textarea);
+  }
+}
+
+function updateLiveRuntimeUI() {
+  const elapsed = formatDuration(Date.now() - state.runStartedAt);
+  for (const node of root.querySelectorAll("[data-live-elapsed]")) {
+    node.textContent = elapsed;
+  }
+  const frame = currentRunningFrame();
+  for (const node of root.querySelectorAll("[data-running-frame]")) {
+    node.textContent = frame;
+  }
+  const button = root.querySelector("[data-live-submit-label]");
+  if (button) {
+    button.textContent = runningButtonLabel();
   }
 }
 
