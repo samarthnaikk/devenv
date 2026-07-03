@@ -268,6 +268,8 @@ def _parse_opencode_output(stdout: str, *, allowed_tools: list[str] | None = Non
         if parsed_tool_call is not None:
             tool_calls.append(parsed_tool_call)
             content = ""
+    if tool_calls:
+        content = ""
     return content, usage, tuple(tool_calls[:1])
 
 

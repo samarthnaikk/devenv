@@ -9,6 +9,7 @@ from pathlib import Path
 
 from core.ai.models import AIResponse
 from core.ai.routing import OpenCodeAICore, RoutingAICore
+from core.tools.base import BaseTool, ToolResult
 
 
 class FakeGroqAI:
@@ -30,6 +31,23 @@ class FakeGroqAI:
             }
         )
         return AIResponse(content="Groq fallback answer", tool_calls=(), finish_reason="stop", usage={"total_tokens": 7})
+
+
+class FakeTool(BaseTool):
+    name = "read_file"
+    description = "Read a file from disk."
+
+    def input_schema(self) -> dict[str, object]:
+        return {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+            },
+            "required": ["path"],
+        }
+
+    def execute(self, **kwargs) -> ToolResult:
+        return ToolResult(success=True, output=str(kwargs), data={})
 
 
 class OpenCodeRoutingTest(unittest.TestCase):
@@ -70,10 +88,30 @@ class OpenCodeRoutingTest(unittest.TestCase):
         self.assertEqual(groq.calls, [])
         self.assertEqual(router.last_backend_used, "opencode")
 
-    def test_routing_core_falls_back_to_groq_for_tool_calls(self) -> None:
+    def test_opencode_core_emits_tool_call_from_json_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             script_path = Path(tempdir) / "opencode"
-            script_path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            script_path.write_text(
+                "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"tool_call\",\"tool_name\":\"read_file\",\"arguments\":{\"path\":\"README.md\"},\"usage\":{\"total_tokens\":9}}'\n",
+                encoding="utf-8",
+            )
+            script_path.chmod(script_path.stat().st_mode | stat.S_IEXEC)
+
+            core = OpenCodeAICore(workspace_path=tempdir, executable=str(script_path))
+            core.register_tool(FakeTool())
+            response = core.chat(messages=[{"role": "user", "content": "open the readme"}], tool_names=["read_file"])
+
+        self.assertEqual(response.content, "")
+        self.assertEqual(response.finish_reason, "tool_calls")
+        self.assertEqual(len(response.tool_calls), 1)
+        self.assertEqual(response.tool_calls[0].tool_name, "read_file")
+        self.assertEqual(response.tool_calls[0].arguments["path"], "README.md")
+        self.assertEqual(response.usage["total_tokens"], 9)
+
+    def test_routing_core_falls_back_to_groq_when_opencode_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            script_path = Path(tempdir) / "opencode"
+            script_path.write_text("#!/bin/sh\nprintf '%s\\n' 'boom' >&2\nexit 1\n", encoding="utf-8")
             script_path.chmod(script_path.stat().st_mode | stat.S_IEXEC)
 
             groq = FakeGroqAI()
@@ -87,7 +125,7 @@ class OpenCodeRoutingTest(unittest.TestCase):
 
         self.assertEqual(response.content, "Groq fallback answer")
         self.assertEqual(router.last_backend_used, "groq")
-        self.assertIn("does not support", router.last_backend_fallback)
+        self.assertIn("failed", router.last_backend_fallback.lower())
 
 
 if __name__ == "__main__":
