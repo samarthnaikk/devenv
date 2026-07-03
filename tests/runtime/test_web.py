@@ -229,6 +229,43 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertTrue(health["access_policy"]["session_access"]["codex"])
         self.assertTrue(health["access_policy"]["backend_access"]["opencode"])
 
+    def test_session_payload_requires_explicit_provider_access(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+
+            with self.assertRaises(PermissionError):
+                app.build_context_sessions_payload("codex")
+
+    def test_run_turn_exposes_top_level_backend_and_usage_sample(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.kernel.execute_turn = lambda prompt, **kwargs: type(
+                "Result",
+                (),
+                {
+                    "to_dict": lambda self: {
+                        "final_response": "ok",
+                        "total_usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+                        "metadata": {"backend_used": "opencode", "budget_state": {"blocked": False}},
+                        "elapsed_ms": 12,
+                    }
+                },
+            )()
+
+            payload = app.run_turn("hello")
+
+        self.assertEqual(payload["backend_used"], "opencode")
+        self.assertEqual(payload["usage_sample"]["total_tokens"], 5)
+        self.assertFalse(payload["budget_state"]["blocked"])
+
     def test_run_turn_preserves_partial_blueprint_when_execution_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             app = DevenvWebApp(
