@@ -4,18 +4,19 @@ import json
 import os
 import shutil
 import subprocess
+import uuid
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from core.ai.engine import AICore
-from core.ai.models import AIBackendStatus, AIResponse
+from core.ai.models import AIBackendStatus, AIResponse, ToolCallRequest
 from core.tools.base import BaseTool
 
 
 class OpenCodeAICore:
     provider_label = "OpenCode CLI"
-    supports_tool_calls = False
+    supports_tool_calls = True
 
     def __init__(
         self,
@@ -48,7 +49,7 @@ class OpenCodeAICore:
             enabled=True,
             model=self.model,
             detail=detail,
-            supports_tool_calls=False,
+            supports_tool_calls=True,
         )
 
     def chat(
@@ -62,11 +63,12 @@ class OpenCodeAICore:
         if not shutil.which(self.executable):
             self.last_error = "OpenCode CLI is not installed."
             raise RuntimeError(self.last_error)
-        if tool_names:
-            self.last_error = "OpenCode CLI backend does not support Devenv tool-call routing."
-            raise RuntimeError(self.last_error)
-
-        prompt = self._compile_prompt(messages, memory_context)
+        resolved_tool_names = [name for name in (tool_names or ()) if name in self._tools]
+        prompt = self._compile_prompt(messages, memory_context) if not resolved_tool_names else self._compile_tool_prompt(
+            messages,
+            memory_context,
+            resolved_tool_names,
+        )
         command = [
             self.executable,
             "run",
@@ -96,11 +98,12 @@ class OpenCodeAICore:
             self.last_error = f"OpenCode CLI failed: {detail}"
             raise RuntimeError(self.last_error)
 
-        content, usage = _parse_opencode_output(completed.stdout)
+        content, usage, tool_calls = _parse_opencode_output(completed.stdout, allowed_tools=resolved_tool_names)
         self.last_backend_used = "opencode"
         self.last_backend_reason = "OpenCode handled the turn directly."
         self.last_error = ""
-        return AIResponse(content=content, tool_calls=(), finish_reason="stop", usage=usage)
+        finish_reason = "tool_calls" if tool_calls else "stop"
+        return AIResponse(content=content, tool_calls=tool_calls, finish_reason=finish_reason, usage=usage)
 
     def _compile_prompt(self, messages: list[dict[str, Any]], memory_context: str | None) -> str:
         sections: list[str] = []
@@ -114,6 +117,37 @@ class OpenCodeAICore:
             if content:
                 sections.append(f"{role}: {content}")
         return "\n\n".join(sections).strip()
+
+    def _compile_tool_prompt(
+        self,
+        messages: list[dict[str, Any]],
+        memory_context: str | None,
+        tool_names: list[str],
+    ) -> str:
+        sections = [self._compile_prompt(messages, memory_context)]
+        tool_payload = [
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.input_schema(),
+            }
+            for tool_name in tool_names
+            for tool in [self._tools[tool_name]]
+        ]
+        sections.extend(
+            [
+                "## Available Tools",
+                json.dumps(tool_payload, separators=(",", ":"), sort_keys=True),
+                "## Required Response Format",
+                (
+                    "Return exactly one JSON object and nothing else. "
+                    "If a tool is needed, return {\"type\":\"tool_call\",\"tool_name\":\"<tool>\",\"arguments\":{...}}. "
+                    "If no tool is needed, return {\"type\":\"final\",\"content\":\"<response>\"}. "
+                    "Use only one tool call at a time and only from the listed tools."
+                ),
+            ]
+        )
+        return "\n\n".join(section for section in sections if section).strip()
 
 
 class RoutingAICore:
@@ -202,9 +236,10 @@ class RoutingAICore:
         return response
 
 
-def _parse_opencode_output(stdout: str) -> tuple[str, dict[str, int]]:
+def _parse_opencode_output(stdout: str, *, allowed_tools: list[str] | None = None) -> tuple[str, dict[str, int], tuple[ToolCallRequest, ...]]:
     content_lines: list[str] = []
     usage: dict[str, int] = {}
+    tool_calls: list[ToolCallRequest] = []
 
     for raw_line in stdout.splitlines():
         line = raw_line.strip()
@@ -215,6 +250,9 @@ def _parse_opencode_output(stdout: str) -> tuple[str, dict[str, int]]:
         except json.JSONDecodeError:
             content_lines.append(line)
             continue
+        parsed_tool_call = _extract_tool_call_from_payload(payload, allowed_tools or [])
+        if parsed_tool_call is not None:
+            tool_calls.append(parsed_tool_call)
         extracted = _extract_opencode_content(payload)
         if extracted:
             content_lines.append(extracted)
@@ -225,7 +263,44 @@ def _parse_opencode_output(stdout: str) -> tuple[str, dict[str, int]]:
     content = "\n".join(part for part in content_lines if part).strip()
     if not content:
         content = stdout.strip()
-    return content, usage
+    if not tool_calls:
+        parsed_tool_call = _extract_tool_call_from_text(stdout, allowed_tools or [])
+        if parsed_tool_call is not None:
+            tool_calls.append(parsed_tool_call)
+            content = ""
+    return content, usage, tuple(tool_calls[:1])
+
+
+def _extract_tool_call_from_text(stdout: str, allowed_tools: list[str]) -> ToolCallRequest | None:
+    candidate = stdout.strip()
+    if not candidate:
+        return None
+    start = candidate.find("{")
+    end = candidate.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        payload = json.loads(candidate[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    return _extract_tool_call_from_payload(payload, allowed_tools)
+
+
+def _extract_tool_call_from_payload(payload: Any, allowed_tools: list[str]) -> ToolCallRequest | None:
+    if not isinstance(payload, dict):
+        return None
+    payload_type = str(payload.get("type") or "").strip().lower()
+    tool_name = payload.get("tool_name") or payload.get("tool")
+    arguments = payload.get("arguments")
+    if payload_type not in {"tool_call", "tool"} or not isinstance(tool_name, str) or tool_name not in allowed_tools:
+        return None
+    if not isinstance(arguments, dict):
+        return None
+    return ToolCallRequest(
+        call_id=f"opencode-{uuid.uuid4().hex[:12]}",
+        tool_name=tool_name,
+        arguments=arguments,
+    )
 
 
 def _extract_opencode_content(payload: Any) -> str:
