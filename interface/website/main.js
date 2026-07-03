@@ -1075,15 +1075,38 @@ function renderParagraphs(text) {
       if (!trimmed) {
         return "";
       }
+      if (/^#{1,3}\s+/.test(trimmed)) {
+        return trimmed
+          .split("\n")
+          .map((line) => {
+            const match = line.match(/^(#{1,3})\s+(.*)$/);
+            if (!match) {
+              return `<p>${renderInlineMarkdown(line)}</p>`;
+            }
+            const level = String(match[1].length);
+            return `<h${level}>${renderInlineMarkdown(match[2])}</h${level}>`;
+          })
+          .join("");
+      }
       if (trimmed.startsWith("- ")) {
         return `<ul>${trimmed
           .split("\n")
-          .map((line) => `<li>${escapeHtml(line.replace(/^- /, ""))}</li>`)
+          .map((line) => `<li>${renderInlineMarkdown(line.replace(/^- /, ""))}</li>`)
           .join("")}</ul>`;
       }
-      return `<p>${escapeHtml(trimmed).replace(/\n/g, "<br />")}</p>`;
+      if (trimmed.startsWith("> ")) {
+        return `<blockquote>${trimmed
+          .split("\n")
+          .map((line) => renderInlineMarkdown(line.replace(/^>\s?/, "")))
+          .join("<br />")}</blockquote>`;
+      }
+      return `<p>${trimmed.split("\n").map((line) => renderInlineMarkdown(line)).join("<br />")}</p>`;
     })
     .join("");
+}
+
+function renderInlineMarkdown(text) {
+  return escapeHtml(text || "").replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
 function selectVisibleAssistantResponse(result) {
