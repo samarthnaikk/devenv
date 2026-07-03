@@ -77,13 +77,16 @@ select {
 
 .chat-main {
   padding: 12px;
+  overflow: hidden;
 }
 
 .workspace-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.9fr);
   gap: 12px;
-  min-height: calc(100vh - 24px);
+  height: calc(100vh - 24px);
+  min-height: 0;
+  align-items: stretch;
 }
 
 .loading-shell {
@@ -110,14 +113,20 @@ select {
 .side-rail {
   height: calc(100vh - 24px);
   min-height: 0;
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
+  overflow-x: hidden;
   overflow-y: auto;
   padding-right: 4px;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
 }
 
 .rail-card {
+  flex: 0 0 auto;
   border: 1px solid var(--border);
   border-radius: 18px;
   background: linear-gradient(180deg, var(--shell) 0%, var(--shell-soft) 100%);
@@ -637,8 +646,7 @@ body[data-theme="dark"] .composer-submit {
 .session-list {
   display: grid;
   gap: 8px;
-  max-height: 240px;
-  overflow: auto;
+  overflow: visible;
   margin-bottom: 12px;
 }
 
@@ -867,6 +875,8 @@ body[data-theme="dark"] .usage-chart.cumulative .usage-line {
 @media (max-width: 920px) {
   .workspace-grid {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: calc(100vh - 24px);
   }
 
   .side-rail {
