@@ -1,131 +1,93 @@
-# Devenv
+# Devenv AI
 
-Devenv is a local-first coding agent project. The current implemented foundation is the **Cognitive Memory Engine (CME)** described in the PRDs under [`core/memory/prd_objective.md`](/Users/samarthnaik/Desktop/Projects/devenv/core/memory/prd_objective.md:1) and [`core/memory/prd_tech.md`](/Users/samarthnaik/Desktop/Projects/devenv/core/memory/prd_tech.md:1).
+Devenv AI is a local-first coding agent foundation for running project-aware workflows on your machine. It combines a runtime layer with a persistent Cognitive Memory Engine (CME) so interactions can build on structured, auditable memory instead of acting like isolated chat sessions.
 
-Today, this repository is centered on a working Python package, `core.memory`, plus a small tools foundation. The memory engine is built to remove the idea of isolated chat sessions and instead support continuous, auditable memory across:
+The project currently ships as an installable Python package and includes:
 
-- working memory for the current task window
-- episodic memory for timestamped interaction history
-- associative memory for structured project, component, and preference recall
-- consolidation for turning raw logs into reusable memory nodes
+- an interactive terminal runtime
+- a local web runtime
+- a one-shot smoke runner for single prompts
+- an MCP server for exposing local tools
+- a memory engine with working, episodic, and associative memory layers
 
-## What Is Done
+## Installation
 
-The following PRD-driven functionality is implemented in this repository today:
+Python 3.12 or newer is required.
 
-- A decoupled `MemoryEngine` interface in `core.memory` with injectable storage, embeddings, vector index, and consolidation extractor.
-- Working memory support with a bounded recent-message buffer and active session state snapshot.
-- Episodic memory logging with timestamped user/agent interactions and optional metadata.
-- Associative memory storage in SQLite using hierarchical nodes plus lateral graph edges.
-- Vector-backed semantic lookup for associative summaries.
-- Retrieval with spreading-activation behavior:
-  parent-chain expansion, sibling expansion, related-edge expansion, normalized ranking, and markdown context compilation.
-- Dynamic ranking signals based on similarity, access frequency, and recency.
-- Auditable retrieval traces through `get_context_trace()`, including matched nodes, expanded candidates, selected nodes, and the final injected markdown block.
-- Manual memory correction through `forget_node()` with both `prune` and `rewrite` strategies.
-- Consolidation flow that processes new episodic logs, creates new nodes, updates existing nodes, refreshes vectors, and stores a consolidation watermark.
-- A deterministic heuristic extractor seam so consolidation is testable without a live LLM.
-- Unit tests covering imports, storage, working memory, retrieval, consolidation, manual control, and vector lookup behavior.
-
-## PRD Alignment
-
-The current implementation covers a substantial part of the memory PRDs:
-
-- **Working Memory Manager:** implemented
-- **Episodic Memory timeline:** implemented
-- **Associative tree / graph structure:** implemented with SQLite nodes and edges
-- **Spreading activation retrieval:** implemented
-- **Importance and decay scoring:** implemented through normalized similarity, frequency, and recency scoring
-- **Auditable context trace:** implemented
-- **Manual memory correction:** implemented
-- **Asynchronous sleep consolidation:** partially implemented
-  the consolidation service exists and is ready to be called as a background task, but the repo does not yet include an always-on inactivity scheduler or terminal-event trigger loop
-
-## Current Architecture
-
-### `core.memory`
-
-Main public entry point:
-
-```python
-from core.memory import MemoryEngine
-
-engine = MemoryEngine(db_path="memory.db", vector_dir="vectors")
-```
-
-Implemented responsibilities:
-
-- `record_working_memory(messages, active_state)`
-- `add_episodic_log(user_prompt, agent_response, node_id=None, metadata=None)`
-- `update_associative_tree(node_data)`
-- `retrieve_context(current_prompt, top_k=5)`
-- `run_consolidation(since=None)`
-- `forget_node(node_id, strategy="prune")`
-- `get_context_trace()`
-
-Storage model:
-
-- **SQLite** stores:
-  `memory_nodes`, `node_edges`, `episodic_logs`, and engine state such as the last consolidation watermark.
-- **LanceDB** is the production vector store for associative summaries.
-- **In-memory test doubles** exist for the vector index and embedder so the system can be tested quickly and deterministically.
-
-### `core.tools`
-
-There is also a small tools foundation already implemented:
-
-- `BaseTool`
-- `ToolResult`
-- `ReadFileTool`
-
-`ReadFileTool` supports content reads plus optional metadata and extension analysis in one call.
-
-## Repository Layout
-
-```text
-core/
-  memory/
-    README.md
-    prd_objective.md
-    prd_tech.md
-    interface.py
-    engine.py
-    retrieval.py
-    consolidation.py
-    storage.py
-    vector_index.py
-    embeddings.py
-    working_memory.py
-    extractors.py
-    models.py
-  tools/
-    base.py
-    read_file.py
-tests/
-  memory/
-pyproject.toml
-README.md
-```
-
-## Setup
-
-Python 3.12+ is required.
+Install from PyPI:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -U pip
-python -m pip install -e .
+pip install devenv-ai
 ```
 
-The production memory stack expects these local dependencies:
+Or with `uv`:
 
-- `lancedb`
-- `sentence-transformers`
+```bash
+uv pip install devenv-ai
+```
 
-The test suite primarily uses lightweight in-memory test doubles instead of the production embedding/vector stack.
+## Quick Start
 
-## Example
+Point Devenv AI at the folder you want it to work inside.
+
+Launch the local web experience:
+
+```bash
+cd /path/to/your/project
+devenv-web .
+```
+
+Then open:
+
+```text
+http://127.0.0.1:4173
+```
+
+Launch the terminal experience:
+
+```bash
+cd /path/to/your/project
+devenv-run .
+```
+
+Run a single prompt without entering the interactive loop:
+
+```bash
+devenv-smoke . "summarize this repository"
+```
+
+Start the local MCP tool server:
+
+```bash
+devenv-mcp --workspace .
+```
+
+## Installed Commands
+
+After installation, the package exposes these commands:
+
+- `devenv-run`
+- `devenv-web`
+- `devenv-smoke`
+- `devenv-mcp`
+
+## What It Does Today
+
+The current implementation is centered on the Cognitive Memory Engine and a small runtime/tooling foundation.
+
+Implemented today:
+
+- bounded working memory for the current task window
+- episodic logging for timestamped user and agent interactions
+- associative memory storage using hierarchical nodes and graph edges
+- semantic retrieval over associative summaries
+- spreading-activation style retrieval with parent, sibling, and related-node expansion
+- auditable retrieval traces via `get_context_trace()`
+- manual memory correction through `forget_node()`
+- consolidation flows that can create and update memory nodes from episodic logs
+- an injectable architecture for storage, embeddings, vector indexes, and extraction logic
+
+## Memory Engine Example
 
 ```python
 from core.memory import MemoryEngine
@@ -171,41 +133,70 @@ print(result.markdown_context)
 print(engine.get_context_trace())
 ```
 
-## Tests
+## Architecture
 
-Run the memory test suite with:
+The codebase is organized to keep memory logic decoupled from future user interfaces and agent orchestration layers.
+
+Key areas:
+
+- `core.memory`: memory interfaces, storage, retrieval, consolidation, embeddings, and models
+- `core.runtime`: terminal runtime, web runtime, MCP server, and runtime orchestration
+- `core.tools`: base tool abstractions and local tool implementations
+
+Main public memory entry point:
+
+```python
+from core.memory import MemoryEngine
+```
+
+Core memory responsibilities include:
+
+- `record_working_memory(messages, active_state)`
+- `add_episodic_log(user_prompt, agent_response, node_id=None, metadata=None)`
+- `update_associative_tree(node_data)`
+- `retrieve_context(current_prompt, top_k=5)`
+- `run_consolidation(since=None)`
+- `forget_node(node_id, strategy="prune")`
+- `get_context_trace()`
+
+## Development Setup
+
+For local development:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -e .
+```
+
+The production memory stack expects local availability of:
+
+- `lancedb`
+- `sentence-transformers`
+
+## Testing
+
+Run the current test suite with:
 
 ```bash
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-The current suite covers:
+The current suite covers memory imports, persistence, retrieval behavior, vector ranking, manual correction, and consolidation flows.
 
-- import boundaries
-- working memory bounds and snapshots
-- episodic log persistence
-- associative node and edge storage
-- vector index ranking
-- hierarchical retrieval and preference recall
-- retrieval trace scoring normalization
-- manual prune and rewrite behavior
-- consolidation creation, update, and watermark behavior
+## Current Scope
 
-## Not Done Yet
+This repository is still an early foundation, not a full end-user coding product.
 
-The README should be clear about what is still future scope from the PRDs:
+Not implemented yet:
 
-- no CLI, web UI, or phone companion is implemented yet
-- no always-on background scheduler for inactivity-based consolidation yet
-- no cross-device sync yet
-- no multi-repo memory sharing yet
-- no full agent orchestration loop yet
-- no secure remote execution layer yet
+- no always-on inactivity scheduler for consolidation
+- no cross-device sync
+- no multi-repo memory sharing
+- no full agent orchestration loop
+- no secure remote execution layer
 
-## Development Notes
+## License
 
-- The code is organized to keep memory logic decoupled from future UI or agent layers.
-- Tests use dependency injection heavily so memory behavior can be verified without external services.
-- The local-first constraint from the PRDs is preserved in the package design: raw logs, structured memory, and vector lookup are intended to live on the user machine.
-
-./.venv/bin/python -m core.runtime.web sample-test
+This project is licensed under the MIT License. See [LICENSE](/Users/samarthnaik/Desktop/Projects/devenv/LICENSE:1).
