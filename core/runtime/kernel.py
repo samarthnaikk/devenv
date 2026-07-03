@@ -205,6 +205,33 @@ class DevenvKernel:
         conversation = list(self.ephemeral_history)
         conversation.append({"role": "user", "content": user_prompt})
 
+        if _is_brief_greeting_prompt(user_prompt):
+            fast_response = "Hi. What would you like me to recall or inspect?"
+            ai_logs.append("Handled greeting locally without running memory retrieval")
+            system_logs.append("Greeting fast path bypassed external session and model usage.")
+            conversation.append({"role": "assistant", "content": fast_response})
+            self._finalize_turn(
+                user_prompt,
+                fast_response,
+                conversation,
+                persist_memory=False,
+                persist_working_memory=False,
+                metadata=turn_metadata,
+            )
+            return RuntimeTurnResult(
+                final_response=fast_response,
+                steps=[],
+                total_usage={},
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                stage_traces=stage_traces,
+                verification_results=verification_results,
+                metadata=turn_metadata,
+                state=self.state.name,
+                blueprint=self.active_blueprint,
+                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+            )
+
         if local_only and _should_try_direct_memory_answer(user_prompt):
             fast_response = self._try_fast_local_only_direct_answer(user_prompt)
             if fast_response is not None:
@@ -3106,6 +3133,31 @@ def _memory_query_entities(user_prompt: str) -> set[str]:
         for token in re.findall(r"[a-z0-9]+(?:[-_/][a-z0-9]+)+", user_prompt.lower())
         if len(token) >= 3
     }
+
+
+def _is_brief_greeting_prompt(user_prompt: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9\s]", " ", user_prompt.lower())
+    tokens = [token for token in normalized.split() if token]
+    if not tokens or len(tokens) > 3:
+        return False
+    greeting_tokens = {
+        "hi",
+        "hello",
+        "hey",
+        "yo",
+        "sup",
+        "hiya",
+        "heya",
+        "gm",
+        "goodmorning",
+        "morning",
+        "afternoon",
+        "evening",
+    }
+    joined = "".join(tokens)
+    if joined in {"goodmorning", "goodafternoon", "goodevening"}:
+        return True
+    return all(token in greeting_tokens for token in tokens)
 
 
 def _memory_context_entities(memory_context: str) -> set[str]:

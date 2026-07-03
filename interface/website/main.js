@@ -924,7 +924,7 @@ function renderUsageCard(contextBudget) {
       </div>
       <div class="metrics-grid">
         <div class="metric-box">
-          <span>Last turn</span>
+          <span>Last request</span>
           <strong>${escapeHtml(String(state.latestTurnTokens || 0))}</strong>
         </div>
         <div class="metric-box">
@@ -1302,18 +1302,33 @@ function buildUsageSummary() {
   const turns = state.usageWindow.length;
   const sessionTotal = state.sessionUsageTotal || 0;
   return {
-    turnsLabel: turns ? `${turns} recent turn${turns === 1 ? "" : "s"} sampled` : "Waiting for the first turn to plot usage",
+    turnsLabel: turns
+      ? `${turns} recent request${turns === 1 ? "" : "s"} sampled · includes prompt, memory context, and answer tokens`
+      : "Waiting for the first request to plot usage",
     sessionLabel: sessionTotal ? `${sessionTotal} total session tokens tracked so far` : "Session graph will rise as turns complete",
   };
 }
 
 function buildComposerMeta(provider, contextBudget) {
-  const backendLabel = `${provider}`;
+  const selectedBackend = formatBackendLabel(state.preferredBackend);
+  const activeBackend = formatBackendLabel(state.activeBackend);
   if (state.sessionBudgetTokens) {
-    const remaining = Math.max(state.sessionBudgetTokens - state.sessionUsageTotal, 0);
-    return `${backendLabel} · session budget ${remaining}/${state.sessionBudgetTokens}`;
+    return `${selectedBackend} selected · ${activeBackend} last used · budget used ${state.sessionUsageTotal}/${state.sessionBudgetTokens}`;
   }
-  return `${backendLabel} · minute window ${contextBudget.remainingLabel}`;
+  return `${selectedBackend} selected · ${activeBackend} last used · minute window ${contextBudget.remainingLabel}`;
+}
+
+function formatBackendLabel(value) {
+  if (value === "opencode") {
+    return "OpenCode";
+  }
+  if (value === "groq") {
+    return "Groq";
+  }
+  if (value === "auto") {
+    return "Auto";
+  }
+  return String(value || "Unknown");
 }
 
 function selectVisibleAssistantResponse(result) {
