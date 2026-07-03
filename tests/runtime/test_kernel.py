@@ -753,6 +753,34 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("recalled bug list", result.final_response or "")
         self.assertIn("Core product bugs", result.final_response or "")
 
+    def test_exact_logged_answer_does_not_reuse_file_list_answer_for_bug_list_prompt(self) -> None:
+        class FakeStore:
+            def search_logs_for_external_query(self, query: str, limit: int = 5) -> list[EpisodicLog]:
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 5) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="bad-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "agent": "The strongest clues point to src/convex-types.ts, src/convex-api.ts, and src/routes/workspace.$workspaceId.tsx.",
+                                "metadata": {"external_context_query": "infer the parts of the app in get-drip"},
+                            }
+                        ),
+                    )
+                ]
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel._lookup_exact_logged_answer("give get-drip bug list")
+
+        self.assertIsNone(result)
+
     def test_retrieve_memory_context_uses_recent_conversation_for_follow_up_matching(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])

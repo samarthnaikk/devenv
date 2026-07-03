@@ -1257,6 +1257,7 @@ class DevenvKernel:
             except Exception:
                 return None
 
+        allow_fallback_candidates = not _is_bug_list_question(user_prompt)
         fallback_candidates: list[str] = []
         for log in logs:
             try:
@@ -1275,7 +1276,8 @@ class DevenvKernel:
                 exact_answer = agent_text.strip()
                 self._exact_logged_answer_cache[lowered] = exact_answer
                 return exact_answer
-            fallback_candidates.append(agent_text.strip())
+            if allow_fallback_candidates:
+                fallback_candidates.append(agent_text.strip())
         selected = fallback_candidates[0] if fallback_candidates else None
         self._exact_logged_answer_cache[lowered] = selected
         return selected
@@ -3497,6 +3499,19 @@ def _memory_answer_matches_question(user_prompt: str, shaped_lines: list[str]) -
     lowered_prompt = user_prompt.lower()
     joined = " \n ".join(shaped_lines).lower()
 
+    if _is_bug_list_question(user_prompt):
+        return _summarize_follow_up_issues(shaped_lines) is not None or any(
+            marker in joined
+            for marker in (
+                "authentication bypass",
+                "open email relay",
+                "root url redirects",
+                "convex generated imports",
+                "create workspace",
+                "pipeline chat",
+                "test/publish",
+            )
+        )
     if "architecture" in lowered_prompt:
         return any(marker in joined for marker in ("flask", "fastapi", "backend", "server.py", "rag", "retriever", "core.py"))
     if "same architecture" in lowered_prompt or "look different" in lowered_prompt:
@@ -3525,6 +3540,8 @@ def _is_usable_logged_project_answer(user_prompt: str, answer: str) -> bool:
     if "requested tool is not registered" in lowered:
         return False
     if "convex/email_g..." in lowered:
+        return False
+    if _is_bug_list_question(user_prompt) and "strongest clues point to" in lowered:
         return False
     if "same architecture" in lowered_prompt and "get-drip" not in lowered:
         return False
