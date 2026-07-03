@@ -25,6 +25,7 @@ const state = {
   activeBackend: "groq",
   preferredBackend: "auto",
   selectedProvider: "codex",
+  visibleSessionProviders: { codex: false, opencode: false },
   providerSessions: { codex: [], opencode: [] },
   selectedSessionId: "",
   sessionDetails: {},
@@ -61,11 +62,7 @@ async function bootstrap() {
     const nextClock = Date.now();
     const nextUsageWindow = state.usageWindow.filter((entry) => nextClock - entry.timestamp < 60000);
     const nextRateLimitInfo = state.rateLimitInfo && state.rateLimitInfo.resetAt > nextClock ? state.rateLimitInfo : null;
-    const shouldRender =
-      state.isRunning ||
-      Boolean(nextRateLimitInfo) ||
-      nextUsageWindow.length !== state.usageWindow.length ||
-      nextClock !== state.clock;
+    const shouldRender = state.isRunning || Boolean(nextRateLimitInfo) || nextUsageWindow.length !== state.usageWindow.length;
     state.clock = nextClock;
     state.usageWindow = nextUsageWindow;
     state.rateLimitInfo = nextRateLimitInfo;
@@ -80,7 +77,6 @@ async function bootstrap() {
   try {
     await refreshHealth();
     await reapplyPersistedAccess();
-    await refreshAllSessions();
   } catch (error) {
     state.bootError = error.message;
   }
@@ -223,8 +219,25 @@ async function handleAction(action, element) {
   }
 
   if (action === "refresh-sessions") {
-    await refreshAllSessions();
-    showToast("Refreshed accessible sessions");
+    const refreshedCount = await refreshVisibleSessions();
+    showToast(refreshedCount ? "Refreshed open session lists" : "Open a provider list to load its sessions");
+    return;
+  }
+
+  if (action === "toggle-session-provider") {
+    const provider = element?.getAttribute("data-provider") || "";
+    if (!provider) {
+      return;
+    }
+    const nextVisible = !state.visibleSessionProviders[provider];
+    state.visibleSessionProviders[provider] = nextVisible;
+    if (!nextVisible && state.selectedProvider === provider) {
+      state.selectedSessionId = "";
+    }
+    scheduleRender({ preserveComposerFocus: true });
+    if (nextVisible && state.accessPolicy.session_access?.[provider] && !state.providerSessions[provider].length) {
+      await refreshProviderSessions(provider);
+    }
     return;
   }
 
@@ -413,10 +426,9 @@ async function updateSessionAccess(provider, allowed) {
     });
     state.accessPolicy = payload;
     persistAccess(state.accessPolicy);
-    if (allowed) {
-      await refreshProviderSessions(provider);
-    } else {
+    if (!allowed) {
       state.providerSessions[provider] = [];
+      state.visibleSessionProviders[provider] = false;
       if (state.selectedProvider === provider) {
         state.selectedSessionId = "";
       }
@@ -449,18 +461,20 @@ async function updateBackendAccess(backend, allowed) {
   }
 }
 
-async function refreshAllSessions() {
-  const providers = Object.keys(state.providerSessions);
+async function refreshVisibleSessions() {
+  const providers = Object.keys(state.providerSessions).filter(
+    (provider) => state.visibleSessionProviders[provider] && state.accessPolicy.session_access?.[provider]
+  );
   for (const provider of providers) {
-    if (state.accessPolicy.session_access?.[provider]) {
-      await refreshProviderSessions(provider);
-    }
+    await refreshProviderSessions(provider);
   }
+  return providers.length;
 }
 
 async function refreshProviderSessions(provider) {
   if (!state.accessPolicy.session_access?.[provider]) {
     state.providerSessions[provider] = [];
+    state.visibleSessionProviders[provider] = false;
     scheduleRender({ preserveComposerFocus: true });
     return;
   }
@@ -726,7 +740,8 @@ function renderProviderAccessRow(provider, label, allowed) {
 }
 
 function renderSessionsCard() {
-  const detail = state.sessionDetails[`${state.selectedProvider}:${state.selectedSessionId}`] || null;
+  const selectedProviderVisible = Boolean(state.visibleSessionProviders[state.selectedProvider]);
+  const detail = selectedProviderVisible ? state.sessionDetails[`${state.selectedProvider}:${state.selectedSessionId}`] || null : null;
   return `
     <section class="rail-card">
       <div class="rail-card-header">
@@ -762,7 +777,11 @@ function renderSessionsCard() {
                   .join("")}
               </div>
             `
-            : `<div class="rail-empty">Select a session to inspect the transcript summary.</div>`
+            : `<div class="rail-empty">${
+                selectedProviderVisible
+                  ? "Select a session to inspect the transcript summary."
+                  : "Open Codex or OpenCode history when you want to browse sessions."
+              }</div>`
         }
       </div>
     </section>
@@ -771,14 +790,39 @@ function renderSessionsCard() {
 
 function renderProviderSessionGroup(provider, label) {
   const allowed = Boolean(state.accessPolicy.session_access?.[provider]);
+  const visible = Boolean(state.visibleSessionProviders[provider]);
   const sessions = state.providerSessions[provider] || [];
   return `
     <section class="provider-session-group">
-      <div class="panel-caption">${escapeHtml(`${label} · ${sessions.length} loaded session(s)`)}</div>
+      <div class="provider-group-header">
+        <div class="provider-group-copy">
+          <strong>${escapeHtml(label)}</strong>
+          <div class="panel-caption provider-group-caption">${
+            allowed
+              ? escapeHtml(
+                  visible
+                    ? `${sessions.length} loaded session${sessions.length === 1 ? "" : "s"}`
+                    : "Hidden until you choose to view it"
+                )
+              : escapeHtml("Grant access before loading sessions")
+          }</div>
+        </div>
+        <button
+          type="button"
+          class="context-action-button"
+          data-action="toggle-session-provider"
+          data-provider="${escapeAttribute(provider)}"
+          ${!allowed ? "disabled" : ""}
+        >
+          ${visible ? "Hide" : "Show"}
+        </button>
+      </div>
       ${
         !allowed
           ? `<div class="rail-empty">Grant ${escapeHtml(label)} access to load these sessions.</div>`
-          : `
+          : !visible
+            ? `<div class="rail-empty compact">${escapeHtml(label)} history stays collapsed until you open it.</div>`
+            : `
             <div class="session-list ${state.sessionLoading ? "loading" : ""}">
               ${
                 sessions.length

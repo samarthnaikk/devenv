@@ -602,6 +602,22 @@ body[data-theme="dark"] .composer-submit {
   gap: 8px;
 }
 
+.provider-group-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.provider-group-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.provider-group-caption {
+  margin-bottom: 0;
+}
+
 .provider-copy,
 .backend-copy {
   display: grid;
