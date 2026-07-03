@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import tempfile
+import time
 import unittest
 from dataclasses import dataclass
 from pathlib import Path
@@ -107,12 +109,12 @@ class DevenvWebAppTest(unittest.TestCase):
             )
             health = app.build_health_payload()
             files = app.build_files_payload()
-            turn = app.run_turn("hello")
+            turn = app.run_turn("show me the readme")
 
             self.assertEqual(health["status"], "ok")
             self.assertEqual(files["entries"][0]["name"], "README.md")
             self.assertEqual(turn["final_response"], "Website response")
-            self.assertEqual(turn["blueprint"]["tasks"][0]["description"], "hello")
+            self.assertEqual(turn["blueprint"]["tasks"][0]["description"], "show me the readme")
         with self.assertRaises(PermissionError):
             app.build_file_payload("../secrets.txt")
 
@@ -149,6 +151,7 @@ class DevenvWebAppTest(unittest.TestCase):
             )
 
             app.update_backend_access("opencode", True)
+            app.kernel.ai.last_backend_used = "opencode"
             payload = app.set_model("llama-3.1-8b-instant")
             health = app.build_health_payload()
 
@@ -300,6 +303,49 @@ class DevenvWebAppTest(unittest.TestCase):
 
         self.assertEqual(result["error_message"], "Execution tool limit reached before the checkpoint completed.")
         self.assertEqual(result["blueprint"]["tasks"][0]["description"], "Build frontend")
+
+    def test_health_payload_exposes_indexing_progress_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            codex_root = workspace / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "07" / "04"
+            sessions_dir.mkdir(parents=True)
+            session_id = "health-session-1"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Health payload session", "updated_at": "2026-07-04T10:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-04T10-00-00-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-04T10:00:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": str(workspace)}}),
+                        json.dumps({"timestamp": "2026-07-04T10:00:01Z", "type": "event_msg", "payload": {"type": "user_message", "message": "remember this startup progress work"}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            app = DevenvWebApp(
+                RunConfig(
+                    workspace_path=tempdir,
+                    external_session_configs=(
+                        ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                    ),
+                ),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.update_session_access("codex", True)
+            for _ in range(40):
+                if app.context_builder.indexing_status()["completed"]:
+                    break
+                time.sleep(0.05)
+            health = app.build_health_payload()
+
+        self.assertIn("indexing", health)
+        self.assertEqual(health["indexing"]["providers"], ["codex"])
+        self.assertTrue(health["indexing"]["completed"])
+        self.assertEqual(health["indexing"]["total_sessions"], 1)
 
 
 if __name__ == "__main__":
