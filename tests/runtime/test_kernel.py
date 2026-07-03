@@ -781,6 +781,49 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    def test_exact_logged_answer_sanitizes_replay_json_into_readable_answer(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                return [
+                    "\n".join(
+                        [
+                            json.dumps({"type": "step_start", "timestamp": 1}),
+                            json.dumps(
+                                {
+                                    "type": "text",
+                                    "part": {
+                                        "type": "text",
+                                        "text": "Based on the codebase, here's the get-drip bug list:\n\n**Core product bugs**\n- The DRIP pipeline chat flow not working",
+                                    },
+                                }
+                            ),
+                            json.dumps(
+                                {
+                                    "type": "text",
+                                    "part": {
+                                        "type": "text",
+                                        "text": "Based on the codebase, here's the get-drip bug list:\n\n**Core product bugs**\n- The DRIP pipeline chat flow not working",
+                                    },
+                                }
+                            ),
+                        ]
+                    )
+                ]
+
+            def search_logs(self, terms: list[str], limit: int = 5) -> list[EpisodicLog]:
+                return []
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel._lookup_exact_logged_answer("give get-drip bug list")
+
+        self.assertEqual(
+            result,
+            "Based on the codebase, here's the get-drip bug list:\n\n**Core product bugs**\n- The DRIP pipeline chat flow not working",
+        )
+
     def test_retrieve_memory_context_uses_recent_conversation_for_follow_up_matching(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])

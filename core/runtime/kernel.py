@@ -1236,11 +1236,13 @@ class DevenvKernel:
                 direct_responses = store.search_agent_responses_for_external_query(user_prompt, limit=8)
             except Exception:
                 direct_responses = []
-            direct_candidates = [
-                response.strip()
-                for response in direct_responses
-                if isinstance(response, str) and response.strip() and _is_usable_logged_project_answer(user_prompt, response)
-            ]
+            direct_candidates: list[str] = []
+            for response in direct_responses:
+                if not isinstance(response, str):
+                    continue
+                cleaned_response = _sanitize_logged_answer(response)
+                if cleaned_response and _is_usable_logged_project_answer(user_prompt, cleaned_response):
+                    direct_candidates.append(cleaned_response)
             if direct_candidates:
                 self._exact_logged_answer_cache[lowered] = direct_candidates[0]
                 return direct_candidates[0]
@@ -1270,14 +1272,15 @@ class DevenvKernel:
             metadata = payload.get("metadata") or {}
             if not isinstance(agent_text, str) or not agent_text.strip():
                 continue
-            if not _is_usable_logged_project_answer(user_prompt, agent_text):
+            cleaned_agent_text = _sanitize_logged_answer(agent_text)
+            if not _is_usable_logged_project_answer(user_prompt, cleaned_agent_text):
                 continue
             if isinstance(metadata, dict) and str(metadata.get("external_context_query") or "").strip().lower() == lowered:
-                exact_answer = agent_text.strip()
+                exact_answer = cleaned_agent_text
                 self._exact_logged_answer_cache[lowered] = exact_answer
                 return exact_answer
             if allow_fallback_candidates:
-                fallback_candidates.append(agent_text.strip())
+                fallback_candidates.append(cleaned_agent_text)
         selected = fallback_candidates[0] if fallback_candidates else None
         self._exact_logged_answer_cache[lowered] = selected
         return selected
@@ -2662,6 +2665,52 @@ def _extract_json_block(content: str) -> dict[str, Any] | list[Any] | None:
         if isinstance(payload, (dict, list)):
             return payload
     return None
+
+
+def _extract_readable_replay_answer(content: str) -> str | None:
+    raw = str(content or "").strip()
+    if not raw or "\n" not in raw or not raw.startswith("{"):
+        return None
+
+    readable_lines: list[str] = []
+    for raw_line in raw.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+
+        part = payload.get("part")
+        if isinstance(part, dict) and part.get("type") == "text":
+            text_value = str(part.get("text") or "").strip()
+            if text_value:
+                readable_lines.append(text_value)
+            continue
+
+        event_payload = payload.get("payload")
+        if isinstance(event_payload, dict) and event_payload.get("type") == "agent_message":
+            message = str(event_payload.get("message") or "").strip()
+            if message:
+                readable_lines.append(message)
+
+    deduped_lines: list[str] = []
+    for line in readable_lines:
+        if line not in deduped_lines:
+            deduped_lines.append(line)
+    if not deduped_lines:
+        return None
+    return "\n\n".join(deduped_lines)
+
+
+def _sanitize_logged_answer(content: str) -> str:
+    extracted = _extract_readable_replay_answer(content)
+    if extracted:
+        return extracted
+    return str(content or "").strip()
 
 
 def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str | None:

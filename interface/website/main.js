@@ -815,8 +815,9 @@ function renderAccessCard() {
   const codexAllowed = Boolean(state.accessPolicy.session_access?.codex);
   const opencodeSessionAllowed = Boolean(state.accessPolicy.session_access?.opencode);
   const opencodeBackendAllowed = Boolean(state.accessPolicy.backend_access?.opencode);
-  const groq = state.backends.groq || {};
   const opencode = state.backends.opencode || {};
+  const activeBackendLabel = formatBackendLabel(state.activeBackend);
+  const preferredBackendLabel = formatBackendLabel(state.preferredBackend);
   return `
     <section class="rail-card">
       <div class="rail-card-header">
@@ -832,8 +833,8 @@ function renderAccessCard() {
       </div>
       <div class="backend-card">
         <div class="backend-copy">
-          <strong>OpenCode backend</strong>
-          <span>${escapeHtml(opencode.detail || (opencode.available ? "Available" : "Unavailable"))}</span>
+          <strong>Current backend</strong>
+          <span>${escapeHtml(activeBackendLabel)}${state.preferredBackend !== "auto" ? ` · preferred ${escapeHtml(preferredBackendLabel)}` : ""}</span>
         </div>
         <div class="backend-actions">
           <select class="backend-select" data-backend-select>
@@ -847,8 +848,7 @@ function renderAccessCard() {
         </div>
       </div>
       <div class="backend-summary">
-        <div><strong>Groq:</strong> ${escapeHtml(groq.available ? "Configured" : "Missing key")}</div>
-        <div><strong>Fallback:</strong> ${escapeHtml(opencodeBackendAllowed ? "Groq on OpenCode failure" : "Groq primary")}</div>
+        <div><strong>OpenCode:</strong> ${escapeHtml(opencode.detail || (opencode.available ? "Available" : "Unavailable"))}</div>
       </div>
     </section>
   `;
@@ -1440,13 +1440,61 @@ function formatBackendLabel(value) {
 }
 
 function selectVisibleAssistantResponse(result) {
-  if (result?.final_response && String(result.final_response).trim()) {
-    return String(result.final_response).trim();
+  const cleanedFinalResponse = sanitizeAssistantResponse(result?.final_response);
+  if (cleanedFinalResponse) {
+    return cleanedFinalResponse;
   }
-  if (result?.error_message && String(result.error_message).trim()) {
-    return String(result.error_message).trim();
+  const cleanedErrorMessage = sanitizeAssistantResponse(result?.error_message);
+  if (cleanedErrorMessage) {
+    return cleanedErrorMessage;
   }
   return "No memory answer was returned.";
+}
+
+function sanitizeAssistantResponse(content) {
+  const text = String(content || "").trim();
+  if (!text) {
+    return "";
+  }
+  const replayText = extractReadableReplayText(text);
+  return replayText || text;
+}
+
+function extractReadableReplayText(content) {
+  const text = String(content || "").trim();
+  if (!text || !text.startsWith("{") || !text.includes("\n")) {
+    return "";
+  }
+  const readableParts = [];
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    let payload = null;
+    try {
+      payload = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!payload || typeof payload !== "object") {
+      continue;
+    }
+    if (payload.part && payload.part.type === "text" && payload.part.text) {
+      readableParts.push(String(payload.part.text).trim());
+      continue;
+    }
+    if (payload.payload && payload.payload.type === "agent_message" && payload.payload.message) {
+      readableParts.push(String(payload.payload.message).trim());
+    }
+  }
+  const uniqueParts = [];
+  for (const part of readableParts) {
+    if (part && !uniqueParts.includes(part)) {
+      uniqueParts.push(part);
+    }
+  }
+  return uniqueParts.join("\n\n");
 }
 
 function parseRateLimitError(message) {
