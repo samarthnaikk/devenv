@@ -38,6 +38,7 @@ const state = {
   latestTurnTokens: 0,
   latestElapsedMs: 0,
   runStartedAt: 0,
+  healthRefreshPending: false,
 };
 
 const root = document.getElementById("root");
@@ -74,6 +75,9 @@ async function bootstrap() {
     }
     if (shouldRender) {
       scheduleRender({ preserveComposerFocus: true });
+    }
+    if (shouldPollHealthDuringBoot()) {
+      void refreshHealth({ silent: true });
     }
   }, 1000);
 
@@ -401,23 +405,35 @@ async function submitPrompt() {
   }
 }
 
-async function refreshHealth() {
-  const healthPayload = await request("/api/health");
-  state.health = healthPayload;
-  state.healthMeta = {
-    provider: healthPayload.ai_provider || "",
-    model: healthPayload.ai_model || "",
-    availableModels: healthPayload.available_models || [],
-  };
-  state.accessPolicy = healthPayload.access_policy || state.accessPolicy;
-  state.backends = healthPayload.ai_backends || {};
-  state.activeBackend = healthPayload.active_backend || "groq";
-  if (!isValidBackendPreference(state.preferredBackend)) {
-    state.preferredBackend = healthPayload.preferred_backend || "auto";
-    persistPreferredBackend(state.preferredBackend);
+async function refreshHealth(options = {}) {
+  if (state.healthRefreshPending) {
+    return state.health;
   }
-  if (!state.selectedProvider) {
-    state.selectedProvider = "codex";
+  state.healthRefreshPending = true;
+  const healthPayload = await request("/api/health");
+  try {
+    state.health = healthPayload;
+    state.healthMeta = {
+      provider: healthPayload.ai_provider || "",
+      model: healthPayload.ai_model || "",
+      availableModels: healthPayload.available_models || [],
+    };
+    state.accessPolicy = healthPayload.access_policy || state.accessPolicy;
+    state.backends = healthPayload.ai_backends || {};
+    state.activeBackend = healthPayload.active_backend || "groq";
+    if (!isValidBackendPreference(state.preferredBackend)) {
+      state.preferredBackend = healthPayload.preferred_backend || "auto";
+      persistPreferredBackend(state.preferredBackend);
+    }
+    if (!state.selectedProvider) {
+      state.selectedProvider = "codex";
+    }
+    if (!options.silent) {
+      scheduleRender({ preserveComposerFocus: true });
+    }
+    return healthPayload;
+  } finally {
+    state.healthRefreshPending = false;
   }
 }
 
@@ -570,7 +586,12 @@ function render(options = {}) {
   }
 
   if (!state.health) {
-    root.innerHTML = `<div class="loading-shell">Booting Devenv memory retrieval...</div>`;
+    root.innerHTML = `<div class="loading-shell">${renderStartupShell(null)}</div>`;
+    return;
+  }
+
+  if (shouldShowStartupShell()) {
+    root.innerHTML = `<div class="loading-shell">${renderStartupShell(state.health.indexing || null)}</div>`;
     return;
   }
 
@@ -686,6 +707,55 @@ function render(options = {}) {
   }
   restoreUIState(uiState, options);
   syncComposerState();
+}
+
+function shouldPollHealthDuringBoot() {
+  if (!state.health || state.isRunning) {
+    return false;
+  }
+  const indexing = state.health.indexing || null;
+  if (!indexing) {
+    return false;
+  }
+  return Boolean(indexing.active);
+}
+
+function shouldShowStartupShell() {
+  if (!state.health || state.transcript.length) {
+    return false;
+  }
+  const indexing = state.health.indexing || null;
+  if (!indexing) {
+    return false;
+  }
+  const hasProviderAccess = Object.values(state.accessPolicy.session_access || {}).some(Boolean);
+  return Boolean(indexing.active || (hasProviderAccess && !indexing.completed && Number(indexing.total_sessions || 0) > 0));
+}
+
+function renderStartupShell(indexing) {
+  const percent = Math.max(0, Math.min(100, Number(indexing?.percent || 0)));
+  const processed = Number(indexing?.processed_sessions || 0);
+  const total = Number(indexing?.total_sessions || 0);
+  const eta = indexing && indexing.eta_seconds != null ? formatDuration(Number(indexing.eta_seconds || 0) * 1000) : "Estimating…";
+  const message = indexing?.message || "Preparing Devenv memory retrieval…";
+  const providerLabel = (indexing?.providers || []).length ? String(indexing.providers.join(" + ")).toUpperCase() : "LOCAL";
+  return `
+    <div class="startup-shell">
+      <div class="startup-card">
+        <div class="startup-kicker">${escapeHtml(providerLabel)} CHUNKING</div>
+        <h1 class="startup-title">Preparing session memory</h1>
+        <p class="startup-copy">${escapeHtml(message)}</p>
+        <div class="startup-progress-track" aria-hidden="true">
+          <div class="startup-progress-fill" style="width:${percent}%;"></div>
+        </div>
+        <div class="startup-progress-meta">
+          <strong>${escapeHtml(`${percent}%`)}</strong>
+          <span>${escapeHtml(total ? `${processed}/${total} sessions` : "Counting sessions")}</span>
+          <span>${escapeHtml(`ETA ${eta}`)}</span>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function renderTranscript() {
