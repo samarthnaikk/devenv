@@ -1,4 +1,5 @@
 const STORAGE_THEME_KEY = "devenv-ui-theme";
+const STORAGE_ACCESS_KEY = "devenv-ui-access";
 
 const state = {
   health: null,
@@ -18,6 +19,23 @@ const state = {
     label: "New context",
     detail: "No prior Devenv session has been reused yet.",
   },
+  accessPolicy: { session_access: { codex: false, opencode: false }, backend_access: { opencode: false } },
+  persistedAccess: loadPersistedAccess(),
+  backends: {},
+  activeBackend: "groq",
+  preferredBackend: "auto",
+  selectedProvider: "codex",
+  providerSessions: { codex: [], opencode: [] },
+  selectedSessionId: "",
+  sessionDetails: {},
+  sessionLoading: false,
+  accessUpdating: false,
+  sessionBudgetTokens: null,
+  budgetInput: "",
+  sessionUsageTotal: 0,
+  latestTurnTokens: 0,
+  latestElapsedMs: 0,
+  runStartedAt: 0,
 };
 
 const root = document.getElementById("root");
@@ -42,15 +60,12 @@ async function bootstrap() {
   window.setInterval(() => {
     const nextClock = Date.now();
     const nextUsageWindow = state.usageWindow.filter((entry) => nextClock - entry.timestamp < 60000);
-    const nextRateLimitInfo =
-      state.rateLimitInfo && state.rateLimitInfo.resetAt > nextClock ? state.rateLimitInfo : null;
-
+    const nextRateLimitInfo = state.rateLimitInfo && state.rateLimitInfo.resetAt > nextClock ? state.rateLimitInfo : null;
     const shouldRender =
       state.isRunning ||
       Boolean(nextRateLimitInfo) ||
       nextUsageWindow.length !== state.usageWindow.length ||
       nextClock !== state.clock;
-
     state.clock = nextClock;
     state.usageWindow = nextUsageWindow;
     state.rateLimitInfo = nextRateLimitInfo;
@@ -63,13 +78,9 @@ async function bootstrap() {
   scheduleRender();
 
   try {
-    const healthPayload = await request("/api/health");
-    state.health = healthPayload;
-    state.healthMeta = {
-      provider: healthPayload.ai_provider || "",
-      model: healthPayload.ai_model || "",
-      availableModels: healthPayload.available_models || [],
-    };
+    await refreshHealth();
+    await reapplyPersistedAccess();
+    await refreshAllSessions();
   } catch (error) {
     state.bootError = error.message;
   }
@@ -96,7 +107,7 @@ function bindEvents() {
     const action = event.target.closest("[data-action]");
     if (action) {
       event.preventDefault();
-      await handleAction(action.getAttribute("data-action"));
+      await handleAction(action.getAttribute("data-action"), action);
     }
   });
 
@@ -105,6 +116,11 @@ function bindEvents() {
       state.prompt = event.target.value;
       syncComposerState();
       autosizeComposer(event.target);
+      return;
+    }
+    if (event.target.matches("[data-budget-input]")) {
+      state.budgetInput = event.target.value;
+      scheduleRender({ preserveComposerFocus: true });
     }
   });
 
@@ -118,9 +134,20 @@ function bindEvents() {
     }
   });
 
-  root.addEventListener("change", (event) => {
+  root.addEventListener("change", async (event) => {
     if (event.target.matches("[data-thinking-toggle]")) {
       state.showThinking = Boolean(event.target.checked);
+      scheduleRender({ preserveComposerFocus: true });
+      return;
+    }
+    if (event.target.matches("[data-provider-select]")) {
+      state.selectedProvider = event.target.value;
+      state.selectedSessionId = "";
+      await refreshProviderSessions(state.selectedProvider);
+      return;
+    }
+    if (event.target.matches("[data-backend-select]")) {
+      state.preferredBackend = event.target.value || "auto";
       scheduleRender({ preserveComposerFocus: true });
     }
   });
@@ -133,7 +160,7 @@ function bindEvents() {
   });
 }
 
-async function handleAction(action) {
+async function handleAction(action, element) {
   if (action === "theme") {
     state.theme = state.theme === "dark" ? "light" : "dark";
     persistTheme(state.theme);
@@ -149,6 +176,9 @@ async function handleAction(action) {
       label: "New context",
       detail: "No prior Devenv session has been reused yet.",
     };
+    state.sessionUsageTotal = 0;
+    state.latestTurnTokens = 0;
+    state.latestElapsedMs = 0;
     showToast("Started a new retrieval thread");
     scheduleRender({ focusComposer: true });
     return;
@@ -159,15 +189,52 @@ async function handleAction(action) {
       showToast("Nothing to copy yet");
       return;
     }
-    const transcriptText = state.transcript
-      .map((entry) => `${roleLabel(entry)}\n${String(entry.content || "").trim()}`)
-      .join("\n\n");
+    const transcriptText = state.transcript.map((entry) => `${roleLabel(entry)}\n${String(entry.content || "").trim()}`).join("\n\n");
     try {
       await navigator.clipboard.writeText(transcriptText);
       showToast("Thread copied");
     } catch {
       showToast("Clipboard access failed");
     }
+    return;
+  }
+
+  if (action === "grant-session" || action === "revoke-session") {
+    const provider = element?.getAttribute("data-provider") || "";
+    await updateSessionAccess(provider, action === "grant-session");
+    return;
+  }
+
+  if (action === "grant-backend" || action === "revoke-backend") {
+    await updateBackendAccess("opencode", action === "grant-backend");
+    return;
+  }
+
+  if (action === "select-session") {
+    const sessionId = element?.getAttribute("data-session-id") || "";
+    if (!sessionId) {
+      return;
+    }
+    state.selectedSessionId = sessionId;
+    await refreshSelectedSession();
+    return;
+  }
+
+  if (action === "apply-budget") {
+    const nextValue = Number.parseInt(state.budgetInput, 10);
+    state.sessionBudgetTokens = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : null;
+    showToast(state.sessionBudgetTokens ? "Session budget updated" : "Session budget cleared");
+    scheduleRender({ preserveComposerFocus: true });
+    return;
+  }
+
+  if (action === "increase-budget") {
+    const increment = Number.parseInt(element?.getAttribute("data-increase") || "1000", 10) || 1000;
+    const current = state.sessionBudgetTokens || 0;
+    state.sessionBudgetTokens = current + increment;
+    state.budgetInput = String(state.sessionBudgetTokens);
+    showToast(`Budget increased to ${state.sessionBudgetTokens}`);
+    scheduleRender({ preserveComposerFocus: true });
   }
 }
 
@@ -178,6 +245,7 @@ async function submitPrompt() {
   }
 
   state.isRunning = true;
+  state.runStartedAt = Date.now();
   state.prompt = "";
   const thinkingId = `thinking-${Date.now()}`;
   const pendingLogs = [
@@ -200,6 +268,8 @@ async function submitPrompt() {
             planning_mode: "auto",
             continue_plan: false,
             local_only: false,
+            backend_preference: state.preferredBackend,
+            session_budget_tokens: state.sessionBudgetTokens,
           }),
         });
         break;
@@ -232,10 +302,19 @@ async function submitPrompt() {
       }
     }
 
-    state.usageWindow = [...state.usageWindow, { timestamp: Date.now(), totalTokens: result.total_usage?.total_tokens || 0 }].filter(
+    const turnTokens = Number(result.total_usage?.total_tokens || 0);
+    state.latestTurnTokens = turnTokens;
+    state.latestElapsedMs = Number(result.elapsed_ms || Date.now() - state.runStartedAt);
+    state.usageWindow = [...state.usageWindow, { timestamp: Date.now(), totalTokens: turnTokens }].filter(
       (entry) => Date.now() - entry.timestamp < 60000
     );
     state.retrievalStatus = buildRetrievalStatus(result.metadata || {});
+    const budgetState = result.metadata?.budget_state || null;
+    if (budgetState) {
+      state.sessionUsageTotal = Number(budgetState.used || state.sessionUsageTotal);
+    } else {
+      state.sessionUsageTotal += turnTokens;
+    }
     updateThinkingEntry(thinkingId, formatThinkingFromResult(result), false);
     state.transcript = state.transcript.map((entry) => (entry.id === thinkingId ? { ...entry, pending: false } : entry));
     state.transcript.push({
@@ -244,6 +323,9 @@ async function submitPrompt() {
       content: selectVisibleAssistantResponse(result),
     });
     state.rateLimitInfo = null;
+    if (budgetState?.blocked) {
+      showToast("Session budget reached");
+    }
   } catch (error) {
     const parsedRateLimit = parseRateLimitError(error.message);
     updateThinkingEntry(
@@ -266,6 +348,140 @@ async function submitPrompt() {
     state.isRunning = false;
     scheduleRender({ focusComposer: true });
   }
+}
+
+async function refreshHealth() {
+  const healthPayload = await request("/api/health");
+  state.health = healthPayload;
+  state.healthMeta = {
+    provider: healthPayload.ai_provider || "",
+    model: healthPayload.ai_model || "",
+    availableModels: healthPayload.available_models || [],
+  };
+  state.accessPolicy = healthPayload.access_policy || state.accessPolicy;
+  state.backends = healthPayload.ai_backends || {};
+  state.activeBackend = healthPayload.active_backend || "groq";
+  if (state.preferredBackend === "auto") {
+    state.preferredBackend = state.accessPolicy.backend_access?.opencode ? "opencode" : "auto";
+  }
+  if (!state.selectedProvider) {
+    state.selectedProvider = "codex";
+  }
+}
+
+async function reapplyPersistedAccess() {
+  const persisted = state.persistedAccess;
+  const sessionEntries = Object.entries(persisted.session_access || {});
+  const backendEntries = Object.entries(persisted.backend_access || {});
+  for (const [provider, allowed] of sessionEntries) {
+    if (allowed) {
+      await request("/api/session-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, allowed: true }),
+      });
+    }
+  }
+  for (const [backend, allowed] of backendEntries) {
+    if (allowed) {
+      await request("/api/backend-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backend, allowed: true }),
+      });
+    }
+  }
+  await refreshHealth();
+}
+
+async function updateSessionAccess(provider, allowed) {
+  state.accessUpdating = true;
+  scheduleRender({ preserveComposerFocus: true });
+  try {
+    const payload = await request("/api/session-access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, allowed }),
+    });
+    state.accessPolicy = payload;
+    persistAccess(state.accessPolicy);
+    if (allowed) {
+      await refreshProviderSessions(provider);
+    } else {
+      state.providerSessions[provider] = [];
+      if (state.selectedProvider === provider) {
+        state.selectedSessionId = "";
+      }
+    }
+    await refreshHealth();
+    showToast(`${provider} session access ${allowed ? "granted" : "revoked"}`);
+  } finally {
+    state.accessUpdating = false;
+    scheduleRender({ preserveComposerFocus: true });
+  }
+}
+
+async function updateBackendAccess(backend, allowed) {
+  state.accessUpdating = true;
+  scheduleRender({ preserveComposerFocus: true });
+  try {
+    const payload = await request("/api/backend-access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ backend, allowed }),
+    });
+    state.accessPolicy = payload;
+    persistAccess(state.accessPolicy);
+    state.preferredBackend = allowed ? "opencode" : "auto";
+    await refreshHealth();
+    showToast(`OpenCode backend ${allowed ? "enabled" : "disabled"}`);
+  } finally {
+    state.accessUpdating = false;
+    scheduleRender({ preserveComposerFocus: true });
+  }
+}
+
+async function refreshAllSessions() {
+  const providers = Object.keys(state.providerSessions);
+  for (const provider of providers) {
+    if (state.accessPolicy.session_access?.[provider]) {
+      await refreshProviderSessions(provider);
+    }
+  }
+}
+
+async function refreshProviderSessions(provider) {
+  if (!state.accessPolicy.session_access?.[provider]) {
+    state.providerSessions[provider] = [];
+    scheduleRender({ preserveComposerFocus: true });
+    return;
+  }
+  state.sessionLoading = true;
+  scheduleRender({ preserveComposerFocus: true });
+  try {
+    const payload = await request(`/api/context-sources/${encodeURIComponent(provider)}/sessions`);
+    state.providerSessions[provider] = payload.sessions || [];
+    if (!state.selectedSessionId && state.providerSessions[provider][0]) {
+      state.selectedSessionId = state.providerSessions[provider][0].session_id;
+      await refreshSelectedSession();
+    }
+  } finally {
+    state.sessionLoading = false;
+    scheduleRender({ preserveComposerFocus: true });
+  }
+}
+
+async function refreshSelectedSession() {
+  const provider = state.selectedProvider;
+  const sessionId = state.selectedSessionId;
+  if (!provider || !sessionId || !state.accessPolicy.session_access?.[provider]) {
+    return;
+  }
+  const payload = await request(
+    `/api/context-sources/${encodeURIComponent(provider)}/sessions/${encodeURIComponent(sessionId)}`
+  );
+  state.sessionDetails[`${provider}:${sessionId}`] = payload;
+  scheduleRender({ preserveComposerFocus: true });
 }
 
 function updateThinkingEntry(thinkingId, content, pending) {
@@ -308,90 +524,97 @@ function render(options = {}) {
   root.innerHTML = `
     <div class="app-shell chat-shell">
       <main class="chat-main">
-        <section class="content-panel terminal-panel${state.transcript.length ? " has-messages" : ""}">
-          <div class="codex-window-chrome">
-            <div class="brand-slot">
-              <span class="brand-name">Devenv</span>
-            </div>
-            <div class="thread-title">${state.transcript.length ? "Memory thread" : "New memory lookup"}</div>
-            <div class="top-actions">
-              <button type="button" class="ghost-action icon-action" data-action="theme" aria-label="Toggle theme">
-                ${state.theme === "dark" ? sunIcon() : moonIcon()}
-              </button>
-              <button type="button" class="ghost-action" data-action="new-thread">New</button>
-              <button type="button" class="ghost-action" data-action="copy-thread">Copy</button>
-            </div>
-          </div>
-          <div class="terminal-scroll-region">
-            ${
-              state.transcript.length
-                ? renderTranscript()
-                : `
-                  <div class="codex-empty-state">
-                    <div class="hero-stack">
-                      <div class="codex-glyph" aria-hidden="true">${devenvCloudIcon()}</div>
-                      <h1 class="hero-title">What should we recall?</h1>
-                      <div class="hero-subtitle">Focused on Devenv infinite-memory retrieval from prior Codex sessions.</div>
-                    </div>
-                    <div class="suggestion-row">
-                      ${SUGGESTIONS.map(
-                        (suggestion) =>
-                          `<button type="button" class="suggestion-card" data-suggestion="${escapeAttribute(suggestion)}">${escapeHtml(suggestion)}</button>`
-                      ).join("")}
-                    </div>
-                  </div>
-                `
-            }
-          </div>
-          <form class="terminal-form codex-composer" data-composer-form>
-            <div class="composer-shell">
-              <textarea
-                class="terminal-input composer-input"
-                rows="${state.transcript.length ? 3 : 2}"
-                data-prompt-input
-                placeholder="${escapeAttribute(
-                  isCoolingDown()
-                    ? `Cooldown active. Input unlocks in ${formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))}.`
-                    : "Ask Devenv what it remembers from earlier Codex sessions"
-                )}"
-                ${isCoolingDown() ? "disabled" : ""}
-              >${escapeHtml(state.prompt)}</textarea>
-              <div class="composer-toolbar">
-                <div class="composer-toolbar-left">
-                  <div class="status-chip">
-                    <span class="status-chip-label">Context</span>
-                    <strong>${escapeHtml(state.retrievalStatus.label)}</strong>
-                  </div>
-                  <div class="status-chip status-chip-detail">
-                    ${escapeHtml(state.retrievalStatus.detail)}
-                  </div>
-                </div>
-                <div class="composer-toolbar-right">
-                  <label class="terminal-toggle inline-toggle${state.showThinking ? " enabled" : ""}">
-                    <input type="checkbox" data-thinking-toggle ${state.showThinking ? "checked" : ""} />
-                    <span>Show raw thinking</span>
-                  </label>
-                  <div class="composer-meta">${escapeHtml(`${provider} · ${contextBudget.remainingLabel}`)}</div>
-                  <button
-                    class="terminal-submit composer-submit"
-                    type="submit"
-                    data-submit
-                    ${state.isRunning || isCoolingDown() || !state.prompt.trim() ? "disabled" : ""}
-                  >${
-                    isCoolingDown()
-                      ? formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))
-                      : state.isRunning
-                        ? runningButtonLabel()
-                        : "Ask"
-                  }</button>
-                </div>
+        <div class="workspace-grid">
+          <section class="content-panel terminal-panel${state.transcript.length ? " has-messages" : ""}">
+            <div class="codex-window-chrome">
+              <div class="brand-slot">
+                <span class="brand-name">Devenv</span>
               </div>
-              ${state.isRunning ? `<div class="composer-running-line">${renderRunningTicker()}</div>` : ""}
+              <div class="thread-title">${state.transcript.length ? "Memory thread" : "New memory lookup"}</div>
+              <div class="top-actions">
+                <button type="button" class="ghost-action icon-action" data-action="theme" aria-label="Toggle theme">
+                  ${state.theme === "dark" ? sunIcon() : moonIcon()}
+                </button>
+                <button type="button" class="ghost-action" data-action="new-thread">New</button>
+                <button type="button" class="ghost-action" data-action="copy-thread">Copy</button>
+              </div>
             </div>
-            <div class="composer-hint">Press Cmd/Ctrl + Enter to search memory</div>
-          </form>
-          ${state.toast ? `<div class="toast-banner">${escapeHtml(state.toast)}</div>` : ""}
-        </section>
+            <div class="terminal-scroll-region">
+              ${
+                state.transcript.length
+                  ? renderTranscript()
+                  : `
+                    <div class="codex-empty-state">
+                      <div class="hero-stack">
+                        <div class="codex-glyph" aria-hidden="true">${devenvCloudIcon()}</div>
+                        <h1 class="hero-title">What should we recall?</h1>
+                        <div class="hero-subtitle">Ask Devenv to search memory, inspect prior sessions, or route turns through OpenCode with explicit consent.</div>
+                      </div>
+                      <div class="suggestion-row">
+                        ${SUGGESTIONS.map(
+                          (suggestion) =>
+                            `<button type="button" class="suggestion-card" data-suggestion="${escapeAttribute(suggestion)}">${escapeHtml(suggestion)}</button>`
+                        ).join("")}
+                      </div>
+                    </div>
+                  `
+              }
+            </div>
+            <form class="terminal-form codex-composer" data-composer-form>
+              <div class="composer-shell">
+                <textarea
+                  class="terminal-input composer-input"
+                  rows="${state.transcript.length ? 3 : 2}"
+                  data-prompt-input
+                  placeholder="${escapeAttribute(
+                    isCoolingDown()
+                      ? `Cooldown active. Input unlocks in ${formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))}.`
+                      : "Ask Devenv what it remembers from earlier Codex or OpenCode sessions"
+                  )}"
+                  ${isCoolingDown() ? "disabled" : ""}
+                >${escapeHtml(state.prompt)}</textarea>
+                <div class="composer-toolbar">
+                  <div class="composer-toolbar-left">
+                    <div class="status-chip">
+                      <span class="status-chip-label">Context</span>
+                      <strong>${escapeHtml(state.retrievalStatus.label)}</strong>
+                    </div>
+                    <div class="status-chip status-chip-detail">
+                      ${escapeHtml(state.retrievalStatus.detail)}
+                    </div>
+                  </div>
+                  <div class="composer-toolbar-right">
+                    <label class="terminal-toggle inline-toggle${state.showThinking ? " enabled" : ""}">
+                      <input type="checkbox" data-thinking-toggle ${state.showThinking ? "checked" : ""} />
+                      <span>Show raw thinking</span>
+                    </label>
+                    <div class="composer-meta">${escapeHtml(`${provider} · ${contextBudget.remainingLabel}`)}</div>
+                    <button
+                      class="terminal-submit composer-submit"
+                      type="submit"
+                      data-submit
+                      ${state.isRunning || isCoolingDown() || !state.prompt.trim() ? "disabled" : ""}
+                    >${
+                      isCoolingDown()
+                        ? formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))
+                        : state.isRunning
+                          ? runningButtonLabel()
+                          : "Ask"
+                    }</button>
+                  </div>
+                </div>
+                ${state.isRunning ? `<div class="composer-running-line">${renderRunningTicker()}</div>` : ""}
+              </div>
+              <div class="composer-hint">Press Cmd/Ctrl + Enter to search memory</div>
+            </form>
+            ${state.toast ? `<div class="toast-banner">${escapeHtml(state.toast)}</div>` : ""}
+          </section>
+          <aside class="side-rail">
+            ${renderAccessCard()}
+            ${renderSessionsCard()}
+            ${renderUsageCard(contextBudget)}
+          </aside>
+        </div>
       </main>
     </div>
   `;
@@ -421,6 +644,227 @@ function renderTranscript() {
         .join("")}
     </div>
   `;
+}
+
+function renderAccessCard() {
+  const codexAllowed = Boolean(state.accessPolicy.session_access?.codex);
+  const opencodeSessionAllowed = Boolean(state.accessPolicy.session_access?.opencode);
+  const opencodeBackendAllowed = Boolean(state.accessPolicy.backend_access?.opencode);
+  const groq = state.backends.groq || {};
+  const opencode = state.backends.opencode || {};
+  return `
+    <section class="rail-card">
+      <div class="rail-card-header">
+        <div>
+          <div class="panel-label">Access & Providers</div>
+          <h2 class="rail-title">Consent and backend state</h2>
+        </div>
+        <div class="backend-badge ${escapeAttribute(state.activeBackend)}">${escapeHtml(state.activeBackend)}</div>
+      </div>
+      <div class="provider-grid">
+        ${renderProviderAccessRow("codex", "Codex sessions", codexAllowed)}
+        ${renderProviderAccessRow("opencode", "OpenCode sessions", opencodeSessionAllowed)}
+      </div>
+      <div class="backend-card">
+        <div class="backend-copy">
+          <strong>OpenCode backend</strong>
+          <span>${escapeHtml(opencode.detail || (opencode.available ? "Available" : "Unavailable"))}</span>
+        </div>
+        <div class="backend-actions">
+          <select class="backend-select" data-backend-select>
+            <option value="auto" ${state.preferredBackend === "auto" ? "selected" : ""}>Auto</option>
+            <option value="opencode" ${state.preferredBackend === "opencode" ? "selected" : ""}>OpenCode</option>
+            <option value="groq" ${state.preferredBackend === "groq" ? "selected" : ""}>Groq</option>
+          </select>
+          <button type="button" class="context-action-button ${opencodeBackendAllowed ? "" : "primary"}" data-action="${opencodeBackendAllowed ? "revoke-backend" : "grant-backend"}" ${state.accessUpdating ? "disabled" : ""}>
+            ${opencodeBackendAllowed ? "Revoke" : "Grant"}
+          </button>
+        </div>
+      </div>
+      <div class="backend-summary">
+        <div><strong>Groq:</strong> ${escapeHtml(groq.available ? "Configured" : "Missing key")}</div>
+        <div><strong>Fallback:</strong> ${escapeHtml(opencodeBackendAllowed ? "Groq on OpenCode failure" : "Groq primary")}</div>
+      </div>
+    </section>
+  `;
+}
+
+function renderProviderAccessRow(provider, label, allowed) {
+  return `
+    <div class="provider-row">
+      <div class="provider-copy">
+        <strong>${escapeHtml(label)}</strong>
+        <span>${allowed ? "Granted" : "Permission required before Devenv can read these sessions."}</span>
+      </div>
+      <button
+        type="button"
+        class="context-action-button ${allowed ? "" : "primary"}"
+        data-action="${allowed ? "revoke-session" : "grant-session"}"
+        data-provider="${escapeAttribute(provider)}"
+        ${state.accessUpdating ? "disabled" : ""}
+      >
+        ${allowed ? "Revoke" : "Grant"}
+      </button>
+    </div>
+  `;
+}
+
+function renderSessionsCard() {
+  const provider = state.selectedProvider;
+  const allowed = Boolean(state.accessPolicy.session_access?.[provider]);
+  const sessions = state.providerSessions[provider] || [];
+  const detail = state.sessionDetails[`${provider}:${state.selectedSessionId}`] || null;
+  return `
+    <section class="rail-card">
+      <div class="rail-card-header">
+        <div>
+          <div class="panel-label">Sessions</div>
+          <h2 class="rail-title">Browsable history</h2>
+        </div>
+      </div>
+      <label class="provider-select-label">
+        <span>Provider</span>
+        <select class="backend-select" data-provider-select>
+          <option value="codex" ${provider === "codex" ? "selected" : ""}>Codex</option>
+          <option value="opencode" ${provider === "opencode" ? "selected" : ""}>OpenCode</option>
+        </select>
+      </label>
+      ${
+        !allowed
+          ? `<div class="rail-empty">Grant ${escapeHtml(provider)} access to load its sessions.</div>`
+          : `
+            <div class="session-list ${state.sessionLoading ? "loading" : ""}">
+              ${
+                sessions.length
+                  ? sessions
+                      .map(
+                        (session) => `
+                          <button
+                            type="button"
+                            class="session-card${state.selectedSessionId === session.session_id ? " selected" : ""}"
+                            data-action="select-session"
+                            data-session-id="${escapeAttribute(session.session_id)}"
+                          >
+                            <strong>${escapeHtml(session.title || "Untitled session")}</strong>
+                            <span>${escapeHtml(session.updated_at || session.workspace_path || "Unknown update time")}</span>
+                            <p>${escapeHtml(session.preview || session.workspace_path || "No preview available.")}</p>
+                          </button>
+                        `
+                      )
+                      .join("")
+                  : `<div class="rail-empty">${state.sessionLoading ? "Loading sessions..." : "No sessions available."}</div>`
+              }
+            </div>
+            <div class="session-detail">
+              ${
+                detail
+                  ? `
+                    <div class="session-detail-header">
+                      <strong>${escapeHtml(detail.summary?.title || "Untitled session")}</strong>
+                      <span>${escapeHtml(detail.summary?.workspace_path || detail.summary?.updated_at || "No workspace hint")}</span>
+                    </div>
+                    <div class="session-detail-messages">
+                      ${(detail.messages || [])
+                        .slice(0, 10)
+                        .map(
+                          (message) => `
+                            <article class="context-message ${escapeAttribute(message.role)}">
+                              <div class="bubble-role">${escapeHtml(message.role)}</div>
+                              <div class="markdown-body">${renderRichText(message.content)}</div>
+                            </article>
+                          `
+                        )
+                        .join("")}
+                    </div>
+                  `
+                  : `<div class="rail-empty">Select a session to inspect the transcript summary.</div>`
+              }
+            </div>
+          `
+      }
+    </section>
+  `;
+}
+
+function renderUsageCard(contextBudget) {
+  const budgetState = buildBudgetState();
+  return `
+    <section class="rail-card">
+      <div class="rail-card-header">
+        <div>
+          <div class="panel-label">Usage & Runtime</div>
+          <h2 class="rail-title">Tokens, budget, and status</h2>
+        </div>
+        <div class="runtime-pill ${state.isRunning ? "running" : ""}">
+          ${state.isRunning ? "Running" : "Idle"}
+        </div>
+      </div>
+      <div class="metrics-grid">
+        <div class="metric-box">
+          <span>Last turn</span>
+          <strong>${escapeHtml(String(state.latestTurnTokens || 0))}</strong>
+        </div>
+        <div class="metric-box">
+          <span>Session total</span>
+          <strong>${escapeHtml(String(state.sessionUsageTotal || 0))}</strong>
+        </div>
+        <div class="metric-box">
+          <span>Elapsed</span>
+          <strong>${escapeHtml(formatDuration(state.isRunning ? Date.now() - state.runStartedAt : state.latestElapsedMs || 0))}</strong>
+        </div>
+      </div>
+      <div class="chart-stack">
+        <div class="chart-block">
+          <div class="chart-label">Per-turn tokens</div>
+          ${renderUsageBars(state.usageWindow)}
+        </div>
+        <div class="chart-block">
+          <div class="chart-label">Recent token window</div>
+          <div class="context-note">${escapeHtml(contextBudget.remainingLabel)} remaining in the rolling limit view</div>
+        </div>
+      </div>
+      <div class="budget-editor">
+        <label>
+          <span>Session token budget</span>
+          <input class="budget-input" data-budget-input type="number" min="0" placeholder="No limit" value="${escapeAttribute(state.budgetInput)}" />
+        </label>
+        <button type="button" class="context-action-button primary" data-action="apply-budget">Apply</button>
+      </div>
+      <div class="budget-status ${budgetState.blocked ? "blocked" : ""}">
+        ${escapeHtml(budgetState.label)}
+      </div>
+      ${budgetState.blocked ? `<button type="button" class="context-action-button" data-action="increase-budget" data-increase="1000">Increase by 1000</button>` : ""}
+      <div class="runtime-summary">
+        ${state.isRunning ? renderRunningTicker() : `<span class="thinking-live-text">${escapeHtml(state.activeBackend)} backend ready</span>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderUsageBars(entries) {
+  if (!entries.length) {
+    return `<div class="rail-empty compact">No token samples yet.</div>`;
+  }
+  const maxValue = Math.max(...entries.map((entry) => entry.totalTokens), 1);
+  const bars = entries
+    .slice(-12)
+    .map((entry, index) => {
+      const height = Math.max(Math.round((entry.totalTokens / maxValue) * 52), 4);
+      return `<rect x="${index * 12}" y="${60 - height}" width="8" height="${height}" rx="3"></rect>`;
+    })
+    .join("");
+  return `<svg class="usage-chart" viewBox="0 0 144 60" preserveAspectRatio="none">${bars}</svg>`;
+}
+
+function buildBudgetState() {
+  if (!state.sessionBudgetTokens) {
+    return { blocked: false, label: "No session token budget set." };
+  }
+  const remaining = Math.max(state.sessionBudgetTokens - state.sessionUsageTotal, 0);
+  if (remaining <= 0) {
+    return { blocked: true, label: `Budget reached at ${state.sessionUsageTotal}/${state.sessionBudgetTokens} tokens.` };
+  }
+  return { blocked: false, label: `${remaining} tokens remaining before the session budget stops new turns.` };
 }
 
 function renderThinkingSummary(content, pending) {
@@ -483,6 +927,12 @@ function formatThinkingFromResult(result) {
     lines.push(createLogEntry("system", `Prior-session match found in ${metadata.external_context_session_count || 0} session(s)`));
   } else {
     lines.push(createLogEntry("system", "New context detected; no strong prior-session match reused"));
+  }
+  if (metadata.backend_used) {
+    lines.push(createLogEntry("ai", `Backend used: ${metadata.backend_used}`));
+  }
+  if (metadata.backend_fallback) {
+    lines.push(createLogEntry("error", `Fallback: ${metadata.backend_fallback}`));
   }
   if (Array.isArray(result.stage_traces) && result.stage_traces.length) {
     for (const trace of result.stage_traces.slice(0, 5)) {
@@ -584,9 +1034,6 @@ function roleLabel(item) {
   }
   if (item.role === "thinking") {
     return "Devenv status";
-  }
-  if (item.role === "error") {
-    return "Devenv";
   }
   return "Devenv";
 }
@@ -717,6 +1164,25 @@ function loadTheme() {
 function persistTheme(theme) {
   try {
     window.localStorage.setItem(STORAGE_THEME_KEY, theme);
+  } catch {}
+}
+
+function loadPersistedAccess() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_ACCESS_KEY);
+    if (!raw) {
+      return { session_access: {}, backend_access: {} };
+    }
+    const payload = JSON.parse(raw);
+    return typeof payload === "object" && payload ? payload : { session_access: {}, backend_access: {} };
+  } catch {
+    return { session_access: {}, backend_access: {} };
+  }
+}
+
+function persistAccess(accessPolicy) {
+  try {
+    window.localStorage.setItem(STORAGE_ACCESS_KEY, JSON.stringify(accessPolicy));
   } catch {}
 }
 
