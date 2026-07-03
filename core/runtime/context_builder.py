@@ -4,7 +4,11 @@ import json
 import logging
 import os
 import re
+import sqlite3
+import threading
+import time
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +30,8 @@ MAX_CONTEXT_LINES = 8
 MAX_WORKSPACE_FACTS = 8
 MAX_README_CHARS = 500
 MIN_SESSION_CONTENT_SCORE = 6
+MAX_INDEX_CHUNK_CHARS = 720
+MAX_INDEX_CONTEXT_LINES = 12
 COMMON_CONTEXT_TOKENS = {
     "about",
     "again",
@@ -74,6 +80,247 @@ COMMON_CONTEXT_TOKENS = {
     "get",
 }
 
+
+@dataclass(frozen=True)
+class ExternalSessionChunk:
+    provider: str
+    session_id: str
+    title: str
+    workspace_path: str | None
+    role: str
+    source: str
+    text: str
+    timestamp: str | None = None
+
+    @property
+    def search_text(self) -> str:
+        parts = [self.title, self.workspace_path or "", self.role, self.source, self.text]
+        return _normalize_whitespace(" ".join(part for part in parts if part)).lower()
+
+
+class ExternalSessionIndex:
+    def __init__(self, providers: dict[str, "ExternalSessionProvider"]) -> None:
+        self.providers = providers
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
+        self._indexed_providers: set[str] = set()
+        self._requested_providers: set[str] = set()
+        self._chunks_by_provider: dict[str, dict[str, list[ExternalSessionChunk]]] = {}
+        self._summaries_by_provider: dict[str, dict[str, ExternalSessionSummary]] = {}
+        self._status: dict[str, Any] = {
+            "active": False,
+            "completed": False,
+            "message": "Waiting for provider access.",
+            "percent": 0,
+            "processed_sessions": 0,
+            "total_sessions": 0,
+            "eta_seconds": None,
+            "providers": [],
+            "started_at": None,
+            "finished_at": None,
+        }
+
+    def status(self) -> dict[str, Any]:
+        with self._lock:
+            return dict(self._status)
+
+    def ensure(self, providers: set[str]) -> None:
+        allowed = {provider for provider in providers if provider in self.providers}
+        with self._lock:
+            self._requested_providers = set(allowed)
+            for provider_name in list(self._chunks_by_provider):
+                if provider_name not in allowed:
+                    self._chunks_by_provider.pop(provider_name, None)
+                    self._summaries_by_provider.pop(provider_name, None)
+                    self._indexed_providers.discard(provider_name)
+            needs_rebuild = bool(allowed) and allowed != self._indexed_providers
+            if not needs_rebuild or (self._thread is not None and self._thread.is_alive()):
+                if not allowed:
+                    self._status.update(
+                        {
+                            "active": False,
+                            "completed": False,
+                            "message": "Waiting for provider access.",
+                            "percent": 0,
+                            "processed_sessions": 0,
+                            "total_sessions": 0,
+                            "eta_seconds": None,
+                            "providers": [],
+                            "started_at": None,
+                            "finished_at": None,
+                        }
+                    )
+                return
+            self._status.update(
+                {
+                    "active": True,
+                    "completed": False,
+                    "message": "Counting accessible sessions…",
+                    "percent": 0,
+                    "processed_sessions": 0,
+                    "total_sessions": 0,
+                    "eta_seconds": None,
+                    "providers": sorted(allowed),
+                    "started_at": time.time(),
+                    "finished_at": None,
+                }
+            )
+            self._thread = threading.Thread(target=self._build_index, args=(sorted(allowed),), daemon=True)
+            self._thread.start()
+
+    def query(
+        self,
+        task: str,
+        *,
+        provider_name: str | None,
+        workspace_path: str,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        tokens = _tokenize(task)
+        if not tokens:
+            return [], {"index_ready": self.status().get("completed", False)}
+        focus_tokens = _focus_tokens(task)
+        workspace_name = Path(workspace_path).name.lower()
+        workspace_path_lower = workspace_path.lower()
+        providers = [provider_name] if provider_name else sorted(self._chunks_by_provider)
+        scored_sessions: list[dict[str, Any]] = []
+        with self._lock:
+            summaries_by_provider = {
+                name: dict(records)
+                for name, records in self._summaries_by_provider.items()
+                if name in providers
+            }
+            chunks_by_provider = {
+                name: {session_id: list(chunks) for session_id, chunks in records.items()}
+                for name, records in self._chunks_by_provider.items()
+                if name in providers
+            }
+
+        for current_provider in providers:
+            session_map = chunks_by_provider.get(current_provider, {})
+            summary_map = summaries_by_provider.get(current_provider, {})
+            for session_id, chunks in session_map.items():
+                summary = summary_map.get(session_id)
+                if summary is None or not chunks:
+                    continue
+                identity_haystacks = _session_identity_haystacks(summary)
+                identity_token_hits = sum(1 for token in tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
+                identity_exact_hits = _exact_prompt_hits(tokens, identity_haystacks)
+                identity_focus_hits = sum(1 for token in focus_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
+                top_chunks: list[tuple[int, ExternalSessionChunk, int, int]] = []
+                for chunk in chunks:
+                    haystack = chunk.search_text
+                    token_hits = sum(1 for token in tokens if _token_matches(token, haystack))
+                    exact_hits = _exact_prompt_hits(tokens, [haystack])
+                    issue_bonus = 0
+                    if any(token in tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews"}):
+                        if any(term in haystack for term in ("bug", "bugs", "fix", "fixed", "review", "issue")):
+                            issue_bonus += 4
+                    workspace_bonus = 0
+                    session_workspace = (summary.workspace_path or "").lower()
+                    if session_workspace == workspace_path_lower:
+                        workspace_bonus += 3
+                    elif workspace_name and workspace_name in session_workspace:
+                        workspace_bonus += 2
+                    score = (exact_hits * 8) + (token_hits * 4) + issue_bonus + workspace_bonus
+                    if identity_token_hits or identity_exact_hits:
+                        score += (identity_exact_hits * 8) + (identity_token_hits * 4)
+                    if score > 0:
+                        top_chunks.append((score, chunk, token_hits, exact_hits))
+                if not top_chunks:
+                    continue
+                top_chunks.sort(key=lambda item: item[0], reverse=True)
+                best_score = top_chunks[0][0] + (identity_focus_hits * 4)
+                strong_match = best_score >= MIN_SESSION_CONTENT_SCORE or identity_exact_hits > 0 or identity_focus_hits > 0
+                if not strong_match:
+                    continue
+                scored_sessions.append(
+                    {
+                        "summary": summary,
+                        "score": best_score,
+                        "strong_match": strong_match,
+                        "identity_token_hits": identity_token_hits,
+                        "identity_focus_hits": identity_focus_hits,
+                        "token_hits": top_chunks[0][2],
+                        "chunks": [item[1] for item in top_chunks[:3]],
+                    }
+                )
+
+        scored_sessions.sort(key=lambda item: (item["strong_match"], item["score"], item["summary"].updated_at), reverse=True)
+        return scored_sessions[:6], {"index_ready": self.status().get("completed", False)}
+
+    def _build_index(self, providers: list[str]) -> None:
+        started_at = time.time()
+        summaries_by_provider: dict[str, list[ExternalSessionSummary]] = {}
+        total_sessions = 0
+        for provider_name in providers:
+            provider = self.providers.get(provider_name)
+            if provider is None:
+                continue
+            try:
+                summaries = provider.list_sessions()
+            except Exception:
+                summaries = []
+            summaries_by_provider[provider_name] = summaries
+            total_sessions += len(summaries)
+        with self._lock:
+            self._status.update(
+                {
+                    "message": "Chunking accessible sessions…",
+                    "total_sessions": total_sessions,
+                }
+            )
+        processed = 0
+        next_chunks_by_provider: dict[str, dict[str, list[ExternalSessionChunk]]] = {}
+        next_summaries_by_provider: dict[str, dict[str, ExternalSessionSummary]] = {}
+        for provider_name in providers:
+            provider = self.providers.get(provider_name)
+            if provider is None:
+                continue
+            next_chunks_by_provider[provider_name] = {}
+            next_summaries_by_provider[provider_name] = {}
+            for summary in summaries_by_provider.get(provider_name, []):
+                next_summaries_by_provider[provider_name][summary.session_id] = summary
+                try:
+                    chunks = provider.build_index_chunks(summary.session_id)
+                except Exception:
+                    chunks = []
+                next_chunks_by_provider[provider_name][summary.session_id] = chunks
+                processed += 1
+                elapsed = max(time.time() - started_at, 0.001)
+                average = elapsed / max(processed, 1)
+                remaining = max(total_sessions - processed, 0)
+                eta_seconds = int(round(average * remaining)) if remaining else 0
+                percent = int(round((processed / total_sessions) * 100)) if total_sessions else 100
+                with self._lock:
+                    self._status.update(
+                        {
+                            "active": processed < total_sessions,
+                            "completed": processed >= total_sessions,
+                            "message": f"Chunked {processed} of {total_sessions} session(s).",
+                            "percent": percent,
+                            "processed_sessions": processed,
+                            "total_sessions": total_sessions,
+                            "eta_seconds": eta_seconds,
+                            "finished_at": time.time() if processed >= total_sessions else None,
+                        }
+                    )
+        with self._lock:
+            self._chunks_by_provider = next_chunks_by_provider
+            self._summaries_by_provider = next_summaries_by_provider
+            self._indexed_providers = set(providers)
+            self._status.update(
+                {
+                    "active": False,
+                    "completed": True,
+                    "message": "Session chunking complete.",
+                    "percent": 100,
+                    "processed_sessions": processed,
+                    "total_sessions": total_sessions,
+                    "eta_seconds": 0,
+                    "finished_at": time.time(),
+                }
+            )
+
 FOCUS_CONTEXT_TOKENS = COMMON_CONTEXT_TOKENS | {
     "assistant",
     "asked",
@@ -110,6 +357,10 @@ class ExternalSessionProvider(ABC):
 
     @abstractmethod
     def get_session(self, session_id: str) -> ExternalSessionDetail:
+        raise NotImplementedError
+
+    @abstractmethod
+    def build_index_chunks(self, session_id: str) -> list[ExternalSessionChunk]:
         raise NotImplementedError
 
 
@@ -202,6 +453,14 @@ class CodexSessionProvider(ExternalSessionProvider):
 
         self._detail_cache[session_id] = detail
         return detail
+
+    def build_index_chunks(self, session_id: str) -> list[ExternalSessionChunk]:
+        session_file = self._find_session_file(session_id)
+        if session_file is None:
+            return []
+        detail = self._parse_session_file(session_file)
+        all_messages = self._parse_full_session_messages(session_file, session_id)
+        return _build_chunks_from_messages(detail.summary, all_messages, source="codex")
 
     def _load_index_records(self) -> dict[str, dict[str, Any]]:
         index_path = self.root / (self.config.index_path or "session_index.jsonl")
@@ -317,51 +576,8 @@ class CodexSessionProvider(ExternalSessionProvider):
         title = session_file.stem
         updated_at = ""
         workspace_path = None
-        messages: list[ExternalSessionMessage] = []
-        preview = ""
-        metadata: dict[str, Any] = {
-            "provider": self.name,
-            "source_path": str(session_file),
-        }
-        seen_signatures: set[tuple[str, str]] = set()
-
+        messages, preview, metadata = self._parse_full_session_messages(session_file, session_id, include_metadata=True)
         history_fallback = self._history_messages(session_id)
-
-        for raw_line in session_file.read_text(encoding="utf-8").splitlines():
-            try:
-                row = json.loads(raw_line)
-            except json.JSONDecodeError:
-                continue
-
-            timestamp = str(row.get("timestamp") or "")
-            row_type = row.get("type")
-            payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
-
-            if row_type == "session_meta":
-                inner = payload or {}
-                session_id = str(inner.get("session_id") or inner.get("id") or session_id)
-                title = str(inner.get("title") or inner.get("thread_name") or title)
-                updated_at = str(inner.get("timestamp") or timestamp or updated_at)
-                workspace_path = inner.get("cwd") or workspace_path
-                metadata.update(
-                    {
-                        "source": inner.get("source"),
-                        "originator": inner.get("originator"),
-                        "model_provider": inner.get("model_provider"),
-                    }
-                )
-                continue
-
-            extracted = _extract_session_messages(row_type=row_type, payload=payload, timestamp=timestamp)
-            for message in extracted:
-                signature = (message.role, message.content)
-                if signature in seen_signatures:
-                    continue
-                seen_signatures.add(signature)
-                messages.append(message)
-                if not preview and message.role == "user":
-                    preview = message.content[:220]
-
         if history_fallback:
             existing_users = {message.content for message in messages if message.role == "user"}
             for message in history_fallback:
@@ -370,6 +586,9 @@ class CodexSessionProvider(ExternalSessionProvider):
 
         messages = [message for message in messages if message.content.strip()]
         messages = messages[-MAX_SESSION_MESSAGES:]
+        workspace_path = metadata.get("workspace_path") or workspace_path
+        title = str(metadata.get("title") or title)
+        updated_at = str(metadata.get("updated_at") or updated_at)
         if not preview:
             preview = next((message.content[:220] for message in messages if message.content.strip()), "")
         if not updated_at:
@@ -388,6 +607,61 @@ class CodexSessionProvider(ExternalSessionProvider):
         detail = ExternalSessionDetail(summary=summary, messages=tuple(messages), metadata=metadata)
         self._detail_cache[session_id] = detail
         return detail
+
+    def _parse_full_session_messages(
+        self,
+        session_file: Path,
+        session_id: str,
+        *,
+        include_metadata: bool = False,
+    ) -> list[ExternalSessionMessage] | tuple[list[ExternalSessionMessage], str, dict[str, Any]]:
+        title = session_file.stem
+        updated_at = ""
+        workspace_path = None
+        preview = ""
+        metadata: dict[str, Any] = {
+            "provider": self.name,
+            "source_path": str(session_file),
+        }
+        messages: list[ExternalSessionMessage] = []
+        seen_signatures: set[tuple[str, str]] = set()
+        for raw_line in session_file.read_text(encoding="utf-8").splitlines():
+            try:
+                row = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+            timestamp = str(row.get("timestamp") or "")
+            row_type = row.get("type")
+            payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+            if row_type == "session_meta":
+                inner = payload or {}
+                session_id = str(inner.get("session_id") or inner.get("id") or session_id)
+                title = str(inner.get("title") or inner.get("thread_name") or title)
+                updated_at = str(inner.get("timestamp") or timestamp or updated_at)
+                workspace_path = inner.get("cwd") or workspace_path
+                metadata.update(
+                    {
+                        "title": title,
+                        "updated_at": updated_at,
+                        "workspace_path": workspace_path,
+                        "source": inner.get("source"),
+                        "originator": inner.get("originator"),
+                        "model_provider": inner.get("model_provider"),
+                    }
+                )
+                continue
+            extracted = _extract_session_messages(row_type=row_type, payload=payload, timestamp=timestamp)
+            for message in extracted:
+                signature = (message.role, message.content)
+                if signature in seen_signatures:
+                    continue
+                seen_signatures.add(signature)
+                messages.append(message)
+                if not preview and message.content.strip():
+                    preview = message.content[:220]
+        if include_metadata:
+            return messages, preview, metadata
+        return messages
 
     def _history_messages(self, session_id: str) -> list[ExternalSessionMessage]:
         history_path = self.root / "history.jsonl"
@@ -416,23 +690,152 @@ class CodexSessionProvider(ExternalSessionProvider):
 
 
 class OpenCodeSessionProvider(ExternalSessionProvider):
+    def __init__(self, config: ExternalSessionProviderConfig) -> None:
+        super().__init__(config)
+        self._detail_cache: dict[str, ExternalSessionDetail] = {}
+        self._summary_cache: dict[str, ExternalSessionSummary] = {}
+
     def health(self) -> ExternalSourceHealth:
         available = self.config.enabled and self.root.exists()
-        summary = "OpenCode provider ready" if available else "OpenCode archive not configured"
+        session_count = len(self.list_sessions()) if available else 0
+        summary = f"{session_count} OpenCode session(s) available" if available else "OpenCode archive not configured"
         return ExternalSourceHealth(
             provider=self.name,
             enabled=self.config.enabled,
             available=available,
             root_path=str(self.root),
             summary=summary,
-            session_count=0,
+            session_count=session_count,
         )
 
     def list_sessions(self) -> list[ExternalSessionSummary]:
-        return []
+        if not self.config.enabled or not self.root.exists():
+            return []
+        rows = self._query_all(
+            """
+            select id, title, directory, time_updated
+            from session
+            where time_archived is null
+            order by time_updated desc
+            """
+        )
+        summaries: list[ExternalSessionSummary] = []
+        for row in rows:
+            session_id = str(row["id"])
+            cached = self._summary_cache.get(session_id)
+            if cached is not None:
+                summaries.append(cached)
+                continue
+            preview = self._preview_for_session(session_id)
+            summary = ExternalSessionSummary(
+                provider=self.name,
+                session_id=session_id,
+                title=_normalize_whitespace(str(row["title"] or "")) or "Untitled session",
+                updated_at=_millis_to_iso(row["time_updated"]),
+                workspace_path=str(row["directory"] or "") or None,
+                source_path=str(self.root),
+                message_count=self._message_count_for_session(session_id),
+                preview=preview,
+            )
+            self._summary_cache[session_id] = summary
+            summaries.append(summary)
+        return summaries
 
     def get_session(self, session_id: str) -> ExternalSessionDetail:
-        raise FileNotFoundError(f"OpenCode session archive is not configured for session: {session_id}")
+        cached = self._detail_cache.get(session_id)
+        if cached is not None:
+            return cached
+        summary = next((item for item in self.list_sessions() if item.session_id == session_id), None)
+        if summary is None:
+            raise FileNotFoundError(f"Unknown OpenCode session: {session_id}")
+        messages = self._session_messages(session_id)[-MAX_SESSION_MESSAGES:]
+        detail = ExternalSessionDetail(
+            summary=summary,
+            messages=tuple(messages),
+            metadata={"provider": self.name, "source_path": str(self.root)},
+        )
+        self._detail_cache[session_id] = detail
+        return detail
+
+    def build_index_chunks(self, session_id: str) -> list[ExternalSessionChunk]:
+        summary = next((item for item in self.list_sessions() if item.session_id == session_id), None)
+        if summary is None:
+            return []
+        messages = self._session_messages(session_id)
+        return _build_chunks_from_messages(summary, messages, source="opencode")
+
+    def _session_messages(self, session_id: str) -> list[ExternalSessionMessage]:
+        rows = self._query_all(
+            """
+            select m.id as message_id, m.data as message_data, p.data as part_data, p.time_created as part_time
+            from message m
+            left join part p on p.message_id = m.id
+            where m.session_id = ?
+            order by m.time_created asc, p.time_created asc, p.id asc
+            """,
+            (session_id,),
+        )
+        messages_by_id: dict[str, dict[str, Any]] = {}
+        ordered_parts: list[tuple[str, dict[str, Any], int]] = []
+        for row in rows:
+            message_id = str(row["message_id"])
+            if message_id not in messages_by_id:
+                messages_by_id[message_id] = _safe_json_loads(str(row["message_data"] or ""))
+            part_payload = _safe_json_loads(str(row["part_data"] or ""))
+            if part_payload:
+                ordered_parts.append((message_id, part_payload, int(row["part_time"] or 0)))
+        extracted: list[ExternalSessionMessage] = []
+        seen: set[tuple[str, str]] = set()
+        for message_id, payload, part_time in ordered_parts:
+            parent = messages_by_id.get(message_id, {})
+            role = str(parent.get("role") or "assistant")
+            session_message = _extract_opencode_message_part(role=role, payload=payload, timestamp=_millis_to_iso(part_time))
+            if session_message is None:
+                continue
+            signature = (session_message.role, session_message.content)
+            if signature in seen:
+                continue
+            seen.add(signature)
+            extracted.append(session_message)
+        return extracted
+
+    def _preview_for_session(self, session_id: str) -> str:
+        rows = self._query_all(
+            """
+            select p.data as part_data, m.data as message_data
+            from part p
+            join message m on m.id = p.message_id
+            where p.session_id = ?
+            order by p.time_created desc
+            limit 12
+            """,
+            (session_id,),
+        )
+        for row in rows:
+            payload = _safe_json_loads(str(row["part_data"] or ""))
+            parent = _safe_json_loads(str(row["message_data"] or ""))
+            role = str(parent.get("role") or "assistant")
+            message = _extract_opencode_message_part(role=role, payload=payload, timestamp=None)
+            if message and message.content.strip():
+                return message.content[:220]
+        return ""
+
+    def _message_count_for_session(self, session_id: str) -> int:
+        row = self._query_one("select count(*) as count from message where session_id = ?", (session_id,))
+        return int((row or {}).get("count") or 0)
+
+    def _query_one(self, query: str, parameters: tuple[Any, ...] = ()) -> dict[str, Any] | None:
+        rows = self._query_all(query, parameters)
+        return rows[0] if rows else None
+
+    def _query_all(self, query: str, parameters: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
+        connection = sqlite3.connect(str(self.root))
+        connection.row_factory = sqlite3.Row
+        try:
+            rows = connection.execute(query, parameters).fetchall()
+        finally:
+            connection.close()
+        return [dict(row) for row in rows]
 
 
 class ContextBuilderService:
@@ -452,15 +855,20 @@ class ContextBuilderService:
             config.provider: _provider_from_config(config)
             for config in self.provider_configs
         }
+        self.index = ExternalSessionIndex(self.providers)
 
     def set_runtime_allowed_providers(self, providers: set[str] | list[str] | tuple[str, ...] | None) -> None:
         if providers is None:
             self.runtime_allowed_providers = None
             return
         self.runtime_allowed_providers = {provider for provider in providers if provider in self.providers}
+        self.index.ensure(self.runtime_allowed_providers)
 
     def list_sources(self) -> list[ExternalSourceHealth]:
         return [provider.health() for provider in self.providers.values()]
+
+    def indexing_status(self) -> dict[str, Any]:
+        return self.index.status()
 
     def list_sessions(self, provider_name: str) -> list[ExternalSessionSummary]:
         provider = self._get_provider(provider_name)
@@ -536,13 +944,16 @@ class ContextBuilderService:
         if self.runtime_allowed_providers == set():
             return "", (), {"context_match_state": "new_context", "context_match_reason": "External session access has not been granted."}
         provider = self._get_provider(resolved_provider)
-        selected_matches = self._select_relevant_sessions(provider, task)
+        indexed_matches, indexed_metadata = self.index.query(task, provider_name=resolved_provider, workspace_path=self.workspace_path)
+        selected_matches = indexed_matches or self._select_relevant_sessions(provider, task)
         selected_session_ids = tuple(match["summary"].session_id for match in selected_matches)
         selection_metadata = self._selection_metadata(selected_matches)
+        selection_metadata["index_ready"] = indexed_metadata.get("index_ready", False)
         if not selected_session_ids:
             return "", (), selection_metadata
         details = [provider.get_session(session_id) for session_id in selected_session_ids]
-        context_lines = _collect_relevant_context_lines(task, details, "detailed")[:max_lines]
+        context_lines = _collect_indexed_context_lines(task, selected_matches) or _collect_relevant_context_lines(task, details, "detailed")
+        context_lines = context_lines[:max_lines]
         if not context_lines:
             return "", selected_session_ids, selection_metadata
         lines = ["## External Session Context", *(f"- {line}" for line in context_lines)]
@@ -780,7 +1191,7 @@ def _default_provider_configs() -> tuple[ExternalSessionProviderConfig, ...]:
         ),
         ExternalSessionProviderConfig(
             provider="opencode",
-            root_path=str(Path.home() / ".opencode"),
+            root_path=str(Path.home() / ".local" / "share" / "opencode" / "opencode.db"),
         ),
     )
 
@@ -1006,6 +1417,136 @@ def _token_matches(token: str, haystack: str) -> bool:
 
 def _contains_whole_token(token: str, haystack: str) -> bool:
     return bool(re.search(rf"\b{re.escape(token)}\b", haystack))
+
+
+def _collect_indexed_context_lines(task: str, selected_matches: list[dict[str, Any]]) -> tuple[str, ...]:
+    if not selected_matches:
+        return ()
+    tokens = _tokenize(task)
+    candidates: list[tuple[int, str]] = []
+    seen: set[str] = set()
+    for match in selected_matches:
+        summary = match.get("summary")
+        if isinstance(summary, ExternalSessionSummary):
+            line = f"Session '{summary.title}' targeted workspace {summary.workspace_path or 'unknown workspace'}."
+            if line not in seen:
+                seen.add(line)
+                candidates.append((2, line))
+        for chunk in match.get("chunks", []) or ():
+            if not isinstance(chunk, ExternalSessionChunk):
+                continue
+            prefix = "User asked" if chunk.role == "user" else "Assistant reported" if chunk.role == "assistant" else "Tool output"
+            line = f"{prefix}: {_compact_context_content(chunk.role, chunk.text)}"
+            if not line or line in seen:
+                continue
+            seen.add(line)
+            lowered = line.lower()
+            score = sum(2 for token in tokens if _token_matches(token, lowered))
+            if chunk.source == "reasoning":
+                score += 1
+            if chunk.role == "tool":
+                score += 2
+            candidates.append((score, line))
+    candidates.sort(key=lambda item: (-item[0], item[1]))
+    return tuple(line for score, line in candidates if score > 0)[:MAX_INDEX_CONTEXT_LINES]
+
+
+def _build_chunks_from_messages(
+    summary: ExternalSessionSummary,
+    messages: list[ExternalSessionMessage],
+    *,
+    source: str,
+) -> list[ExternalSessionChunk]:
+    chunks: list[ExternalSessionChunk] = []
+    current_role = ""
+    current_source = source
+    current_timestamp: str | None = None
+    buffer: list[str] = []
+
+    def flush() -> None:
+        nonlocal buffer, current_role, current_source, current_timestamp
+        text = _normalize_whitespace("\n".join(buffer))
+        if not text:
+            buffer = []
+            return
+        chunks.append(
+            ExternalSessionChunk(
+                provider=summary.provider,
+                session_id=summary.session_id,
+                title=summary.title,
+                workspace_path=summary.workspace_path,
+                role=current_role or "assistant",
+                source=current_source,
+                text=text,
+                timestamp=current_timestamp,
+            )
+        )
+        buffer = []
+
+    for message in messages:
+        text = _normalize_whitespace(message.content)
+        if not text:
+            continue
+        role = message.role or "assistant"
+        message_source = "tool" if role == "tool" else source
+        if buffer and (role != current_role or message_source != current_source or len("\n".join([*buffer, text])) > MAX_INDEX_CHUNK_CHARS):
+            flush()
+        if not buffer:
+            current_role = role
+            current_source = message_source
+            current_timestamp = message.timestamp
+        buffer.append(text)
+    flush()
+    return chunks
+
+
+def _extract_opencode_message_part(role: str, payload: dict[str, Any], timestamp: str | None) -> ExternalSessionMessage | None:
+    part_type = str(payload.get("type") or "").strip().lower()
+    if part_type == "text":
+        text = _normalize_whitespace(str(payload.get("text") or ""))
+        if text and not _is_noise_message_content(text):
+            return ExternalSessionMessage(role=role, content=text, timestamp=timestamp)
+        return None
+    if part_type == "reasoning":
+        text = _normalize_whitespace(str(payload.get("text") or ""))
+        if text:
+            return ExternalSessionMessage(role="assistant", content=text, timestamp=timestamp)
+        return None
+    if part_type == "tool":
+        tool_name = str(payload.get("tool") or "").strip()
+        state = payload.get("state") if isinstance(payload.get("state"), dict) else {}
+        detail = _clean_tool_output(str(state.get("output") or state.get("error") or ""))
+        title = str(state.get("title") or tool_name or "tool").strip()
+        if detail:
+            content = f"{title}: {detail}"
+        elif title:
+            content = f"Tool call: {title}"
+        else:
+            content = ""
+        content = _normalize_whitespace(content)
+        if content:
+            return ExternalSessionMessage(role="tool", content=_truncate_tool_output(content), timestamp=timestamp)
+    return None
+
+
+def _safe_json_loads(raw: str) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _millis_to_iso(value: Any) -> str:
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
+        return ""
+    if numeric <= 0:
+        return ""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(numeric / 1000))
 
 
 def _session_haystacks(summary: ExternalSessionSummary, detail: ExternalSessionDetail) -> list[str]:

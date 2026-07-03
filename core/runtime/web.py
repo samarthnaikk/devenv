@@ -111,6 +111,7 @@ class DevenvWebApp:
             "ai_backends": {name: status.to_dict() for name, status in ai_statuses.items()},
             "active_backend": active_backend,
             "preferred_backend": getattr(self.kernel.ai, "preferred_backend", "auto"),
+            "indexing": self.context_builder.indexing_status(),
         }
 
     def _available_models(self, *, current_model: str) -> list[str]:
