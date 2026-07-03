@@ -1584,6 +1584,27 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("calendar project", second_ai.chat_calls[0]["memory_context"].lower())
         self.assertIn("python backend", second_ai.chat_calls[0]["memory_context"].lower())
 
+    def test_session_budget_blocks_future_turns_after_limit_is_reached(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(content="First answer", tool_calls=(), finish_reason="stop", usage={"total_tokens": 8}),
+                AIResponse(content="Second answer", tool_calls=(), finish_reason="stop", usage={"total_tokens": 4}),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
+            first = kernel.execute_turn("Explain the repo", session_budget_tokens=10)
+            second = kernel.execute_turn("Explain the repo again", session_budget_tokens=6)
+
+        self.assertEqual(first.final_response, "First answer")
+        self.assertEqual(first.metadata["budget_state"]["used"], 8)
+        self.assertTrue(second.metadata["budget_state"]["blocked"])
+        self.assertIn("budget", second.error_message.lower())
+        self.assertEqual(second.total_usage["total_tokens"], 8)
+
 
 def _disabled_router():
     return type(

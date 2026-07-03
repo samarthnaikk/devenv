@@ -210,6 +210,23 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(detail["summary"]["session_id"], session_id)
         self.assertIn("Task:", prepared["prompt"])
 
+    def test_access_endpoints_update_server_side_consent_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+
+            session_payload = app.update_session_access("codex", True)
+            backend_payload = app.update_backend_access("opencode", True)
+            health = app.build_health_payload()
+
+        self.assertTrue(session_payload["session_access"]["codex"])
+        self.assertTrue(backend_payload["backend_access"]["opencode"])
+        self.assertTrue(health["access_policy"]["session_access"]["codex"])
+        self.assertTrue(health["access_policy"]["backend_access"]["opencode"])
+
     def test_run_turn_preserves_partial_blueprint_when_execution_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             app = DevenvWebApp(
