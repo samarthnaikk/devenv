@@ -34,7 +34,6 @@ include = ["core*"]
 [tool.setuptools.data-files]
 "share/devenv/interface/website" = [
     "interface/website/index.html",
-    "interface/website/dash.html",
     "interface/website/main.js",
     "interface/website/styles.css",
 ]
