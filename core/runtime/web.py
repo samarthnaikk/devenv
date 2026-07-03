@@ -95,13 +95,16 @@ class DevenvWebApp:
     def build_health_payload(self) -> dict[str, object]:
         model = getattr(self.kernel.ai, "model", "unknown")
         ai_statuses = getattr(self.kernel.ai, "status", lambda: {})()
-        active_backend = "opencode" if self.access_policy.can_use_backend("opencode") and ai_statuses.get("opencode", None) and ai_statuses["opencode"].available else "groq"
+        opencode_status = ai_statuses.get("opencode")
+        opencode_active = self.access_policy.can_use_backend("opencode") and (opencode_status is None or opencode_status.available)
+        active_backend = "opencode" if opencode_active else "groq"
+        active_provider_label = "OpenCode CLI" if active_backend == "opencode" else "Groq"
         return {
             "workspace_path": self.config.workspace_path,
             "port": self.port,
             "tools": sorted(self.kernel.tools),
             "status": "ok",
-            "ai_provider": getattr(self.kernel.ai, "provider_label", "Groq"),
+            "ai_provider": active_provider_label,
             "ai_model": model,
             "available_models": self._available_models(current_model=model),
             "context_builder_enabled": True,
@@ -192,8 +195,16 @@ class DevenvWebApp:
             kwargs["opencode_enabled"] = self.access_policy.can_use_backend("opencode")
         if "session_budget_tokens" in parameters:
             kwargs["session_budget_tokens"] = session_budget_tokens
-        result = execute_turn(prompt, **kwargs)
-        return result.to_dict()
+        result = execute_turn(prompt, **kwargs).to_dict()
+        metadata = dict(result.get("metadata") or {})
+        result["backend_used"] = metadata.get("backend_used", "groq")
+        result["budget_state"] = metadata.get("budget_state")
+        result["usage_sample"] = {
+            "prompt_tokens": int(result.get("total_usage", {}).get("prompt_tokens", 0) or 0),
+            "completion_tokens": int(result.get("total_usage", {}).get("completion_tokens", 0) or 0),
+            "total_tokens": int(result.get("total_usage", {}).get("total_tokens", 0) or 0),
+        }
+        return result
 
     def set_model(self, model: str) -> dict[str, object]:
         cleaned = model.strip()

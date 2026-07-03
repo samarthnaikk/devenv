@@ -148,11 +148,13 @@ class DevenvWebAppTest(unittest.TestCase):
                 ai=FakeAI(),
             )
 
+            app.update_backend_access("opencode", True)
             payload = app.set_model("llama-3.1-8b-instant")
             health = app.build_health_payload()
 
         self.assertEqual(payload["ai_model"], "llama-3.1-8b-instant")
         self.assertEqual(health["ai_model"], "llama-3.1-8b-instant")
+        self.assertEqual(health["ai_provider"], "OpenCode CLI")
         self.assertIn("llama-3.1-8b-instant", health["available_models"])
 
     def test_context_builder_payload_helpers_expose_sessions_and_prompt(self) -> None:
