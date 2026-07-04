@@ -39,7 +39,10 @@ class FakeMemory:
 
 class FakeAI:
     def __init__(self) -> None:
-        self.model = "fake-groq-model"
+        self.model = "fake-opencode-model"
+        self.provider_label = "OpenCode CLI"
+        self.preferred_backend = "opencode"
+        self.last_backend_used = "opencode"
         self.responses = [
             AIResponse(content="Website response", tool_calls=(), finish_reason="stop", usage={"prompt_tokens": 3}),
         ]
@@ -73,9 +76,9 @@ class DevenvWebAppTest(unittest.TestCase):
             file_payload = app.build_file_payload("README.md")
 
         self.assertEqual(health["status"], "ok")
-        self.assertEqual(health["ai_provider"], "Groq")
-        self.assertEqual(health["ai_model"], "fake-groq-model")
-        self.assertIn("fake-groq-model", health["available_models"])
+        self.assertEqual(health["ai_provider"], "OpenCode CLI")
+        self.assertEqual(health["ai_model"], "fake-opencode-model")
+        self.assertIn("fake-opencode-model", health["available_models"])
         self.assertTrue(health["context_builder_enabled"])
         self.assertIn("context_sources", health)
         self.assertEqual(health["performance_mode"], "medium")
@@ -455,7 +458,7 @@ class DevenvWebAppTest(unittest.TestCase):
                             ]
                         ),
                         "total_usage": {},
-                        "metadata": {"backend_used": "groq", "budget_state": {"blocked": False}},
+                        "metadata": {"backend_used": "opencode", "budget_state": {"blocked": False}},
                     }
                 },
             )()

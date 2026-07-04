@@ -22,9 +22,9 @@ from .workspace import WorkspaceBrowser
 
 logger = logging.getLogger(__name__)
 DEFAULT_WEB_MODELS = (
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "moonshotai/kimi-k2-instruct",
+    "openrouter/anthropic/claude-sonnet-4",
+    "openrouter/openai/gpt-5-mini",
+    "openrouter/google/gemini-2.5-pro",
 )
 
 
@@ -193,8 +193,8 @@ class DevenvWebApp:
     def build_health_payload(self) -> dict[str, object]:
         model = getattr(self.kernel.ai, "model", "unknown")
         ai_statuses = getattr(self.kernel.ai, "status", lambda: {})()
-        active_backend = getattr(self.kernel.ai, "last_backend_used", "groq")
-        active_provider_label = "OpenCode CLI" if active_backend == "opencode" else "Groq"
+        active_backend = getattr(self.kernel.ai, "last_backend_used", "opencode")
+        active_provider_label = "OpenCode CLI"
         setup = inspect_setup(self.config, include_optional=True)
         privacy = PrivacyModeState(no_memory=self.privacy_mode["no_memory"], incognito=self.privacy_mode["incognito"])
         tool_readiness = self._build_tool_readiness()
@@ -211,7 +211,7 @@ class DevenvWebApp:
             "access_policy": self.access_policy.snapshot(),
             "ai_backends": {name: status.to_dict() for name, status in ai_statuses.items()},
             "active_backend": active_backend,
-            "preferred_backend": getattr(self.kernel.ai, "preferred_backend", "auto"),
+            "preferred_backend": getattr(self.kernel.ai, "preferred_backend", "opencode"),
             "indexing": self.context_builder.indexing_status(),
             "setup": setup.to_dict(),
             "performance_mode": self.performance_mode,
@@ -302,7 +302,7 @@ class DevenvWebApp:
         planning_mode: PlanningMode = PlanningMode.AUTO,
         continue_plan: bool = False,
         local_only: bool = False,
-        backend_preference: str = "auto",
+        backend_preference: str = "opencode",
         session_budget_tokens: int | None = None,
     ) -> dict[str, object]:
         execute_turn = self.kernel.execute_turn
@@ -327,7 +327,7 @@ class DevenvWebApp:
         result["final_response"] = _sanitize_replay_text(result.get("final_response"))
         result["error_message"] = _sanitize_replay_text(result.get("error_message"))
         metadata = dict(result.get("metadata") or {})
-        result["backend_used"] = metadata.get("backend_used", "groq")
+        result["backend_used"] = metadata.get("backend_used", "opencode")
         result["budget_state"] = metadata.get("budget_state")
         result["usage_sample"] = {
             "prompt_tokens": int(result.get("total_usage", {}).get("prompt_tokens", 0) or 0),
@@ -357,7 +357,7 @@ class DevenvWebApp:
         else:
             self.kernel.ai.model = cleaned
         return {
-            "ai_provider": getattr(self.kernel.ai, "provider_label", "Groq"),
+            "ai_provider": getattr(self.kernel.ai, "provider_label", "OpenCode CLI"),
             "ai_model": cleaned,
             "available_models": self._available_models(current_model=cleaned),
         }
@@ -556,7 +556,7 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
         if not isinstance(local_only, bool):
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": "local_only must be a boolean"})
             return
-        backend_preference = payload.get("backend_preference", "auto")
+        backend_preference = payload.get("backend_preference", "opencode")
         if not isinstance(backend_preference, str):
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": "backend_preference must be a string"})
             return

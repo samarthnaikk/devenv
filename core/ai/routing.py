@@ -9,7 +9,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from core.ai.engine import AICore
+from core.ai.engine import DEFAULT_SYSTEM_INSTRUCTIONS
 from core.ai.models import AIBackendStatus, AIResponse, ToolCallRequest
 from core.tools.base import BaseTool
 
@@ -159,54 +159,41 @@ class OpenCodeAICore:
 
 
 class RoutingAICore:
-    provider_label = "Groq"
+    provider_label = "OpenCode CLI"
 
     def __init__(
         self,
         *,
         workspace_path: str,
-        groq_ai: AICore | None = None,
         opencode_ai: OpenCodeAICore | None = None,
     ) -> None:
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
-        self.groq_ai = groq_ai or AICore()
         self.opencode_ai = opencode_ai or OpenCodeAICore(
             workspace_path=self.workspace_path,
-            system_instructions=getattr(self.groq_ai, "system_instructions", ""),
+            system_instructions=DEFAULT_SYSTEM_INSTRUCTIONS,
         )
-        self.model = self.groq_ai.model
-        self.preferred_backend = "auto"
+        self.model = self.opencode_ai.model
+        self.preferred_backend = "opencode"
         self.opencode_enabled = False
-        self.last_backend_used = "groq"
-        self.last_backend_reason = "Groq handled the turn."
+        self.last_backend_used = "opencode"
+        self.last_backend_reason = "OpenCode handled the turn."
         self.last_backend_fallback = ""
 
     def register_tool(self, tool: BaseTool) -> None:
-        self.groq_ai.register_tool(tool)
         self.opencode_ai.register_tool(tool)
 
     def status(self) -> dict[str, AIBackendStatus]:
-        groq_available = bool(getattr(self.groq_ai, "api_key", None) or os.getenv("GROQ_API_KEY"))
-        groq_status = AIBackendStatus(
-            name="groq",
-            available=groq_available,
-            enabled=True,
-            model=getattr(self.groq_ai, "model", ""),
-            detail="Configured" if groq_available else "Missing GROQ_API_KEY",
-            supports_tool_calls=True,
-        )
         opencode_status = self.opencode_ai.status()
-        return {"groq": groq_status, "opencode": opencode_status}
+        return {"opencode": opencode_status}
 
     def set_model(self, model: str) -> None:
         cleaned = model.strip()
         self.model = cleaned
-        self.groq_ai.model = cleaned
         self.opencode_ai.model = cleaned
 
     def set_backend_preference(self, backend: str, *, opencode_enabled: bool) -> None:
-        normalized = backend if backend in {"auto", "groq", "opencode"} else "auto"
-        self.preferred_backend = normalized
+        del backend
+        self.preferred_backend = "opencode"
         self.opencode_enabled = opencode_enabled
 
     def chat(
@@ -216,31 +203,19 @@ class RoutingAICore:
         temperature: float = 0.2,
         tool_names: Iterable[str] | None = None,
     ) -> AIResponse:
-        statuses = self.status()
-        wants_opencode = self.opencode_enabled and self.preferred_backend in {"auto", "opencode"}
-        if wants_opencode and statuses["opencode"].available:
-            try:
-                response = self.opencode_ai.chat(
-                    messages=messages,
-                    memory_context=memory_context,
-                    temperature=temperature,
-                    tool_names=tool_names,
-                )
-                self.last_backend_used = "opencode"
-                self.last_backend_reason = self.opencode_ai.last_backend_reason
-                self.last_backend_fallback = ""
-                return response
-            except RuntimeError as exc:
-                self.last_backend_fallback = str(exc)
-
-        response = self.groq_ai.chat(
+        del temperature
+        if not self.opencode_enabled:
+            self.last_backend_fallback = "OpenCode backend access has not been granted."
+            raise RuntimeError(self.last_backend_fallback)
+        response = self.opencode_ai.chat(
             messages=messages,
             memory_context=memory_context,
-            temperature=temperature,
+            temperature=0.2,
             tool_names=tool_names,
         )
-        self.last_backend_used = "groq"
-        self.last_backend_reason = "Groq handled the turn."
+        self.last_backend_used = "opencode"
+        self.last_backend_reason = self.opencode_ai.last_backend_reason
+        self.last_backend_fallback = ""
         return response
 
 

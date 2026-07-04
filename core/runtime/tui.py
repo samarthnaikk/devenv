@@ -15,7 +15,7 @@ def render_banner(config: RunConfig) -> None:
     print(line)
     print(f" DEVENV CORE TUI v1.0 | Workspace: {config.workspace_path}")
     print(line)
-    print("[SYSTEM]: Connected to Groq Local Pipeline. Memory Engine Online.")
+    print("[SYSTEM]: Connected to OpenCode CLI pipeline. Memory engine online.")
     print(f"[SYSTEM]: Performance mode: {config.performance_mode}")
 
 

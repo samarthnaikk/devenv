@@ -11,7 +11,7 @@ from difflib import get_close_matches
 from pathlib import Path
 from typing import Any
 
-from core.ai import AICore, RoutingAICore
+from core.ai import OpenCodeAICore, RoutingAICore
 from core.ai.models import AIResponse, ToolCallRequest
 from core.env import load_dotenv
 from core.memory import MemoryEngine
@@ -133,7 +133,7 @@ class DevenvKernel:
             self._tool_client.close()
 
     @property
-    def ai(self) -> AICore | Any:
+    def ai(self) -> OpenCodeAICore | Any:
         if self._ai is _AI_SENTINEL:
             ai = RoutingAICore(workspace_path=self.workspace_path)
             for tool in self.tools.values():
@@ -173,7 +173,7 @@ class DevenvKernel:
         planning_mode: PlanningMode = PlanningMode.AUTO,
         continue_plan: bool = False,
         local_only: bool = False,
-        backend_preference: str = "auto",
+        backend_preference: str = "opencode",
         opencode_enabled: bool = False,
         session_budget_tokens: int | None = None,
         no_memory: bool = False,
@@ -191,7 +191,7 @@ class DevenvKernel:
             "external_context_session_count": 0,
             "external_context_session_ids": [],
             "backend_preference": backend_preference,
-            "backend_used": "local" if local_only else "groq",
+            "backend_used": "local" if local_only else "opencode",
             "backend_fallback": "",
             "no_memory": no_memory,
             "incognito": incognito,
@@ -1745,28 +1745,8 @@ class DevenvKernel:
         return tasks
 
     def _resolve_execution_tool_scope(self, user_prompt: str, task_description: str) -> list[str]:
-        text = f"{user_prompt} {task_description}".lower()
-        if self._is_scaffold_request(text):
-            return sorted(name for name in SCAFFOLD_EXECUTION_TOOLS if name in self.tools)
-
-        tool_names = set(READ_ONLY_EXECUTION_TOOLS)
-        if _should_enable_web_search(text):
-            tool_names.add("web_search")
-
-        if any(token in text for token in ("create", "add", "write", "build", "generate", "html", "css", "js", "frontend", "folder", "file")):
-            tool_names.update(WRITE_EXECUTION_TOOLS)
-        if any(token in text for token in ("edit", "update", "modify", "change", "patch", "refactor")):
-            tool_names.update(WRITE_EXECUTION_TOOLS)
-        if any(token in text for token in ("delete", "remove", "cleanup")):
-            tool_names.update(DELETE_EXECUTION_TOOLS)
-        if any(token in text for token in ("run", "test", "verify", "diagnostic", "lint", "typecheck", "types", "shell")):
-            tool_names.update(SHELL_EXECUTION_TOOLS)
-        if any(token in text for token in ("memory", "recall", "trace", "history")):
-            tool_names.update(MEMORY_EXECUTION_TOOLS)
-
-        if "run_shell" in tool_names:
-            tool_names.add("audit_changes")
-        return sorted(name for name in tool_names if name in self.tools)
+        del user_prompt, task_description
+        return sorted(self.tools)
 
     def _resolve_execution_memory(self, *, user_prompt: str, task_description: str, memory_context: str) -> str:
         text = f"{user_prompt} {task_description}".lower()
@@ -1947,13 +1927,8 @@ class DevenvKernel:
         return any(marker in text for marker in mutation_markers)
 
     def _resolve_direct_tool_scope(self, user_prompt: str) -> list[str]:
-        text = user_prompt.lower()
-        tool_names = set(READ_ONLY_EXECUTION_TOOLS)
-        if _should_enable_web_search(text):
-            tool_names.add("web_search")
-        if any(token in text for token in ("memory", "recall", "trace", "history", "earlier", "previous")):
-            tool_names.update(MEMORY_EXECUTION_TOOLS)
-        return sorted(name for name in tool_names if name in self.tools)
+        del user_prompt
+        return sorted(self.tools)
 
     def _build_local_plan_markdown(self, user_prompt: str) -> str:
         target_path = self._derive_scaffold_target_path(user_prompt) or ""

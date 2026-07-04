@@ -24,7 +24,7 @@ const state = {
   persistedAccess: loadPersistedAccess(),
   backends: {},
   activeBackend: "opencode",
-  preferredBackend: loadPreferredBackend(),
+  preferredBackend: "opencode",
   selectedProvider: "codex",
   visibleSessionProviders: { codex: false, opencode: false },
   providerSessions: { codex: [], opencode: [] },
@@ -162,7 +162,7 @@ function bindEvents() {
       return;
     }
     if (event.target.matches("[data-backend-select]")) {
-      state.preferredBackend = event.target.value || "auto";
+      state.preferredBackend = "opencode";
       persistPreferredBackend(state.preferredBackend);
       scheduleRender({ preserveComposerFocus: true });
       return;
@@ -345,7 +345,7 @@ async function submitPrompt() {
             planning_mode: "auto",
             continue_plan: false,
             local_only: false,
-            backend_preference: state.preferredBackend,
+            backend_preference: "opencode",
             session_budget_tokens: state.sessionBudgetTokens,
           }),
         });
@@ -488,7 +488,7 @@ async function refreshHealth(options = {}) {
     state.performanceMode = healthPayload.performance_mode || "medium";
     state.privacyMode = healthPayload.privacy || state.privacyMode;
     if (!isValidBackendPreference(state.preferredBackend)) {
-      state.preferredBackend = healthPayload.preferred_backend || "auto";
+      state.preferredBackend = "opencode";
       persistPreferredBackend(state.preferredBackend);
     }
     if (!state.selectedProvider) {
@@ -568,7 +568,7 @@ async function updateBackendAccess(backend, allowed) {
     state.accessPolicy = payload;
     persistAccess(state.accessPolicy);
     if (!allowed && state.preferredBackend === "opencode") {
-      state.preferredBackend = "auto";
+      state.preferredBackend = "opencode";
       persistPreferredBackend(state.preferredBackend);
     }
     await refreshHealth();
@@ -923,14 +923,10 @@ function renderAccessCard() {
         <div class="backend-copy">
           <strong>Current backend</strong>
           <span class="markdown-body inline-markdown">${renderRichText(
-            `${activeBackendLabel}${state.preferredBackend !== "auto" ? ` · preferred ${preferredBackendLabel}` : ""}`
+            `${activeBackendLabel}`
           )}</span>
         </div>
         <div class="backend-actions">
-          <select class="backend-select" data-backend-select>
-            <option value="auto" ${state.preferredBackend === "auto" ? "selected" : ""}>Auto</option>
-            <option value="opencode" ${state.preferredBackend === "opencode" ? "selected" : ""}>OpenCode</option>
-          </select>
           <button type="button" class="context-action-button ${opencodeBackendAllowed ? "" : "primary"}" data-action="${opencodeBackendAllowed ? "revoke-backend" : "grant-backend"}" ${state.accessUpdating ? "disabled" : ""}>
             ${opencodeBackendAllowed ? "Revoke" : "Grant"}
           </button>
@@ -1562,12 +1558,6 @@ function formatBackendLabel(value) {
   if (value === "opencode") {
     return "OpenCode";
   }
-  if (value === "groq") {
-    return "Devenv";
-  }
-  if (value === "auto") {
-    return "Auto";
-  }
   return String(value || "Unknown");
 }
 
@@ -1812,22 +1802,17 @@ function persistAccess(accessPolicy) {
 }
 
 function loadPreferredBackend() {
-  try {
-    const value = window.localStorage.getItem(STORAGE_BACKEND_KEY) || "auto";
-    return isValidBackendPreference(value) ? value : "auto";
-  } catch {
-    return "auto";
-  }
+  return "opencode";
 }
 
 function persistPreferredBackend(value) {
   try {
-    window.localStorage.setItem(STORAGE_BACKEND_KEY, isValidBackendPreference(value) ? value : "auto");
+    window.localStorage.setItem(STORAGE_BACKEND_KEY, "opencode");
   } catch {}
 }
 
 function isValidBackendPreference(value) {
-  return value === "auto" || value === "opencode";
+  return value === "opencode";
 }
 
 function showToast(message) {
