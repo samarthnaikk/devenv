@@ -77,9 +77,36 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertIn("fake-groq-model", health["available_models"])
         self.assertTrue(health["context_builder_enabled"])
         self.assertIn("context_sources", health)
+        self.assertEqual(health["performance_mode"], "medium")
+        self.assertFalse(health["privacy"]["no_memory"])
+        self.assertFalse(health["privacy"]["incognito"])
+        self.assertIn("setup", health)
+        self.assertIn("tool_readiness", health)
+        self.assertIn("web_search", health["tool_readiness"])
         self.assertEqual(files["entries"][0]["name"], "README.md")
         self.assertEqual(file_payload["content"], "hello")
         self.assertEqual(file_payload["kind"], "text")
+
+    def test_health_payload_exposes_runtime_contract_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(
+                    workspace_path=tempdir,
+                    performance_mode="high",
+                    no_memory=True,
+                    incognito=True,
+                ),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+
+            health = app.build_health_payload()
+
+        self.assertEqual(health["performance_mode"], "high")
+        self.assertTrue(health["privacy"]["no_memory"])
+        self.assertTrue(health["privacy"]["incognito"])
+        self.assertFalse(health["setup"]["ready"] is None)
+        self.assertEqual(health["tool_readiness"]["generate_prompt"]["ready"], True)
 
     def test_file_payload_supports_image_preview(self) -> None:
         png_bytes = bytes.fromhex(

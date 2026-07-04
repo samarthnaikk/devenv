@@ -11,6 +11,12 @@ class PlanningMode(Enum):
     FORCE_DIRECT = "force_direct"
 
 
+class PerformanceMode(Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
 class AgentState(Enum):
     PLANNING = auto()
     EXECUTING = auto()
@@ -169,6 +175,9 @@ class RunConfig:
     db_path: str = "memory.db"
     vector_dir: str = "vectors"
     max_consecutive_tools: int = 5
+    performance_mode: str = PerformanceMode.MEDIUM.value
+    no_memory: bool = False
+    incognito: bool = False
     external_session_configs: tuple["ExternalSessionProviderConfig", ...] = ()
 
 
@@ -301,4 +310,64 @@ class PreparedPromptResult:
             "prior_context": list(self.prior_context),
             "constraints": list(self.constraints),
             "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(frozen=True)
+class SetupCheckStatus:
+    name: str
+    required: bool
+    status: str = "pending"
+    detail: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "required": self.required,
+            "status": self.status,
+            "detail": self.detail,
+        }
+
+
+@dataclass(frozen=True)
+class SetupReadiness:
+    ready: bool
+    summary: str
+    required_checks: tuple[SetupCheckStatus, ...] = ()
+    optional_checks: tuple[SetupCheckStatus, ...] = ()
+    checked_at: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ready": self.ready,
+            "summary": self.summary,
+            "required_checks": [check.to_dict() for check in self.required_checks],
+            "optional_checks": [check.to_dict() for check in self.optional_checks],
+            "checked_at": self.checked_at,
+        }
+
+
+@dataclass(frozen=True)
+class ToolReadiness:
+    name: str
+    ready: bool
+    detail: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "ready": self.ready,
+            "detail": self.detail,
+        }
+
+
+@dataclass(frozen=True)
+class PrivacyModeState:
+    no_memory: bool = False
+    incognito: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "no_memory": self.no_memory,
+            "incognito": self.incognito,
         }

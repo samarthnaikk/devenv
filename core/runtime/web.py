@@ -15,7 +15,7 @@ from core.logging_utils import configure_logging
 
 from .context_builder import ContextBuilderService
 from .kernel import DevenvKernel
-from .models import PlanningMode, PreparedPromptRequest, RunConfig
+from .models import PlanningMode, PreparedPromptRequest, PrivacyModeState, RunConfig, SetupCheckStatus, SetupReadiness, ToolReadiness
 from .tooling import build_runtime_tools
 from .workspace import WorkspaceBrowser
 
@@ -191,6 +191,9 @@ class DevenvWebApp:
         ai_statuses = getattr(self.kernel.ai, "status", lambda: {})()
         active_backend = getattr(self.kernel.ai, "last_backend_used", "groq")
         active_provider_label = "OpenCode CLI" if active_backend == "opencode" else "Groq"
+        setup = self._build_setup_readiness()
+        privacy = PrivacyModeState(no_memory=self.config.no_memory, incognito=self.config.incognito)
+        tool_readiness = self._build_tool_readiness()
         return {
             "workspace_path": self.config.workspace_path,
             "port": self.port,
@@ -206,6 +209,77 @@ class DevenvWebApp:
             "active_backend": active_backend,
             "preferred_backend": getattr(self.kernel.ai, "preferred_backend", "auto"),
             "indexing": self.context_builder.indexing_status(),
+            "setup": setup.to_dict(),
+            "performance_mode": self.config.performance_mode,
+            "privacy": privacy.to_dict(),
+            "tool_readiness": {name: readiness.to_dict() for name, readiness in tool_readiness.items()},
+        }
+
+    def _build_setup_readiness(self) -> SetupReadiness:
+        workspace_ready = Path(self.config.workspace_path).is_dir()
+        required_checks = (
+            SetupCheckStatus(
+                name="workspace",
+                required=True,
+                status="ready" if workspace_ready else "failed",
+                detail="Workspace path is available." if workspace_ready else "Workspace path is missing or unreadable.",
+            ),
+            SetupCheckStatus(
+                name="python_dependencies",
+                required=True,
+                status="pending",
+                detail="Dependency verification will be provided by devenv-setup.",
+            ),
+            SetupCheckStatus(
+                name="opencode",
+                required=True,
+                status="pending",
+                detail="OpenCode CLI verification will be provided by devenv-setup.",
+            ),
+        )
+        optional_checks = (
+            SetupCheckStatus(
+                name="sentence_transformer_cache",
+                required=False,
+                status="pending",
+                detail="Model cache warmup has not run yet.",
+            ),
+            SetupCheckStatus(
+                name="web_search_prerequisites",
+                required=False,
+                status="pending",
+                detail="Web search provider readiness has not run yet.",
+            ),
+            SetupCheckStatus(
+                name="latex_pdf_toolchain",
+                required=False,
+                status="pending",
+                detail="PDF toolchain readiness has not run yet.",
+            ),
+        )
+        ready = workspace_ready
+        summary = "Initial runtime contract loaded. Full setup readiness checks have not run yet."
+        if not workspace_ready:
+            summary = "Workspace path is not ready."
+        return SetupReadiness(ready=ready, summary=summary, required_checks=required_checks, optional_checks=optional_checks)
+
+    def _build_tool_readiness(self) -> dict[str, ToolReadiness]:
+        return {
+            "web_search": ToolReadiness(
+                name="web_search",
+                ready=False,
+                detail="Tool contract reserved. Provider readiness is not implemented yet.",
+            ),
+            "generate_prompt": ToolReadiness(
+                name="generate_prompt",
+                ready=True,
+                detail="Prompt-preparation primitives are available and will be exposed as a runtime tool.",
+            ),
+            "generate_pdf": ToolReadiness(
+                name="generate_pdf",
+                ready=False,
+                detail="Tool contract reserved. LaTeX pipeline is not implemented yet.",
+            ),
         }
 
     def _available_models(self, *, current_model: str) -> list[str]:
