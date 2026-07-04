@@ -275,6 +275,20 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertTrue(health["access_policy"]["session_access"]["codex"])
         self.assertTrue(health["access_policy"]["backend_access"]["opencode"])
 
+    def test_performance_mode_updates_health_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir, performance_mode="medium"),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+
+            payload = app.update_performance_mode("high")
+            health = app.build_health_payload()
+
+        self.assertEqual(payload["performance_mode"], "high")
+        self.assertEqual(health["performance_mode"], "high")
+
     def test_session_payload_requires_explicit_provider_access(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             app = DevenvWebApp(

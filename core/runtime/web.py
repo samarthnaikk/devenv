@@ -153,6 +153,7 @@ class DevenvWebApp:
         self.config = config
         self.port = port
         self.static_root = _resolve_static_root()
+        self.performance_mode = config.performance_mode if config.performance_mode in {"low", "medium", "high"} else "medium"
         self.kernel = DevenvKernel(
             workspace_path=config.workspace_path,
             db_path=config.db_path,
@@ -211,7 +212,7 @@ class DevenvWebApp:
             "preferred_backend": getattr(self.kernel.ai, "preferred_backend", "auto"),
             "indexing": self.context_builder.indexing_status(),
             "setup": setup.to_dict(),
-            "performance_mode": self.config.performance_mode,
+            "performance_mode": self.performance_mode,
             "privacy": privacy.to_dict(),
             "tool_readiness": {name: readiness.to_dict() for name, readiness in tool_readiness.items()},
         }
@@ -356,6 +357,13 @@ class DevenvWebApp:
             raise ValueError("backend must be: opencode")
         return self.access_policy.set_backend_access(backend, allowed)
 
+    def update_performance_mode(self, performance_mode: str) -> dict[str, object]:
+        cleaned = performance_mode.strip().lower()
+        if cleaned not in {"low", "medium", "high"}:
+            raise ValueError("performance_mode must be one of: low, medium, high")
+        self.performance_mode = cleaned
+        return {"performance_mode": self.performance_mode}
+
     def _require_provider_access(self, provider_name: str) -> None:
         if not self.access_policy.can_access_provider(provider_name):
             raise PermissionError(f"Access to {provider_name} sessions requires explicit user permission.")
@@ -456,6 +464,18 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
                 return
             self._write_json(HTTPStatus.OK, result)
             return
+        if parsed.path == "/api/performance":
+            performance_mode = payload.get("performance_mode")
+            if not isinstance(performance_mode, str):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "Missing required field: performance_mode"})
+                return
+            try:
+                result = self.app.update_performance_mode(performance_mode)
+            except ValueError as exc:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                return
+            self._write_json(HTTPStatus.OK, result)
+            return
         if parsed.path != "/api/turn":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -547,6 +567,7 @@ def main() -> int:
     parser.add_argument("--db-path", default="memory.db")
     parser.add_argument("--vector-dir", default="vectors")
     parser.add_argument("--max-consecutive-tools", type=int, default=5)
+    parser.add_argument("--performance-mode", default="medium", choices=("low", "medium", "high"))
     parser.add_argument("--port", type=int, default=4173)
     parser.add_argument("--log-level", default=None)
     args = parser.parse_args()
@@ -557,6 +578,7 @@ def main() -> int:
         db_path=args.db_path,
         vector_dir=args.vector_dir,
         max_consecutive_tools=args.max_consecutive_tools,
+        performance_mode=args.performance_mode,
     )
     app = DevenvWebApp(config=config, port=args.port)
     app.serve()

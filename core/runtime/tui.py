@@ -16,6 +16,7 @@ def render_banner(config: RunConfig) -> None:
     print(f" DEVENV CORE TUI v1.0 | Workspace: {config.workspace_path}")
     print(line)
     print("[SYSTEM]: Connected to Groq Local Pipeline. Memory Engine Online.")
+    print(f"[SYSTEM]: Performance mode: {config.performance_mode}")
 
 
 def render_turn_result(result: RuntimeTurnResult) -> None:
@@ -76,6 +77,7 @@ def main() -> int:
     parser.add_argument("--db-path", default="memory.db")
     parser.add_argument("--vector-dir", default="vectors")
     parser.add_argument("--max-consecutive-tools", type=int, default=5)
+    parser.add_argument("--performance-mode", default="medium", choices=("low", "medium", "high"))
     parser.add_argument("--log-level", default=None)
     args = parser.parse_args()
 
@@ -85,6 +87,7 @@ def main() -> int:
         db_path=args.db_path,
         vector_dir=args.vector_dir,
         max_consecutive_tools=args.max_consecutive_tools,
+        performance_mode=args.performance_mode,
     )
     return run_tui(config)
 

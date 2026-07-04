@@ -32,6 +32,7 @@ const state = {
   sessionDetails: {},
   sessionLoading: false,
   accessUpdating: false,
+  performanceMode: "medium",
   sessionBudgetTokens: 25000,
   budgetInput: "25000",
   sessionUsageTotal: 0,
@@ -156,6 +157,10 @@ function bindEvents() {
       state.preferredBackend = event.target.value || "auto";
       persistPreferredBackend(state.preferredBackend);
       scheduleRender({ preserveComposerFocus: true });
+      return;
+    }
+    if (event.target.matches("[data-performance-select]")) {
+      await updatePerformanceMode(event.target.value || "medium");
     }
   });
 
@@ -422,6 +427,7 @@ async function refreshHealth(options = {}) {
     state.accessPolicy = healthPayload.access_policy || state.accessPolicy;
     state.backends = healthPayload.ai_backends || {};
     state.activeBackend = healthPayload.active_backend || "opencode";
+    state.performanceMode = healthPayload.performance_mode || "medium";
     if (!isValidBackendPreference(state.preferredBackend)) {
       state.preferredBackend = healthPayload.preferred_backend || "auto";
       persistPreferredBackend(state.preferredBackend);
@@ -512,6 +518,18 @@ async function updateBackendAccess(backend, allowed) {
     state.accessUpdating = false;
     scheduleRender({ preserveComposerFocus: true });
   }
+}
+
+async function updatePerformanceMode(performanceMode) {
+  const payload = await request("/api/performance", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ performance_mode: performanceMode }),
+  });
+  state.performanceMode = payload.performance_mode || "medium";
+  await refreshHealth({ silent: true });
+  showToast(`Performance set to ${state.performanceMode}`);
+  scheduleRender({ preserveComposerFocus: true });
 }
 
 async function refreshVisibleSessions() {
@@ -849,6 +867,19 @@ function renderAccessCard() {
       </div>
       <div class="backend-summary">
         <div class="markdown-body inline-markdown">${renderRichText(`**OpenCode:** ${opencode.detail || (opencode.available ? "Available" : "Unavailable")}`)}</div>
+      </div>
+      <div class="backend-card">
+        <div class="backend-copy">
+          <strong>Performance mode</strong>
+          <span class="markdown-body inline-markdown">${renderRichText(`Current profile: **${state.performanceMode}**`)}</span>
+        </div>
+        <div class="backend-actions">
+          <select class="backend-select" data-performance-select>
+            <option value="low" ${state.performanceMode === "low" ? "selected" : ""}>Low</option>
+            <option value="medium" ${state.performanceMode === "medium" ? "selected" : ""}>Medium</option>
+            <option value="high" ${state.performanceMode === "high" ? "selected" : ""}>High</option>
+          </select>
+        </div>
       </div>
     </section>
   `;
