@@ -161,8 +161,6 @@ class DevenvWebApp:
             memory=memory,
             ai=ai,
         )
-        for tool in build_runtime_tools(self.kernel.memory):
-            self.kernel.register_tool(tool)
         self.workspace = WorkspaceBrowser(config.workspace_path)
         self.context_builder = ContextBuilderService(
             config.workspace_path,
@@ -172,6 +170,8 @@ class DevenvWebApp:
         )
         self.context_builder.set_runtime_allowed_providers(set())
         self.kernel.context_builder = self.context_builder
+        for tool in build_runtime_tools(self.kernel.memory, context_builder=self.context_builder):
+            self.kernel.register_tool(tool)
         self.access_policy = AccessPolicy()
 
     def create_handler(self):

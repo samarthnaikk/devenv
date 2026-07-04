@@ -6,6 +6,7 @@ from core.memory.interface import MemoryEngineInterface
 from core.tools import (
     AuditChangesTool,
     EditFileTool,
+    GeneratePromptTool,
     InspectSymbolsTool,
     InspectTraceTool,
     ListDirectoryTool,
@@ -24,7 +25,8 @@ from core.tools import (
 from core.tools.base import BaseTool
 
 
-def build_runtime_tools(memory: MemoryEngineInterface) -> list[BaseTool]:
+def build_runtime_tools(memory: MemoryEngineInterface, *, context_builder=None) -> list[BaseTool]:
+    web_search_tool = WebSearchTool()
     return [
         ListDirectoryTool(),
         LocateFilesTool(),
@@ -32,7 +34,8 @@ def build_runtime_tools(memory: MemoryEngineInterface) -> list[BaseTool]:
         PeekLinesTool(),
         InspectSymbolsTool(),
         SearchTextTool(),
-        WebSearchTool(),
+        web_search_tool,
+        GeneratePromptTool(context_builder=context_builder, web_search_tool=web_search_tool),
         TrackSymbolTool(),
         WriteFileTool(),
         EditFileTool(),
