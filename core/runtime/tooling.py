@@ -18,6 +18,7 @@ from core.tools import (
     RunShellTool,
     SearchTextTool,
     TrackSymbolTool,
+    WebSearchTool,
     WriteFileTool,
 )
 from core.tools.base import BaseTool
@@ -31,6 +32,7 @@ def build_runtime_tools(memory: MemoryEngineInterface) -> list[BaseTool]:
         PeekLinesTool(),
         InspectSymbolsTool(),
         SearchTextTool(),
+        WebSearchTool(),
         TrackSymbolTool(),
         WriteFileTool(),
         EditFileTool(),

@@ -12,6 +12,7 @@ from .run_shell import RunShellTool
 from .run_diagnostics import RunDiagnosticsTool
 from .search_text import SearchTextTool
 from .track_symbol import TrackSymbolTool
+from .web_search import WebSearchTool
 from .write_file import WriteFileTool
 
 __all__ = [
@@ -29,5 +30,6 @@ __all__ = [
     "RunDiagnosticsTool",
     "SearchTextTool",
     "TrackSymbolTool",
+    "WebSearchTool",
     "WriteFileTool",
 ]
