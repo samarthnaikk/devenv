@@ -18,6 +18,7 @@ from core.memory.vector_index import InMemoryVectorIndex
 from core.runtime import DevenvKernel
 from core.runtime.context_builder import ContextBuilderService
 from core.runtime.kernel import _answer_from_retrieved_memory, _summarize_directory_listing
+from core.runtime.local_model import SentenceTransformerLocalModel
 from core.runtime.local_router import LocalRouteDecision
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode
 from core.tools.list_directory import ListDirectoryTool
@@ -139,6 +140,23 @@ class ExplodingAI(FakeAI):
 
 
 class DevenvKernelTest(unittest.TestCase):
+    def test_sentence_transformer_local_model_falls_back_when_embedding_model_is_unavailable(self) -> None:
+        model = SentenceTransformerLocalModel()
+        with mock.patch("core.runtime.local_model._embedding_model", side_effect=OSError("offline")):
+            selection = model.distill(
+                "summarize get-drip bugs",
+                [
+                    "Create Workspace accepting https links and converting them internally",
+                    "The DRIP pipeline chat flow not working",
+                    "root URL redirects",
+                ],
+                max_lines=2,
+            )
+
+        self.assertTrue(selection.used_fallback)
+        self.assertEqual(selection.model_name, "deterministic-fallback")
+        self.assertTrue(selection.selected_lines)
+
     def test_register_tool_syncs_runtime_and_ai(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])
@@ -157,9 +175,9 @@ class DevenvKernelTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
 
-        repo_root = Path(__file__).resolve().parents[2]
-        self.assertEqual(kernel.db_path, str((repo_root / "memory.db").resolve()))
-        self.assertEqual(kernel.vector_dir, str((repo_root / "vectors").resolve()))
+        workspace_root = Path(tempdir).resolve()
+        self.assertEqual(kernel.db_path, str((workspace_root / "memory.db").resolve()))
+        self.assertEqual(kernel.vector_dir, str((workspace_root / "vectors").resolve()))
 
     def test_execute_turn_returns_direct_ai_response(self) -> None:
         memory = FakeMemory()

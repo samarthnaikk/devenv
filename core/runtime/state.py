@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def resolve_memory_paths(db_path: str, vector_dir: str) -> tuple[str, str]:
-    state_root = Path(__file__).resolve().parents[2]
+def resolve_memory_paths(db_path: str, vector_dir: str, *, workspace_path: str | None = None) -> tuple[str, str]:
+    state_root = Path(workspace_path).expanduser().resolve() if workspace_path else Path.cwd().resolve()
 
     if db_path == "memory.db":
         resolved_db_path = state_root / "memory.db"
