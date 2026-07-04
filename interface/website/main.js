@@ -33,6 +33,7 @@ const state = {
   sessionLoading: false,
   accessUpdating: false,
   performanceMode: "medium",
+  privacyMode: { no_memory: false, incognito: false },
   sessionBudgetTokens: 25000,
   budgetInput: "25000",
   sessionUsageTotal: 0,
@@ -161,6 +162,10 @@ function bindEvents() {
     }
     if (event.target.matches("[data-performance-select]")) {
       await updatePerformanceMode(event.target.value || "medium");
+      return;
+    }
+    if (event.target.matches("[data-incognito-toggle]")) {
+      await updatePrivacyMode({ incognito: Boolean(event.target.checked) });
     }
   });
 
@@ -472,6 +477,7 @@ async function refreshHealth(options = {}) {
     state.backends = healthPayload.ai_backends || {};
     state.activeBackend = healthPayload.active_backend || "opencode";
     state.performanceMode = healthPayload.performance_mode || "medium";
+    state.privacyMode = healthPayload.privacy || state.privacyMode;
     if (!isValidBackendPreference(state.preferredBackend)) {
       state.preferredBackend = healthPayload.preferred_backend || "auto";
       persistPreferredBackend(state.preferredBackend);
@@ -573,6 +579,18 @@ async function updatePerformanceMode(performanceMode) {
   state.performanceMode = payload.performance_mode || "medium";
   await refreshHealth({ silent: true });
   showToast(`Performance set to ${state.performanceMode}`);
+  scheduleRender({ preserveComposerFocus: true });
+}
+
+async function updatePrivacyMode({ incognito }) {
+  const payload = await request("/api/privacy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ no_memory: Boolean(incognito), incognito: Boolean(incognito) }),
+  });
+  state.privacyMode = payload.privacy || state.privacyMode;
+  await refreshHealth({ silent: true });
+  showToast(state.privacyMode.incognito ? "Incognito mode enabled" : "Incognito mode disabled");
   scheduleRender({ preserveComposerFocus: true });
 }
 
@@ -923,6 +941,22 @@ function renderAccessCard() {
             <option value="medium" ${state.performanceMode === "medium" ? "selected" : ""}>Medium</option>
             <option value="high" ${state.performanceMode === "high" ? "selected" : ""}>High</option>
           </select>
+        </div>
+      </div>
+      <div class="backend-card">
+        <div class="backend-copy">
+          <strong>Incognito mode</strong>
+          <span class="markdown-body inline-markdown">${renderRichText(
+            state.privacyMode.incognito
+              ? "Prior memory is off, and this session will not write memory."
+              : "Use memory normally and persist this session as usual."
+          )}</span>
+        </div>
+        <div class="backend-actions">
+          <label class="terminal-toggle inline-toggle${state.privacyMode.incognito ? " enabled" : ""}">
+            <input type="checkbox" data-incognito-toggle ${state.privacyMode.incognito ? "checked" : ""} />
+            <span>Incognito</span>
+          </label>
         </div>
       </div>
     </section>
