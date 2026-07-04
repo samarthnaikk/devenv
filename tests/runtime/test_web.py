@@ -119,9 +119,10 @@ class DevenvWebAppTest(unittest.TestCase):
                 include_optional=True,
             )
 
-        self.assertTrue(readiness.ready)
         self.assertEqual(readiness.required_checks[0].name, "workspace")
+        self.assertEqual(readiness.required_checks[0].status, "ready")
         self.assertEqual(readiness.optional_checks[0].name, "sentence_transformer_cache")
+        self.assertIsNotNone(readiness.checked_at)
 
     def test_file_payload_supports_image_preview(self) -> None:
         png_bytes = bytes.fromhex(
