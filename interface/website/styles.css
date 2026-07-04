@@ -469,8 +469,29 @@ body[data-theme="dark"] .thread-message.error .thread-message-body {
   padding-left: 18px;
 }
 
+.thinking-step-list li {
+  color: var(--text);
+}
+
 .thinking-step-list li + li {
   margin-top: 8px;
+}
+
+.thinking-step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  margin-right: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: middle;
 }
 
 .thinking-live-row,
@@ -485,6 +506,16 @@ body[data-theme="dark"] .thread-message.error .thread-message-body {
 
 .thinking-live-row {
   margin-bottom: 10px;
+}
+
+.thinking-hero-row {
+  width: 100%;
+  min-height: 38px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel) 0%, var(--surface-strong) 100%);
+  overflow: hidden;
 }
 
 .composer-running-line {
@@ -521,6 +552,10 @@ body[data-theme="dark"] .thinking-live-indicator {
   display: inline-block;
   min-height: 1.2em;
   animation: thinking-slide 0.5s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(100%, 680px);
 }
 
 .thinking-live-dots {

@@ -348,7 +348,11 @@ async function submitPrompt() {
   const thinkingId = `thinking-${Date.now()}`;
   const pendingLogs =
     state.pendingRunMode === "web"
-      ? [createLogEntry("system", "Searching the web"), createLogEntry("ai", "Checking live sources for the latest answer")]
+      ? [
+          createLogEntry("tool_call", "tool: web_search"),
+          createLogEntry("web_search", `query: ${nextPrompt}`),
+          createLogEntry("ai", "Checking live sources for the latest answer"),
+        ]
       : [createLogEntry("system", "Checking Devenv memory"), createLogEntry("ai", "Looking for prior session matches")];
   state.transcript.push({ id: `user-${Date.now()}`, role: "user", content: nextPrompt });
   state.transcript.push({ id: thinkingId, role: "thinking", content: formatThinkingBlock(pendingLogs), pending: true });
@@ -1261,6 +1265,7 @@ function renderThinkingDetail(content, pending) {
   const pendingWebSearch = state.pendingRunMode === "web" || steps.some((step) => step.kind === "web_search");
   const headline = pending ? (pendingWebSearch ? "Searching the web" : "Checking Devenv") : "Completed trace";
   const searchCards = steps.filter((step) => step.kind === "web_search");
+  const timelineSteps = steps.filter((step) => step.kind !== "web_search");
   return `
     <div class="thinking-card thinking-card-detailed">
       <div class="thinking-card-topline">
@@ -1272,12 +1277,11 @@ function renderThinkingDetail(content, pending) {
         )}</span>
         <span>${escapeHtml(formatBackendLabel(state.activeBackend))}</span>
       </div>
-      ${pending ? `<div class="thinking-live-row">${renderRunningTicker(content)}</div>` : ""}
+      <div class="thinking-live-row thinking-hero-row">${renderRunningTicker(content, { pending })}</div>
       ${searchCards.length ? `<div class="thinking-search-stack">${searchCards.map(renderThinkingSearchCard).join("")}</div>` : ""}
       <ol class="thinking-step-list">
-        ${steps
-          .filter((step) => step.kind !== "web_search")
-          .map((step) => `<li>${escapeHtml(step.text)}</li>`)
+        ${timelineSteps
+          .map((step) => `<li><span class="thinking-step-badge">${escapeHtml(step.label || "Step")}</span>${escapeHtml(step.text)}</li>`)
           .join("")}
       </ol>
     </div>
@@ -1298,8 +1302,17 @@ function parseThinkingEntries(content) {
 
 function humanizeThinkingLine(line) {
   const lowered = line.toLowerCase();
+  if (lowered.startsWith("tool:")) {
+    const toolName = line.replace(/^tool:\s*/i, "").trim();
+    return {
+      kind: "tool_call",
+      toolName,
+      label: "Tool",
+      text: `Calling ${toolName}`,
+    };
+  }
   if (lowered.startsWith("query:")) {
-    return { kind: "web_search", query: line.replace(/^query:\s*/i, "").trim(), results: [] };
+    return { kind: "web_search", query: line.replace(/^query:\s*/i, "").trim(), results: [], label: "Search" };
   }
   if (lowered.startsWith("result:")) {
     const payload = line.replace(/^result:\s*/i, "").trim();
@@ -1317,7 +1330,7 @@ function humanizeThinkingLine(line) {
     return null;
   }
   if (lowered.includes("memory context chars")) {
-    return "Built the context packet";
+    return { kind: "text", label: "Context", text: "Built the context packet" };
   }
   if (lowered.includes("prior-session")) {
     return null;
@@ -1326,18 +1339,18 @@ function humanizeThinkingLine(line) {
     return null;
   }
   if (lowered.includes("checkpoint blueprint") || lowered.includes("checkpoint")) {
-    return "Reasoned through the next step";
+    return { kind: "text", label: "Reasoning", text: "Reasoned through the next step" };
   }
   if (lowered.includes("verification passed")) {
-    return "Verified the response";
+    return { kind: "text", label: "Verify", text: "Verified the response" };
   }
   if (lowered.includes("waiting for runtime response")) {
-    return "Waiting for the runtime";
+    return { kind: "text", label: "Runtime", text: "Waiting for the runtime" };
   }
   if (lowered.includes("retrying in")) {
-    return line;
+    return { kind: "text", label: "Retry", text: line };
   }
-  return line;
+  return { kind: "text", label: "Trace", text: line };
 }
 
 function normalizeThinkingEntries(entries) {
@@ -1345,7 +1358,13 @@ function normalizeThinkingEntries(entries) {
   let activeSearch = null;
   for (const entry of entries) {
     if (entry.kind === "web_search") {
-      activeSearch = { kind: "web_search", text: `Searched for ${entry.query || "a live source"}`, query: entry.query || "", results: [] };
+      activeSearch = {
+        kind: "web_search",
+        label: "Search",
+        text: `Searching for ${entry.query || "a live source"}`,
+        query: entry.query || "",
+        results: [],
+      };
       normalized.push(activeSearch);
       continue;
     }
@@ -1372,6 +1391,13 @@ function formatThinkingFromResult(result) {
       if (trace.summary) {
         lines.push(createLogEntry("ai", trace.summary));
       }
+    }
+  }
+  const toolSteps = Array.isArray(result.steps) ? result.steps : [];
+  for (const step of toolSteps.slice(0, 5)) {
+    const description = describeToolStep(step);
+    if (description) {
+      lines.push(createLogEntry("tool_call", description));
     }
   }
   const webSteps = Array.isArray(result.steps) ? result.steps.filter((step) => step.tool_name === "web_search" && step.success) : [];
@@ -1425,29 +1451,77 @@ function renderThinkingSearchCard(step) {
   `;
 }
 
-function renderRunningTicker(content = "") {
+function renderRunningTicker(content = "", options = {}) {
   const useGlobe = state.pendingRunMode === "web" || /query:|result:|searching the web/i.test(String(content || ""));
+  const frame = currentRunningFrame(content, options);
   return `
     <span class="thinking-live-indicator${useGlobe ? " globe" : ""}" aria-hidden="true">${useGlobe ? "◉" : "⚡"}</span>
-    <span class="thinking-live-text" data-running-frame>${escapeHtml(currentRunningFrame(content))}</span>
+    <span class="thinking-live-text" data-running-frame>${escapeHtml(frame)}</span>
     <span class="thinking-live-dots" aria-hidden="true">
       <span></span><span></span><span></span>
     </span>
   `;
 }
 
-function currentRunningFrame(content = "") {
+function currentRunningFrame(content = "", options = {}) {
+  const pending = Boolean(options.pending);
   const steps = parseThinkingEntries(content)
     .map((step) => step.text)
     .filter(Boolean);
   if (steps.length) {
     const recentSteps = Array.from(new Set(steps.slice(-4)));
-    const index = Math.floor(state.clock / 1400) % recentSteps.length;
-    return recentSteps[index];
+    const index = Math.floor(state.clock / 1600) % recentSteps.length;
+    const chosen = recentSteps[index];
+    return pending ? streamLine(chosen) : chosen;
   }
   const frames = state.pendingRunMode === "web" ? WEB_RUNNING_STATUS_FRAMES : RUNNING_STATUS_FRAMES;
   const index = Math.floor(state.clock / 1200) % frames.length;
-  return frames[index];
+  const chosen = frames[index];
+  return pending ? streamLine(chosen) : chosen;
+}
+
+function streamLine(text) {
+  const value = String(text || "");
+  if (!value) {
+    return "";
+  }
+  const tick = Math.max(12, Math.floor((state.clock - state.runStartedAt) / 35));
+  if (tick <= value.length) {
+    return value.slice(0, tick);
+  }
+  return value;
+}
+
+function describeToolStep(step) {
+  if (!step || !step.tool_name) {
+    return "";
+  }
+  const toolName = String(step.tool_name);
+  if (toolName === "web_search") {
+    return "tool: web_search";
+  }
+  const summary = summarizeToolArguments(step.arguments || {});
+  return summary ? `tool: ${toolName} (${summary})` : `tool: ${toolName}`;
+}
+
+function summarizeToolArguments(argumentsValue) {
+  if (!argumentsValue || typeof argumentsValue !== "object") {
+    return "";
+  }
+  const path = typeof argumentsValue.path === "string" ? argumentsValue.path.trim() : "";
+  if (path) {
+    return path;
+  }
+  const mode = typeof argumentsValue.mode === "string" ? argumentsValue.mode.trim() : "";
+  if (mode) {
+    return mode;
+  }
+  const url = typeof argumentsValue.url === "string" ? argumentsValue.url.trim() : "";
+  if (url) {
+    return url;
+  }
+  const keys = Object.keys(argumentsValue).slice(0, 2);
+  return keys.join(", ");
 }
 
 function runningButtonLabel() {
@@ -1488,7 +1562,7 @@ function updateLiveRuntimeUI() {
   for (const node of root.querySelectorAll("[data-live-elapsed]")) {
     node.textContent = elapsed;
   }
-  const frame = currentRunningFrame(currentPendingThinkingContent());
+  const frame = currentRunningFrame(currentPendingThinkingContent(), { pending: true });
   for (const node of root.querySelectorAll("[data-running-frame]")) {
     node.textContent = frame;
   }
