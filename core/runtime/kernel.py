@@ -64,7 +64,9 @@ DIRECT_SYSTEM_RULE = (
     "Answer the user's question directly. First use the memory context if it plausibly contains the answer. "
     "Use tools only if workspace inspection is still needed after considering memory. "
     "If you need a tool, emit a real function call and never print JSON tool snippets in plain text. "
-    "Do not create a checklist or execution plan unless the user is asking you to make changes."
+    "Do not create a checklist or execution plan unless the user is asking you to make changes. "
+    "Use web_search for current or time-sensitive facts. "
+    "Keep the final answer brief unless the user asks for detail."
 )
 DIRECT_MEMORY_CHAR_LIMIT = 900
 CONSOLIDATION_COOLDOWN_STATE_KEY = "runtime.last_consolidation_wall_time"
@@ -1748,6 +1750,8 @@ class DevenvKernel:
             return sorted(name for name in SCAFFOLD_EXECUTION_TOOLS if name in self.tools)
 
         tool_names = set(READ_ONLY_EXECUTION_TOOLS)
+        if _should_enable_web_search(text):
+            tool_names.add("web_search")
 
         if any(token in text for token in ("create", "add", "write", "build", "generate", "html", "css", "js", "frontend", "folder", "file")):
             tool_names.update(WRITE_EXECUTION_TOOLS)
@@ -1945,6 +1949,8 @@ class DevenvKernel:
     def _resolve_direct_tool_scope(self, user_prompt: str) -> list[str]:
         text = user_prompt.lower()
         tool_names = set(READ_ONLY_EXECUTION_TOOLS)
+        if _should_enable_web_search(text):
+            tool_names.add("web_search")
         if any(token in text for token in ("memory", "recall", "trace", "history", "earlier", "previous")):
             tool_names.update(MEMORY_EXECUTION_TOOLS)
         return sorted(name for name in tool_names if name in self.tools)
@@ -4304,6 +4310,27 @@ if __name__ == "__main__":
 
 def _prompt_keywords(text: str) -> list[str]:
     return [token for token in re.findall(r"[a-z0-9]+", text.lower()) if len(token) > 2]
+
+
+def _should_enable_web_search(text: str) -> bool:
+    lowered = text.lower()
+    current_fact_markers = (
+        "today",
+        "latest",
+        "current",
+        "currently",
+        "recent",
+        "president",
+        "prime minister",
+        "ceo",
+        "who is",
+        "official website",
+        "documentation",
+        "docs",
+        "search the web",
+        "on the web",
+    )
+    return any(marker in lowered for marker in current_fact_markers)
 
 
 def _consolidation_cooldown_seconds() -> float:

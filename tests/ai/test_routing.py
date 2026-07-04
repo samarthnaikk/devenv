@@ -51,6 +51,19 @@ class FakeTool(BaseTool):
 
 
 class OpenCodeRoutingTest(unittest.TestCase):
+    def test_tool_prompt_includes_web_and_large_file_policy(self) -> None:
+        core = OpenCodeAICore(workspace_path=".")
+        core.register_tool(FakeTool())
+
+        prompt = core._compile_tool_prompt(
+            messages=[{"role": "user", "content": "who is the president of india?"}],
+            memory_context=None,
+            tool_names=["read_file"],
+        )
+
+        self.assertIn("Use web_search for current or time-sensitive facts", prompt)
+        self.assertIn("AGENTS.md", prompt)
+
     def test_opencode_core_parses_json_line_output(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             script_path = Path(tempdir) / "opencode"

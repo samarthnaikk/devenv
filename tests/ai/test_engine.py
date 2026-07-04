@@ -8,6 +8,7 @@ from unittest.mock import patch
 from urllib import error
 
 from core.ai import AICore
+from core.ai.engine import DEFAULT_SYSTEM_INSTRUCTIONS
 from core.tools.read_file import ReadFileTool
 
 
@@ -26,6 +27,10 @@ class FakeHTTPResponse:
 
 
 class AICoreTest(unittest.TestCase):
+    def test_default_system_instructions_cover_web_search_and_large_files(self) -> None:
+        self.assertIn("web_search", DEFAULT_SYSTEM_INSTRUCTIONS)
+        self.assertIn("AGENTS.md", DEFAULT_SYSTEM_INSTRUCTIONS)
+
     def test_missing_api_key_raises_value_error(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             original_cwd = os.getcwd()

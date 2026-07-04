@@ -145,6 +145,14 @@ class OpenCodeAICore:
                     "If no tool is needed, return {\"type\":\"final\",\"content\":\"<response>\"}. "
                     "Use only one tool call at a time and only from the listed tools."
                 ),
+                "## Tool Use Policy",
+                (
+                    "Prefer memory and local workspace tools first. "
+                    "Use web_search for current or time-sensitive facts, public officeholders, live package docs, or web pages outside the workspace. "
+                    "For large files such as AGENTS.md, guidelines, or generated docs, do not dump the whole file; inspect only relevant sections and summarize them. "
+                    "Prefer list_directory, search_text, inspect_symbols, or peek_lines before reading a large file end-to-end. "
+                    "Keep final answers short unless the user explicitly asks for a detailed breakdown."
+                ),
             ]
         )
         return "\n\n".join(section for section in sections if section).strip()
