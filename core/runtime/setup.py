@@ -5,6 +5,7 @@ import importlib.util
 import json
 import shutil
 import subprocess
+import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -59,24 +60,9 @@ def inspect_setup(
         ),
     )
     optional_checks = (
-        SetupCheckStatus(
-            name="sentence_transformer_cache",
-            required=False,
-            status="pending",
-            detail="Model cache warmup is available but has not run yet." if warm_model_cache else "Model cache warmup has not run yet.",
-        ),
-        SetupCheckStatus(
-            name="web_search_prerequisites",
-            required=False,
-            status="pending",
-            detail="Web search prerequisite checks are defined but have not run yet.",
-        ),
-        SetupCheckStatus(
-            name="latex_pdf_toolchain",
-            required=False,
-            status="pending",
-            detail="LaTeX prerequisite checks are defined but have not run yet.",
-        ),
+        _build_optional_check("sentence_transformer_cache", _check_sentence_transformer_cache(warm_model_cache=warm_model_cache)),
+        _build_optional_check("web_search_prerequisites", _check_web_search_prerequisites()),
+        _build_optional_check("latex_pdf_toolchain", _check_latex_pdf_toolchain()),
     )
     ready = all(check.status == "ready" for check in required_checks)
     summary = "Devenv setup is ready." if ready else "Devenv setup requires attention."
@@ -178,6 +164,48 @@ def _ensure_workspace_state(*, db_path: str, vector_dir: str, apply_changes: boo
 
 def _utc_now_iso() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _build_optional_check(name: str, result: tuple[str, str]) -> SetupCheckStatus:
+    status, detail = result
+    return SetupCheckStatus(name=name, required=False, status=status, detail=detail)
+
+
+def _check_sentence_transformer_cache(*, warm_model_cache: bool) -> tuple[str, str]:
+    cache_root = Path.home() / ".cache" / "huggingface" / "hub"
+    model_glob = "models--sentence-transformers--all-MiniLM-L6-v2*"
+    has_local_cache = any(cache_root.glob(model_glob)) if cache_root.is_dir() else False
+    if has_local_cache:
+        return "ready", "Sentence-transformer cache is present locally."
+    if not warm_model_cache:
+        return "pending", "Sentence-transformer cache is not warmed locally yet."
+    try:
+        from sentence_transformers import SentenceTransformer
+
+        SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", local_files_only=False)
+    except Exception as exc:
+        return "failed", f"Model cache warmup failed: {exc}."
+    return "ready", "Sentence-transformer cache warmup completed."
+
+
+def _check_web_search_prerequisites() -> tuple[str, str]:
+    try:
+        has_urlopen = callable(getattr(urllib.request, "urlopen", None))
+    except Exception as exc:
+        return "failed", f"Python HTTP support is unavailable: {exc}."
+    if not has_urlopen:
+        return "failed", "Python HTTP support is unavailable."
+    return "ready", "Python HTTP stack is available for the web_search tool."
+
+
+def _check_latex_pdf_toolchain() -> tuple[str, str]:
+    latex_engine = shutil.which("pdflatex") or shutil.which("xelatex") or shutil.which("lualatex")
+    renderer = shutil.which("pdftoppm") or shutil.which("mutool")
+    if latex_engine and renderer:
+        return "ready", f"PDF toolchain available via {Path(latex_engine).name} and {Path(renderer).name}."
+    if latex_engine:
+        return "pending", f"LaTeX engine available via {Path(latex_engine).name}, but PDF render validation tool is missing."
+    return "pending", "No LaTeX engine detected yet."
 
 
 if __name__ == "__main__":
