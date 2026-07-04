@@ -168,6 +168,7 @@ class DevenvWebApp:
             config.workspace_path,
             memory=self.kernel.memory,
             provider_configs=config.external_session_configs,
+            performance_mode=self.performance_mode,
         )
         self.context_builder.set_runtime_allowed_providers(set())
         self.kernel.context_builder = self.context_builder
@@ -362,6 +363,8 @@ class DevenvWebApp:
         if cleaned not in {"low", "medium", "high"}:
             raise ValueError("performance_mode must be one of: low, medium, high")
         self.performance_mode = cleaned
+        if hasattr(self.context_builder, "set_performance_mode"):
+            self.context_builder.set_performance_mode(cleaned)
         return {"performance_mode": self.performance_mode}
 
     def _require_provider_access(self, provider_name: str) -> None:

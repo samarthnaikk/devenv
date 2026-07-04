@@ -8,6 +8,7 @@ import sqlite3
 import threading
 import time
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -99,8 +100,9 @@ class ExternalSessionChunk:
 
 
 class ExternalSessionIndex:
-    def __init__(self, providers: dict[str, "ExternalSessionProvider"]) -> None:
+    def __init__(self, providers: dict[str, "ExternalSessionProvider"], *, performance_mode: str = "medium") -> None:
         self.providers = providers
+        self._performance_mode = performance_mode if performance_mode in {"low", "medium", "high"} else "medium"
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._indexed_providers: set[str] = set()
@@ -123,6 +125,10 @@ class ExternalSessionIndex:
     def status(self) -> dict[str, Any]:
         with self._lock:
             return dict(self._status)
+
+    def set_performance_mode(self, performance_mode: str) -> None:
+        with self._lock:
+            self._performance_mode = performance_mode if performance_mode in {"low", "medium", "high"} else "medium"
 
     def ensure(self, providers: set[str]) -> None:
         allowed = {provider for provider in providers if provider in self.providers}
@@ -272,6 +278,7 @@ class ExternalSessionIndex:
         processed = 0
         next_chunks_by_provider: dict[str, dict[str, list[ExternalSessionChunk]]] = {}
         next_summaries_by_provider: dict[str, dict[str, ExternalSessionSummary]] = {}
+        jobs: list[tuple[str, ExternalSessionProvider, ExternalSessionSummary]] = []
         for provider_name in providers:
             provider = self.providers.get(provider_name)
             if provider is None:
@@ -280,29 +287,40 @@ class ExternalSessionIndex:
             next_summaries_by_provider[provider_name] = {}
             for summary in summaries_by_provider.get(provider_name, []):
                 next_summaries_by_provider[provider_name][summary.session_id] = summary
-                try:
-                    chunks = provider.build_index_chunks(summary.session_id)
-                except Exception:
-                    chunks = []
-                next_chunks_by_provider[provider_name][summary.session_id] = chunks
-                processed += 1
-                elapsed = max(time.time() - started_at, 0.001)
-                average = elapsed / max(processed, 1)
-                remaining = max(total_sessions - processed, 0)
-                eta_seconds = int(round(average * remaining)) if remaining else 0
-                percent = int(round((processed / total_sessions) * 100)) if total_sessions else 100
-                with self._lock:
-                    self._status.update(
-                        {
-                            "active": processed < total_sessions,
-                            "completed": processed >= total_sessions,
-                            "message": f"Chunked {processed} of {total_sessions} session(s).",
-                            "percent": percent,
-                            "processed_sessions": processed,
-                            "total_sessions": total_sessions,
-                            "eta_seconds": eta_seconds,
-                            "finished_at": time.time() if processed >= total_sessions else None,
-                        }
+                jobs.append((provider_name, provider, summary))
+
+        max_workers, pace_delay = _index_profile_settings(self._performance_mode)
+        if max_workers <= 1:
+            for provider_name, provider, summary in jobs:
+                next_chunks_by_provider[provider_name][summary.session_id] = _build_provider_chunks(provider, summary.session_id)
+                processed = _update_index_progress(
+                    processed=processed + 1,
+                    total_sessions=total_sessions,
+                    started_at=started_at,
+                    lock=self._lock,
+                    status=self._status,
+                )
+                if pace_delay > 0:
+                    time.sleep(pace_delay)
+        else:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_map = {
+                    executor.submit(_build_provider_chunks, provider, summary.session_id): (provider_name, summary.session_id)
+                    for provider_name, provider, summary in jobs
+                }
+                for future in as_completed(future_map):
+                    provider_name, session_id = future_map[future]
+                    try:
+                        chunks = future.result()
+                    except Exception:
+                        chunks = []
+                    next_chunks_by_provider[provider_name][session_id] = chunks
+                    processed = _update_index_progress(
+                        processed=processed + 1,
+                        total_sessions=total_sessions,
+                        started_at=started_at,
+                        lock=self._lock,
+                        status=self._status,
                     )
         with self._lock:
             self._chunks_by_provider = next_chunks_by_provider
@@ -320,6 +338,51 @@ class ExternalSessionIndex:
                     "finished_at": time.time(),
                 }
             )
+
+
+def _build_provider_chunks(provider: "ExternalSessionProvider", session_id: str) -> list[ExternalSessionChunk]:
+    try:
+        return provider.build_index_chunks(session_id)
+    except Exception:
+        return []
+
+
+def _index_profile_settings(performance_mode: str) -> tuple[int, float]:
+    if performance_mode == "low":
+        return 1, 0.01
+    if performance_mode == "high":
+        return 4, 0.0
+    return 2, 0.0
+
+
+def _update_index_progress(
+    *,
+    processed: int,
+    total_sessions: int,
+    started_at: float,
+    lock: threading.Lock,
+    status: dict[str, Any],
+) -> int:
+    elapsed = max(time.time() - started_at, 0.001)
+    average = elapsed / max(processed, 1)
+    remaining = max(total_sessions - processed, 0)
+    eta_seconds = int(round(average * remaining)) if remaining else 0
+    percent = int(round((processed / total_sessions) * 100)) if total_sessions else 100
+    with lock:
+        status.update(
+            {
+                "active": processed < total_sessions,
+                "completed": processed >= total_sessions,
+                "message": f"Chunked {processed} of {total_sessions} session(s).",
+                "percent": percent,
+                "processed_sessions": processed,
+                "total_sessions": total_sessions,
+                "eta_seconds": eta_seconds,
+                "finished_at": time.time() if processed >= total_sessions else None,
+            }
+        )
+    return processed
+
 
 FOCUS_CONTEXT_TOKENS = COMMON_CONTEXT_TOKENS | {
     "assistant",
@@ -852,17 +915,19 @@ class ContextBuilderService:
         *,
         memory: Any | None = None,
         provider_configs: tuple[ExternalSessionProviderConfig, ...] = (),
+        performance_mode: str = "medium",
     ) -> None:
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
         self.workspace = WorkspaceBrowser(self.workspace_path)
         self.memory = memory
+        self.performance_mode = performance_mode if performance_mode in {"low", "medium", "high"} else "medium"
         self.provider_configs = provider_configs or _default_provider_configs()
         self.runtime_allowed_providers: set[str] | None = None
         self.providers = {
             config.provider: _provider_from_config(config)
             for config in self.provider_configs
         }
-        self.index = ExternalSessionIndex(self.providers)
+        self.index = ExternalSessionIndex(self.providers, performance_mode=self.performance_mode)
 
     def set_runtime_allowed_providers(self, providers: set[str] | list[str] | tuple[str, ...] | None) -> None:
         if providers is None:
@@ -870,6 +935,10 @@ class ContextBuilderService:
             return
         self.runtime_allowed_providers = {provider for provider in providers if provider in self.providers}
         self.index.ensure(self.runtime_allowed_providers)
+
+    def set_performance_mode(self, performance_mode: str) -> None:
+        self.performance_mode = performance_mode if performance_mode in {"low", "medium", "high"} else "medium"
+        self.index.set_performance_mode(self.performance_mode)
 
     def list_sources(self) -> list[ExternalSourceHealth]:
         return [provider.health() for provider in self.providers.values()]

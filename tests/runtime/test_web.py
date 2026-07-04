@@ -288,6 +288,7 @@ class DevenvWebAppTest(unittest.TestCase):
 
         self.assertEqual(payload["performance_mode"], "high")
         self.assertEqual(health["performance_mode"], "high")
+        self.assertEqual(app.context_builder.performance_mode, "high")
 
     def test_session_payload_requires_explicit_provider_access(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
