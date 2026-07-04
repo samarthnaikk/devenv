@@ -1263,7 +1263,7 @@ function buildBudgetState() {
 function renderThinkingDetail(content, pending) {
   const steps = parseThinkingEntries(content);
   const pendingWebSearch = state.pendingRunMode === "web" || steps.some((step) => step.kind === "web_search");
-  const headline = pending ? (pendingWebSearch ? "Searching the web" : "Checking Devenv") : "Completed trace";
+  const headline = pending ? (pendingWebSearch ? "Live web search" : "Live tool trace") : pendingWebSearch ? "Web search trace" : "Tool trace";
   const searchCards = steps.filter((step) => step.kind === "web_search");
   const timelineSteps = steps.filter((step) => step.kind !== "web_search");
   return `
@@ -1386,14 +1386,15 @@ function formatThinkingFromResult(result) {
   if (metadata.external_context_state === "privacy_blocked") {
     lines.push(createLogEntry("system", "Privacy mode blocked prior memory for this turn"));
   }
-  if (Array.isArray(result.stage_traces) && result.stage_traces.length) {
+  const toolSteps = Array.isArray(result.steps) ? result.steps : [];
+  if (!toolSteps.length && Array.isArray(result.stage_traces) && result.stage_traces.length) {
     for (const trace of result.stage_traces.slice(0, 5)) {
-      if (trace.summary) {
-        lines.push(createLogEntry("ai", trace.summary));
+      const summary = humanizeStageTraceSummary(trace.summary);
+      if (summary) {
+        lines.push(createLogEntry("ai", summary));
       }
     }
   }
-  const toolSteps = Array.isArray(result.steps) ? result.steps : [];
   for (const step of toolSteps.slice(0, 5)) {
     const description = describeToolStep(step);
     if (description) {
@@ -1431,7 +1432,7 @@ function renderThinkingSearchCard(step) {
   return `
     <div class="thinking-search-card">
       <div class="thinking-search-header">
-        <span class="thinking-globe" aria-hidden="true">◎</span>
+        <span class="thinking-globe" aria-hidden="true">🌐</span>
         <strong>${escapeHtml(query || "Web search")}</strong>
       </div>
       ${
@@ -1455,7 +1456,7 @@ function renderRunningTicker(content = "", options = {}) {
   const useGlobe = state.pendingRunMode === "web" || /query:|result:|searching the web/i.test(String(content || ""));
   const frame = currentRunningFrame(content, options);
   return `
-    <span class="thinking-live-indicator${useGlobe ? " globe" : ""}" aria-hidden="true">${useGlobe ? "◉" : "⚡"}</span>
+    <span class="thinking-live-indicator${useGlobe ? " globe" : ""}" aria-hidden="true">${useGlobe ? "🌐" : "⚡"}</span>
     <span class="thinking-live-text" data-running-frame>${escapeHtml(frame)}</span>
     <span class="thinking-live-dots" aria-hidden="true">
       <span></span><span></span><span></span>
@@ -1502,6 +1503,21 @@ function describeToolStep(step) {
   }
   const summary = summarizeToolArguments(step.arguments || {});
   return summary ? `tool: ${toolName} (${summary})` : `tool: ${toolName}`;
+}
+
+function humanizeStageTraceSummary(summary) {
+  const text = String(summary || "").trim();
+  if (!text) {
+    return "";
+  }
+  const lowered = text.toLowerCase();
+  if (lowered.includes("distilled context packet")) {
+    return "Prepared the context for the next tool step";
+  }
+  if (lowered.includes("split oversized checkpoint")) {
+    return "Broke the task into smaller steps";
+  }
+  return text;
 }
 
 function summarizeToolArguments(argumentsValue) {
