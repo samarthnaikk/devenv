@@ -49,12 +49,13 @@ body,
 
 body {
   font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "SF Pro Text",
-    "SF Pro Display",
-    "Helvetica Neue",
-    sans-serif;
+    "LythMono",
+    "Lyth Mono",
+    "SFMono-Regular",
+    "SF Mono",
+    "IBM Plex Mono",
+    "Menlo",
+    monospace;
   background:
     radial-gradient(circle at top, var(--bg-top) 0%, transparent 28%),
     linear-gradient(180deg, var(--bg-bottom) 0%, var(--bg-bottom) 100%);
@@ -68,6 +69,18 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+code,
+pre {
+  font-family:
+    "LythMono",
+    "Lyth Mono",
+    "SFMono-Regular",
+    "SF Mono",
+    "IBM Plex Mono",
+    "Menlo",
+    monospace;
 }
 
 .app-shell,
