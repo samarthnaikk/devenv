@@ -302,6 +302,7 @@ class DevenvWebApp:
         planning_mode: PlanningMode = PlanningMode.AUTO,
         continue_plan: bool = False,
         local_only: bool = False,
+        selected_tools: list[str] | None = None,
         backend_preference: str = "opencode",
         session_budget_tokens: int | None = None,
     ) -> dict[str, object]:
@@ -319,6 +320,8 @@ class DevenvWebApp:
             kwargs["opencode_enabled"] = self.access_policy.can_use_backend("opencode")
         if "session_budget_tokens" in parameters:
             kwargs["session_budget_tokens"] = session_budget_tokens
+        if "selected_tools" in parameters:
+            kwargs["selected_tools"] = selected_tools or []
         if "no_memory" in parameters:
             kwargs["no_memory"] = self.privacy_mode["no_memory"]
         if "incognito" in parameters:
@@ -556,6 +559,10 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
         if not isinstance(local_only, bool):
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": "local_only must be a boolean"})
             return
+        selected_tools = payload.get("selected_tools", [])
+        if not isinstance(selected_tools, list) or any(not isinstance(item, str) for item in selected_tools):
+            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "selected_tools must be a list of strings"})
+            return
         backend_preference = payload.get("backend_preference", "opencode")
         if not isinstance(backend_preference, str):
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": "backend_preference must be a string"})
@@ -572,6 +579,7 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
                 planning_mode=planning_mode,
                 continue_plan=continue_plan,
                 local_only=local_only,
+                selected_tools=selected_tools,
                 backend_preference=backend_preference,
                 session_budget_tokens=session_budget_tokens,
             )

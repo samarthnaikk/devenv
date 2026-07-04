@@ -40,11 +40,17 @@ export async function fetchFile(path) {
   return request(`/api/file${query}`);
 }
 
-export async function runTurn(prompt, planningMode = "auto", continuePlan = false, localOnly = false) {
+export async function runTurn(prompt, planningMode = "auto", continuePlan = false, localOnly = false, selectedTools = []) {
   return request("/api/turn", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, planning_mode: planningMode, continue_plan: continuePlan, local_only: localOnly }),
+    body: JSON.stringify({
+      prompt,
+      planning_mode: planningMode,
+      continue_plan: continuePlan,
+      local_only: localOnly,
+      selected_tools: selectedTools,
+    }),
   });
 }
 

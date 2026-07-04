@@ -149,6 +149,8 @@ class OpenCodeAICore:
                 (
                     "Prefer memory and local workspace tools first. "
                     "Use web_search for current or time-sensitive facts, public officeholders, live package docs, or web pages outside the workspace. "
+                    "If the user explicitly asks to search, browse, google, or look something up, call web_search before answering. "
+                    "If the intended search target is unclear, ask one concise follow-up question instead of guessing. "
                     "For large files such as AGENTS.md, guidelines, or generated docs, do not dump the whole file; inspect only relevant sections and summarize them. "
                     "Prefer list_directory, search_text, inspect_symbols, or peek_lines before reading a large file end-to-end. "
                     "Keep final answers short unless the user explicitly asks for a detailed breakdown."

@@ -65,7 +65,9 @@ DIRECT_SYSTEM_RULE = (
     "Use tools only if workspace inspection is still needed after considering memory. "
     "If you need a tool, emit a real function call and never print JSON tool snippets in plain text. "
     "Do not create a checklist or execution plan unless the user is asking you to make changes. "
-    "Use web_search for current or time-sensitive facts. "
+    "Use web_search for current or time-sensitive facts, or when the user explicitly asks to search, browse, google, or look something up. "
+    "If web_search is the relevant selected tool, perform the search before answering. "
+    "If a search request is ambiguous, ask one concise follow-up question instead of guessing. "
     "Keep the final answer brief unless the user asks for detail."
 )
 DIRECT_MEMORY_CHAR_LIMIT = 900
@@ -173,6 +175,7 @@ class DevenvKernel:
         planning_mode: PlanningMode = PlanningMode.AUTO,
         continue_plan: bool = False,
         local_only: bool = False,
+        selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
         backend_preference: str = "opencode",
         opencode_enabled: bool = False,
         session_budget_tokens: int | None = None,
@@ -193,6 +196,7 @@ class DevenvKernel:
             "backend_preference": backend_preference,
             "backend_used": "local" if local_only else "opencode",
             "backend_fallback": "",
+            "selected_tools": sorted(self._resolve_selected_tools(selected_tools)),
             "no_memory": no_memory,
             "incognito": incognito,
         }
@@ -289,6 +293,8 @@ class DevenvKernel:
         system_logs.append(f"Planning mode: {planning_mode.value}")
         system_logs.append(f"Continue plan: {continue_plan}")
         system_logs.append(f"Local only: {local_only}")
+        if turn_metadata["selected_tools"]:
+            system_logs.append(f"User selected tools: {', '.join(turn_metadata['selected_tools'])}")
         if no_memory or incognito:
             system_logs.append(f"Privacy mode: {'incognito' if incognito else 'no_memory'}")
         steps: list[ToolExecutionStep] = []
@@ -400,7 +406,11 @@ class DevenvKernel:
             checkpoint_objective=checkpoint.objective or checkpoint.description,
             memory_context=memory_context,
             local_model=self.local_small_model,
-            tool_names=self._resolve_execution_tool_scope(user_prompt, checkpoint.description),
+            tool_names=self._resolve_execution_tool_scope(
+                user_prompt,
+                checkpoint.description,
+                selected_tools=turn_metadata["selected_tools"],
+            ),
             execute_tool_call=self._execute_tool_call,
             char_limit=self._context_char_limit_for_checkpoint(checkpoint),
         )
@@ -421,6 +431,7 @@ class DevenvKernel:
                 system_logs=system_logs,
                 max_consecutive_tools=max_consecutive_tools,
                 local_only=local_only,
+                selected_tools=turn_metadata["selected_tools"],
             )
         except RuntimeError as exc:
             system_logs.append(f"Execution failed: {exc}")
@@ -715,6 +726,7 @@ class DevenvKernel:
         system_logs: list[str],
         max_consecutive_tools: int,
         local_only: bool,
+        selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
     ) -> tuple[str | None, ExecutionBlueprint, list[ToolExecutionStep]]:
         pre_step_count = len(steps)
         if checkpoint.expected_artifact == "chat":
@@ -755,6 +767,7 @@ class DevenvKernel:
                 ai_logs=ai_logs,
                 system_logs=system_logs,
                 max_consecutive_tools=max_consecutive_tools,
+                selected_tools=selected_tools,
             )
             updated = _mark_checkpoint_completed(blueprint, blueprint.active_task_pointer, _summarize_execution_note(final_response))
             self.active_blueprint = updated
@@ -782,6 +795,7 @@ class DevenvKernel:
             system_logs=system_logs,
             max_consecutive_tools=max_consecutive_tools,
             planning_mode=PlanningMode.FORCE_PLAN,
+            selected_tools=selected_tools,
         )
         return final_response, self.active_blueprint or blueprint, steps[pre_step_count:]
 
@@ -1011,13 +1025,15 @@ class DevenvKernel:
         ai_logs: list[str],
         system_logs: list[str],
         max_consecutive_tools: int,
+        selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
     ) -> str | None:
         direct_memory = _focus_memory_context_for_direct_answers(memory_context, DIRECT_MEMORY_CHAR_LIMIT)
-        tool_scope = self._resolve_direct_tool_scope(user_prompt)
+        tool_scope = self._resolve_direct_tool_scope(user_prompt, selected_tools=selected_tools)
         system_logs.append(f"Direct memory chars sent: {len(direct_memory)}")
         system_logs.append(f"Direct tool scope size: {len(tool_scope)}")
         conversation = [
             {"role": "system", "content": DIRECT_SYSTEM_RULE},
+            *self._selected_tool_messages(selected_tools),
             {"role": "user", "content": user_prompt},
         ]
         tool_iterations = 0
@@ -1516,6 +1532,7 @@ class DevenvKernel:
         system_logs: list[str],
         max_consecutive_tools: int,
         planning_mode: PlanningMode,
+        selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
     ) -> tuple[str | None, bool]:
         self.state = AgentState.EXECUTING
         system_logs.append(f"State: {self.state.name}")
@@ -1528,7 +1545,11 @@ class DevenvKernel:
             working_blueprint = _set_active_task(working_blueprint, index)
             self.active_blueprint = working_blueprint
             system_logs.append(f"Current checkpoint {index + 1}/{len(working_blueprint.tasks)}: {task.description}")
-            scoped_tool_names = self._resolve_execution_tool_scope(user_prompt, task.description)
+            scoped_tool_names = self._resolve_execution_tool_scope(
+                user_prompt,
+                task.description,
+                selected_tools=selected_tools,
+            )
             execution_memory = self._resolve_execution_memory(
                 user_prompt=user_prompt,
                 task_description=task.description,
@@ -1538,6 +1559,7 @@ class DevenvKernel:
             system_logs.append(f"Execution tool scope size: {len(scoped_tool_names)}")
             step_conversation = [
                 {"role": "system", "content": EXECUTION_SYSTEM_RULE},
+                *self._selected_tool_messages(selected_tools),
                 {
                     "role": "user",
                     "content": self._build_execution_prompt(
@@ -1744,9 +1766,15 @@ class DevenvKernel:
         flush()
         return tasks
 
-    def _resolve_execution_tool_scope(self, user_prompt: str, task_description: str) -> list[str]:
+    def _resolve_execution_tool_scope(
+        self,
+        user_prompt: str,
+        task_description: str,
+        *,
+        selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
+    ) -> list[str]:
         del user_prompt, task_description
-        return sorted(self.tools)
+        return self._scoped_tool_names(selected_tools)
 
     def _resolve_execution_memory(self, *, user_prompt: str, task_description: str, memory_context: str) -> str:
         text = f"{user_prompt} {task_description}".lower()
@@ -1926,9 +1954,37 @@ class DevenvKernel:
         )
         return any(marker in text for marker in mutation_markers)
 
-    def _resolve_direct_tool_scope(self, user_prompt: str) -> list[str]:
+    def _resolve_direct_tool_scope(
+        self,
+        user_prompt: str,
+        *,
+        selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
+    ) -> list[str]:
         del user_prompt
-        return sorted(self.tools)
+        return self._scoped_tool_names(selected_tools)
+
+    def _resolve_selected_tools(self, selected_tools: list[str] | tuple[str, ...] | set[str] | None) -> set[str]:
+        return {
+            tool_name.strip()
+            for tool_name in (selected_tools or ())
+            if isinstance(tool_name, str) and tool_name.strip() in self.tools
+        }
+
+    def _scoped_tool_names(self, selected_tools: list[str] | tuple[str, ...] | set[str] | None = None) -> list[str]:
+        resolved = sorted(self._resolve_selected_tools(selected_tools))
+        return resolved or sorted(self.tools)
+
+    def _selected_tool_messages(self, selected_tools: list[str] | tuple[str, ...] | set[str] | None) -> list[dict[str, str]]:
+        resolved = self._scoped_tool_names(selected_tools) if selected_tools else []
+        if not resolved:
+            return []
+        lines = [
+            f"The user explicitly selected these tools for this turn: {', '.join(resolved)}.",
+            "Use only those selected tools if you need a tool.",
+        ]
+        if "web_search" in resolved:
+            lines.append("If the request is to search, browse, or look something up, call web_search before answering.")
+        return [{"role": "system", "content": " ".join(lines)}]
 
     def _build_local_plan_markdown(self, user_prompt: str) -> str:
         target_path = self._derive_scaffold_target_path(user_prompt) or ""
@@ -2177,6 +2233,7 @@ class DevenvKernel:
                 output=self.sandbox.violation_message(value),
                 success=False,
                 is_sandboxed_violation=True,
+                data={},
             )
 
         tool = self.tools.get(tool_call.tool_name)
@@ -2189,6 +2246,7 @@ class DevenvKernel:
                 output=f"Tool '{tool_call.tool_name}' is not registered in the runtime.",
                 success=False,
                 is_sandboxed_violation=False,
+                data={},
             )
 
         normalized_arguments = self.sandbox.normalize_arguments(self._repair_tool_arguments(tool_call))
@@ -2202,6 +2260,7 @@ class DevenvKernel:
                 output=scaffold_validation_error,
                 success=False,
                 is_sandboxed_violation=False,
+                data={},
             )
         logger.info("Executing MCP tool: tool=%s normalized_arguments=%s", tool_call.tool_name, normalized_arguments)
         result = self.tool_client.call_tool(tool_call.tool_name, normalized_arguments)
@@ -2213,6 +2272,7 @@ class DevenvKernel:
             output=_format_tool_output(result.output, result.data),
             success=result.success and not result.is_error,
             is_sandboxed_violation=False,
+            data=dict(result.data or {}),
         )
 
     def _repair_tool_arguments(self, tool_call: ToolCallRequest) -> dict[str, Any]:

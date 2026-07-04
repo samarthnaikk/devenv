@@ -125,6 +125,7 @@ class ToolExecutionStep:
     output: str
     success: bool
     is_sandboxed_violation: bool
+    data: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -132,6 +133,7 @@ class ToolExecutionStep:
             "tool_name": self.tool_name,
             "arguments": dict(self.arguments),
             "output": self.output,
+            "data": dict(self.data),
             "success": self.success,
             "is_sandboxed_violation": self.is_sandboxed_violation,
         }

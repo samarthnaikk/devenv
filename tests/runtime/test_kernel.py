@@ -213,6 +213,31 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertTrue(result.ai_logs)
         self.assertTrue(result.system_logs)
 
+    def test_execute_turn_limits_tool_scope_to_selected_tools(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="Searched answer",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 4, "completion_tokens": 2},
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(WriteFileTool())
+            result = kernel.execute_turn("Search the web for the docs", selected_tools=["read_file"])
+
+        self.assertEqual(result.final_response, "Searched answer")
+        self.assertEqual(ai.chat_calls[0]["tool_names"], ["read_file"])
+        self.assertIn("User selected tools: read_file", result.system_logs)
+
     def test_execute_turn_appends_external_session_context_to_memory(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(

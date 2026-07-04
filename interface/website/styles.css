@@ -1,5 +1,7 @@
 :root {
   color-scheme: light;
+  --font-ui: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", "SF Mono", "Menlo", monospace;
   --bg-top: rgba(196, 211, 255, 0.55);
   --bg-bottom: #f5f5f3;
   --shell: rgba(255, 255, 255, 0.94);
@@ -48,14 +50,7 @@ body,
 }
 
 body {
-  font-family:
-    "LythMono",
-    "Lyth Mono",
-    "SFMono-Regular",
-    "SF Mono",
-    "IBM Plex Mono",
-    "Menlo",
-    monospace;
+  font-family: var(--font-ui);
   background:
     radial-gradient(circle at top, var(--bg-top) 0%, transparent 28%),
     linear-gradient(180deg, var(--bg-bottom) 0%, var(--bg-bottom) 100%);
@@ -73,14 +68,7 @@ select {
 
 code,
 pre {
-  font-family:
-    "LythMono",
-    "Lyth Mono",
-    "SFMono-Regular",
-    "SF Mono",
-    "IBM Plex Mono",
-    "Menlo",
-    monospace;
+  font-family: var(--font-mono);
 }
 
 .app-shell,
@@ -468,22 +456,6 @@ body[data-theme="dark"] .thread-message.error .thread-message-body {
   background: linear-gradient(180deg, var(--surface) 0%, var(--surface-strong) 100%);
 }
 
-.thinking-toggle-button {
-  min-height: 30px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-strong);
-  color: var(--muted);
-  padding: 6px 10px;
-  font-size: 0.76rem;
-}
-
-.thinking-toggle-button:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
-  background: var(--surface);
-}
-
 .thinking-detail-meta {
   display: flex;
   gap: 10px;
@@ -534,6 +506,11 @@ body[data-theme="dark"] .thread-message.error .thread-message-body {
   font-weight: 700;
 }
 
+.thinking-live-indicator.globe {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.18) 0%, rgba(56, 189, 248, 0.28) 100%);
+  box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.24);
+}
+
 body[data-theme="dark"] .thinking-live-indicator {
   color: #7dd3fc;
   background: linear-gradient(135deg, rgba(56, 189, 248, 0.16) 0%, rgba(14, 165, 233, 0.2) 100%);
@@ -575,6 +552,63 @@ body[data-theme="dark"] .thinking-live-indicator {
   font-size: 0.84rem;
 }
 
+.thinking-search-stack {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.thinking-search-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 12px 14px;
+}
+
+.thinking-search-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.thinking-globe {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #0ea5e9;
+  background: rgba(14, 165, 233, 0.12);
+  box-shadow: 0 0 18px rgba(14, 165, 233, 0.16);
+}
+
+.thinking-search-results {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.thinking-search-results li {
+  display: grid;
+  gap: 2px;
+}
+
+.thinking-search-results a {
+  color: var(--muted);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.thinking-search-results a:hover {
+  color: var(--text);
+}
+
+.thinking-search-empty {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
 .thinking-card ul {
   margin: 0;
   padding-left: 18px;
@@ -595,6 +629,94 @@ body[data-theme="dark"] .thinking-live-indicator {
   border-radius: 18px;
   background: var(--panel);
   box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+}
+
+.tool-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tool-picker-trigger {
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.tool-picker-summary {
+  display: grid;
+  gap: 2px;
+}
+
+.tool-picker-summary-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tool-picker-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  width: min(360px, 74vw);
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.14);
+  z-index: 8;
+}
+
+.tool-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.tool-picker-clear {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.tool-picker-options {
+  display: grid;
+  gap: 6px;
+}
+
+.tool-picker-option {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.tool-picker-option.selected {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+.tool-picker-check {
+  width: 18px;
+  color: #2563eb;
+  text-align: center;
 }
 
 .composer-input {

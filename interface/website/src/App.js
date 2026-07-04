@@ -19,7 +19,7 @@ export function App() {
   const [clock, setClock] = React.useState(Date.now());
   const [planningMode, setPlanningMode] = React.useState("auto");
   const [localOnlyEnabled, setLocalOnlyEnabled] = React.useState(false);
-  const [showThinking, setShowThinking] = React.useState(false);
+  const [selectedTools, setSelectedTools] = React.useState([]);
 
   React.useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -85,8 +85,9 @@ export function App() {
         onPlanningModeChange: setPlanningMode,
         localOnlyEnabled,
         onLocalOnlyChange: setLocalOnlyEnabled,
-        showThinking,
-        onShowThinkingChange: setShowThinking,
+        availableTools: health.tools || [],
+        selectedTools,
+        onSelectedToolsChange: setSelectedTools,
         onModelChange: async (nextModel) => {
           const payload = await updateModel(nextModel);
           setHealthMeta((current) => ({
@@ -136,7 +137,7 @@ export function App() {
             do {
               while (true) {
                 try {
-                  result = await runTurn(nextPrompt, planningMode, continuePlan, localOnlyEnabled);
+                  result = await runTurn(nextPrompt, planningMode, continuePlan, localOnlyEnabled, selectedTools);
                   break;
                 } catch (error) {
                   const parsedRateLimit = parseRateLimitError(error.message);

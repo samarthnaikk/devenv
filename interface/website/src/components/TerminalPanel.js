@@ -24,13 +24,14 @@ export function TerminalPanel({
   provider,
   model,
   availableModels,
+  availableTools,
+  selectedTools,
+  onSelectedToolsChange,
   contextBudget,
   planningMode,
   onPlanningModeChange,
   localOnlyEnabled,
   onLocalOnlyChange,
-  showThinking,
-  onShowThinkingChange,
   onModelChange,
   onPromptChange,
   onSubmit,
@@ -38,10 +39,23 @@ export function TerminalPanel({
   isCoolingDown,
   cooldownLabel,
 }) {
+  const [toolPickerOpen, setToolPickerOpen] = React.useState(false);
   const hasMessages = transcript.length > 0;
-  const visibleMessages = transcript.filter((item) => item.role !== "thinking" || showThinking);
+  const visibleMessages = transcript.filter((item) => item.role !== "thinking");
   const statusLabel = runtimeState || (blueprint?.tasks?.length ? "Working" : "Ready");
   const branchName = blueprint?.target_branch || "main";
+  const selectedToolSet = new Set(selectedTools || []);
+  const enabledToolLabel = selectedToolSet.size ? `${selectedToolSet.size} tool${selectedToolSet.size === 1 ? "" : "s"}` : "All tools";
+
+  const toggleTool = (toolName) => {
+    const current = new Set(selectedTools || []);
+    if (current.has(toolName)) {
+      current.delete(toolName);
+    } else {
+      current.add(toolName);
+    }
+    onSelectedToolsChange?.(Array.from(current).sort());
+  };
 
   return React.createElement(
     "section",
@@ -78,13 +92,11 @@ export function TerminalPanel({
                   key: `${item.id || item.role}-${index}`,
                   className: `thread-message ${item.role}`,
                 },
-                React.createElement("div", { className: "thread-message-role" }, roleLabel(item, showThinking)),
+                React.createElement("div", { className: "thread-message-role" }, roleLabel(item)),
                 React.createElement("div", {
                   className: "thread-message-body markdown-body",
                   dangerouslySetInnerHTML: {
-                    __html: renderMarkdown(
-                      item.role === "thinking" && !showThinking ? summarizeThinkingContent(item.content, item.pending) : item.content
-                    ),
+                    __html: renderMarkdown(item.content),
                   },
                 })
               )
@@ -186,6 +198,50 @@ export function TerminalPanel({
             "div",
             { className: "composer-toolbar-left" },
             React.createElement(
+              "div",
+              { className: `tool-picker${toolPickerOpen ? " open" : ""}` },
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "tool-picker-trigger",
+                  onClick: () => setToolPickerOpen((current) => !current),
+                  "aria-expanded": toolPickerOpen ? "true" : "false",
+                  "aria-label": "Choose tools",
+                },
+                "+"
+              ),
+              React.createElement("div", { className: "tool-picker-label" }, enabledToolLabel),
+              toolPickerOpen
+                ? React.createElement(
+                    "div",
+                    { className: "tool-picker-menu" },
+                    React.createElement("div", { className: "tool-picker-title" }, "Choose functions"),
+                    React.createElement(
+                      "button",
+                      {
+                        type: "button",
+                        className: "tool-picker-clear",
+                        onClick: () => onSelectedToolsChange?.([]),
+                      },
+                      "Use all"
+                    ),
+                    (availableTools?.length ? availableTools : []).map((toolName) =>
+                      React.createElement(
+                        "label",
+                        { key: toolName, className: `tool-picker-option${selectedToolSet.has(toolName) ? " selected" : ""}` },
+                        React.createElement("input", {
+                          type: "checkbox",
+                          checked: selectedToolSet.has(toolName),
+                          onChange: () => toggleTool(toolName),
+                        }),
+                        React.createElement("span", null, toolName)
+                      )
+                    )
+                  )
+                : null
+            ),
+            React.createElement(
               "label",
               { className: "toolbar-select compact" },
               React.createElement("span", null, "Permissions"),
@@ -234,16 +290,6 @@ export function TerminalPanel({
           React.createElement(
             "div",
             { className: "composer-toolbar-right" },
-            React.createElement(
-              "label",
-              { className: `terminal-toggle inline-toggle${showThinking ? " enabled" : ""}` },
-              React.createElement("input", {
-                type: "checkbox",
-                checked: Boolean(showThinking),
-                onChange: (event) => onShowThinkingChange?.(event.target.checked),
-              }),
-              React.createElement("span", null, "Show thinking")
-            ),
             React.createElement("div", { className: "composer-meta" }, `${provider || "Unknown"} · ${contextBudget?.remainingLabel || "Unknown"} · ${branchName}`),
             React.createElement(
               "button",
@@ -265,33 +311,15 @@ function simplifyModelLabel(modelName) {
   return value.replace(/^.*\//, "").replace(/-/g, " ");
 }
 
-function roleLabel(item, showThinking) {
+function roleLabel(item) {
   if (item.role === "user") {
     return "You";
   }
   if (item.role === "thinking") {
-    return showThinking ? "Thinking" : "Working";
+    return "Working";
   }
   if (item.role === "error") {
     return "System";
   }
   return "Codex";
-}
-
-function summarizeThinkingContent(content, pending) {
-  const text = String(content || "");
-  const lowered = text.toLowerCase();
-  if (lowered.includes("retrying in")) {
-    const retryLine = text
-      .split("\n")
-      .find((line) => line.toLowerCase().includes("retrying in"));
-    return retryLine ? retryLine.replace(/^ERROR\s+/, "") : "Retrying shortly...";
-  }
-  if (lowered.includes("tool requested")) {
-    return pending ? "Calling tools..." : "Tool call completed.";
-  }
-  if (lowered.includes("planning response") || lowered.includes("state: planning")) {
-    return pending ? "Planning next step..." : "Planning completed.";
-  }
-  return pending ? "Working..." : "Completed.";
 }

@@ -188,6 +188,38 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertTrue(captured["continue_plan"])
         self.assertTrue(captured["local_only"])
 
+    def test_run_turn_forwards_selected_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            captured: dict[str, object] = {}
+
+            def fake_execute_turn(
+                prompt,
+                max_consecutive_tools=5,
+                planning_mode=PlanningMode.AUTO,
+                continue_plan=False,
+                local_only=False,
+                selected_tools=None,
+            ):
+                captured.update(
+                    {
+                        "prompt": prompt,
+                        "selected_tools": selected_tools,
+                    }
+                )
+                return type("Result", (), {"to_dict": lambda self: {"final_response": "ok"}})()
+
+            app.kernel.execute_turn = fake_execute_turn
+            result = app.run_turn("search this", selected_tools=["web_search", "read_file"])
+
+        self.assertEqual(result["final_response"], "ok")
+        self.assertEqual(captured["prompt"], "search this")
+        self.assertEqual(captured["selected_tools"], ["web_search", "read_file"])
+
     def test_set_model_updates_health_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             app = DevenvWebApp(

@@ -11,7 +11,6 @@ const state = {
   healthMeta: { provider: "", model: "", availableModels: [] },
   usageWindow: [],
   rateLimitInfo: null,
-  showThinking: false,
   clock: Date.now(),
   theme: loadTheme(),
   toast: "",
@@ -42,6 +41,8 @@ const state = {
   runStartedAt: 0,
   healthRefreshPending: false,
   pendingRunMode: "memory",
+  selectedTools: [],
+  toolPickerOpen: false,
 };
 
 const root = document.getElementById("root");
@@ -150,11 +151,6 @@ function bindEvents() {
   });
 
   root.addEventListener("change", async (event) => {
-    if (event.target.matches("[data-thinking-toggle]")) {
-      state.showThinking = Boolean(event.target.checked);
-      scheduleRender({ preserveComposerFocus: true });
-      return;
-    }
     if (event.target.matches("[data-provider-select]")) {
       state.selectedProvider = event.target.value;
       state.selectedSessionId = "";
@@ -192,8 +188,31 @@ async function handleAction(action, element) {
     return;
   }
 
-  if (action === "toggle-thinking-details") {
-    state.showThinking = !state.showThinking;
+  if (action === "toggle-tool-picker") {
+    state.toolPickerOpen = !state.toolPickerOpen;
+    scheduleRender({ preserveComposerFocus: true });
+    return;
+  }
+
+  if (action === "clear-tool-selection") {
+    state.selectedTools = [];
+    state.toolPickerOpen = false;
+    scheduleRender({ preserveComposerFocus: true });
+    return;
+  }
+
+  if (action === "toggle-tool") {
+    const toolName = String(element?.getAttribute("data-tool-name") || "").trim();
+    if (!toolName) {
+      return;
+    }
+    const next = new Set(state.selectedTools);
+    if (next.has(toolName)) {
+      next.delete(toolName);
+    } else {
+      next.add(toolName);
+    }
+    state.selectedTools = Array.from(next).sort();
     scheduleRender({ preserveComposerFocus: true });
     return;
   }
@@ -201,6 +220,7 @@ async function handleAction(action, element) {
   if (action === "new-thread") {
     state.prompt = "";
     state.transcript = [];
+    state.toolPickerOpen = false;
     state.retrievalStatus = {
       mode: "new_context",
       label: "New context",
@@ -323,6 +343,7 @@ async function submitPrompt() {
   state.isRunning = true;
   state.runStartedAt = Date.now();
   state.pendingRunMode = inferPendingRunMode(nextPrompt);
+  state.toolPickerOpen = false;
   state.prompt = "";
   const thinkingId = `thinking-${Date.now()}`;
   const pendingLogs =
@@ -345,6 +366,7 @@ async function submitPrompt() {
             planning_mode: "auto",
             continue_plan: false,
             local_only: false,
+            selected_tools: state.selectedTools,
             backend_preference: "opencode",
             session_budget_tokens: state.sessionBudgetTokens,
           }),
@@ -746,19 +768,9 @@ function render(options = {}) {
                 >${escapeHtml(state.prompt)}</textarea>
                 <div class="composer-toolbar">
                   <div class="composer-toolbar-left">
-                    <div class="status-chip">
-                      <span class="status-chip-label">Context</span>
-                      <strong>${escapeHtml(state.retrievalStatus.label)}</strong>
-                    </div>
-                    <div class="status-chip status-chip-detail markdown-body inline-markdown">
-                      ${renderRichText(state.retrievalStatus.detail)}
-                    </div>
+                    ${renderToolPicker()}
                   </div>
                   <div class="composer-toolbar-right">
-                    <label class="terminal-toggle inline-toggle${state.showThinking ? " enabled" : ""}">
-                      <input type="checkbox" data-thinking-toggle ${state.showThinking ? "checked" : ""} />
-                      <span>Show thinking details</span>
-                    </label>
                     <button
                       class="terminal-submit composer-submit"
                       type="submit"
@@ -778,7 +790,7 @@ function render(options = {}) {
                 </div>
                 ${state.isRunning ? `<div class="composer-running-line">${renderRunningTicker(currentPendingThinkingContent())}</div>` : ""}
               </div>
-              <div class="composer-hint markdown-body inline-markdown">${renderRichText("Press Cmd/Ctrl + Enter to search memory")}</div>
+              <div class="composer-hint markdown-body inline-markdown">${renderRichText("Press Cmd/Ctrl + Enter to send. Use + to choose tools like web_search.")}</div>
             </form>
             ${state.toast ? `<div class="toast-banner markdown-body inline-markdown">${renderRichText(state.toast)}</div>` : ""}
           </section>
@@ -854,12 +866,7 @@ function renderTranscript() {
     <div class="chat-thread">
       ${state.transcript
         .map((item) => {
-          const body =
-            item.role === "thinking"
-              ? state.showThinking
-                ? renderThinkingDetail(item.content, item.pending)
-                : renderThinkingSummary(item.content, item.pending)
-              : renderRichText(item.content);
+          const body = item.role === "thinking" ? renderThinkingDetail(item.content, item.pending) : renderRichText(item.content);
           return `
             <article class="thread-message ${item.role}">
               <div class="thread-message-header">
@@ -1194,6 +1201,50 @@ function renderUsageBars(entries) {
   </svg>`;
 }
 
+function renderToolPicker() {
+  const availableTools = Array.isArray(state.health?.tools) ? state.health.tools : [];
+  const selected = new Set(state.selectedTools);
+  const label = selected.size ? `${selected.size} selected` : "All tools";
+  return `
+    <div class="tool-picker${state.toolPickerOpen ? " open" : ""}">
+      <button type="button" class="tool-picker-trigger" data-action="toggle-tool-picker" aria-label="Choose tools" aria-expanded="${state.toolPickerOpen ? "true" : "false"}">+</button>
+      <div class="tool-picker-summary">
+        <span class="tool-picker-summary-label">Tools</span>
+        <strong>${escapeHtml(label)}</strong>
+      </div>
+      ${
+        state.toolPickerOpen
+          ? `
+            <div class="tool-picker-menu">
+              <div class="tool-picker-header">
+                <strong>Choose functions</strong>
+                <button type="button" class="tool-picker-clear" data-action="clear-tool-selection">Use all</button>
+              </div>
+              <div class="tool-picker-options">
+                ${availableTools
+                  .map(
+                    (toolName) => `
+                      <button
+                        type="button"
+                        class="tool-picker-option${selected.has(toolName) ? " selected" : ""}"
+                        data-action="toggle-tool"
+                        data-tool-name="${escapeAttribute(toolName)}"
+                      >
+                        <span class="tool-picker-check" aria-hidden="true">${selected.has(toolName) ? "✓" : ""}</span>
+                        <span>${escapeHtml(toolName)}</span>
+                      </button>
+                    `
+                  )
+                  .join("")}
+              </div>
+            </div>
+          `
+          : ""
+      }
+    </div>
+  `;
+}
+
 function buildBudgetState() {
   if (!state.sessionBudgetTokens) {
     return { blocked: false, label: "Set a session token budget to avoid unexpected usage spikes." };
@@ -1205,37 +1256,15 @@ function buildBudgetState() {
   return { blocked: false, label: `${remaining} tokens remaining before the session budget stops new turns.` };
 }
 
-function renderThinkingSummary(content, pending) {
-  const steps = parseThinkingEntries(content);
-  const latest = steps[steps.length - 1] || (pending ? "Checking memory" : "Finished checking memory");
-  const headline = pending ? "Devenv is checking memory" : "Devenv finished checking memory";
-  return `
-    <div class="thinking-card thinking-card-collapsed">
-      <div class="thinking-card-topline">
-        <strong>${escapeHtml(headline)}</strong>
-        <button type="button" class="thinking-toggle-button" data-action="toggle-thinking-details">
-          Show details
-        </button>
-      </div>
-      ${
-        pending
-          ? `<div class="thinking-live-row">${renderRunningTicker(content)}</div>`
-          : `<div class="thinking-collapsed-note markdown-body inline-markdown">${renderRichText(latest)}</div>`
-      }
-    </div>
-  `;
-}
-
 function renderThinkingDetail(content, pending) {
   const steps = parseThinkingEntries(content);
-  const headline = pending ? "Live reasoning trace" : "Completed reasoning trace";
+  const pendingWebSearch = state.pendingRunMode === "web" || steps.some((step) => step.kind === "web_search");
+  const headline = pending ? (pendingWebSearch ? "Searching the web" : "Checking Devenv") : "Completed trace";
+  const searchCards = steps.filter((step) => step.kind === "web_search");
   return `
     <div class="thinking-card thinking-card-detailed">
       <div class="thinking-card-topline">
         <strong>${escapeHtml(headline)}</strong>
-        <button type="button" class="thinking-toggle-button" data-action="toggle-thinking-details">
-          Close details
-        </button>
       </div>
       <div class="thinking-detail-meta">
         <span data-live-elapsed>${escapeHtml(
@@ -1244,44 +1273,66 @@ function renderThinkingDetail(content, pending) {
         <span>${escapeHtml(formatBackendLabel(state.activeBackend))}</span>
       </div>
       ${pending ? `<div class="thinking-live-row">${renderRunningTicker(content)}</div>` : ""}
+      ${searchCards.length ? `<div class="thinking-search-stack">${searchCards.map(renderThinkingSearchCard).join("")}</div>` : ""}
       <ol class="thinking-step-list">
-        ${steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+        ${steps
+          .filter((step) => step.kind !== "web_search")
+          .map((step) => `<li>${escapeHtml(step.text)}</li>`)
+          .join("")}
       </ol>
     </div>
   `;
 }
 
 function parseThinkingEntries(content) {
-  return String(content || "")
+  const entries = String(content || "")
     .split("\n")
     .map((line) => line.replace(/^```(?:text)?/, "").replace(/```$/, "").trim())
     .filter(Boolean)
     .map((line) => line.replace(/^[A-Z_]+\s+/, ""))
-    .map(humanizeThinkingLine);
+    .map(humanizeThinkingLine)
+    .filter(Boolean)
+    .map((entry) => (typeof entry === "string" ? { kind: "text", text: entry } : entry));
+  return normalizeThinkingEntries(entries);
 }
 
 function humanizeThinkingLine(line) {
   const lowered = line.toLowerCase();
+  if (lowered.startsWith("query:")) {
+    return { kind: "web_search", query: line.replace(/^query:\s*/i, "").trim(), results: [] };
+  }
+  if (lowered.startsWith("result:")) {
+    const payload = line.replace(/^result:\s*/i, "").trim();
+    const splitIndex = payload.lastIndexOf(" - http");
+    if (splitIndex >= 0) {
+      return {
+        kind: "web_search_result",
+        title: payload.slice(0, splitIndex).trim(),
+        url: payload.slice(splitIndex + 3).trim(),
+      };
+    }
+    return { kind: "web_search_result", title: payload, url: "" };
+  }
   if (lowered.includes("queued prompt")) {
-    return "Queued your lookup";
+    return null;
   }
   if (lowered.includes("memory context chars")) {
-    return "Built the memory context packet";
+    return "Built the context packet";
   }
   if (lowered.includes("prior-session")) {
-    return "Matched prior Devenv sessions";
+    return null;
   }
   if (lowered.includes("new context")) {
-    return "Detected a new context";
+    return null;
   }
   if (lowered.includes("checkpoint blueprint") || lowered.includes("checkpoint")) {
-    return "Reasoned through the retrieval flow";
+    return "Reasoned through the next step";
   }
   if (lowered.includes("verification passed")) {
     return "Verified the response";
   }
   if (lowered.includes("waiting for runtime response")) {
-    return "Waiting for Devenv runtime";
+    return "Waiting for the runtime";
   }
   if (lowered.includes("retrying in")) {
     return line;
@@ -1289,15 +1340,32 @@ function humanizeThinkingLine(line) {
   return line;
 }
 
+function normalizeThinkingEntries(entries) {
+  const normalized = [];
+  let activeSearch = null;
+  for (const entry of entries) {
+    if (entry.kind === "web_search") {
+      activeSearch = { kind: "web_search", text: `Searched for ${entry.query || "a live source"}`, query: entry.query || "", results: [] };
+      normalized.push(activeSearch);
+      continue;
+    }
+    if (entry.kind === "web_search_result") {
+      if (activeSearch) {
+        activeSearch.results.push({ title: entry.title || "", url: entry.url || "" });
+      }
+      continue;
+    }
+    activeSearch = null;
+    normalized.push(entry);
+  }
+  return normalized;
+}
+
 function formatThinkingFromResult(result) {
   const lines = [];
   const metadata = result.metadata || {};
   if (metadata.external_context_state === "privacy_blocked") {
     lines.push(createLogEntry("system", "Privacy mode blocked prior memory for this turn"));
-  } else if (metadata.external_context_state === "reused_prior_context") {
-    lines.push(createLogEntry("system", `Prior-session match found in ${metadata.external_context_session_count || 0} session(s)`));
-  } else {
-    lines.push(createLogEntry("system", "New context detected; no strong prior-session match reused"));
   }
   if (Array.isArray(result.stage_traces) && result.stage_traces.length) {
     for (const trace of result.stage_traces.slice(0, 5)) {
@@ -1306,22 +1374,61 @@ function formatThinkingFromResult(result) {
       }
     }
   }
-  if (Array.isArray(result.steps) && result.steps.length) {
-    for (const step of result.steps.slice(0, 3)) {
-      if (step.tool_name === "web_search" && step.success) {
-        lines.push(createLogEntry("tool", "Searched the web for a live source"));
+  const webSteps = Array.isArray(result.steps) ? result.steps.filter((step) => step.tool_name === "web_search" && step.success) : [];
+  for (const step of webSteps.slice(0, 2)) {
+    const query = String(step.arguments?.query || "").trim();
+    if (query) {
+      lines.push(createLogEntry("web_search", `query: ${query}`));
+    }
+    const results = Array.isArray(step.data?.results) ? step.data.results.slice(0, 3) : [];
+    if (results.length) {
+      for (const item of results) {
+        const title = String(item?.title || "").trim();
+        const url = String(item?.url || "").trim();
+        if (title || url) {
+          lines.push(createLogEntry("web_search", `result: ${title}${title && url ? " - " : ""}${url}`));
+        }
       }
+    } else if (step.output) {
+      lines.push(createLogEntry("tool", "Searched the web"));
     }
   }
   if (!lines.length) {
-    lines.push(createLogEntry("ai", "Retrieved Devenv memory context"));
+    lines.push(createLogEntry("ai", result.final_response ? "Prepared the final answer" : "Checked Devenv context"));
   }
   return formatThinkingBlock(lines);
 }
 
-function renderRunningTicker(content = "") {
+function renderThinkingSearchCard(step) {
+  const query = String(step.query || "").trim();
+  const results = Array.isArray(step.results) ? step.results : [];
   return `
-    <span class="thinking-live-indicator" aria-hidden="true">⚡</span>
+    <div class="thinking-search-card">
+      <div class="thinking-search-header">
+        <span class="thinking-globe" aria-hidden="true">◎</span>
+        <strong>${escapeHtml(query || "Web search")}</strong>
+      </div>
+      ${
+        results.length
+          ? `<ul class="thinking-search-results">
+              ${results
+                .map(
+                  (item) => `<li><span>${escapeHtml(item.title || item.url || "Result")}</span>${
+                    item.url ? `<a href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.url)}</a>` : ""
+                  }</li>`
+                )
+                .join("")}
+            </ul>`
+          : `<div class="thinking-search-empty">Search completed.</div>`
+      }
+    </div>
+  `;
+}
+
+function renderRunningTicker(content = "") {
+  const useGlobe = state.pendingRunMode === "web" || /query:|result:|searching the web/i.test(String(content || ""));
+  return `
+    <span class="thinking-live-indicator${useGlobe ? " globe" : ""}" aria-hidden="true">${useGlobe ? "◉" : "⚡"}</span>
     <span class="thinking-live-text" data-running-frame>${escapeHtml(currentRunningFrame(content))}</span>
     <span class="thinking-live-dots" aria-hidden="true">
       <span></span><span></span><span></span>
@@ -1330,7 +1437,9 @@ function renderRunningTicker(content = "") {
 }
 
 function currentRunningFrame(content = "") {
-  const steps = parseThinkingEntries(content).filter(Boolean);
+  const steps = parseThinkingEntries(content)
+    .map((step) => step.text)
+    .filter(Boolean);
   if (steps.length) {
     const recentSteps = Array.from(new Set(steps.slice(-4)));
     const index = Math.floor(state.clock / 1400) % recentSteps.length;
