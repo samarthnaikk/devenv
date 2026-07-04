@@ -331,6 +331,18 @@ class DevenvWebApp:
         }
         return result
 
+    def run_tool(self, tool_name: str, arguments: dict[str, object]) -> dict[str, object]:
+        tool = self.kernel.tools.get(tool_name)
+        if tool is None:
+            raise ValueError(f"Unknown tool: {tool_name}")
+        result = tool.execute(**arguments)
+        return {
+            "tool_name": tool_name,
+            "success": result.success,
+            "output": result.output,
+            "data": result.data,
+        }
+
     def set_model(self, model: str) -> dict[str, object]:
         cleaned = model.strip()
         if not cleaned:
@@ -462,6 +474,22 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
                 return
             try:
                 result = self.app.set_model(model)
+            except ValueError as exc:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                return
+            self._write_json(HTTPStatus.OK, result)
+            return
+        if parsed.path == "/api/tool":
+            tool_name = payload.get("tool_name")
+            arguments = payload.get("arguments", {})
+            if not isinstance(tool_name, str):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "Missing required field: tool_name"})
+                return
+            if not isinstance(arguments, dict):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "arguments must be an object"})
+                return
+            try:
+                result = self.app.run_tool(tool_name, arguments)
             except ValueError as exc:
                 self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
                 return

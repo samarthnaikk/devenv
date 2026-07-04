@@ -327,6 +327,20 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(payload["usage_sample"]["total_tokens"], 5)
         self.assertFalse(payload["budget_state"]["blocked"])
 
+    def test_run_tool_executes_registered_runtime_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+
+            payload = app.run_tool("generate_prompt", {"task": "Prepare a migration plan"})
+
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["tool_name"], "generate_prompt")
+        self.assertIn("Prepare a migration plan", payload["data"]["prompt"])
+
     def test_run_turn_preserves_partial_blueprint_when_execution_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             app = DevenvWebApp(

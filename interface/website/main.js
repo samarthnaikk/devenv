@@ -287,6 +287,11 @@ async function handleAction(action, element) {
     return;
   }
 
+  if (action === "generate-prompt") {
+    await generatePromptFromComposer();
+    return;
+  }
+
   if (action === "increase-budget") {
     const increment = Number.parseInt(element?.getAttribute("data-increase") || "1000", 10) || 1000;
     const current = state.sessionBudgetTokens || 0;
@@ -406,6 +411,45 @@ async function submitPrompt() {
     }
   } finally {
     state.isRunning = false;
+    scheduleRender({ focusComposer: true });
+  }
+}
+
+async function generatePromptFromComposer() {
+  const task = state.prompt.trim();
+  if (!task) {
+    showToast("Write a task first to generate a prompt");
+    return;
+  }
+  try {
+    const result = await request("/api/tool", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tool_name: "generate_prompt",
+        arguments: {
+          task,
+          allow_memory: "true",
+          allow_web_search: "false",
+          output_format: "strict",
+        },
+      }),
+    });
+    const promptText = String(result.data?.prompt || result.output || "").trim();
+    state.transcript.push({
+      id: `prompt-tool-${Date.now()}`,
+      role: result.success ? "assistant" : "error",
+      content: result.success ? `## Generated Prompt\n\n\`\`\`text\n${promptText}\n\`\`\`` : `Prompt generation failed: ${result.output}`,
+    });
+    showToast(result.success ? "Prompt generated" : "Prompt generation failed");
+    scheduleRender({ focusComposer: true });
+  } catch (error) {
+    showToast("Prompt generation failed");
+    state.transcript.push({
+      id: `prompt-tool-error-${Date.now()}`,
+      role: "error",
+      content: `Prompt generation failed: ${error.message}`,
+    });
     scheduleRender({ focusComposer: true });
   }
 }
@@ -1066,6 +1110,13 @@ function renderUsageCard(contextBudget) {
           <input class="budget-input" data-budget-input type="number" min="0" placeholder="No limit" value="${escapeAttribute(state.budgetInput)}" />
         </label>
         <button type="button" class="context-action-button primary" data-action="apply-budget">Apply</button>
+      </div>
+      <div class="budget-editor">
+        <label>
+          <span>Prompt helper</span>
+          <div class="panel-caption markdown-body inline-markdown">${renderRichText("Generate a strict coding prompt from the current composer text.")}</div>
+        </label>
+        <button type="button" class="context-action-button" data-action="generate-prompt">Generate Prompt</button>
       </div>
       <div class="budget-status markdown-body inline-markdown ${budgetState.blocked ? "blocked" : ""}">
         ${renderRichText(budgetState.label)}
