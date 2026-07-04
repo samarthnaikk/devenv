@@ -27,6 +27,7 @@ devenv-run = "core.runtime.tui:main"
 devenv-smoke = "core.runtime.smoke:main"
 devenv-web = "core.runtime.web:main"
 devenv-mcp = "core.runtime.mcp_server:main"
+devenv-setup = "core.runtime.setup:main"
 
 [tool.setuptools.packages.find]
 include = ["core*"]

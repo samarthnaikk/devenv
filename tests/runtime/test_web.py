@@ -11,6 +11,7 @@ from typing import Any
 from core.ai.models import AIResponse
 from core.runtime.models import CheckpointTask, ExecutionBlueprint
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode, RunConfig
+from core.runtime.setup import inspect_setup
 from core.runtime.web import DevenvWebApp
 
 
@@ -107,6 +108,20 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertTrue(health["privacy"]["incognito"])
         self.assertFalse(health["setup"]["ready"] is None)
         self.assertEqual(health["tool_readiness"]["generate_prompt"]["ready"], True)
+
+    def test_setup_inspection_exposes_shared_readiness_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            readiness = inspect_setup(
+                RunConfig(
+                    workspace_path=tempdir,
+                    performance_mode="medium",
+                ),
+                include_optional=True,
+            )
+
+        self.assertTrue(readiness.ready)
+        self.assertEqual(readiness.required_checks[0].name, "workspace")
+        self.assertEqual(readiness.optional_checks[0].name, "sentence_transformer_cache")
 
     def test_file_payload_supports_image_preview(self) -> None:
         png_bytes = bytes.fromhex(
