@@ -41,6 +41,7 @@ const state = {
   latestElapsedMs: 0,
   runStartedAt: 0,
   healthRefreshPending: false,
+  pendingRunMode: "memory",
 };
 
 const root = document.getElementById("root");
@@ -57,6 +58,12 @@ const RUNNING_STATUS_FRAMES = [
   "Matching prior projects",
   "Collecting relevant details",
   "Drafting the memory answer",
+];
+const WEB_RUNNING_STATUS_FRAMES = [
+  "Searching the web",
+  "Checking live sources",
+  "Reading the relevant page",
+  "Summarizing the result",
 ];
 
 bootstrap();
@@ -315,12 +322,13 @@ async function submitPrompt() {
 
   state.isRunning = true;
   state.runStartedAt = Date.now();
+  state.pendingRunMode = inferPendingRunMode(nextPrompt);
   state.prompt = "";
   const thinkingId = `thinking-${Date.now()}`;
-  const pendingLogs = [
-    createLogEntry("system", "Checking Devenv memory"),
-    createLogEntry("ai", "Looking for prior session matches"),
-  ];
+  const pendingLogs =
+    state.pendingRunMode === "web"
+      ? [createLogEntry("system", "Searching the web"), createLogEntry("ai", "Checking live sources for the latest answer")]
+      : [createLogEntry("system", "Checking Devenv memory"), createLogEntry("ai", "Looking for prior session matches")];
   state.transcript.push({ id: `user-${Date.now()}`, role: "user", content: nextPrompt });
   state.transcript.push({ id: thinkingId, role: "thinking", content: formatThinkingBlock(pendingLogs), pending: true });
   scheduleRender({ focusComposer: true });
@@ -416,6 +424,7 @@ async function submitPrompt() {
     }
   } finally {
     state.isRunning = false;
+    state.pendingRunMode = "memory";
     scheduleRender({ focusComposer: true });
   }
 }
@@ -1287,7 +1296,9 @@ function humanizeThinkingLine(line) {
 function formatThinkingFromResult(result) {
   const lines = [];
   const metadata = result.metadata || {};
-  if (metadata.external_context_state === "reused_prior_context") {
+  if (metadata.external_context_state === "privacy_blocked") {
+    lines.push(createLogEntry("system", "Privacy mode blocked prior memory for this turn"));
+  } else if (metadata.external_context_state === "reused_prior_context") {
     lines.push(createLogEntry("system", `Prior-session match found in ${metadata.external_context_session_count || 0} session(s)`));
   } else {
     lines.push(createLogEntry("system", "New context detected; no strong prior-session match reused"));
@@ -1296,6 +1307,13 @@ function formatThinkingFromResult(result) {
     for (const trace of result.stage_traces.slice(0, 5)) {
       if (trace.summary) {
         lines.push(createLogEntry("ai", trace.summary));
+      }
+    }
+  }
+  if (Array.isArray(result.steps) && result.steps.length) {
+    for (const step of result.steps.slice(0, 3)) {
+      if (step.tool_name === "web_search" && step.success) {
+        lines.push(createLogEntry("tool", "Searched the web for a live source"));
       }
     }
   }
@@ -1322,13 +1340,14 @@ function currentRunningFrame(content = "") {
     const index = Math.floor(state.clock / 1400) % recentSteps.length;
     return recentSteps[index];
   }
-  const index = Math.floor(state.clock / 1200) % RUNNING_STATUS_FRAMES.length;
-  return RUNNING_STATUS_FRAMES[index];
+  const frames = state.pendingRunMode === "web" ? WEB_RUNNING_STATUS_FRAMES : RUNNING_STATUS_FRAMES;
+  const index = Math.floor(state.clock / 1200) % frames.length;
+  return frames[index];
 }
 
 function runningButtonLabel() {
   const dots = ".".repeat((Math.floor(state.clock / 350) % 3) + 1);
-  return `Searching${dots}`;
+  return `${state.pendingRunMode === "web" ? "Searching web" : "Searching"}${dots}`;
 }
 
 function buildRetrievalStatus(metadata) {
@@ -1571,9 +1590,28 @@ function sanitizeAssistantResponse(content) {
   }
   const replay = extractReadableReplayText(text);
   if (replay.isReplay) {
-    return collapseRepeatedBlocks(replay.text);
+    return clampAssistantResponse(collapseRepeatedBlocks(replay.text));
   }
-  return collapseRepeatedBlocks(text);
+  return clampAssistantResponse(collapseRepeatedBlocks(text));
+}
+
+function clampAssistantResponse(content) {
+  const text = String(content || "").trim();
+  if (!text || text.includes("```")) {
+    return text;
+  }
+  const blocks = text.split(/\n{2,}/).filter(Boolean);
+  if (text.length <= 1400 && blocks.length <= 6) {
+    return text;
+  }
+  const shortened = blocks.slice(0, 4).join("\n\n").trim();
+  return shortened.length > 1100 ? `${shortened.slice(0, 1100).trimEnd()}…` : `${shortened}\n\n…`;
+}
+
+function inferPendingRunMode(prompt) {
+  const lowered = String(prompt || "").toLowerCase();
+  const webMarkers = ["today", "latest", "current", "currently", "recent", "president", "prime minister", "ceo", "who is"];
+  return webMarkers.some((marker) => lowered.includes(marker)) ? "web" : "memory";
 }
 
 function extractReadableReplayText(content) {
