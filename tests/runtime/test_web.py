@@ -290,6 +290,48 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(health["performance_mode"], "high")
         self.assertEqual(app.context_builder.performance_mode, "high")
 
+    def test_privacy_mode_updates_health_payload_and_turn_args(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            captured: dict[str, object] = {}
+            def fake_execute_turn(
+                prompt,
+                *,
+                max_consecutive_tools=5,
+                planning_mode=PlanningMode.AUTO,
+                continue_plan=False,
+                local_only=False,
+                backend_preference="auto",
+                opencode_enabled=False,
+                session_budget_tokens=None,
+                no_memory=False,
+                incognito=False,
+            ):
+                captured.update(
+                    {
+                        "no_memory": no_memory,
+                        "incognito": incognito,
+                    }
+                )
+                return type("Result", (), {"to_dict": lambda self: {"final_response": "ok", "total_usage": {}, "metadata": {}}})()
+
+            app.kernel.execute_turn = fake_execute_turn
+
+            privacy = app.update_privacy_mode(no_memory=False, incognito=True)
+            health = app.build_health_payload()
+            app.run_turn("hello")
+
+        self.assertTrue(privacy["privacy"]["incognito"])
+        self.assertTrue(privacy["privacy"]["no_memory"])
+        self.assertTrue(health["privacy"]["incognito"])
+        self.assertTrue(health["privacy"]["no_memory"])
+        self.assertTrue(captured["incognito"])
+        self.assertTrue(captured["no_memory"])
+
     def test_session_payload_requires_explicit_provider_access(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             app = DevenvWebApp(

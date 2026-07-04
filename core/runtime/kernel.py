@@ -74,6 +74,13 @@ _LOCAL_MODEL_SENTINEL = object()
 _TOOL_CLIENT_SENTINEL = object()
 _CONTEXT_BUILDER_SENTINEL = object()
 
+PRIVACY_DISABLED_METADATA = {
+    "external_context_state": "privacy_blocked",
+    "external_context_reason": "Prior memory access is disabled for this turn.",
+    "external_context_session_count": 0,
+    "external_context_session_ids": [],
+}
+
 
 class DevenvKernel:
     def __init__(
@@ -167,6 +174,8 @@ class DevenvKernel:
         backend_preference: str = "auto",
         opencode_enabled: bool = False,
         session_budget_tokens: int | None = None,
+        no_memory: bool = False,
+        incognito: bool = False,
     ) -> RuntimeTurnResult:
         logger.info("Starting runtime turn: workspace=%s prompt=%s", self.workspace_path, user_prompt)
         turn_started_at = time.perf_counter()
@@ -182,6 +191,8 @@ class DevenvKernel:
             "backend_preference": backend_preference,
             "backend_used": "local" if local_only else "groq",
             "backend_fallback": "",
+            "no_memory": no_memory,
+            "incognito": incognito,
         }
         if hasattr(self.ai, "set_backend_preference"):
             self.ai.set_backend_preference(backend_preference, opencode_enabled=opencode_enabled)
@@ -264,14 +275,20 @@ class DevenvKernel:
                     elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
                 )
 
-        self._record_working_memory(conversation)
-        memory_context, retrieval_metadata = self._retrieve_memory_context(user_prompt, local_only=local_only)
+        if not incognito:
+            self._record_working_memory(conversation)
+        if no_memory or incognito:
+            memory_context, retrieval_metadata = "", dict(PRIVACY_DISABLED_METADATA)
+        else:
+            memory_context, retrieval_metadata = self._retrieve_memory_context(user_prompt, local_only=local_only)
         turn_metadata.update(retrieval_metadata)
         logger.info("Retrieved memory context: chars=%s", len(memory_context))
         system_logs.append(f"Memory context chars: {len(memory_context)}")
         system_logs.append(f"Planning mode: {planning_mode.value}")
         system_logs.append(f"Continue plan: {continue_plan}")
         system_logs.append(f"Local only: {local_only}")
+        if no_memory or incognito:
+            system_logs.append(f"Privacy mode: {'incognito' if incognito else 'no_memory'}")
         steps: list[ToolExecutionStep] = []
         total_usage: dict[str, int] = {}
         self.state = AgentState.PLANNING
@@ -285,7 +302,14 @@ class DevenvKernel:
                 system_logs=system_logs,
             )
             conversation.append({"role": "assistant", "content": direct_response})
-            self._finalize_turn(user_prompt, direct_response, conversation, metadata=turn_metadata)
+            self._finalize_turn(
+                user_prompt,
+                direct_response,
+                conversation,
+                metadata=turn_metadata,
+                persist_memory=not incognito,
+                persist_working_memory=not incognito,
+            )
             return RuntimeTurnResult(
                 final_response=direct_response,
                 steps=steps,
@@ -304,7 +328,14 @@ class DevenvKernel:
             if direct_memory_answer is not None:
                 ai_logs.append("Direct memory answer assembled from retrieved context")
                 conversation.append({"role": "assistant", "content": direct_memory_answer})
-                self._finalize_turn(user_prompt, direct_memory_answer, conversation, metadata=turn_metadata)
+                self._finalize_turn(
+                    user_prompt,
+                    direct_memory_answer,
+                    conversation,
+                    metadata=turn_metadata,
+                    persist_memory=not incognito,
+                    persist_working_memory=not incognito,
+                )
                 return RuntimeTurnResult(
                     final_response=direct_memory_answer,
                     steps=steps,
@@ -338,7 +369,14 @@ class DevenvKernel:
         active_index = _next_incomplete_task_index(blueprint)
         if active_index is None:
             self.active_plan_prompt = None
-            self._finalize_turn(user_prompt, "", conversation, metadata=turn_metadata)
+            self._finalize_turn(
+                user_prompt,
+                "",
+                conversation,
+                metadata=turn_metadata,
+                persist_memory=not incognito,
+                persist_working_memory=not incognito,
+            )
             return RuntimeTurnResult(
                 final_response="Nothing left to execute.",
                 steps=steps,
@@ -397,7 +435,14 @@ class DevenvKernel:
                         payload={"reason": str(exc), "child_count": len(split_blueprint.tasks)},
                     )
                 )
-            self._finalize_turn(user_prompt, "", conversation, metadata=turn_metadata)
+            self._finalize_turn(
+                user_prompt,
+                "",
+                conversation,
+                metadata=turn_metadata,
+                persist_memory=not incognito,
+                persist_working_memory=not incognito,
+            )
             return RuntimeTurnResult(
                 final_response=None,
                 steps=steps,
@@ -461,7 +506,8 @@ class DevenvKernel:
                 user_prompt,
                 final_response or "",
                 conversation,
-                persist_memory=not (final_response or "").startswith("I inspected `"),
+                persist_memory=(not incognito) and not (final_response or "").startswith("I inspected `"),
+                persist_working_memory=not incognito,
                 metadata=turn_metadata,
             )
             return RuntimeTurnResult(
@@ -490,7 +536,8 @@ class DevenvKernel:
             user_prompt,
             final_response or "",
             conversation,
-            persist_memory=not (final_response or "").startswith("I inspected `"),
+            persist_memory=(not incognito) and not (final_response or "").startswith("I inspected `"),
+            persist_working_memory=not incognito,
             metadata=turn_metadata,
         )
         system_logs.append("Turn completed and stored in memory")

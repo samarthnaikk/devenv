@@ -154,6 +154,7 @@ class DevenvWebApp:
         self.port = port
         self.static_root = _resolve_static_root()
         self.performance_mode = config.performance_mode if config.performance_mode in {"low", "medium", "high"} else "medium"
+        self.privacy_mode = {"no_memory": bool(config.no_memory), "incognito": bool(config.incognito)}
         self.kernel = DevenvKernel(
             workspace_path=config.workspace_path,
             db_path=config.db_path,
@@ -195,7 +196,7 @@ class DevenvWebApp:
         active_backend = getattr(self.kernel.ai, "last_backend_used", "groq")
         active_provider_label = "OpenCode CLI" if active_backend == "opencode" else "Groq"
         setup = inspect_setup(self.config, include_optional=True)
-        privacy = PrivacyModeState(no_memory=self.config.no_memory, incognito=self.config.incognito)
+        privacy = PrivacyModeState(no_memory=self.privacy_mode["no_memory"], incognito=self.privacy_mode["incognito"])
         tool_readiness = self._build_tool_readiness()
         return {
             "workspace_path": self.config.workspace_path,
@@ -318,6 +319,10 @@ class DevenvWebApp:
             kwargs["opencode_enabled"] = self.access_policy.can_use_backend("opencode")
         if "session_budget_tokens" in parameters:
             kwargs["session_budget_tokens"] = session_budget_tokens
+        if "no_memory" in parameters:
+            kwargs["no_memory"] = self.privacy_mode["no_memory"]
+        if "incognito" in parameters:
+            kwargs["incognito"] = self.privacy_mode["incognito"]
         result = execute_turn(prompt, **kwargs).to_dict()
         result["final_response"] = _sanitize_replay_text(result.get("final_response"))
         result["error_message"] = _sanitize_replay_text(result.get("error_message"))
@@ -378,6 +383,11 @@ class DevenvWebApp:
         if hasattr(self.context_builder, "set_performance_mode"):
             self.context_builder.set_performance_mode(cleaned)
         return {"performance_mode": self.performance_mode}
+
+    def update_privacy_mode(self, *, no_memory: bool, incognito: bool) -> dict[str, object]:
+        self.privacy_mode["incognito"] = bool(incognito)
+        self.privacy_mode["no_memory"] = bool(no_memory or incognito)
+        return {"privacy": dict(self.privacy_mode)}
 
     def _require_provider_access(self, provider_name: str) -> None:
         if not self.access_policy.can_access_provider(provider_name):
@@ -505,6 +515,15 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             except ValueError as exc:
                 self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
                 return
+            self._write_json(HTTPStatus.OK, result)
+            return
+        if parsed.path == "/api/privacy":
+            no_memory = payload.get("no_memory", False)
+            incognito = payload.get("incognito", False)
+            if not isinstance(no_memory, bool) or not isinstance(incognito, bool):
+                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "no_memory and incognito must be booleans"})
+                return
+            result = self.app.update_privacy_mode(no_memory=no_memory, incognito=incognito)
             self._write_json(HTTPStatus.OK, result)
             return
         if parsed.path != "/api/turn":
