@@ -11,7 +11,7 @@ from typing import Any
 
 from core.ai.engine import DEFAULT_SYSTEM_INSTRUCTIONS
 from core.ai.models import AIBackendStatus, AIResponse, ToolCallRequest
-from core.ai.opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeServerManager, OpenCodeToolSpec, default_opencode_server_config
+from core.ai.opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeServerManager, default_opencode_server_config
 from core.tools.base import BaseTool
 
 DEFAULT_OPENCODE_MODEL = "openrouter/anthropic/claude-sonnet-4"
@@ -211,13 +211,11 @@ class OpenCodeAICore:
         return self._session_id
 
     def _send_server_message(self, session_id: str, *, prompt: str, resolved_tool_names: list[str]):
-        tools = [_tool_spec_from_runtime_tool(self._tools[name]) for name in resolved_tool_names]
         output_format = _opencode_output_format(resolved_tool_names)
         try:
             return self._send_server_message_once(
                 session_id,
                 prompt=prompt,
-                tools=tools,
                 output_format=output_format,
             )
         except OpenCodeClientError as exc:
@@ -226,7 +224,6 @@ class OpenCodeAICore:
                 return self._send_server_message_once(
                     session_id,
                     prompt=prompt,
-                    tools=tools,
                     output_format=None,
                 )
             if not _is_recoverable_session_error(exc):
@@ -237,7 +234,6 @@ class OpenCodeAICore:
                 return self._send_server_message_once(
                     recovered_session_id,
                     prompt=prompt,
-                    tools=tools,
                     output_format=output_format,
                 )
             except OpenCodeClientError as retry_exc:
@@ -246,7 +242,6 @@ class OpenCodeAICore:
                     return self._send_server_message_once(
                         recovered_session_id,
                         prompt=prompt,
-                        tools=tools,
                         output_format=None,
                     )
                 raise
@@ -256,14 +251,12 @@ class OpenCodeAICore:
         session_id: str,
         *,
         prompt: str,
-        tools: list[OpenCodeToolSpec],
         output_format: dict[str, Any] | None,
     ):
         return self.client.send_message(
             session_id,
             parts=[{"type": "text", "text": prompt}],
             output_format=output_format,
-            tools=tools,
         )
 
     def _compile_prompt(self, messages: list[dict[str, Any]], memory_context: str | None) -> str:
@@ -386,12 +379,6 @@ class RoutingAICore:
         self.last_backend_reason = self.opencode_ai.last_backend_reason
         self.last_backend_fallback = ""
         return response
-
-
-def _tool_spec_from_runtime_tool(tool: BaseTool) -> OpenCodeToolSpec:
-    return OpenCodeToolSpec(name=tool.name, description=tool.description, parameters=tool.input_schema())
-
-
 def _is_recoverable_session_error(exc: OpenCodeClientError) -> bool:
     if exc.status_code == 404:
         return True

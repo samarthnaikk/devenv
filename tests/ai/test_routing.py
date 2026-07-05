@@ -130,6 +130,8 @@ class OpenCodeRoutingTest(unittest.TestCase):
         self.assertEqual(response.tool_calls[0].tool_name, "read_file")
         self.assertEqual(response.tool_calls[0].arguments["path"], "README.md")
         self.assertEqual(response.usage["total_tokens"], 9)
+        self.assertNotIn("tools", client.sent_messages[0])
+        self.assertIn("Available Tools", client.sent_messages[0]["parts"][0]["text"])
 
     def test_routing_core_raises_when_opencode_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
