@@ -204,24 +204,50 @@ class OpenCodeRoutingTest(unittest.TestCase):
         self.assertEqual(payload["type"], "json_schema")
         self.assertEqual(payload["schema"]["properties"]["tool_name"]["enum"], ["read_file"])
 
+    def test_opencode_core_recovers_from_stale_server_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            client = _FakeOpenCodeClient(
+                responses=[
+                    OpenCodeClientError("Unknown session", status_code=404),
+                    _fake_message("msg_2", structured_output={"type": "final", "content": "Recovered answer"}, usage={"total_tokens": 7}),
+                ],
+                session_ids=["ses_old", "ses_new"],
+            )
+            manager = Mock()
+            manager.ensure_server.return_value = Mock()
+            manager.inspect.return_value = _fake_server_status()
+
+            core = OpenCodeAICore(workspace_path=tempdir, executable="opencode", client=client, server_manager=manager)
+            response = core.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
+            status = core.status()
+
+        self.assertEqual(response.content, "Recovered answer")
+        self.assertEqual(client.created_titles, [f"Devenv: {Path(tempdir).name}", f"Devenv: {Path(tempdir).name}"])
+        self.assertEqual(status.metadata["session_id"], "ses_new")
+        self.assertEqual(status.metadata["transport"], "server")
+
 
 class _FakeOpenCodeClient:
-    def __init__(self, *, responses: list[Any] | None = None, error: Exception | None = None) -> None:
+    def __init__(self, *, responses: list[Any] | None = None, error: Exception | None = None, session_ids: list[str] | None = None) -> None:
         self.responses = list(responses or [])
         self.error = error
+        self.session_ids = list(session_ids or ["ses_123"])
         self.created_titles: list[str] = []
         self.sent_messages: list[dict[str, Any]] = []
         self.aborted_session_ids: list[str] = []
 
     def create_session(self, *, title: str | None = None, parent_id: str | None = None):
         self.created_titles.append(title or "")
-        return type("Session", (), {"session_id": "ses_123"})()
+        return type("Session", (), {"session_id": self.session_ids.pop(0) if self.session_ids else "ses_123"})()
 
     def send_message(self, session_id: str, **kwargs):
         self.sent_messages.append({"session_id": session_id, **kwargs})
         if self.error is not None:
             raise self.error
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
     def abort_session(self, session_id: str) -> bool:
         self.aborted_session_ids.append(session_id)

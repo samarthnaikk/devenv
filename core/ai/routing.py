@@ -61,7 +61,13 @@ class OpenCodeAICore:
             model=self.model,
             detail=detail,
             supports_tool_calls=True,
-            metadata={"server": server_status.to_metadata()},
+            metadata={
+                "server": server_status.to_metadata(),
+                "transport": "legacy_cli" if self._should_use_legacy_cli() else "server",
+                "session_id": self._session_id or "",
+                "synced_message_count": self._synced_message_count,
+                "last_error": self.last_error,
+            },
         )
 
     def chat(
@@ -117,12 +123,7 @@ class OpenCodeAICore:
         )
         try:
             session_id = self._ensure_session()
-            response = self.client.send_message(
-                session_id,
-                parts=[{"type": "text", "text": prompt}],
-                output_format=_opencode_output_format(resolved_tool_names),
-                tools=[_tool_spec_from_runtime_tool(self._tools[name]) for name in resolved_tool_names],
-            )
+            response = self._send_server_message(session_id, prompt=prompt, resolved_tool_names=resolved_tool_names)
         except OpenCodeClientError as exc:
             self.last_error = f"OpenCode server failed: {exc}"
             raise RuntimeError(self.last_error) from exc
@@ -192,6 +193,26 @@ class OpenCodeAICore:
         self._session_id = session.session_id
         self._synced_message_count = 0
         return self._session_id
+
+    def _send_server_message(self, session_id: str, *, prompt: str, resolved_tool_names: list[str]):
+        try:
+            return self.client.send_message(
+                session_id,
+                parts=[{"type": "text", "text": prompt}],
+                output_format=_opencode_output_format(resolved_tool_names),
+                tools=[_tool_spec_from_runtime_tool(self._tools[name]) for name in resolved_tool_names],
+            )
+        except OpenCodeClientError as exc:
+            if not _is_recoverable_session_error(exc):
+                raise
+            self.reset_session()
+            recovered_session_id = self._ensure_session()
+            return self.client.send_message(
+                recovered_session_id,
+                parts=[{"type": "text", "text": prompt}],
+                output_format=_opencode_output_format(resolved_tool_names),
+                tools=[_tool_spec_from_runtime_tool(self._tools[name]) for name in resolved_tool_names],
+            )
 
     def _compile_prompt(self, messages: list[dict[str, Any]], memory_context: str | None) -> str:
         sections: list[str] = []
@@ -317,6 +338,13 @@ class RoutingAICore:
 
 def _tool_spec_from_runtime_tool(tool: BaseTool) -> OpenCodeToolSpec:
     return OpenCodeToolSpec(name=tool.name, description=tool.description, parameters=tool.input_schema())
+
+
+def _is_recoverable_session_error(exc: OpenCodeClientError) -> bool:
+    if exc.status_code == 404:
+        return True
+    lowered = str(exc).lower()
+    return "unknown session" in lowered or "session" in lowered and "not found" in lowered
 
 
 def _opencode_output_format(allowed_tools: list[str]) -> dict[str, Any]:
