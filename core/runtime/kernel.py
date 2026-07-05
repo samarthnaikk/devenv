@@ -44,6 +44,7 @@ READ_ONLY_EXECUTION_TOOLS = frozenset(
     {"list_directory", "locate_files", "read_file", "peek_lines", "inspect_symbols", "search_text", "track_symbol"}
 )
 DIRECT_CODE_INSPECTION_TOOLS = frozenset({"list_directory", "locate_files", "read_file", "peek_lines", "inspect_symbols"})
+DIRECT_ARCHITECTURE_INSPECTION_TOOLS = frozenset({"list_directory", "read_file", "peek_lines", "inspect_symbols"})
 WRITE_EXECUTION_TOOLS = frozenset({"write_file", "edit_file"})
 DELETE_EXECUTION_TOOLS = frozenset({"remove_file"})
 SHELL_EXECUTION_TOOLS = frozenset({"run_shell", "run_diagnostics", "audit_changes"})
@@ -2301,7 +2302,12 @@ class DevenvKernel:
             return []
 
         if not execution_phase and self._should_start_with_code_inspection_scope(prompt):
-            inspection_scope = DIRECT_CODE_INSPECTION_TOOLS & available
+            inspection_scope_source = (
+                DIRECT_ARCHITECTURE_INSPECTION_TOOLS
+                if self._should_prefer_compact_architecture_scope(prompt)
+                else DIRECT_CODE_INSPECTION_TOOLS
+            )
+            inspection_scope = inspection_scope_source & available
             if inspection_scope:
                 return sorted(inspection_scope)
 
@@ -2396,6 +2402,23 @@ class DevenvKernel:
         ):
             return True
         return False
+
+    def _should_prefer_compact_architecture_scope(self, prompt: str) -> bool:
+        lowered = prompt.lower()
+        return any(
+            marker in lowered
+            for marker in (
+                "how does the backend work",
+                "how does this backend work",
+                "how does the repo work",
+                "how does the repository work",
+                "how does the system work",
+                "explain this project architecture",
+                "backend architecture",
+                "repo architecture",
+                "repository architecture",
+            )
+        )
 
     def _should_offer_web_search(self, lowered_prompt: str) -> bool:
         return any(
@@ -4461,7 +4484,11 @@ def _is_opencode_access_denied_error(error: RuntimeError) -> bool:
 
 def _is_opencode_transport_error(error: RuntimeError) -> bool:
     lowered = str(error).strip().lower()
-    return "opencode server failed" in lowered or "opencode cli failed" in lowered
+    return (
+        "opencode server failed" in lowered
+        or "opencode cli failed" in lowered
+        or "unable to reach opencode server" in lowered
+    )
 
 
 def _lexical_memory_terms(user_prompt: str) -> list[str]:

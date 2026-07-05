@@ -122,6 +122,14 @@ class OpenCodeClientTest(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertEqual(str(ctx.exception), "bad request")
 
+    def test_timeout_errors_raise_typed_client_error(self) -> None:
+        with patch("core.ai.opencode_client.request.urlopen", side_effect=TimeoutError("timed out")):
+            with self.assertRaises(OpenCodeClientError) as ctx:
+                self.client.health()
+
+        self.assertIsNone(ctx.exception.status_code)
+        self.assertEqual(str(ctx.exception), "Unable to reach OpenCode server: timed out")
+
     def test_server_manager_reports_reachable_health(self) -> None:
         manager = OpenCodeServerManager(config=self.client.config)
         with patch.object(OpenCodeClient, "health", return_value=type("Health", (), {"healthy": True, "version": "1.3.3", "detail": ""})()):

@@ -636,7 +636,7 @@ class DevenvKernelTest(unittest.TestCase):
 
             scope = kernel._resolve_direct_tool_scope("how does the backend work?")
 
-        self.assertEqual(scope, ["inspect_symbols", "list_directory", "locate_files", "peek_lines", "read_file"])
+        self.assertEqual(scope, ["inspect_symbols", "list_directory", "peek_lines", "read_file"])
 
     def test_direct_turn_sends_compact_code_inspection_scope_for_backend_question(self) -> None:
         memory = FakeMemory()
@@ -666,7 +666,7 @@ class DevenvKernelTest(unittest.TestCase):
             result = kernel.execute_turn("how does the backend work?")
 
         self.assertEqual(result.final_response, "The backend uses routes and services.")
-        self.assertEqual(ai.chat_calls[0]["tool_names"], ["inspect_symbols", "list_directory", "locate_files", "peek_lines", "read_file"])
+        self.assertEqual(ai.chat_calls[0]["tool_names"], ["inspect_symbols", "list_directory", "peek_lines", "read_file"])
 
     def test_direct_turn_sends_no_tools_for_project_summary_prompt(self) -> None:
         memory = FakeMemory()

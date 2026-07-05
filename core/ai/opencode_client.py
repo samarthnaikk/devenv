@@ -242,6 +242,10 @@ class OpenCodeClient:
             raise self._http_error(exc) from exc
         except error.URLError as exc:
             raise OpenCodeClientError(f"Unable to reach OpenCode server: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise OpenCodeClientError("Unable to reach OpenCode server: timed out") from exc
+        except OSError as exc:
+            raise OpenCodeClientError(f"Unable to reach OpenCode server: {exc}") from exc
 
     def _request_json(self, method: str, path: str, *, body: Any | None = None) -> Any:
         req = self._build_request(method, path, body=body)
@@ -258,6 +262,10 @@ class OpenCodeClient:
             raise self._http_error(exc) from exc
         except error.URLError as exc:
             raise OpenCodeClientError(f"Unable to reach OpenCode server: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise OpenCodeClientError("Unable to reach OpenCode server: timed out") from exc
+        except OSError as exc:
+            raise OpenCodeClientError(f"Unable to reach OpenCode server: {exc}") from exc
 
     def _build_request(self, method: str, path: str, *, body: Any | None = None) -> request.Request:
         data: bytes | None = None
