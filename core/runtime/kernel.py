@@ -2484,6 +2484,11 @@ class DevenvKernel:
                 "For that question I would not need workspace tools first. "
                 "Devenv should answer from memory/retrieval, and only fall back if prior context is not reliable enough."
             )
+        if _is_underspecified_troubleshooting_prompt(subject_prompt):
+            return (
+                "For that question Devenv should not guess or run tools first. "
+                "It should ask one concise clarification about the failing command, error, file, or step before choosing tools."
+            )
 
         if _is_repo_summary_question(subject_prompt):
             return (
@@ -4888,12 +4893,18 @@ def _should_skip_current_workspace_memory_lookup(user_prompt: str) -> bool:
             "explain this repository",
             "tell me about this codebase",
             "tell me about the codebase",
+            "what is this codebase",
+            "what is the codebase",
+            "what is this repo",
+            "what is the repo",
             "how does the backend work",
             "how does this backend work",
+            "what is the backend",
             "explain the backend",
             "explain this backend",
             "tell me about the backend",
             "tell me about this backend",
+            "what is the system",
             "tell me about the system",
             "tell me about this system",
             "what is the backend architecture",
@@ -5234,6 +5245,10 @@ def _is_repo_summary_question(user_prompt: str) -> bool:
             "summarize the repo",
             "summarize this repository",
             "summarize the repository",
+            "what is this codebase",
+            "what is the codebase",
+            "what is this repo",
+            "what is the repo",
             "tell me about this repo",
             "tell me about the repo",
             "tell me about this repository",
@@ -5262,6 +5277,10 @@ def _is_repo_overview_question(user_prompt: str) -> bool:
             "how does the codebase work",
             "how does this repo work",
             "how does this repository work",
+            "what is this codebase",
+            "what is the codebase",
+            "what is this repo",
+            "what is the repo",
         )
     )
 
@@ -5319,13 +5338,19 @@ def _prefers_deeper_workspace_scan(user_prompt: str) -> bool:
             "how does the backend work",
             "tell me about the backend",
             "tell me about this backend",
+            "what is the backend",
             "how does the repo work",
             "how does the repository work",
             "tell me about this repo",
             "tell me about the repo",
             "tell me about this repository",
             "tell me about the repository",
+            "what is this codebase",
+            "what is the codebase",
+            "what is this repo",
+            "what is the repo",
             "how does the system work",
+            "what is the system",
             "tell me about the system",
             "tell me about this system",
             "how does this backend work",

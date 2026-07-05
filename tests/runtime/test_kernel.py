@@ -1383,6 +1383,35 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("web.py", result.final_response or "")
         self.assertIn("routing.py", result.final_response or "")
 
+    def test_what_is_backend_prompt_prefers_current_workspace_architecture_summary(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="## Retrieved Memory\n- An unrelated old session said the backend used persona scoring."
+        )
+        ai = TransportErrorAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            ai_dir = Path(tempdir) / "core" / "ai"
+            ai_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (runtime_dir / "web.py").write_text("class DevenvWebApp:\n    pass\n", encoding="utf-8")
+            (ai_dir / "routing.py").write_text("class RoutingAICore:\n    pass\n", encoding="utf-8")
+            (Path(tempdir) / "README.md").write_text("# Demo repo\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("what is the backend?")
+
+        self.assertIn("kernel.py", result.final_response or "")
+        self.assertIn("web.py", result.final_response or "")
+        self.assertIn("routing.py", result.final_response or "")
+        self.assertNotIn("persona scoring", result.final_response or "")
+
     def test_repo_summary_prompt_uses_opencode_to_summarize_bounded_local_evidence_when_enabled(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
@@ -2246,6 +2275,45 @@ class DevenvKernelTest(unittest.TestCase):
                 [
                     "Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.",
                     "Yes.\n\nYes. Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.",
+                ]
+            )
+        )
+
+        self.assertEqual(cleaned, "Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.")
+
+    def test_sanitize_logged_answer_extracts_last_assistant_block_from_ui_transcript_dump(self) -> None:
+        cleaned = _sanitize_logged_answer(
+            "\n".join(
+                [
+                    "You",
+                    "",
+                    "do you know about get-drip bugs",
+                    "",
+                    "Devenv status",
+                    "Tool trace",
+                    "14s",
+                    "OpenCode",
+                    "⚡",
+                    "Prepared the final answer",
+                    "TracePrepared the final answer",
+                    "Devenv",
+                    "",
+                    "Yes. Because we fixed correctness/review issues.",
+                    "",
+                    "You",
+                    "",
+                    "what do you know about clean up schrema og get-drip",
+                    "",
+                    "Devenv status",
+                    "Tool trace",
+                    "2s",
+                    "OpenCode",
+                    "⚡",
+                    "Prepared the final answer",
+                    "TracePrepared the final answer",
+                    "Devenv",
+                    "",
+                    "Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.",
                 ]
             )
         )
