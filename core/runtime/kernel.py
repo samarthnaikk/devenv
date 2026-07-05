@@ -2415,10 +2415,16 @@ class DevenvKernel:
     ) -> str | None:
         if _is_opencode_access_denied_error(error):
             lowered = user_prompt.lower()
-            if any(marker in lowered for marker in ("repo", "repository", "codebase", "backend", "architecture", "system")):
+            fallback_path: str | None = None
+            candidate_path = self._resolve_workspace_candidate(user_prompt) if "list_directory" in self.tools else None
+            if candidate_path and candidate_path != self.workspace_path:
+                fallback_path = candidate_path
+            elif any(marker in lowered for marker in ("repo", "repository", "codebase", "backend", "architecture", "system")):
+                fallback_path = self.workspace_path
+            if fallback_path:
                 workspace_answer = self._answer_from_workspace_inspection(
                     user_prompt=user_prompt,
-                    candidate_path=self.workspace_path,
+                    candidate_path=fallback_path,
                     steps=steps,
                     ai_logs=ai_logs,
                     system_logs=system_logs,

@@ -3173,9 +3173,8 @@ class DevenvKernelTest(unittest.TestCase):
             result = kernel.execute_turn("Explain the repo")
 
         self.assertIsNotNone(result.final_response)
-        self.assertIn("OpenCode backend access is not granted right now", result.final_response or "")
         self.assertIn("Relevant paths I found", result.final_response or "")
-        self.assertEqual(result.error_message, "OpenCode backend access has not been granted.")
+        self.assertIsNone(result.error_message)
 
     def test_execute_turn_returns_clear_message_when_opencode_access_is_denied_for_non_repo_prompt(self) -> None:
         memory = EmptyMemory()
@@ -3187,8 +3186,42 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(
             result.final_response,
-            "OpenCode backend access has not been granted, so I couldn't run the reasoning stage for that prompt.",
+            "What is failing? Share the command, error message, file, or step that is breaking so I can trace it accurately.",
         )
+        self.assertIsNone(result.error_message)
+
+    def test_execute_turn_returns_local_candidate_summary_when_opencode_access_is_denied_for_named_folder_prompt(self) -> None:
+        memory = EmptyMemory()
+        ai = AccessDeniedAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            candidate_root = Path(tempdir) / "rvidia1a"
+            candidate_root.mkdir()
+            (candidate_root / "server.py").write_text("print('server')\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            result = kernel.execute_turn("tell me about rvidia")
+
+        self.assertIn("OpenCode backend access is not granted right now", result.final_response or "")
+        self.assertIn("Relevant paths I found", result.final_response or "")
+        self.assertIn("server.py", result.final_response or "")
+        self.assertEqual(result.error_message, "OpenCode backend access has not been granted.")
+
+    def test_execute_turn_returns_local_candidate_summary_when_opencode_access_is_denied_for_code_level_named_project_prompt(self) -> None:
+        memory = EmptyMemory()
+        ai = AccessDeniedAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            project_root = Path(tempdir) / "getgit"
+            project_root.mkdir()
+            (project_root / "core.py").write_text("print('core')\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            result = kernel.execute_turn("how does getgit decide what content to send to ai?")
+
+        self.assertIn("OpenCode backend access is not granted right now", result.final_response or "")
+        self.assertIn("Relevant paths I found", result.final_response or "")
+        self.assertIn("core.py", result.final_response or "")
         self.assertEqual(result.error_message, "OpenCode backend access has not been granted.")
 
     def test_execute_turn_returns_local_repo_summary_when_opencode_transport_fails(self) -> None:
