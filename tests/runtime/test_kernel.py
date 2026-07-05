@@ -2514,6 +2514,41 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    def test_exact_logged_answer_reuses_same_prompt_when_logged_answer_is_usable(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                return []
+
+            def search_logs_for_external_query(self, query: str, limit: int = 8) -> list[EpisodicLog]:
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="self-usable-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "user": "what do you know about clean up schema of get-drip",
+                                "agent": "Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:\n\n1. root URL redirects\n2. Convex generated imports\n3. authentication bypass (critical)",
+                                "metadata": {},
+                            }
+                        ),
+                    )
+                ]
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel._lookup_exact_logged_answer("what do you know about clean up schrema og get-drip")
+
+        self.assertEqual(
+            result,
+            "The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
+        )
+
     def test_answer_from_retrieved_memory_rejects_file_clue_answer_for_schema_cleanup_prompt(self) -> None:
         answer = _answer_from_retrieved_memory(
             "what do you know about clean up schema of get-drip",
@@ -2890,6 +2925,80 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("In get-drip, the recalled bug list was:", result.final_response or "")
         self.assertEqual(memory.working_memory_calls, [])
+
+    def test_retrieve_lexical_memory_context_compacts_cleanup_prompt_once_answer_is_supported(self) -> None:
+        class FakeStore:
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="cleanup-compact-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "user": "what do you know about clean up schema of get-drip",
+                                "agent": "Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:\n\n1. root URL redirects\n2. Convex generated imports\n3. authentication bypass (critical)",
+                            }
+                        ),
+                    ),
+                    EpisodicLog(
+                        log_id="cleanup-compact-2",
+                        timestamp=2.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "user": "what do you know about clean up schema of get-drip",
+                                "agent": "Yes. The strongest clues point to `src/convex-types.ts`, `src/convex-api.ts`.",
+                            }
+                        ),
+                    ),
+                ]
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            context = kernel._retrieve_lexical_memory_context("what do you know about clean up schrema og get-drip")
+
+        self.assertIn("root URL redirects", context)
+        self.assertNotIn("strongest clues point to", context.lower())
+
+    def test_retrieve_lexical_memory_context_compacts_bug_prompt_once_answer_is_supported(self) -> None:
+        class FakeStore:
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="bug-compact-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "user": "what do you know about get-drip bugs",
+                                "agent": "Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:\n\n1. Create Workspace accepting https links and converting them internally\n2. Salesforce being marked as coming soon or disabled\n3. The DRIP pipeline chat flow not working",
+                            }
+                        ),
+                    ),
+                    EpisodicLog(
+                        log_id="bug-compact-2",
+                        timestamp=2.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "user": "what do you know about get-drip bugs",
+                                "agent": "Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:\n\n4. test/publish staying reachable after approvals\n5. root URL redirects",
+                            }
+                        ),
+                    ),
+                ]
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            context = kernel._retrieve_lexical_memory_context("do you know about get-drip bugs")
+
+        self.assertIn("Create Workspace", context)
+        self.assertNotIn("test/publish", context)
 
     def test_execute_turn_prefers_structured_project_answer_before_generic_memory_recall(self) -> None:
         class FakeStore:

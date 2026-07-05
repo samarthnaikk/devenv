@@ -1812,7 +1812,9 @@ class DevenvKernel:
                 self._exact_logged_answer_cache[lowered] = exact_answer
                 return exact_answer
             if logged_user in query_variants:
-                continue
+                exact_answer = _shape_logged_answer_for_prompt(user_prompt, cleaned_agent_text)
+                self._exact_logged_answer_cache[lowered] = exact_answer
+                return exact_answer
             if allow_fallback_candidates:
                 fallback_candidates.append((_lexical_line_score(cleaned_agent_text, user_prompt, terms), cleaned_agent_text))
         fallback_candidates.sort(key=lambda item: item[0], reverse=True)
@@ -3499,7 +3501,24 @@ class DevenvKernel:
                 unique_lines.append(line)
         if not unique_lines:
             return ""
+        compact_context = self._compact_lexical_memory_context(user_prompt, unique_lines)
+        if compact_context:
+            return compact_context
         return "## Retrieved Memory\n" + "\n".join(unique_lines[:6])
+
+    def _compact_lexical_memory_context(self, user_prompt: str, lines: list[str]) -> str:
+        if not lines or not _should_try_direct_memory_answer(user_prompt):
+            return ""
+
+        selected: list[str] = []
+        for line in lines[:6]:
+            selected.append(line)
+            candidate_context = "## Retrieved Memory\n" + "\n".join(selected)
+            if _answer_known_project_question(user_prompt, candidate_context) is not None:
+                return candidate_context
+            if _answer_from_retrieved_memory(user_prompt, candidate_context) is not None:
+                return candidate_context
+        return ""
 
 
 def _assistant_tool_call_message(
