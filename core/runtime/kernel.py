@@ -131,8 +131,24 @@ class DevenvKernel:
         logger.info("Registered tool with runtime and AI: tool=%s", tool.name)
 
     def close(self) -> None:
+        if hasattr(self.ai, "abort"):
+            try:
+                self.ai.abort()
+            except Exception:
+                logger.debug("Ignoring AI abort failure during kernel shutdown", exc_info=True)
         if self._tool_client is not _TOOL_CLIENT_SENTINEL and hasattr(self._tool_client, "close"):
             self._tool_client.close()
+
+    def reset_conversation(self) -> str:
+        self.ephemeral_history = []
+        self.active_blueprint = None
+        self.active_plan_prompt = None
+        self.state = AgentState.PLANNING
+        self.session_usage_totals = {}
+        self.session_id = str(uuid.uuid4())
+        if hasattr(self.ai, "reset_session"):
+            self.ai.reset_session()
+        return self.session_id
 
     @property
     def ai(self) -> OpenCodeAICore | Any:

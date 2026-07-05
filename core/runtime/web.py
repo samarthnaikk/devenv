@@ -398,6 +398,14 @@ class DevenvWebApp:
         self.privacy_mode["no_memory"] = bool(no_memory or incognito)
         return {"privacy": dict(self.privacy_mode)}
 
+    def reset_thread(self) -> dict[str, object]:
+        session_id = self.kernel.reset_conversation()
+        return {
+            "session_id": session_id,
+            "state": self.kernel.state.name,
+            "usage": dict(self.kernel.session_usage_totals),
+        }
+
     def _require_provider_access(self, provider_name: str) -> None:
         if not self.access_policy.can_access_provider(provider_name):
             raise PermissionError(f"Access to {provider_name} sessions requires explicit user permission.")
@@ -534,6 +542,9 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
                 return
             result = self.app.update_privacy_mode(no_memory=no_memory, incognito=incognito)
             self._write_json(HTTPStatus.OK, result)
+            return
+        if parsed.path == "/api/thread/reset":
+            self._write_json(HTTPStatus.OK, self.app.reset_thread())
             return
         if parsed.path != "/api/turn":
             self.send_error(HTTPStatus.NOT_FOUND)

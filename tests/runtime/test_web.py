@@ -43,6 +43,7 @@ class FakeAI:
         self.provider_label = "OpenCode CLI"
         self.preferred_backend = "opencode"
         self.last_backend_used = "opencode"
+        self.reset_session_calls = 0
         self.responses = [
             AIResponse(content="Website response", tool_calls=(), finish_reason="stop", usage={"prompt_tokens": 3}),
         ]
@@ -82,6 +83,9 @@ class FakeAI:
         tool_names=None,
     ) -> AIResponse:
         return self.responses.pop(0)
+
+    def reset_session(self) -> None:
+        self.reset_session_calls += 1
 
 
 class DevenvWebAppTest(unittest.TestCase):
@@ -333,6 +337,26 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertTrue(backend_payload["backend_access"]["opencode"])
         self.assertTrue(health["access_policy"]["session_access"]["codex"])
         self.assertTrue(health["access_policy"]["backend_access"]["opencode"])
+
+    def test_reset_thread_clears_kernel_conversation_and_ai_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            ai = FakeAI()
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=ai,
+            )
+            app.kernel.ephemeral_history = [{"role": "user", "content": "hello"}]
+            app.kernel.session_usage_totals = {"total_tokens": 12}
+            previous_session_id = app.kernel.session_id
+
+            payload = app.reset_thread()
+
+        self.assertEqual(payload["state"], "PLANNING")
+        self.assertEqual(payload["usage"], {})
+        self.assertEqual(ai.reset_session_calls, 1)
+        self.assertEqual(app.kernel.ephemeral_history, [])
+        self.assertNotEqual(previous_session_id, app.kernel.session_id)
 
     def test_performance_mode_updates_health_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

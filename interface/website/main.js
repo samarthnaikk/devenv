@@ -218,6 +218,16 @@ async function handleAction(action, element) {
   }
 
   if (action === "new-thread") {
+    try {
+      await request("/api/thread/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+    } catch {
+      showToast("Backend thread reset failed");
+      return;
+    }
     state.prompt = "";
     state.transcript = [];
     state.toolPickerOpen = false;
