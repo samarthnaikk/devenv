@@ -27,7 +27,7 @@ from core.runtime.kernel import (
 )
 from core.runtime.local_model import FallbackLocalModel, SentenceTransformerLocalModel, load_local_small_model
 from core.runtime.local_router import LocalRouteDecision
-from core.runtime.models import ExternalSessionProviderConfig, PlanningMode
+from core.runtime.models import ExternalSessionProviderConfig, PlanningMode, RuntimeTurnResult
 from core.tools.inspect_symbols import InspectSymbolsTool
 from core.tools.list_directory import ListDirectoryTool
 from core.tools.locate_files import LocateFilesTool
@@ -1169,6 +1169,71 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertNotIn("env.py", result.final_response or "")
         self.assertEqual(ai.chat_calls, [])
 
+    def test_repo_summary_prompt_uses_opencode_to_summarize_bounded_local_evidence_when_enabled(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="Devenv AI is a local-first coding agent runtime with memory, local tools, and OpenCode-backed routing.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 7, "completion_tokens": 4, "total_tokens": 11},
+                )
+            ]
+        )
+        ai.opencode_enabled = True
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            ai_dir = Path(tempdir) / "core" / "ai"
+            ai_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (ai_dir / "routing.py").write_text("class RoutingAICore:\n    pass\n", encoding="utf-8")
+            (Path(tempdir) / "README.md").write_text(
+                "# Devenv AI\n\nDevenv AI is a local-first coding agent foundation for running project-aware workflows on your machine.\n",
+                encoding="utf-8",
+            )
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("summarize this repo", opencode_enabled=True)
+
+        self.assertEqual(
+            result.final_response,
+            "Devenv AI is a local-first coding agent runtime with memory, local tools, and OpenCode-backed routing.",
+        )
+        self.assertEqual(len(ai.chat_calls), 1)
+        self.assertEqual(ai.chat_calls[0]["tool_names"], [])
+        self.assertIn("## Local Workspace Evidence", ai.chat_calls[0]["memory_context"] or "")
+        self.assertIn("README.md", ai.chat_calls[0]["memory_context"] or "")
+        self.assertIn("kernel.py", ai.chat_calls[0]["memory_context"] or "")
+
+    def test_repo_summary_prompt_falls_back_to_local_answer_when_opencode_synthesis_fails(self) -> None:
+        memory = FakeMemory()
+        ai = TransportErrorAI([])
+        ai.opencode_enabled = True
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            ai_dir = Path(tempdir) / "core" / "ai"
+            ai_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (ai_dir / "routing.py").write_text("class RoutingAICore:\n    pass\n", encoding="utf-8")
+            (Path(tempdir) / "README.md").write_text("# Devenv AI\n\nDevenv AI is a local-first coding agent foundation.\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("summarize this repo", opencode_enabled=True)
+
+        self.assertIn("README.md", result.final_response or "")
+        self.assertIn("kernel.py", result.final_response or "")
+
     def test_readme_summary_is_humanized_for_repo_answers(self) -> None:
         summary = _summarize_local_text_file(
             "README.md",
@@ -1945,6 +2010,34 @@ class DevenvKernelTest(unittest.TestCase):
         )
 
         self.assertEqual(cleaned, "Yes. Because we fixed correctness issues.")
+
+    def test_sanitize_logged_answer_collapses_wrapped_duplicate_blocks(self) -> None:
+        cleaned = _sanitize_logged_answer(
+            "\n\n".join(
+                [
+                    "Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.",
+                    "Yes.\n\nYes. Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.",
+                ]
+            )
+        )
+
+        self.assertEqual(cleaned, "Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.")
+
+    def test_runtime_turn_result_sanitizes_final_response_and_error_message(self) -> None:
+        result = RuntimeTurnResult(
+            final_response=(
+                "Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.\n\n"
+                "Yes.\n\n"
+                "Yes. Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts."
+            ),
+            error_message="OpenCode server failed: bad request. Devenv status Tool trace 14s",
+        )
+
+        self.assertEqual(
+            result.final_response,
+            "Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.",
+        )
+        self.assertEqual(result.error_message, "OpenCode server failed: bad request.")
 
     def test_sanitize_logged_answer_strips_leaked_proposed_plan_block(self) -> None:
         cleaned = _sanitize_logged_answer(

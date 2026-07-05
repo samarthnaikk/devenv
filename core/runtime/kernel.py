@@ -34,6 +34,7 @@ from .models import (
     ToolExecutionStep,
     VerificationResult,
 )
+from .response_sanitizer import normalize_response_text, sanitize_response_text
 from .sandbox import PathSandbox
 from .state import resolve_memory_paths
 
@@ -940,8 +941,10 @@ class DevenvKernel:
                     user_prompt=user_prompt,
                     memory_context=raw_memory_context,
                     steps=steps,
+                    total_usage=total_usage,
                     ai_logs=ai_logs,
                     system_logs=system_logs,
+                    allow_ai_synthesis=bool(getattr(self.ai, "opencode_enabled", False)),
                 )
                 if handled_locally:
                     updated = _mark_checkpoint_completed(blueprint, blueprint.active_task_pointer, _summarize_execution_note(local_response))
@@ -1283,8 +1286,10 @@ class DevenvKernel:
         user_prompt: str,
         memory_context: str,
         steps: list[ToolExecutionStep],
+        total_usage: dict[str, int] | None = None,
         ai_logs: list[str],
         system_logs: list[str],
+        allow_ai_synthesis: bool = False,
     ) -> tuple[str | None, bool]:
         ai_logs.append("Local router selected knowledge mode")
         memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
@@ -1301,7 +1306,17 @@ class DevenvKernel:
                 system_logs=system_logs,
             )
             if workspace_answer:
-                return workspace_answer, True
+                return (
+                    self._maybe_synthesize_local_workspace_answer(
+                        user_prompt=user_prompt,
+                        workspace_answer=workspace_answer,
+                        total_usage=total_usage,
+                        ai_logs=ai_logs,
+                        system_logs=system_logs,
+                        allow_ai_synthesis=allow_ai_synthesis,
+                    ),
+                    True,
+                )
 
         if _is_architecture_question(user_prompt) and "list_directory" in self.tools:
             workspace_answer = self._answer_from_workspace_inspection(
@@ -1312,7 +1327,17 @@ class DevenvKernel:
                 system_logs=system_logs,
             )
             if workspace_answer:
-                return workspace_answer, True
+                return (
+                    self._maybe_synthesize_local_workspace_answer(
+                        user_prompt=user_prompt,
+                        workspace_answer=workspace_answer,
+                        total_usage=total_usage,
+                        ai_logs=ai_logs,
+                        system_logs=system_logs,
+                        allow_ai_synthesis=allow_ai_synthesis,
+                    ),
+                    True,
+                )
 
         if not self._can_answer_from_structure(user_prompt):
             ai_logs.append("Local knowledge mode deferred because the question needs code-level inspection")
@@ -1476,6 +1501,42 @@ class DevenvKernel:
             joined = "\n- ".join(summary_sections)
             return "I inspected the backend entry points locally. The main pieces are:\n- " + joined
         return "\n\n".join(summary_sections)
+
+    def _maybe_synthesize_local_workspace_answer(
+        self,
+        *,
+        user_prompt: str,
+        workspace_answer: str,
+        total_usage: dict[str, int] | None,
+        ai_logs: list[str],
+        system_logs: list[str],
+        allow_ai_synthesis: bool,
+    ) -> str:
+        if not allow_ai_synthesis:
+            return workspace_answer
+        evidence_context = "\n".join(
+            [
+                "## Local Workspace Evidence",
+                "Use only this bounded local evidence. Do not request tools or extra files.",
+                workspace_answer,
+            ]
+        )
+        try:
+            ai_response = self.ai.chat(
+                messages=[{"role": "user", "content": user_prompt}],
+                memory_context=evidence_context,
+                tool_names=[],
+            )
+        except RuntimeError as exc:
+            ai_logs.append(f"OpenCode synthesis skipped after local retrieval: {exc}")
+            system_logs.append("Local workspace evidence fell back to direct Devenv summary after OpenCode synthesis failed.")
+            if hasattr(self.ai, "last_backend_used"):
+                self.ai.last_backend_used = "local"
+            return workspace_answer
+        if total_usage is not None:
+            _merge_usage(total_usage, ai_response.usage)
+        ai_logs.append("OpenCode synthesized the final answer from bounded local workspace evidence")
+        return ai_response.content or workspace_answer
 
     def _ensure_repo_summary_paths(self, relevant_paths: list[str], listing_output: str) -> list[str]:
         payload = _extract_tool_payload_json(listing_output)
@@ -3165,6 +3226,12 @@ class DevenvKernel:
         persist_working_memory: bool = True,
         metadata: dict[str, Any] | None = None,
     ) -> None:
+        sanitized_response = sanitize_response_text(final_response) or final_response
+        if conversation:
+            for message in reversed(conversation):
+                if message.get("role") == "assistant" and isinstance(message.get("content"), str):
+                    message["content"] = sanitize_response_text(message["content"]) or message["content"]
+                    break
         self.ephemeral_history = _compact_conversation(conversation, max_turns=MAX_EPHEMERAL_TURNS)
         if persist_working_memory:
             self._record_working_memory(self.ephemeral_history)
@@ -3180,7 +3247,7 @@ class DevenvKernel:
         try:
             log_id = self.memory.add_episodic_log(
                 user_prompt,
-                final_response,
+                sanitized_response,
                 metadata={
                     "workspace_path": self.workspace_path,
                     "session_id": self.session_id,
@@ -3567,69 +3634,12 @@ def _extract_readable_replay_answer(content: str) -> str | None:
 def _sanitize_logged_answer(content: str) -> str:
     extracted = _extract_readable_replay_answer(content)
     if extracted:
-        return _normalize_logged_answer_text(extracted)
-    return _normalize_logged_answer_text(str(content or "").strip())
+        return sanitize_response_text(extracted) or ""
+    return sanitize_response_text(str(content or "").strip()) or ""
 
 
 def _normalize_logged_answer_text(content: str) -> str:
-    text = str(content or "").strip()
-    if not text:
-        return ""
-
-    qa_match = re.match(r"^\s*q\.\s[\s\S]*?\n+a\.\s*([\s\S]+)$", text, flags=re.IGNORECASE)
-    if qa_match:
-        text = qa_match.group(1).strip()
-    else:
-        answer_only_match = re.match(r"^\s*a\.\s*([\s\S]+)$", text, flags=re.IGNORECASE)
-        if answer_only_match:
-            text = answer_only_match.group(1).strip()
-
-    inline_cutoff_markers = (
-        "Tool output:",
-        "Devenv status",
-        "Tool trace",
-        "Prepared the final answer",
-        "Prepared the context for the next tool step",
-        "Reasoned through the next step",
-        "TracePrepared the final answer",
-        "ReasoningReasoned through the next step",
-        "<proposed_plan>",
-    )
-    lowered = text.lower()
-    cutoff_index: int | None = None
-    for marker in inline_cutoff_markers:
-        marker_index = lowered.find(marker.lower())
-        if marker_index < 0:
-            continue
-        if cutoff_index is None or marker_index < cutoff_index:
-            cutoff_index = marker_index
-    if cutoff_index is not None:
-        text = text[:cutoff_index].rstrip()
-
-    lines = [line.rstrip() for line in text.splitlines()]
-    cleaned_lines: list[str] = []
-    noisy_lines = {
-        "devenv status",
-        "tool trace",
-        "prepared the final answer",
-        "prepared the context for the next tool step",
-        "reasoned through the next step",
-        "traceprepared the final answer",
-        "reasoningreasoned through the next step",
-    }
-    for line in lines:
-        normalized = " ".join(line.strip().split()).lower()
-        if not normalized:
-            cleaned_lines.append("")
-            continue
-        if normalized in noisy_lines:
-            continue
-        cleaned_lines.append(line)
-
-    cleaned_text = "\n".join(cleaned_lines).strip()
-    cleaned_text = re.sub(r"\n{3,}", "\n\n", cleaned_text)
-    cleaned_text = re.sub(r"^(Yes\.\s*){2,}", "Yes. ", cleaned_text, flags=re.IGNORECASE)
-    return cleaned_text.strip()
+    return normalize_response_text(content)
 
 
 def _shape_logged_project_answer(user_prompt: str, answer: str) -> str:

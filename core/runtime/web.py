@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import sysconfig
 import inspect
 import time
@@ -18,6 +17,7 @@ from core.logging_utils import configure_logging
 from .context_builder import ContextBuilderService
 from .kernel import DevenvKernel
 from .models import PlanningMode, PreparedPromptRequest, PrivacyModeState, RunConfig, ToolReadiness
+from .response_sanitizer import sanitize_replay_text
 from .setup import inspect_setup
 from .tooling import build_runtime_tools
 from .workspace import WorkspaceBrowser
@@ -54,161 +54,6 @@ class AccessPolicy:
             "session_access": dict(self.session_access),
             "backend_access": dict(self.backend_access),
         }
-
-
-def _normalize_replay_error(message: str) -> str:
-    cleaned = " ".join(str(message or "").split())
-    if not cleaned:
-        return "I couldn't complete that replayed answer."
-    if "user rejected permission to use this specific tool call" in cleaned.lower():
-        return "Permission to use a required tool call was denied."
-    if cleaned.endswith("."):
-        return cleaned
-    return f"{cleaned}."
-
-
-def _canonicalize_response_block(content: str) -> str:
-    text = " ".join(str(content or "").strip().split())
-    if not text:
-        return ""
-    while text.lower().startswith("yes. yes. "):
-        text = text[5:].strip()
-    nested_match = re.match(r"^Yes\.\s+Yes\.\s+(.+)$", text, flags=re.IGNORECASE)
-    if nested_match and nested_match.group(1):
-        text = f"Yes. {nested_match.group(1).strip()}"
-    return text
-
-
-def _is_affirmative_only_block(content: str) -> bool:
-    return bool(re.fullmatch(r"(yes|yeah|yep)\.?", str(content or "").strip(), flags=re.IGNORECASE))
-
-
-def _collapse_repeated_blocks(content: str | None) -> str | None:
-    raw = str(content or "").strip()
-    if not raw:
-        return None
-    blocks = [block.strip() for block in raw.split("\n\n") if block.strip()]
-    if not blocks:
-        return raw
-    deduped_blocks: list[str] = []
-    seen_canonical: set[str] = set()
-    for index, block in enumerate(blocks):
-        if _is_affirmative_only_block(block):
-            next_block = blocks[index + 1] if index + 1 < len(blocks) else ""
-            if next_block:
-                continue
-        canonical = _canonicalize_response_block(block)
-        if canonical and canonical in seen_canonical:
-            continue
-        if not deduped_blocks or deduped_blocks[-1] != block:
-            deduped_blocks.append(block)
-            if canonical:
-                seen_canonical.add(canonical)
-    collapsed = "\n\n".join(deduped_blocks).strip()
-    return collapsed or raw
-
-
-def _trim_response_noise(content: str | None) -> str | None:
-    raw = str(content or "").strip()
-    if not raw:
-        return None
-    cutoff_markers = (
-        "\nTool output:",
-        "\nDevenv status",
-        "\nTool trace",
-        "\nTracePrepared the final answer",
-        "\nReasoningReasoned through the next step",
-    )
-    trimmed = raw
-    for marker in cutoff_markers:
-        marker_index = trimmed.find(marker)
-        if marker_index >= 0:
-            trimmed = trimmed[:marker_index].rstrip()
-    noisy_blocks = {
-        "devenv status",
-        "tool trace",
-        "prepared the final answer",
-        "reasoned through the next step",
-        "traceprepared the final answer",
-    }
-    cleaned_blocks: list[str] = []
-    for block in trimmed.split("\n\n"):
-        normalized = " ".join(block.strip().split()).lower()
-        if not normalized:
-            continue
-        if normalized in noisy_blocks:
-            continue
-        cleaned_blocks.append(block.strip())
-    result = "\n\n".join(cleaned_blocks).strip()
-    return result or None
-
-
-def _sanitize_replay_text(content: object) -> str | None:
-    raw = str(content or "").strip()
-    if not raw:
-        return None
-    if not raw.startswith("{") or "\n" not in raw:
-        return _collapse_repeated_blocks(_trim_response_noise(raw))
-
-    readable_lines: list[str] = []
-    replay_errors: list[str] = []
-    tool_failures: list[str] = []
-    for raw_line in raw.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(payload, dict):
-            continue
-
-        part = payload.get("part")
-        if isinstance(part, dict) and part.get("type") == "text":
-            text_value = str(part.get("text") or "").strip()
-            if text_value:
-                readable_lines.append(text_value)
-            continue
-
-        event_payload = payload.get("payload")
-        if isinstance(event_payload, dict) and event_payload.get("type") == "agent_message":
-            message = str(event_payload.get("message") or "").strip()
-            if message:
-                readable_lines.append(message)
-            continue
-
-        if payload.get("type") == "error":
-            error_payload = payload.get("error")
-            if isinstance(error_payload, dict):
-                replay_errors.append(
-                    _normalize_replay_error(
-                        str((error_payload.get("data") or {}).get("message") or error_payload.get("message") or error_payload.get("name") or "")
-                    )
-                )
-            continue
-
-        if payload.get("type") == "tool_use" and isinstance(part, dict) and part.get("tool") == "invalid":
-            state = part.get("state")
-            if isinstance(state, dict):
-                input_payload = state.get("input")
-                if isinstance(input_payload, dict):
-                    error_message = str(input_payload.get("error") or "").strip()
-                    if error_message:
-                        tool_failures.append(error_message)
-
-    unique_lines: list[str] = []
-    for line in readable_lines:
-        if line and line not in unique_lines:
-            unique_lines.append(line)
-    if unique_lines:
-        return _collapse_repeated_blocks(_trim_response_noise("\n\n".join(unique_lines)))
-
-    if replay_errors:
-        return _collapse_repeated_blocks(_trim_response_noise(replay_errors[0]))
-    if tool_failures:
-        return "A required tool call was unavailable while replaying that answer."
-    return "I couldn't produce a readable answer from that replay."
 
 
 class DevenvWebApp:
@@ -412,8 +257,8 @@ class DevenvWebApp:
         if "incognito" in parameters:
             kwargs["incognito"] = self.privacy_mode["incognito"]
         result = execute_turn(prompt, **kwargs).to_dict()
-        result["final_response"] = _sanitize_replay_text(result.get("final_response"))
-        result["error_message"] = _sanitize_replay_text(result.get("error_message"))
+        result["final_response"] = sanitize_replay_text(result.get("final_response"))
+        result["error_message"] = sanitize_replay_text(result.get("error_message"))
         metadata = dict(result.get("metadata") or {})
         result["backend_used"] = metadata.get("backend_used", "opencode")
         result["budget_state"] = metadata.get("budget_state")

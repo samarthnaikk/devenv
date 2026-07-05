@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any
 
+from .response_sanitizer import sanitize_response_text
+
 
 class PlanningMode(Enum):
     AUTO = "auto"
@@ -153,6 +155,10 @@ class RuntimeTurnResult:
     blueprint: ExecutionBlueprint | None = None
     error_message: str | None = None
     elapsed_ms: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "final_response", sanitize_response_text(self.final_response))
+        object.__setattr__(self, "error_message", sanitize_response_text(self.error_message))
 
     def to_dict(self) -> dict[str, Any]:
         return {
