@@ -27,12 +27,15 @@ from core.runtime.kernel import (
 from core.runtime.local_model import FallbackLocalModel, SentenceTransformerLocalModel, load_local_small_model
 from core.runtime.local_router import LocalRouteDecision
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode
+from core.tools.inspect_symbols import InspectSymbolsTool
 from core.tools.list_directory import ListDirectoryTool
+from core.tools.locate_files import LocateFilesTool
 from core.tools.manage_memory import ManageMemoryTool
 from core.tools.peek_lines import PeekLinesTool
 from core.tools.read_file import ReadFileTool
 from core.tools.run_shell import RunShellTool
 from core.tools.search_text import SearchTextTool
+from core.tools.track_symbol import TrackSymbolTool
 from core.tools.web_search import WebSearchTool
 from core.tools.write_file import WriteFileTool
 
@@ -517,6 +520,53 @@ class DevenvKernelTest(unittest.TestCase):
             scope = kernel._resolve_direct_tool_scope("search the latest docs for opencode")
 
         self.assertEqual(scope, ["web_search"])
+
+    def test_direct_tool_scope_uses_compact_code_inspection_set_for_backend_question(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(LocateFilesTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            kernel.register_tool(SearchTextTool())
+            kernel.register_tool(TrackSymbolTool())
+            kernel.register_tool(WebSearchTool())
+            kernel.register_tool(RunShellTool())
+
+            scope = kernel._resolve_direct_tool_scope("how does the backend work?")
+
+        self.assertEqual(scope, ["inspect_symbols", "list_directory", "locate_files", "peek_lines", "read_file"])
+
+    def test_direct_turn_sends_compact_code_inspection_scope_for_backend_question(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="The backend uses routes and services.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 5, "completion_tokens": 2},
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(LocateFilesTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            kernel.register_tool(SearchTextTool())
+            kernel.register_tool(TrackSymbolTool())
+            kernel.register_tool(WebSearchTool())
+            kernel.register_tool(RunShellTool())
+            result = kernel.execute_turn("how does the backend work?")
+
+        self.assertEqual(result.final_response, "The backend uses routes and services.")
+        self.assertEqual(ai.chat_calls[0]["tool_names"], ["inspect_symbols", "list_directory", "locate_files", "peek_lines", "read_file"])
 
     def test_direct_turn_sends_no_tools_for_project_summary_prompt(self) -> None:
         memory = FakeMemory()
