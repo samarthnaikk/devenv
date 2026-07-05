@@ -173,6 +173,7 @@ Devenv keeps control of planning, memory retrieval, verification, transcript per
 - Devenv talks to OpenCode through a Python HTTP client instead of scraping `opencode run` output
 - OpenCode sessions are reused across a Devenv conversation and reset when a new thread starts
 - Devenv tools remain the only executable tool surface; OpenCode can request them, but Devenv validates and executes them
+- runtime tool execution uses an in-process transport by default to avoid extra MCP subprocess overhead; set `DEVENV_TOOL_TRANSPORT=mcp` if you explicitly want the stdio MCP hop
 - the legacy CLI parser is still available only as an emergency fallback when `DEVENV_OPENCODE_USE_LEGACY_CLI=1`
 
 Main public memory entry point:

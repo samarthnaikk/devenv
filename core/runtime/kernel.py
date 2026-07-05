@@ -765,9 +765,14 @@ class DevenvKernel:
         )
 
     def _build_tool_client(self, *, db_path: str, vector_dir: str):
+        transport = _runtime_tool_transport()
+        if transport == "in_process":
+            logger.info("Using in-process tool client for runtime execution")
+            return _InProcessToolClient(self.tools)
         try:
             from .mcp_client import MCPToolClient
 
+            logger.info("Using MCP tool client for runtime execution")
             return MCPToolClient(
                 workspace_path=self.workspace_path,
                 db_path=db_path,
@@ -3025,9 +3030,9 @@ class DevenvKernel:
                 is_sandboxed_violation=False,
                 data={},
             )
-        logger.info("Executing MCP tool: tool=%s normalized_arguments=%s", tool_call.tool_name, normalized_arguments)
+        logger.info("Executing runtime tool: tool=%s normalized_arguments=%s", tool_call.tool_name, normalized_arguments)
         result = self.tool_client.call_tool(tool_call.tool_name, normalized_arguments)
-        logger.info("MCP tool finished: tool=%s success=%s is_error=%s", tool_call.tool_name, result.success, result.is_error)
+        logger.info("Runtime tool finished: tool=%s success=%s is_error=%s", tool_call.tool_name, result.success, result.is_error)
         return ToolExecutionStep(
             step_id=tool_call.call_id,
             tool_name=tool_call.tool_name,
@@ -5809,3 +5814,10 @@ def _consolidation_cooldown_seconds() -> float:
         return max(0.0, float(raw_value))
     except ValueError:
         return DEFAULT_CONSOLIDATION_COOLDOWN_SECONDS
+
+
+def _runtime_tool_transport() -> str:
+    raw_value = os.getenv("DEVENV_TOOL_TRANSPORT", "").strip().lower()
+    if raw_value in {"mcp", "stdio"}:
+        return "mcp"
+    return "in_process"

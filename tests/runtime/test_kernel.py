@@ -534,6 +534,26 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("root URL redirects", result.final_response or "")
         self.assertNotIn("validators", (result.final_response or "").lower())
 
+    def test_build_tool_client_defaults_to_in_process_transport(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ExplodingAI([]))
+            kernel.register_tool(ListDirectoryTool())
+            with mock.patch.dict(os.environ, {}, clear=False):
+                client = kernel._build_tool_client(db_path=kernel.db_path, vector_dir=kernel.vector_dir)
+
+        self.assertEqual(client.__class__.__name__, "_InProcessToolClient")
+
+    def test_build_tool_client_uses_mcp_transport_when_requested(self) -> None:
+        fake_client = object()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ExplodingAI([]))
+            with mock.patch.dict(os.environ, {"DEVENV_TOOL_TRANSPORT": "mcp"}, clear=False):
+                with mock.patch("core.runtime.mcp_client.MCPToolClient", return_value=fake_client) as client_mock:
+                    client = kernel._build_tool_client(db_path=kernel.db_path, vector_dir=kernel.vector_dir)
+
+        self.assertIs(client, fake_client)
+        self.assertEqual(client_mock.call_count, 1)
+
     def test_execute_turn_appends_external_session_context_to_memory(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
