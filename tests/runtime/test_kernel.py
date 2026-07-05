@@ -333,6 +333,33 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("It was mainly about root URL redirects", result.final_response or "")
         self.assertNotIn("main.py", result.final_response or "")
 
+    def test_execute_turn_does_not_explain_memory_fallback_text(self) -> None:
+        memory = FailingMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.ephemeral_history = [
+                {
+                    "role": "assistant",
+                    "content": "I couldn't recover a reliable prior answer for that yet.",
+                }
+            ]
+            result = kernel.execute_turn("can you explain about it")
+
+        self.assertEqual(result.final_response, "What should I explain? I don't have a clear prior subject in this thread yet.")
+
+    def test_local_only_memory_recall_without_tools_uses_memory_fallback(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("what do you know about clean up schrema og get-drip", local_only=True)
+
+        self.assertEqual(result.final_response, "I couldn't recover a reliable prior answer for that yet.")
+        self.assertEqual(result.steps, [])
+
     def test_execute_turn_skips_external_context_fetch_when_local_memory_answer_is_ready(self) -> None:
         memory = FakeMemory()
         class FakeStore:

@@ -1265,7 +1265,7 @@ class DevenvKernel:
             return None, False
 
         candidate_path = self._resolve_workspace_candidate(user_prompt)
-        if candidate_path is None:
+        if candidate_path is None or "list_directory" not in self.tools:
             ai_logs.append("Local knowledge mode found no strong memory or workspace candidate")
             return None, False
 
@@ -1324,6 +1324,11 @@ class DevenvKernel:
         )
         if handled_locally and local_response:
             return local_response
+
+        if "list_directory" not in self.tools:
+            if _should_answer_from_memory_only(user_prompt):
+                return _memory_only_fallback_response(user_prompt)
+            return "Local-only mode needs workspace inspection tools to answer that prompt."
 
         candidate_path = candidate_path or self.workspace_path
         listing_call = ToolCallRequest(
@@ -3892,6 +3897,11 @@ def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
         "tool trace",
         "prepared the final answer",
         "reasoned through the next step",
+        "i couldn't recover a reliable prior answer",
+        "i couldn't recover a reliable prior note",
+        "local-only mode could not inspect",
+        "local-only mode needs workspace inspection tools",
+        "opencode backend access has not been granted",
     )
     if any(marker in lowered for marker in reject_markers):
         return False
@@ -4684,13 +4694,29 @@ def _is_ambiguous_memory_follow_up(user_prompt: str, conversation: list[dict[str
 
 
 def _memory_subject_hints(text: str) -> list[str]:
+    lowered_text = text.lower()
+    if any(
+        marker in lowered_text
+        for marker in (
+            "i couldn't recover a reliable prior answer",
+            "i couldn't recover a reliable prior note",
+            "local-only mode could not inspect",
+            "local-only mode needs workspace inspection tools",
+            "opencode backend access has not been granted",
+        )
+    ):
+        return []
     generic = {
         "assistant",
+        "answer",
         "context",
         "decision-complete",
         "desktop",
         "feature-structured",
+        "recover",
+        "reliable",
         "project",
+        "prior",
         "remember",
         "reported",
         "rollout",
