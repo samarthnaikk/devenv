@@ -1298,6 +1298,17 @@ class DevenvKernel:
             if workspace_answer:
                 return workspace_answer, True
 
+        if _is_architecture_question(user_prompt) and "list_directory" in self.tools:
+            workspace_answer = self._answer_from_workspace_inspection(
+                user_prompt=user_prompt,
+                candidate_path=self.workspace_path,
+                steps=steps,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+            )
+            if workspace_answer:
+                return workspace_answer, True
+
         if not self._can_answer_from_structure(user_prompt):
             ai_logs.append("Local knowledge mode deferred because the question needs code-level inspection")
             return None, False
@@ -1441,6 +1452,8 @@ class DevenvKernel:
         relevant_paths = self._select_local_relevant_paths(user_prompt, listing_step.output)
         if _is_repo_summary_question(user_prompt):
             relevant_paths = self._ensure_repo_summary_paths(relevant_paths, listing_step.output)
+        if _is_architecture_question(user_prompt):
+            relevant_paths = self._ensure_architecture_summary_paths(relevant_paths, listing_step.output)
         if not relevant_paths:
             return _summarize_directory_listing(candidate_path, listing_step.output)
 
@@ -1454,6 +1467,9 @@ class DevenvKernel:
         if not summary_sections:
             return _summarize_directory_listing(candidate_path, listing_step.output)
         ai_logs.append("Local-only answer assembled from workspace files")
+        if _is_architecture_question(user_prompt):
+            joined = "\n- ".join(summary_sections)
+            return "I inspected the backend entry points locally. The main pieces are:\n- " + joined
         return "\n\n".join(summary_sections)
 
     def _ensure_repo_summary_paths(self, relevant_paths: list[str], listing_output: str) -> list[str]:
@@ -1487,6 +1503,48 @@ class DevenvKernel:
                 score -= 10
             if Path(lowered).name in {"__init__.py", "env.py", "logging_utils.py"}:
                 score -= 8
+            if score > 0:
+                supplemental.append((score, relative_path))
+
+        supplemental.sort(key=lambda item: (-item[0], item[1]))
+        for _score, path in supplemental:
+            if path not in preferred_paths:
+                preferred_paths.append(path)
+            if len(preferred_paths) >= 3:
+                break
+        return preferred_paths[:3]
+
+    def _ensure_architecture_summary_paths(self, relevant_paths: list[str], listing_output: str) -> list[str]:
+        preferred_paths = list(relevant_paths)
+        if len(preferred_paths) >= 3:
+            return preferred_paths[:3]
+
+        payload = _extract_tool_payload_json(listing_output)
+        entries = payload.get("entries") if isinstance(payload, dict) else None
+        if not isinstance(entries, list):
+            return preferred_paths[:3]
+
+        supplemental: list[tuple[int, str]] = []
+        architecture_targets = {
+            "core/runtime/kernel.py": 24,
+            "core/runtime/web.py": 22,
+            "core/ai/routing.py": 20,
+            "core/runtime/context_builder.py": 18,
+            "core/ai/opencode_client.py": 17,
+            "core/memory/engine.py": 14,
+            "core/runtime/workspace.py": 10,
+            "README.md": 8,
+        }
+        for entry in entries:
+            if not isinstance(entry, dict) or entry.get("is_dir"):
+                continue
+            relative_path = entry.get("relative_path")
+            if not isinstance(relative_path, str) or not relative_path.strip():
+                continue
+            score = architecture_targets.get(relative_path, 0)
+            lowered = relative_path.lower()
+            if any(marker in lowered for marker in ("tests/", "sample-test/", "build/", "docs/screenshots/", "devenv.egg-info/", "devenv1a.egg-info/")):
+                score -= 10
             if score > 0:
                 supplemental.append((score, relative_path))
 
@@ -2723,6 +2781,7 @@ class DevenvKernel:
         }
         scored: list[tuple[int, str]] = []
         repo_summary_prompt = _is_repo_summary_question(user_prompt)
+        architecture_prompt = _is_architecture_question(user_prompt)
         if isinstance(entries, list):
             for entry in entries:
                 if not isinstance(entry, dict) or entry.get("is_dir"):
@@ -2751,6 +2810,33 @@ class DevenvKernel:
                     score -= 4
                 if "rag" in prompt_tokens and "rag" in lowered:
                     score += 4
+                if architecture_prompt and any(
+                    marker in lowered
+                    for marker in (
+                        "core/runtime/kernel.py",
+                        "core/runtime/web.py",
+                        "core/ai/routing.py",
+                        "core/ai/opencode_client.py",
+                        "core/runtime/context_builder.py",
+                        "core/memory/engine.py",
+                    )
+                ):
+                    score += 12
+                if architecture_prompt and lowered == "core/runtime/kernel.py":
+                    score += 8
+                if architecture_prompt and lowered == "core/runtime/web.py":
+                    score += 7
+                if architecture_prompt and lowered == "core/ai/routing.py":
+                    score += 6
+                if architecture_prompt and lowered == "core/ai/opencode_client.py":
+                    score += 2
+                if architecture_prompt and any(
+                    marker in lowered
+                    for marker in ("tests/", "sample-test/", "build/", "docs/screenshots/", "devenv.egg-info/", "devenv1a.egg-info/")
+                ):
+                    score -= 10
+                if architecture_prompt and Path(lowered).name in {"__init__.py", "env.py", "logging_utils.py"}:
+                    score -= 8
                 if repo_summary_prompt and lowered == "readme.md":
                     score += 10
                 if repo_summary_prompt and any(

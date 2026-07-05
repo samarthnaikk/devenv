@@ -791,21 +791,16 @@ class DevenvKernelTest(unittest.TestCase):
         memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
             markdown_context="## Retrieved Memory\n- RVIDA backend is not a widely known or standard term."
         )
-        ai = FakeAI(
-            [
-                AIResponse(
-                    content="The backend has routes and services.",
-                    tool_calls=(),
-                    finish_reason="stop",
-                    usage={"prompt_tokens": 5},
-                )
-            ]
-        )
+        ai = ExplodingAI([])
 
         with tempfile.TemporaryDirectory() as tempdir:
-            backend_path = Path(tempdir) / "backend"
-            backend_path.mkdir()
-            (backend_path / "routes.py").write_text("print('ok')", encoding="utf-8")
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            ai_dir = Path(tempdir) / "core" / "ai"
+            ai_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (runtime_dir / "web.py").write_text("class DevenvWebApp:\n    pass\n", encoding="utf-8")
+            (ai_dir / "routing.py").write_text("class RoutingAICore:\n    pass\n", encoding="utf-8")
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
             kernel.local_router = type(
                 "Router",
@@ -821,11 +816,13 @@ class DevenvKernelTest(unittest.TestCase):
                 },
             )()
             kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(InspectSymbolsTool())
             result = kernel.execute_turn("how does the backend work?")
 
-        self.assertEqual(result.final_response, "The backend has routes and services.")
-        self.assertEqual(len(ai.chat_calls), 1)
-        self.assertEqual(result.steps, [])
+        self.assertIn("kernel.py", result.final_response or "")
+        self.assertIn("routing.py", result.final_response or "")
+        self.assertNotIn("RVIDA backend is not a widely known", result.final_response or "")
+        self.assertEqual(result.steps[0].tool_name, "list_directory")
 
     def test_resolve_workspace_candidate_avoids_fuzzy_docs_match_for_generic_backend_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
