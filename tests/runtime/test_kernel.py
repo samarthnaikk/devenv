@@ -1075,6 +1075,27 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("Here are the reviewer answers", cleaned)
         self.assertNotIn("Tool output:", cleaned)
         self.assertNotIn("Q. do you know", cleaned)
+        self.assertNotIn("<proposed_plan>", cleaned)
+
+    def test_sanitize_logged_answer_strips_leaked_proposed_plan_block(self) -> None:
+        cleaned = _sanitize_logged_answer(
+            "\n".join(
+                [
+                    "Yes.",
+                    "",
+                    "Here are the reviewer answers, based on the current code in [`reviews.md`](/tmp/reviews.md).",
+                    "",
+                    "<proposed_plan>",
+                    "# Schema Cleanup Plan",
+                    "</proposed_plan>",
+                ]
+            )
+        )
+
+        self.assertEqual(
+            cleaned,
+            "Yes.\n\nHere are the reviewer answers, based on the current code in [`reviews.md`](/tmp/reviews.md).",
+        )
 
     def test_local_directory_summary_is_not_persisted_to_episodic_memory(self) -> None:
         memory = FakeMemory()

@@ -2834,11 +2834,17 @@ def _normalize_logged_answer_text(content: str) -> str:
         if answer_only_match:
             text = answer_only_match.group(1).strip()
 
-    tool_output_index = text.find("\n\nTool output:")
-    if tool_output_index >= 0:
-        text = text[:tool_output_index].rstrip()
-    elif text.startswith("Tool output:"):
-        return ""
+    cutoff_match = re.search(r"(?:^|\n)\s*Tool output:\s*", text, flags=re.IGNORECASE)
+    if cutoff_match:
+        text = text[: cutoff_match.start()].rstrip()
+
+    proposed_plan_match = re.search(
+        r"(?:^|\n)\s*<proposed_plan>\s*(?:\n|$)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if proposed_plan_match:
+        text = text[: proposed_plan_match.start()].rstrip()
 
     return text.strip()
 
