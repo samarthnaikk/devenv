@@ -54,7 +54,22 @@ class LocalIntentRouter:
                 for token in ("create", "make", "add", "fix", "edit", "update", "modify", "remove", "implement", "write")
                 if token in lowered
             )
-            use_local = knowledge_hits >= 2 and mutation_hits == 0
+            repo_summary_hint = any(
+                phrase in lowered
+                for phrase in (
+                    "summarize this repo",
+                    "summarize the repo",
+                    "summarize this repository",
+                    "summarize the repository",
+                    "explain the repo",
+                    "explain this repo",
+                    "explain the repository",
+                    "explain this repository",
+                    "summarize this codebase",
+                    "summarize the codebase",
+                )
+            )
+            use_local = (knowledge_hits >= 2 and mutation_hits == 0) or (repo_summary_hint and mutation_hits == 0)
             return LocalRouteDecision(use_local, float(knowledge_hits - mutation_hits), float(knowledge_hits), float(mutation_hits), "heuristic")
 
         try:

@@ -45,6 +45,7 @@ READ_ONLY_EXECUTION_TOOLS = frozenset(
 )
 DIRECT_CODE_INSPECTION_TOOLS = frozenset({"list_directory", "locate_files", "read_file", "peek_lines", "inspect_symbols"})
 DIRECT_ARCHITECTURE_INSPECTION_TOOLS = frozenset({"list_directory", "read_file", "peek_lines", "inspect_symbols"})
+DIRECT_REPO_SUMMARY_TOOLS = frozenset({"list_directory", "read_file", "peek_lines", "inspect_symbols"})
 WRITE_EXECUTION_TOOLS = frozenset({"write_file", "edit_file"})
 DELETE_EXECUTION_TOOLS = frozenset({"remove_file"})
 SHELL_EXECUTION_TOOLS = frozenset({"run_shell", "run_diagnostics", "audit_changes"})
@@ -1286,6 +1287,17 @@ class DevenvKernel:
             ai_logs.append("Local knowledge answer assembled from memory")
             return memory_answer, True
 
+        if _is_repo_summary_question(user_prompt):
+            workspace_answer = self._answer_from_workspace_inspection(
+                user_prompt=user_prompt,
+                candidate_path=self.workspace_path,
+                steps=steps,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+            )
+            if workspace_answer:
+                return workspace_answer, True
+
         if not self._can_answer_from_structure(user_prompt):
             ai_logs.append("Local knowledge mode deferred because the question needs code-level inspection")
             return None, False
@@ -1427,6 +1439,8 @@ class DevenvKernel:
             return _summarize_directory_listing(candidate_path, listing_step.output)
 
         relevant_paths = self._select_local_relevant_paths(user_prompt, listing_step.output)
+        if _is_repo_summary_question(user_prompt):
+            relevant_paths = self._ensure_repo_summary_paths(relevant_paths, listing_step.output)
         if not relevant_paths:
             return _summarize_directory_listing(candidate_path, listing_step.output)
 
@@ -1441,6 +1455,48 @@ class DevenvKernel:
             return _summarize_directory_listing(candidate_path, listing_step.output)
         ai_logs.append("Local-only answer assembled from workspace files")
         return "\n\n".join(summary_sections)
+
+    def _ensure_repo_summary_paths(self, relevant_paths: list[str], listing_output: str) -> list[str]:
+        preferred_paths = list(relevant_paths)
+        if len(preferred_paths) >= 3:
+            return preferred_paths[:3]
+
+        payload = _extract_tool_payload_json(listing_output)
+        entries = payload.get("entries") if isinstance(payload, dict) else None
+        if not isinstance(entries, list):
+            return preferred_paths[:3]
+
+        supplemental: list[tuple[int, str]] = []
+        for entry in entries:
+            if not isinstance(entry, dict) or entry.get("is_dir"):
+                continue
+            relative_path = entry.get("relative_path")
+            if not isinstance(relative_path, str) or not relative_path.strip():
+                continue
+            lowered = relative_path.lower()
+            score = 0
+            if lowered == "readme.md":
+                score += 20
+            if lowered in {"feature.md", "process.md", "pyproject.toml", "requirements.txt"}:
+                score += 10
+            if any(marker in lowered for marker in ("core/runtime/", "core/ai/", "core/memory/", "core/tools/")):
+                score += 8
+            if any(marker in lowered for marker in ("kernel.py", "routing.py", "opencode_client.py", "engine.py", "web.py", "workspace.py")):
+                score += 6
+            if any(marker in lowered for marker in ("tests/", "sample-test/", "build/", "docs/screenshots/", "devenv.egg-info/", "devenv1a.egg-info/")):
+                score -= 10
+            if Path(lowered).name in {"__init__.py", "env.py", "logging_utils.py"}:
+                score -= 8
+            if score > 0:
+                supplemental.append((score, relative_path))
+
+        supplemental.sort(key=lambda item: (-item[0], item[1]))
+        for _score, path in supplemental:
+            if path not in preferred_paths:
+                preferred_paths.append(path)
+            if len(preferred_paths) >= 3:
+                break
+        return preferred_paths[:3]
 
     def _answer_known_project_question_local(self, user_prompt: str, memory_context: str) -> str | None:
         lowered = user_prompt.lower()
@@ -2303,7 +2359,9 @@ class DevenvKernel:
 
         if not execution_phase and self._should_start_with_code_inspection_scope(prompt):
             inspection_scope_source = (
-                DIRECT_ARCHITECTURE_INSPECTION_TOOLS
+                DIRECT_REPO_SUMMARY_TOOLS
+                if _is_repo_summary_question(prompt)
+                else DIRECT_ARCHITECTURE_INSPECTION_TOOLS
                 if self._should_prefer_compact_architecture_scope(prompt)
                 else DIRECT_CODE_INSPECTION_TOOLS
             )
@@ -2360,6 +2418,8 @@ class DevenvKernel:
         ):
             if not (_is_file_inventory_question(prompt) or _is_architecture_question(prompt)):
                 return True
+        if _is_repo_summary_question(prompt):
+            return False
         if any(
             marker in lowered
             for marker in (
@@ -2383,6 +2443,8 @@ class DevenvKernel:
         lowered = prompt.lower()
         if self._should_offer_web_search(lowered) or _should_answer_from_memory_only(prompt):
             return False
+        if _is_repo_summary_question(prompt):
+            return True
         if any(
             marker in lowered
             for marker in (
@@ -2408,6 +2470,14 @@ class DevenvKernel:
         return any(
             marker in lowered
             for marker in (
+                "summarize this repo",
+                "summarize the repo",
+                "summarize this repository",
+                "summarize the repository",
+                "explain the repo",
+                "explain this repo",
+                "explain the repository",
+                "explain this repository",
                 "how does the backend work",
                 "how does this backend work",
                 "how does the repo work",
@@ -2652,6 +2722,7 @@ class DevenvKernel:
             "opencode_client.py",
         }
         scored: list[tuple[int, str]] = []
+        repo_summary_prompt = _is_repo_summary_question(user_prompt)
         if isinstance(entries, list):
             for entry in entries:
                 if not isinstance(entry, dict) or entry.get("is_dir"):
@@ -2680,6 +2751,25 @@ class DevenvKernel:
                     score -= 4
                 if "rag" in prompt_tokens and "rag" in lowered:
                     score += 4
+                if repo_summary_prompt and lowered == "readme.md":
+                    score += 10
+                if repo_summary_prompt and any(
+                    marker in lowered
+                    for marker in ("core/runtime/", "core/ai/", "core/memory/", "core/tools/")
+                ):
+                    score += 8
+                if repo_summary_prompt and any(
+                    marker in lowered
+                    for marker in ("kernel.py", "routing.py", "opencode_client.py", "engine.py", "web.py", "workspace.py")
+                ):
+                    score += 6
+                if repo_summary_prompt and any(
+                    marker in lowered
+                    for marker in ("sample-test/", "tests/", "build/", "docs/screenshots/", "devenv.egg-info/", "devenv1a.egg-info/")
+                ):
+                    score -= 8
+                if repo_summary_prompt and Path(lowered).name in {"__init__.py", "env.py", "logging_utils.py"}:
+                    score -= 6
                 if lowered.endswith((".py", ".md", ".txt")):
                     score += 1
                 scored.append((score, relative_path))
@@ -2767,6 +2857,14 @@ class DevenvKernel:
             "what folders",
             "what files",
             "what's in",
+            "summarize this repo",
+            "summarize the repo",
+            "summarize this repository",
+            "summarize the repository",
+            "explain the repo",
+            "explain this repo",
+            "explain the repository",
+            "explain this repository",
         )
         deep_queries = (
             "how does",
@@ -3378,19 +3476,52 @@ def _normalize_logged_answer_text(content: str) -> str:
         if answer_only_match:
             text = answer_only_match.group(1).strip()
 
-    cutoff_match = re.search(r"(?:^|\n)\s*Tool output:\s*", text, flags=re.IGNORECASE)
-    if cutoff_match:
-        text = text[: cutoff_match.start()].rstrip()
-
-    proposed_plan_match = re.search(
-        r"(?:^|\n)\s*<proposed_plan>\s*(?:\n|$)",
-        text,
-        flags=re.IGNORECASE,
+    inline_cutoff_markers = (
+        "Tool output:",
+        "Devenv status",
+        "Tool trace",
+        "Prepared the final answer",
+        "Prepared the context for the next tool step",
+        "Reasoned through the next step",
+        "TracePrepared the final answer",
+        "ReasoningReasoned through the next step",
+        "<proposed_plan>",
     )
-    if proposed_plan_match:
-        text = text[: proposed_plan_match.start()].rstrip()
+    lowered = text.lower()
+    cutoff_index: int | None = None
+    for marker in inline_cutoff_markers:
+        marker_index = lowered.find(marker.lower())
+        if marker_index < 0:
+            continue
+        if cutoff_index is None or marker_index < cutoff_index:
+            cutoff_index = marker_index
+    if cutoff_index is not None:
+        text = text[:cutoff_index].rstrip()
 
-    return text.strip()
+    lines = [line.rstrip() for line in text.splitlines()]
+    cleaned_lines: list[str] = []
+    noisy_lines = {
+        "devenv status",
+        "tool trace",
+        "prepared the final answer",
+        "prepared the context for the next tool step",
+        "reasoned through the next step",
+        "traceprepared the final answer",
+        "reasoningreasoned through the next step",
+    }
+    for line in lines:
+        normalized = " ".join(line.strip().split()).lower()
+        if not normalized:
+            cleaned_lines.append("")
+            continue
+        if normalized in noisy_lines:
+            continue
+        cleaned_lines.append(line)
+
+    cleaned_text = "\n".join(cleaned_lines).strip()
+    cleaned_text = re.sub(r"\n{3,}", "\n\n", cleaned_text)
+    cleaned_text = re.sub(r"^(Yes\.\s*){2,}", "Yes. ", cleaned_text, flags=re.IGNORECASE)
+    return cleaned_text.strip()
 
 
 def _shape_logged_project_answer(user_prompt: str, answer: str) -> str:
@@ -4780,8 +4911,29 @@ def _is_file_inventory_question(user_prompt: str) -> bool:
     return "list the concrete files" in lowered or "files or folders" in lowered
 
 
+def _is_repo_summary_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "summarize this repo",
+            "summarize the repo",
+            "summarize this repository",
+            "summarize the repository",
+            "explain the repo",
+            "explain this repo",
+            "explain the repository",
+            "explain this repository",
+            "summarize this codebase",
+            "summarize the codebase",
+        )
+    )
+
+
 def _should_trust_memory_answer_for_prompt(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
+    if _is_repo_summary_question(user_prompt):
+        return False
     if any(
         phrase in lowered
         for phrase in (
@@ -4814,6 +4966,8 @@ def _should_trust_memory_answer_for_prompt(user_prompt: str) -> bool:
 
 def _prefers_deeper_workspace_scan(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
+    if _is_repo_summary_question(user_prompt):
+        return True
     return any(
         phrase in lowered
         for phrase in (

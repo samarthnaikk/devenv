@@ -638,6 +638,21 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(scope, ["inspect_symbols", "list_directory", "peek_lines", "read_file"])
 
+    def test_direct_tool_scope_uses_compact_repo_summary_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(LocateFilesTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            kernel.register_tool(SearchTextTool())
+            kernel.register_tool(TrackSymbolTool())
+
+            scope = kernel._resolve_direct_tool_scope("summarize this repo")
+
+        self.assertEqual(scope, ["inspect_symbols", "list_directory", "peek_lines", "read_file"])
+
     def test_direct_turn_sends_compact_code_inspection_scope_for_backend_question(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
@@ -746,6 +761,29 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("kernel.py", result.final_response or "")
         self.assertNotIn("RVIDA backend is not a widely known", result.final_response or "")
+        self.assertEqual(result.steps[0].tool_name, "list_directory")
+
+    def test_local_only_repo_summary_prefers_workspace_over_recalled_summary_text(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="## Retrieved Memory\n- Now I have a comprehensive picture of the repo. Let me summarize it."
+        )
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (Path(tempdir) / "README.md").write_text("# Demo repo\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("summarize this repo", local_only=True)
+
+        self.assertIn("README.md", result.final_response or "")
+        self.assertNotIn("Now I have a comprehensive picture", result.final_response or "")
         self.assertEqual(result.steps[0].tool_name, "list_directory")
 
     def test_local_knowledge_route_does_not_use_unrelated_memory_for_generic_backend_question(self) -> None:
@@ -1008,6 +1046,27 @@ class DevenvKernelTest(unittest.TestCase):
             result = kernel.execute_turn("how does the repo work?")
 
         self.assertIn("FastAPI backend", result.final_response)
+
+    def test_repo_summary_prompt_routes_to_local_knowledge(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (Path(tempdir) / "README.md").write_text("# Demo repo\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("summarize this repo")
+
+        self.assertEqual(len(ai.chat_calls), 0)
+        self.assertEqual(result.steps[0].tool_name, "list_directory")
+        self.assertIn("README.md", result.final_response or "")
+        self.assertNotIn("env.py", result.final_response or "")
         self.assertEqual(ai.chat_calls, [])
 
     def test_local_knowledge_route_can_inspect_workspace_without_ai(self) -> None:
@@ -1740,6 +1799,13 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertNotIn("Tool output:", cleaned)
         self.assertNotIn("Q. do you know", cleaned)
         self.assertNotIn("<proposed_plan>", cleaned)
+
+    def test_sanitize_logged_answer_strips_inline_ui_trace_noise(self) -> None:
+        cleaned = _sanitize_logged_answer(
+            "Yes. Because we fixed correctness issues. Devenv status Tool trace 14s OpenCode Prepared the final answer."
+        )
+
+        self.assertEqual(cleaned, "Yes. Because we fixed correctness issues.")
 
     def test_sanitize_logged_answer_strips_leaked_proposed_plan_block(self) -> None:
         cleaned = _sanitize_logged_answer(
