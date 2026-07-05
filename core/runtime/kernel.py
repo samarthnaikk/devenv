@@ -3330,6 +3330,9 @@ class DevenvKernel:
                     return memory_context, metadata
             except Exception as exc:
                 logger.warning("Memory retrieval failed; continuing without memory context: error=%s", exc)
+        if _should_skip_external_session_context(user_prompt):
+            metadata["external_context_reason"] = "Skipped external session lookup for a current-workspace inspection prompt."
+            return memory_context, metadata
         external_builder = getattr(self, "context_builder", None)
         if external_builder is None or not hasattr(external_builder, "build_runtime_memory_context"):
             return memory_context, metadata
@@ -4786,6 +4789,30 @@ def _tool_strategy_subject_prompt(user_prompt: str) -> str | None:
         subject = match.group(1).strip()
         return subject.rstrip(" ?")
     return None
+
+
+def _should_skip_external_session_context(user_prompt: str) -> bool:
+    lowered = user_prompt.lower().strip()
+    if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt) or _is_session_history_question(user_prompt):
+        return False
+    return any(
+        phrase in lowered
+        for phrase in (
+            "summarize this repo",
+            "summarize the repo",
+            "summarize this repository",
+            "how does the backend work",
+            "how does this backend work",
+            "explain the backend",
+            "explain this backend",
+            "what is the backend architecture",
+            "show me the backend architecture",
+            "how does this repo work",
+            "how does the repo work",
+            "how does this repository work",
+            "how does the repository work",
+        )
+    )
 
 
 def _is_opencode_access_denied_error(error: RuntimeError) -> bool:

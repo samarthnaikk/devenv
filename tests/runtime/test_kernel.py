@@ -482,6 +482,40 @@ class DevenvKernelTest(unittest.TestCase):
             "The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
         )
 
+    def test_execute_turn_skips_external_context_for_current_workspace_repo_summary_prompt(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(markdown_context="")
+        ai = FakeAI([])
+
+        class CountingBuilder:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def build_runtime_memory_context(self, task: str):
+                self.calls += 1
+                return "", (), {}
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (Path(tempdir) / "README.md").write_text("# Demo repo\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            builder = CountingBuilder()
+            kernel.context_builder = builder
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("summarize this repo")
+
+        self.assertEqual(builder.calls, 0)
+        self.assertEqual(
+            result.metadata["external_context_reason"],
+            "Skipped external session lookup for a current-workspace inspection prompt.",
+        )
+        self.assertIn("README.md", result.final_response or "")
+
     def test_local_only_cleanup_schema_prompt_prefers_cleanup_session_over_validator_session(self) -> None:
         memory = EmptyMemory()
         ai = ExplodingAI([])
