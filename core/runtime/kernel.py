@@ -1446,6 +1446,17 @@ class DevenvKernel:
             return self._answer_known_project_question_local(user_prompt, "")
         return None
 
+    def _can_skip_external_memory_fetch(self, user_prompt: str, *, memory_context: str, local_only: bool) -> bool:
+        if local_only and _should_try_direct_memory_answer(user_prompt):
+            return True
+        if not _should_try_direct_memory_answer(user_prompt):
+            return False
+        if self._answer_known_project_question_local(user_prompt, memory_context) is not None:
+            return True
+        if _answer_from_retrieved_memory(user_prompt, memory_context) is not None:
+            return True
+        return False
+
     def _lookup_exact_logged_answer(self, user_prompt: str) -> str | None:
         lowered = user_prompt.lower()
         if "getgit" not in lowered and "get-drip" not in lowered:
@@ -2848,18 +2859,15 @@ class DevenvKernel:
         lexical_context = self._retrieve_lexical_memory_context(user_prompt, search_query=lexical_query)
         if lexical_context:
             memory_context = lexical_context
-            if local_only and _should_try_direct_memory_answer(user_prompt):
+            if self._can_skip_external_memory_fetch(user_prompt, memory_context=memory_context, local_only=local_only):
                 return memory_context, metadata
         elif not _should_skip_vector_memory_lookup(user_prompt):
             try:
                 result = self.memory.retrieve_context(user_prompt)
                 self._persist_last_retrieval_trace(getattr(result, "trace", None))
                 memory_context = result.markdown_context
-                if local_only and _should_try_direct_memory_answer(user_prompt):
-                    if _answer_known_project_question(user_prompt, memory_context) is not None:
-                        return memory_context, metadata
-                    if _answer_from_retrieved_memory(user_prompt, memory_context) is not None:
-                        return memory_context, metadata
+                if self._can_skip_external_memory_fetch(user_prompt, memory_context=memory_context, local_only=local_only):
+                    return memory_context, metadata
             except Exception as exc:
                 logger.warning("Memory retrieval failed; continuing without memory context: error=%s", exc)
         external_builder = getattr(self, "context_builder", None)

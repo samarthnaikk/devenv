@@ -330,6 +330,54 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("It was mainly about root URL redirects", result.final_response or "")
         self.assertNotIn("main.py", result.final_response or "")
 
+    def test_execute_turn_skips_external_context_fetch_when_local_memory_answer_is_ready(self) -> None:
+        memory = FakeMemory()
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                return []
+
+            def search_logs_for_external_query(self, query: str, limit: int = 8) -> list[EpisodicLog]:
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="cleanup-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "user": "what do you know about clean up schema of get-drip",
+                                "agent": "Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:\n\n1. root URL redirects\n2. Convex generated imports\n3. authentication bypass (critical)",
+                                "metadata": {},
+                            }
+                        ),
+                    )
+                ]
+
+        memory.store = FakeStore()
+        ai = ExplodingAI([])
+
+        class CountingBuilder:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def build_runtime_memory_context(self, task: str):
+                self.calls += 1
+                return "", (), {}
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            builder = CountingBuilder()
+            kernel.context_builder = builder
+            result = kernel.execute_turn("what do you know about clean up schrema og get-drip")
+
+        self.assertEqual(builder.calls, 0)
+        self.assertEqual(
+            result.final_response,
+            "The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
+        )
+
     def test_execute_turn_appends_external_session_context_to_memory(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(

@@ -423,6 +423,9 @@ def _is_structured_output_retryable(exc: OpenCodeClientError) -> bool:
 
 
 def _should_fallback_to_legacy_cli(exc: OpenCodeClientError) -> bool:
+    explicit = os.getenv("DEVENV_OPENCODE_ALLOW_CLI_FALLBACK", "").strip().lower()
+    if explicit not in {"1", "true", "yes", "on"}:
+        return False
     if exc.status_code in {401, 403}:
         return False
     if exc.status_code is None:

@@ -287,7 +287,7 @@ class OpenCodeRoutingTest(unittest.TestCase):
         self.assertEqual(response.tool_calls[0].tool_name, "read_file")
         self.assertIsNone(client.sent_messages[1]["output_format"])
 
-    def test_opencode_core_falls_back_to_legacy_cli_when_server_400_persists(self) -> None:
+    def test_opencode_core_raises_when_server_400_persists_without_cli_fallback_flag(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             client = _FakeOpenCodeClient(
                 responses=[
@@ -304,14 +304,13 @@ class OpenCodeRoutingTest(unittest.TestCase):
                 "_legacy_cli_chat",
                 return_value=AIResponse(content="CLI rescue", tool_calls=(), finish_reason="stop", usage={"total_tokens": 3}),
             ) as legacy_chat:
-                response = core.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
+                with self.assertRaises(RuntimeError):
+                    core.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
 
-        self.assertEqual(response.content, "CLI rescue")
-        legacy_chat.assert_called_once()
-        self.assertIn("fell back to cli transport", core.last_backend_fallback.lower())
-        self.assertEqual(core.last_backend_reason, "OpenCode CLI fallback handled the turn after server failure.")
+        legacy_chat.assert_not_called()
+        self.assertIn("opencode server failed", core.last_error.lower())
 
-    def test_opencode_core_falls_back_to_legacy_cli_for_tool_turn_when_server_400_persists(self) -> None:
+    def test_opencode_core_allows_explicit_cli_fallback_for_degraded_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             client = _FakeOpenCodeClient(
                 responses=[
@@ -330,12 +329,14 @@ class OpenCodeRoutingTest(unittest.TestCase):
                 finish_reason="tool_calls",
                 usage={"total_tokens": 4},
             )
-            with patch.object(core, "_legacy_cli_chat", return_value=cli_tool_response) as legacy_chat:
-                response = core.chat(messages=[{"role": "user", "content": "open the readme"}], tool_names=["read_file"])
+            with patch.dict(os.environ, {"DEVENV_OPENCODE_ALLOW_CLI_FALLBACK": "1"}, clear=False):
+                with patch.object(core, "_legacy_cli_chat", return_value=cli_tool_response) as legacy_chat:
+                    response = core.chat(messages=[{"role": "user", "content": "open the readme"}], tool_names=["read_file"])
 
         self.assertEqual(response.finish_reason, "tool_calls")
         self.assertEqual(response.tool_calls[0].tool_name, "read_file")
         legacy_chat.assert_called_once()
+        self.assertIn("fell back to cli transport", core.last_backend_fallback.lower())
 
 
 class _FakeOpenCodeClient:
