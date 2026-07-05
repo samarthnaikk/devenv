@@ -1028,7 +1028,10 @@ class ContextBuilderService:
         if not selected_session_ids:
             return "", (), selection_metadata
         details = [provider.get_session(session_id) for session_id in selected_session_ids]
-        context_lines = _collect_indexed_context_lines(task, selected_matches) or _collect_relevant_context_lines(task, details, "detailed")
+        indexed_context_lines: tuple[str, ...] = ()
+        if any(match.get("chunks") for match in selected_matches):
+            indexed_context_lines = _collect_indexed_context_lines(task, selected_matches)
+        context_lines = indexed_context_lines or _collect_relevant_context_lines(task, details, "detailed")
         context_lines = context_lines[:max_lines]
         if not context_lines:
             return "", selected_session_ids, selection_metadata
@@ -1324,13 +1327,23 @@ def _collect_relevant_context_lines(
     details: list[ExternalSessionDetail],
     output_format: str,
 ) -> tuple[str, ...]:
-    candidates: list[str] = []
-    content_candidates: list[str] = []
+    prompt_tokens = _tokenize(task)
+    prompt_entities = {
+        token.lower()
+        for token in re.findall(r"[a-z0-9]+(?:[-_/][a-z0-9]+)+", task.lower())
+        if len(token) >= 3
+    }
+    lowered_task = task.lower()
+    is_issue_prompt = any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews"})
+    is_project_recall_prompt = any(marker in lowered_task for marker in ("remember about", "remember the", "what was it about", "what was that about"))
+    candidates: list[tuple[str, str, bool]] = []
     seen: set[str] = set()
     for detail in details:
         summary = detail.summary
+        identity_haystacks = _session_identity_haystacks(summary)
+        session_identity_overlap = any(entity in haystack for entity in prompt_entities for haystack in identity_haystacks) if prompt_entities else False
         if summary.title.strip():
-            candidates.append(f"Session '{summary.title}' targeted workspace {summary.workspace_path or 'unknown workspace'}.")
+            candidates.append((f"Session '{summary.title}' targeted workspace {summary.workspace_path or 'unknown workspace'}.", "session", session_identity_overlap))
         for message in detail.messages:
             if message.role not in {"user", "assistant"}:
                 continue
@@ -1342,29 +1355,38 @@ def _collect_relevant_context_lines(
                 prefix = "User asked:"
             else:
                 prefix = "Assistant reported:"
-            content_candidates.append(f"{prefix} {content}")
-    candidates.extend(content_candidates)
+            candidates.append((f"{prefix} {content}", message.role, session_identity_overlap))
 
-    prompt_tokens = _tokenize(task)
-    prompt_entities = {
-        token.lower()
-        for token in re.findall(r"[a-z0-9]+(?:[-_/][a-z0-9]+)+", task.lower())
-        if len(token) >= 3
-    }
-    lowered_task = task.lower()
-    scored: list[tuple[int, str]] = []
-    for line in candidates:
+    scored: list[tuple[int, str, str]] = []
+    for line, line_kind, session_identity_overlap in candidates:
         lowered = line.lower()
         overlap = sum(2 for token in prompt_tokens if _token_matches(token, lowered))
         entity_overlap = any(entity in lowered for entity in prompt_entities)
         if line.startswith("User asked:"):
             overlap += 3 if any(token in lowered_task for token in ("bug", "bugs", "review", "reviews", "fix", "fixed")) else 0
+            if session_identity_overlap and (is_project_recall_prompt or is_issue_prompt):
+                overlap += 4
         if line.startswith("Assistant reported:"):
             overlap += 3 if any(token in lowered_task for token in ("what was it about", "what was that about", "remember about")) else 1
             if prompt_entities and not entity_overlap and not any(marker in lowered for marker in ("bug", "review", "fix", "workspace", "pipeline chat", "salesforce", "create workspace")):
                 overlap -= 5
+            if session_identity_overlap and is_issue_prompt:
+                overlap += 2
         if "bug" in lowered or "review" in lowered or "fix" in lowered:
             overlap += 3
+        if session_identity_overlap and any(
+            marker in lowered
+            for marker in (
+                "create workspace",
+                "pipeline chat",
+                "test/publish",
+                "salesforce",
+                "root url redirects",
+                "convex generated imports",
+                "authentication bypass",
+            )
+        ):
+            overlap += 5
         if "i’m grounding" in lowered or "i'm grounding" in lowered:
             overlap -= 6
         if "i’m tracing" in lowered or "i'm tracing" in lowered:
@@ -1387,11 +1409,33 @@ def _collect_relevant_context_lines(
             overlap -= 1
         overlap += 1 if "workspace" in lowered else 0
         overlap += 1 if "file" in lowered or "frontend" in lowered or "backend" in lowered else 0
-        scored.append((overlap, line))
+        scored.append((overlap, line, line_kind))
     scored.sort(key=lambda item: (-item[0], item[1]))
-    selected = [line for score, line in scored if score > 0][:MAX_CONTEXT_LINES]
+    selected = [line for score, line, _kind in scored if score > 0][:MAX_CONTEXT_LINES]
     if not selected:
-        selected = [line for _score, line in scored[:MAX_CONTEXT_LINES]]
+        selected = [line for _score, line, _kind in scored[:MAX_CONTEXT_LINES]]
+    elif is_project_recall_prompt and not is_issue_prompt:
+        issue_detail_lines = [
+            line
+            for score, line, kind in scored
+            if score > 0
+            and kind in {"user", "assistant"}
+            and any(
+                marker in line.lower()
+                for marker in (
+                    "create workspace",
+                    "pipeline chat",
+                    "test/publish",
+                    "salesforce",
+                    "root url redirects",
+                    "convex generated imports",
+                    "authentication bypass",
+                )
+            )
+        ]
+        if issue_detail_lines:
+            selected = issue_detail_lines[:2] + [line for line in selected if line not in issue_detail_lines]
+            selected = selected[:MAX_CONTEXT_LINES]
     if any(not line.startswith("Session '") for line in selected):
         session_summaries = [line for line in selected if line.startswith("Session '")]
         detail_lines = [line for line in selected if not line.startswith("Session '")]

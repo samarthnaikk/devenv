@@ -983,6 +983,44 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertEqual(result.session_ids, (project_id,))
         self.assertNotIn(meta_id, result.session_ids)
 
+    def test_runtime_memory_context_includes_issue_lines_for_project_recall_before_index_ready(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "07" / "02"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-get-drip"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Fix 7 bugs", "updated_at": "2026-07-02T11:52:11Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-02T13-12-12-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-02T13:12:12Z", "type": "session_meta", "payload": {"id": session_id, "cwd": "/Users/samarthnaik/Desktop/LoopedIn/get-drip"}}),
+                        json.dumps({"timestamp": "2026-07-02T13:12:13Z", "type": "event_msg", "payload": {"type": "user_message", "message": "Create Workspace should accept the https link and convert it internally."}}),
+                        json.dumps({"timestamp": "2026-07-02T13:12:14Z", "type": "event_msg", "payload": {"type": "user_message", "message": "DRIP pipeline chat does not work and test/publish should be reachable after approvals."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            context, session_ids, metadata = service.build_runtime_memory_context("hey, do you remember about get-drip project?")
+
+        self.assertEqual(session_ids, (session_id,))
+        self.assertFalse(metadata["index_ready"])
+        self.assertIn("Create Workspace should accept the https link", context)
+        self.assertIn("DRIP pipeline chat does not work", context)
+
 
 if __name__ == "__main__":
     unittest.main()

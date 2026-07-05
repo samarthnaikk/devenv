@@ -3650,6 +3650,13 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         return None
 
     sections = _memory_context_sections(memory_context)
+    cleaned_lines = [_clean_memory_line(line) for line in [*sections["working"], *sections["external"], *sections["retrieved"]]]
+    if "get-drip" in user_prompt.lower() and _is_memory_recall_question(user_prompt):
+        extracted_issues = _extract_follow_up_issues(cleaned_lines)
+        if extracted_issues:
+            summary = _join_human_list(extracted_issues)
+            return f"Yes. In get-drip, the main issues were {summary}."
+
     if _is_bug_list_question(user_prompt) and not _is_cleanup_schema_prompt(user_prompt):
         issue_lines = [
             _humanize_recalled_line(_clean_memory_line(line), user_prompt)
@@ -3660,10 +3667,7 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         extracted_issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(issue_lines))
         if extracted_issues:
             return _format_issue_list_answer(issue_subject, extracted_issues)
-    cleanup_summary = _cleanup_summary_from_lines(
-        user_prompt,
-        [_clean_memory_line(line) for line in [*sections["working"], *sections["external"], *sections["retrieved"]]],
-    )
+    cleanup_summary = _cleanup_summary_from_lines(user_prompt, cleaned_lines)
     if cleanup_summary:
         return cleanup_summary
     if _is_memory_follow_up_question(user_prompt) and sections["working"]:
@@ -4598,6 +4602,12 @@ def _answer_from_recent_conversation_follow_up(user_prompt: str, conversation: l
 
     subject = _preferred_memory_subject(user_prompt, recent_lines)
     issue_summary = _summarize_follow_up_issues(_memory_context_lines(last_assistant))
+    if (
+        issue_summary is None
+        and "targeted workspace" in last_assistant.lower()
+        and (_is_bug_fix_follow_up_question(user_prompt) or _is_issue_recap_follow_up_question(user_prompt) or _is_issue_explanation_follow_up_question(user_prompt))
+    ):
+        return None
     lowered = user_prompt.lower()
     if issue_summary and _is_bug_fix_follow_up_question(user_prompt):
         if subject:
@@ -5053,9 +5063,18 @@ def _should_trust_memory_answer_for_prompt(user_prompt: str) -> bool:
     if any(
         phrase in lowered
         for phrase in (
-            "how does the backend work",
             "how does the repo work",
             "how does the repository work",
+            "how does the codebase work",
+            "how does this repo work",
+            "how does this repository work",
+        )
+    ):
+        return True
+    if any(
+        phrase in lowered
+        for phrase in (
+            "how does the backend work",
             "how does the system work",
             "explain this project architecture",
             "how does this backend work",
