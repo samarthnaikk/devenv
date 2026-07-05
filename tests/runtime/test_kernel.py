@@ -1124,6 +1124,19 @@ class DevenvKernelTest(unittest.TestCase):
             "Yes. It was about cleaning up schema-related retrieval and app flow issues.",
         )
 
+    def test_execute_turn_clarifies_ambiguous_follow_up_without_memory_lookup(self) -> None:
+        memory = FailingMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("can you explain about it")
+
+        self.assertEqual(
+            result.final_response,
+            "What should I explain? I don't have a clear prior subject in this thread yet.",
+        )
+
     def test_compose_external_memory_query_anchors_explain_it_follow_up_to_prior_subject(self) -> None:
         query = _compose_external_memory_query(
             "can you explain about it?",
@@ -1331,6 +1344,70 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(
             result,
             "The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
+        )
+
+    def test_retrieve_memory_context_skips_vector_lookup_for_session_history_questions(self) -> None:
+        class RecallOnlyMemory(FakeMemory):
+            def __init__(self) -> None:
+                super().__init__()
+                self.store = type(
+                    "Store",
+                    (),
+                    {
+                        "search_logs": lambda self, terms, limit=20: [],
+                    },
+                )()
+
+            def retrieve_context(self, current_prompt: str, top_k: int = 5) -> FakeRetrievalResult:
+                raise AssertionError("session-history recall should not hit vector retrieval")
+
+        memory = RecallOnlyMemory()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            context, metadata = kernel._retrieve_memory_context("what was the last merge conflict we solved")
+
+        self.assertEqual(context, "")
+        self.assertEqual(metadata["external_context_state"], "new_context")
+
+    def test_answer_from_retrieved_memory_handles_merge_conflict_recall(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "what was the last merge conflict we solved",
+            "\n".join(
+                [
+                    "## Retrieved Memory",
+                    "- [episode] we fixed the last merge conflict by reconciling the OpenCode fallback retry path with the structured output handling.",
+                ]
+            ),
+        )
+
+        self.assertEqual(
+            answer,
+            "we fixed the last merge conflict by reconciling the OpenCode fallback retry path with the structured output handling.",
+        )
+
+    def test_execute_turn_returns_memory_only_fallback_for_unresolved_session_history_question(self) -> None:
+        class RecallOnlyMemory(FakeMemory):
+            def __init__(self) -> None:
+                super().__init__()
+                self.store = type(
+                    "Store",
+                    (),
+                    {
+                        "search_logs": lambda self, terms, limit=20: [],
+                    },
+                )()
+
+            def retrieve_context(self, current_prompt: str, top_k: int = 5) -> FakeRetrievalResult:
+                raise AssertionError("session-history recall should not hit vector retrieval")
+
+        memory = RecallOnlyMemory()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel.execute_turn("what was the last merge conflict we solved")
+
+        self.assertEqual(
+            result.final_response,
+            "I couldn't recover a reliable note about the last merge conflict we solved.",
         )
 
     def test_execute_turn_prefers_structured_project_answer_before_generic_memory_recall(self) -> None:

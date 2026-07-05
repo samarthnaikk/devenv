@@ -270,6 +270,33 @@ class DevenvKernel:
                 elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
             )
 
+        if _is_ambiguous_memory_follow_up(user_prompt, conversation):
+            fast_response = "What should I explain? I don't have a clear prior subject in this thread yet."
+            ai_logs.append("Blocked ambiguous follow-up from broad memory retrieval")
+            system_logs.append("Ambiguous follow-up fast path bypassed memory retrieval and model usage.")
+            conversation.append({"role": "assistant", "content": fast_response})
+            self._finalize_turn(
+                user_prompt,
+                fast_response,
+                conversation,
+                persist_memory=False,
+                persist_working_memory=False,
+                metadata=turn_metadata,
+            )
+            return RuntimeTurnResult(
+                final_response=fast_response,
+                steps=[],
+                total_usage={},
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                stage_traces=stage_traces,
+                verification_results=verification_results,
+                metadata=turn_metadata,
+                state=self.state.name,
+                blueprint=self.active_blueprint,
+                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+            )
+
         if local_only and _should_try_direct_memory_answer(user_prompt):
             fast_response = self._try_fast_local_only_direct_answer(user_prompt)
             if fast_response is not None:
@@ -365,6 +392,31 @@ class DevenvKernel:
                 )
                 return RuntimeTurnResult(
                     final_response=direct_memory_answer,
+                    steps=steps,
+                    total_usage=total_usage,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                    stage_traces=stage_traces,
+                    verification_results=verification_results,
+                    metadata=turn_metadata,
+                    state=self.state.name,
+                    blueprint=self.active_blueprint,
+                    elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                )
+            if _should_answer_from_memory_only(user_prompt):
+                fallback_response = _memory_only_fallback_response(user_prompt)
+                ai_logs.append("Handled memory-only recall without invoking planning or model execution")
+                conversation.append({"role": "assistant", "content": fallback_response})
+                self._finalize_turn(
+                    user_prompt,
+                    fallback_response,
+                    conversation,
+                    metadata=turn_metadata,
+                    persist_memory=not incognito,
+                    persist_working_memory=not incognito,
+                )
+                return RuntimeTurnResult(
+                    final_response=fallback_response,
                     steps=steps,
                     total_usage=total_usage,
                     ai_logs=ai_logs,
@@ -2658,7 +2710,7 @@ class DevenvKernel:
             memory_context = lexical_context
             if local_only and _should_try_direct_memory_answer(user_prompt):
                 return memory_context, metadata
-        else:
+        elif not _should_skip_vector_memory_lookup(user_prompt):
             try:
                 result = self.memory.retrieve_context(user_prompt)
                 self._persist_last_retrieval_trace(getattr(result, "trace", None))
@@ -3535,6 +3587,8 @@ def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
     )
     if normalized.startswith(low_signal_prefixes):
         return False
+    if normalized.strip(" .,:;!?") == prompt_lowered.strip(" .,:;!?"):
+        return False
     if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
         if normalized.startswith(low_signal_prefixes):
             return False
@@ -3740,6 +3794,21 @@ def _is_memory_recall_question(user_prompt: str) -> bool:
     )
 
 
+def _is_session_history_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "last merge conflict",
+            "merge conflict we solved",
+            "last conflict we solved",
+            "last bug we fixed",
+            "last review we fixed",
+            "last issue we fixed",
+        )
+    )
+
+
 def _is_memory_follow_up_question(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     referential_markers = (
@@ -3783,7 +3852,7 @@ def _is_bug_list_question(user_prompt: str) -> bool:
 
 
 def _should_try_direct_memory_answer(user_prompt: str) -> bool:
-    if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
+    if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt) or _is_session_history_question(user_prompt):
         return True
 
     lowered = user_prompt.lower().strip()
@@ -3821,7 +3890,32 @@ def _should_try_direct_memory_answer(user_prompt: str) -> bool:
     ):
         return True
 
-    return lowered.endswith("?")
+    return False
+
+
+def _should_skip_vector_memory_lookup(user_prompt: str) -> bool:
+    return (
+        _is_memory_recall_question(user_prompt)
+        or _is_memory_follow_up_question(user_prompt)
+        or _is_session_history_question(user_prompt)
+        or _is_bug_list_question(user_prompt)
+    )
+
+
+def _should_answer_from_memory_only(user_prompt: str) -> bool:
+    return (
+        _is_memory_recall_question(user_prompt)
+        or _is_memory_follow_up_question(user_prompt)
+        or _is_session_history_question(user_prompt)
+    )
+
+
+def _memory_only_fallback_response(user_prompt: str) -> str:
+    if _is_session_history_question(user_prompt):
+        return "I couldn't recover a reliable note about the last merge conflict we solved."
+    if _is_memory_follow_up_question(user_prompt):
+        return "I couldn't recover a reliable prior note for that follow-up."
+    return "I couldn't recover a reliable prior answer for that yet."
 
 
 def _lexical_memory_terms(user_prompt: str) -> list[str]:
@@ -3885,6 +3979,8 @@ def _memory_answer_matches_question(user_prompt: str, shaped_lines: list[str]) -
     lowered_prompt = user_prompt.lower()
     joined = " \n ".join(shaped_lines).lower()
 
+    if _is_session_history_question(user_prompt):
+        return any(marker in joined for marker in ("merge conflict", "conflict", "resolved", "resolution", "rebase", "branch"))
     if _is_bug_list_question(user_prompt):
         return _summarize_follow_up_issues(shaped_lines) is not None or any(
             marker in joined
@@ -4080,17 +4176,7 @@ def _is_file_inventory_question(user_prompt: str) -> bool:
 def _compose_external_memory_query(user_prompt: str, conversation: list[dict[str, Any]]) -> str:
     if not _is_memory_follow_up_question(user_prompt):
         return user_prompt
-    recent_hints: list[str] = []
-    for message in reversed(conversation[-6:]):
-        role = str(message.get("role") or "")
-        content = str(message.get("content") or "").strip()
-        if role not in {"user", "assistant"} or not content or content == user_prompt:
-            continue
-        for hint in _memory_subject_hints(content):
-            if hint not in recent_hints:
-                recent_hints.append(hint)
-        if len(recent_hints) >= 4:
-            break
+    recent_hints = _recent_memory_subject_hints(user_prompt, conversation)
     if not recent_hints:
         return user_prompt
     hyphenated_hints = [hint for hint in recent_hints if "-" in hint]
@@ -4129,6 +4215,27 @@ def _has_explicit_memory_subject(user_prompt: str) -> bool:
         for token in re.findall(r"[a-z0-9_]+", user_prompt.lower())
         if len(token) >= 5
     )
+
+
+def _recent_memory_subject_hints(user_prompt: str, conversation: list[dict[str, Any]]) -> list[str]:
+    recent_hints: list[str] = []
+    for message in reversed(conversation[-6:]):
+        role = str(message.get("role") or "")
+        content = str(message.get("content") or "").strip()
+        if role not in {"user", "assistant"} or not content or content == user_prompt:
+            continue
+        for hint in _memory_subject_hints(content):
+            if hint not in recent_hints:
+                recent_hints.append(hint)
+        if len(recent_hints) >= 4:
+            break
+    return recent_hints
+
+
+def _is_ambiguous_memory_follow_up(user_prompt: str, conversation: list[dict[str, Any]]) -> bool:
+    if not _is_memory_follow_up_question(user_prompt):
+        return False
+    return not _recent_memory_subject_hints(user_prompt, conversation)
 
 
 def _memory_subject_hints(text: str) -> list[str]:
