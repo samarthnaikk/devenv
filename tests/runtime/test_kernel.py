@@ -1257,6 +1257,121 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    def test_exact_logged_answer_does_not_reuse_same_prompt_broad_log_replay(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                return []
+
+            def search_logs_for_external_query(self, query: str, limit: int = 8) -> list[EpisodicLog]:
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="self-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "user": "what do you know about clean up schema of get-drip",
+                                "agent": "Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.",
+                                "metadata": {},
+                            }
+                        ),
+                    )
+                ]
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel._lookup_exact_logged_answer("what do you know about clean up schema of get-drip")
+
+        self.assertIsNone(result)
+
+    def test_answer_from_retrieved_memory_rejects_file_clue_answer_for_schema_cleanup_prompt(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "what do you know about clean up schema of get-drip",
+            "\n".join(
+                [
+                    "## Retrieved Memory",
+                    "- [episode] what do you know about clean up schrema og get-drip | Yes. The strongest clues point to `src/convex-types.ts`, `src/convex-api.ts`.",
+                ]
+            ),
+        )
+
+        self.assertIsNone(answer)
+
+    def test_lookup_exact_logged_answer_humanizes_schema_cleanup_bug_summary(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                if query == "what do you know about clean up schema of get-drip":
+                    return [
+                        "\n".join(
+                            [
+                                "Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:",
+                                "",
+                                "1. root URL redirects",
+                                "2. Convex generated imports",
+                                "3. authentication bypass (critical)",
+                            ]
+                        )
+                    ]
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return []
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel._lookup_exact_logged_answer("what do you know about clean up schema of get-drip")
+
+        self.assertEqual(
+            result,
+            "The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
+        )
+
+    def test_execute_turn_prefers_structured_project_answer_before_generic_memory_recall(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                if query == "what do you know about clean up schema of get-drip":
+                    return [
+                        "The cleanup was about root URL redirects, Convex generated imports, and review follow-ups."
+                    ]
+                return []
+
+            def search_logs_for_external_query(self, query: str, limit: int = 8) -> list[EpisodicLog]:
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="clue-3",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "user": "what do you know about clean up schrema og get-drip",
+                                "agent": "Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.",
+                                "metadata": {},
+                            }
+                        ),
+                    )
+                ]
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel.execute_turn("what do you know about clean up schema of get-drip")
+
+        self.assertEqual(
+            result.final_response,
+            "The get-drip cleanup was mainly about root URL redirects and Convex generated imports.",
+        )
+
     def test_local_directory_summary_is_not_persisted_to_episodic_memory(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])

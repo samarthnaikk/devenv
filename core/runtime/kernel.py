@@ -349,7 +349,9 @@ class DevenvKernel:
                 elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
             )
         if _should_try_direct_memory_answer(user_prompt):
-            direct_memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
+            direct_memory_answer = self._answer_known_project_question_local(user_prompt, memory_context)
+            if direct_memory_answer is None:
+                direct_memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
             if direct_memory_answer is not None:
                 ai_logs.append("Direct memory answer assembled from retrieved context")
                 conversation.append({"role": "assistant", "content": direct_memory_answer})
@@ -1334,8 +1336,9 @@ class DevenvKernel:
                 direct_candidates.sort(key=lambda item: item[0], reverse=True)
                 best_score, best_response = direct_candidates[0]
                 if best_score >= 1:
-                    self._exact_logged_answer_cache[lowered] = best_response
-                    return best_response
+                    shaped_response = _shape_logged_project_answer(user_prompt, best_response)
+                    self._exact_logged_answer_cache[lowered] = shaped_response
+                    return shaped_response
 
         logs = []
         if hasattr(store, "search_logs_for_external_query"):
@@ -1366,14 +1369,18 @@ class DevenvKernel:
             cleaned_agent_text = _sanitize_logged_answer(agent_text)
             if not _is_usable_logged_project_answer(user_prompt, cleaned_agent_text):
                 continue
-            if isinstance(metadata, dict) and str(metadata.get("external_context_query") or "").strip().lower() == lowered:
-                exact_answer = cleaned_agent_text
+            exact_external_query = str(metadata.get("external_context_query") or "").strip().lower() if isinstance(metadata, dict) else ""
+            logged_user = str(payload.get("user") or "").strip().lower()
+            if exact_external_query == lowered:
+                exact_answer = _shape_logged_project_answer(user_prompt, cleaned_agent_text)
                 self._exact_logged_answer_cache[lowered] = exact_answer
                 return exact_answer
+            if logged_user == lowered:
+                continue
             if allow_fallback_candidates:
                 fallback_candidates.append((_lexical_line_score(cleaned_agent_text, user_prompt, terms), cleaned_agent_text))
         fallback_candidates.sort(key=lambda item: item[0], reverse=True)
-        selected = fallback_candidates[0][1] if fallback_candidates and fallback_candidates[0][0] >= 1 else None
+        selected = _shape_logged_project_answer(user_prompt, fallback_candidates[0][1]) if fallback_candidates and fallback_candidates[0][0] >= 1 else None
         self._exact_logged_answer_cache[lowered] = selected
         return selected
 
@@ -2999,6 +3006,20 @@ def _normalize_logged_answer_text(content: str) -> str:
     return text.strip()
 
 
+def _shape_logged_project_answer(user_prompt: str, answer: str) -> str:
+    cleaned = str(answer or "").strip()
+    if not cleaned:
+        return ""
+
+    lowered_prompt = user_prompt.lower()
+    if "get-drip" in lowered_prompt and ("schema" in lowered_prompt or "cleanup" in lowered_prompt):
+        issues = _extract_follow_up_issues(_memory_context_lines(cleaned))
+        if issues:
+            summary = _join_human_list(issues)
+            return f"The get-drip cleanup was mainly about {summary}."
+    return cleaned
+
+
 def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str | None:
     if not memory_context.strip():
         return None
@@ -3521,6 +3542,8 @@ def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
         return False
     if ("how does" in prompt_lowered or "how do" in prompt_lowered or "why does" in prompt_lowered) and "i inspected" in lowered:
         return False
+    if "strongest clues point to" in lowered and ("schema" in prompt_lowered or "cleanup" in prompt_lowered):
+        return False
     return True
 
 
@@ -3885,6 +3908,8 @@ def _memory_answer_matches_question(user_prompt: str, shaped_lines: list[str]) -
         return _summarize_follow_up_issues(shaped_lines) is not None
     if "what can be said confidently" in lowered_prompt or "remains unclear" in lowered_prompt:
         return any(marker in joined for marker in ("get-drip", "convex", "workspace", "pipeline", "salesforce", "journey"))
+    if "get-drip" in lowered_prompt and ("schema" in lowered_prompt or "cleanup" in lowered_prompt):
+        return any(marker in joined for marker in ("schema", "cleanup", "review", "issue", "bug", "convex generated imports", "root url redirects"))
     return True
 
 
