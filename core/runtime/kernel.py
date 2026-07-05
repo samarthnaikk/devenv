@@ -2226,6 +2226,12 @@ class DevenvKernel:
         lowered = prompt.lower()
         scope: set[str] = set()
 
+        if not execution_phase and self._should_start_direct_without_tools(prompt):
+            if self._should_offer_web_search(lowered):
+                web_only_scope = WEB_EXECUTION_TOOLS & available
+                return sorted(web_only_scope)
+            return []
+
         if execution_phase:
             scope.update(READ_ONLY_EXECUTION_TOOLS & available)
         else:
@@ -2254,6 +2260,45 @@ class DevenvKernel:
             fallback = READ_ONLY_EXECUTION_TOOLS & available
             scope.update(fallback or available)
         return sorted(scope)
+
+    def _should_start_direct_without_tools(self, prompt: str) -> bool:
+        lowered = prompt.lower()
+        if _should_answer_from_memory_only(prompt):
+            return True
+        if _is_cleanup_schema_prompt(prompt) or _is_bug_list_question(prompt):
+            return True
+        if any(
+            phrase in lowered
+            for phrase in (
+                "what can be said confidently",
+                "what remains unclear",
+                "what architecture did",
+                "same architecture",
+                "look different",
+                "do you know about",
+                "what do you know about",
+            )
+        ):
+            if not (_is_file_inventory_question(prompt) or _is_architecture_question(prompt)):
+                return True
+        if any(
+            marker in lowered
+            for marker in (
+                "inspect the repo",
+                "inspect the codebase",
+                "look in the repo",
+                "open the file",
+                "read the file",
+                "show me the file",
+                "which files",
+                "list the files",
+                "list the concrete files",
+                "what folders",
+                "what files",
+            )
+        ):
+            return False
+        return False
 
     def _should_offer_web_search(self, lowered_prompt: str) -> bool:
         return any(

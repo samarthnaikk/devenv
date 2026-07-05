@@ -492,7 +492,7 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("Project Atlas", result.final_response or "")
 
-    def test_direct_tool_scope_defaults_to_read_only_tools_for_memory_question(self) -> None:
+    def test_direct_tool_scope_starts_with_no_tools_for_memory_question(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
             kernel.register_tool(ReadFileTool())
@@ -506,12 +506,7 @@ class DevenvKernelTest(unittest.TestCase):
 
             scope = kernel._resolve_direct_tool_scope("what do you know about get-drip?")
 
-        self.assertIn("read_file", scope)
-        self.assertIn("list_directory", scope)
-        self.assertNotIn("write_file", scope)
-        self.assertNotIn("run_shell", scope)
-        self.assertNotIn("manage_memory", scope)
-        self.assertNotIn("web_search", scope)
+        self.assertEqual(scope, [])
 
     def test_direct_tool_scope_offers_web_search_for_current_docs_questions(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -522,6 +517,30 @@ class DevenvKernelTest(unittest.TestCase):
             scope = kernel._resolve_direct_tool_scope("search the latest docs for opencode")
 
         self.assertEqual(scope, ["web_search"])
+
+    def test_direct_turn_sends_no_tools_for_project_summary_prompt(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="Get-drip was a Convex-backed app with campaign-related fixes.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 4, "completion_tokens": 2},
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(SearchTextTool())
+            result = kernel.execute_turn("what can be said confidently about get-drip?")
+
+        self.assertEqual(result.final_response, "Get-drip was a Convex-backed app with campaign-related fixes.")
+        self.assertEqual(ai.chat_calls[0]["tool_names"], [])
 
     def test_execution_tool_scope_adds_mutation_and_shell_tools_only_when_needed(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
