@@ -53,6 +53,31 @@ PLANNING_MEMORY_CHAR_LIMIT = 900
 EXECUTION_MEMORY_CHAR_LIMIT = 1400
 SCAFFOLD_EXECUTION_TOOLS = frozenset({"list_directory", "write_file", "edit_file"})
 SCAFFOLD_EXECUTION_MEMORY_CHAR_LIMIT = 360
+_GENERIC_WORKSPACE_TOKENS = frozenset(
+    {
+        "about",
+        "architecture",
+        "backend",
+        "code",
+        "codebase",
+        "does",
+        "explain",
+        "file",
+        "files",
+        "folder",
+        "folders",
+        "how",
+        "project",
+        "repo",
+        "repository",
+        "show",
+        "system",
+        "tell",
+        "what",
+        "work",
+        "works",
+    }
+)
 PLANNING_SYSTEM_RULE = (
     "Analyze the user's request and produce a sequential markdown checklist using checkbox items like '- [ ] Task'. "
     "Do not invoke modification tools during planning. Stay focused on planning until the checklist is complete. "
@@ -1256,7 +1281,7 @@ class DevenvKernel:
     ) -> tuple[str | None, bool]:
         ai_logs.append("Local router selected knowledge mode")
         memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
-        if memory_answer is not None:
+        if memory_answer is not None and _should_trust_memory_answer_for_prompt(user_prompt):
             ai_logs.append("Local knowledge answer assembled from memory")
             return memory_answer, True
 
@@ -1311,7 +1336,7 @@ class DevenvKernel:
                 return workspace_answer
 
         memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
-        if memory_answer is not None:
+        if memory_answer is not None and _should_trust_memory_answer_for_prompt(user_prompt):
             ai_logs.append("Local-only answer assembled from memory")
             return memory_answer
 
@@ -1331,10 +1356,11 @@ class DevenvKernel:
             return "Local-only mode needs workspace inspection tools to answer that prompt."
 
         candidate_path = candidate_path or self.workspace_path
+        listing_depth = 3 if candidate_path == self.workspace_path and _prefers_deeper_workspace_scan(user_prompt) else 2
         listing_call = ToolCallRequest(
             call_id=f"local_scan_{uuid.uuid4().hex[:10]}",
             tool_name="list_directory",
-            arguments={"path": candidate_path, "mode": "recursive", "max_depth": 2},
+            arguments={"path": candidate_path, "mode": "recursive", "max_depth": listing_depth},
         )
         listing_step = self._execute_tool_call(listing_call)
         steps.append(listing_step)
@@ -1380,10 +1406,11 @@ class DevenvKernel:
         ai_logs: list[str],
         system_logs: list[str],
     ) -> str | None:
+        listing_depth = 3 if candidate_path == self.workspace_path and _prefers_deeper_workspace_scan(user_prompt) else 2
         listing_call = ToolCallRequest(
             call_id=f"local_scan_{uuid.uuid4().hex[:10]}",
             tool_name="list_directory",
-            arguments={"path": candidate_path, "mode": "recursive", "max_depth": 2},
+            arguments={"path": candidate_path, "mode": "recursive", "max_depth": listing_depth},
         )
         listing_step = self._execute_tool_call(listing_call)
         steps.append(listing_step)
@@ -2562,6 +2589,11 @@ class DevenvKernel:
             "rag.py",
             "llm_connector.py",
             "retriever.py",
+            "kernel.py",
+            "routing.py",
+            "web.py",
+            "workspace.py",
+            "opencode_client.py",
         }
         scored: list[tuple[int, str]] = []
         if isinstance(entries, list):
@@ -2578,6 +2610,18 @@ class DevenvKernel:
                 score += sum(2 for token in prompt_tokens if token in lowered)
                 if "backend" in prompt_tokens and any(marker in lowered for marker in ("server", "app", "main", "core")):
                     score += 4
+                if "backend" in prompt_tokens and any(
+                    marker in lowered for marker in ("core/runtime", "core/ai", "runtime/", "server.py", "routes.py", "routing.py", "kernel.py")
+                ):
+                    score += 8
+                if "backend" in prompt_tokens and any(
+                    marker in lowered for marker in ("sample-test/", "tests/", "docs/", "devenv.egg-info/", "devenv1a.egg-info/")
+                ):
+                    score -= 8
+                if "backend" in prompt_tokens and Path(lowered).name == "__init__.py":
+                    score -= 8
+                if "backend" in prompt_tokens and lowered.endswith(".md"):
+                    score -= 4
                 if "rag" in prompt_tokens and "rag" in lowered:
                     score += 4
                 if lowered.endswith((".py", ".md", ".txt")):
@@ -2644,7 +2688,12 @@ class DevenvKernel:
 
         names = [entry.name.lower() for entry in directory_candidates]
         for token in prompt_tokens:
-            matches = get_close_matches(token, names, n=1, cutoff=0.72)
+            for entry in directory_candidates:
+                if entry.name.lower() == token:
+                    return str(entry)
+        fuzzy_tokens = [token for token in prompt_tokens if token not in _GENERIC_WORKSPACE_TOKENS and len(token) >= 5]
+        for token in fuzzy_tokens:
+            matches = get_close_matches(token, names, n=1, cutoff=0.82)
             if matches:
                 matched_name = matches[0]
                 for entry in directory_candidates:
@@ -4646,6 +4695,96 @@ def _should_skip_exact_logged_fast_path(user_prompt: str) -> bool:
 def _is_file_inventory_question(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     return "list the concrete files" in lowered or "files or folders" in lowered
+
+
+def _should_trust_memory_answer_for_prompt(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    if any(
+        phrase in lowered
+        for phrase in (
+            "how does the backend work",
+            "how does the repo work",
+            "how does the repository work",
+            "how does the system work",
+            "explain this project architecture",
+            "how does this backend work",
+        )
+    ):
+        return False
+    if any(
+        phrase in lowered
+        for phrase in (
+            "how does",
+            "how do",
+            "why does",
+            "why do",
+            "architecture",
+            "backend work",
+            "codebase work",
+            "repository work",
+            "system work",
+        )
+    ) and not _has_explicit_project_subject(user_prompt):
+        return False
+    return True
+
+
+def _prefers_deeper_workspace_scan(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "how does the backend work",
+            "how does the repo work",
+            "how does the repository work",
+            "how does the system work",
+            "how does this backend work",
+            "architecture",
+            "codebase work",
+            "backend work",
+        )
+    )
+
+
+def _has_explicit_project_subject(user_prompt: str) -> bool:
+    generic = {
+        "about",
+        "again",
+        "architecture",
+        "backend",
+        "bugs",
+        "code",
+        "codebase",
+        "elaborate",
+        "explain",
+        "exactly",
+        "file",
+        "files",
+        "fixed",
+        "how",
+        "issue",
+        "issues",
+        "know",
+        "project",
+        "remember",
+        "repo",
+        "repository",
+        "review",
+        "reviews",
+        "system",
+        "tell",
+        "those",
+        "what",
+        "work",
+        "works",
+    }
+    if _memory_query_entities(user_prompt):
+        return True
+    return any(
+        token not in generic
+        for token in re.findall(r"[a-z0-9_]+", user_prompt.lower())
+        if len(token) >= 5
+    )
 
 
 def _compose_external_memory_query(user_prompt: str, conversation: list[dict[str, Any]]) -> str:

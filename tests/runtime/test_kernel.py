@@ -696,6 +696,79 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertNotIn("Core product bugs", result.final_response or "")
         self.assertEqual(result.steps, [])
 
+    def test_local_only_generic_backend_question_prefers_workspace_over_unrelated_memory(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="## Retrieved Memory\n- RVIDA backend is not a widely known or standard term."
+        )
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (Path(tempdir) / "README.md").write_text("# docs\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("how does the backend work?", local_only=True)
+
+        self.assertIn("kernel.py", result.final_response or "")
+        self.assertNotIn("RVIDA backend is not a widely known", result.final_response or "")
+        self.assertEqual(result.steps[0].tool_name, "list_directory")
+
+    def test_local_knowledge_route_does_not_use_unrelated_memory_for_generic_backend_question(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="## Retrieved Memory\n- RVIDA backend is not a widely known or standard term."
+        )
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="The backend has routes and services.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 5},
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            backend_path = Path(tempdir) / "backend"
+            backend_path.mkdir()
+            (backend_path / "routes.py").write_text("print('ok')", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = type(
+                "Router",
+                (),
+                {
+                    "decide": lambda self, prompt: LocalRouteDecision(
+                        use_local_knowledge=True,
+                        confidence=0.7,
+                        knowledge_score=0.8,
+                        remote_score=0.1,
+                        reason="test",
+                    )
+                },
+            )()
+            kernel.register_tool(ListDirectoryTool())
+            result = kernel.execute_turn("how does the backend work?")
+
+        self.assertEqual(result.final_response, "The backend has routes and services.")
+        self.assertEqual(len(ai.chat_calls), 1)
+        self.assertEqual(result.steps, [])
+
+    def test_resolve_workspace_candidate_avoids_fuzzy_docs_match_for_generic_backend_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            (Path(tempdir) / "docs").mkdir()
+            (Path(tempdir) / "core").mkdir()
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+            candidate = kernel._resolve_workspace_candidate("how does the backend work?")
+
+        self.assertEqual(candidate, str(Path(tempdir).resolve()))
+
     def test_execution_tool_scope_adds_mutation_and_shell_tools_only_when_needed(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
