@@ -17,7 +17,13 @@ from core.memory.storage import SQLiteMemoryStore
 from core.memory.vector_index import InMemoryVectorIndex
 from core.runtime import DevenvKernel
 from core.runtime.context_builder import ContextBuilderService
-from core.runtime.kernel import _answer_from_retrieved_memory, _compose_external_memory_query, _sanitize_logged_answer, _summarize_directory_listing
+from core.runtime.kernel import (
+    _answer_from_retrieved_memory,
+    _compose_external_memory_query,
+    _memory_context_sections,
+    _sanitize_logged_answer,
+    _summarize_directory_listing,
+)
 from core.runtime.local_model import FallbackLocalModel, SentenceTransformerLocalModel, load_local_small_model
 from core.runtime.local_router import LocalRouteDecision
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode
@@ -1585,6 +1591,42 @@ class DevenvKernelTest(unittest.TestCase):
             "Yes. It was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
         )
 
+    def test_typo_cleanup_prompt_is_treated_as_cleanup_specific(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "what do you know about clean up schrema og get-drip",
+            "\n".join(
+                [
+                    "## Retrieved Memory",
+                    "- [episode] what do you know about clean up schema of get-drip | Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:\n\n1. root URL redirects\n2. Convex generated imports\n3. authentication bypass (critical)",
+                ]
+            ),
+        )
+
+        self.assertEqual(
+            answer,
+            "The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
+        )
+
+    def test_memory_context_sections_preserve_multiline_retrieved_entries(self) -> None:
+        sections = _memory_context_sections(
+            "\n".join(
+                [
+                    "## Retrieved Memory",
+                    "- [episode] schema cleanup | Based on the code review:",
+                    "",
+                    "1. root URL redirects",
+                    "2. Convex generated imports",
+                ]
+            )
+        )
+
+        self.assertEqual(
+            sections["retrieved"],
+            [
+                "[episode] schema cleanup | Based on the code review:\n1. root URL redirects\n2. Convex generated imports",
+            ],
+        )
+
     def test_retrieve_memory_context_skips_vector_lookup_for_session_history_questions(self) -> None:
         class RecallOnlyMemory(FakeMemory):
             def __init__(self) -> None:
@@ -1648,6 +1690,38 @@ class DevenvKernelTest(unittest.TestCase):
             result.final_response,
             "I couldn't recover a reliable note about the last merge conflict we solved.",
         )
+
+    def test_do_you_know_about_getdrip_bugs_uses_bug_list_recall(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                return []
+
+            def search_logs_for_external_query(self, query: str, limit: int = 8) -> list[EpisodicLog]:
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="bug-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "user": "what do you know about get-drip bugs",
+                                "agent": "Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:\n\n1. Create Workspace accepting https links and converting them internally\n2. Salesforce being marked as coming soon or disabled\n3. The DRIP pipeline chat flow not working\n4. test/publish staying reachable after approvals\n5. root URL redirects\n6. Convex generated imports\n7. authentication bypass (critical)",
+                                "metadata": {},
+                            }
+                        ),
+                    )
+                ]
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel.execute_turn("do you know about get-drip bugs")
+
+        self.assertIn("In get-drip, the recalled bug list was:", result.final_response or "")
 
     def test_execute_turn_prefers_structured_project_answer_before_generic_memory_recall(self) -> None:
         class FakeStore:

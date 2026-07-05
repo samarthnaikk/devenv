@@ -3204,15 +3204,15 @@ def _shape_logged_project_answer(user_prompt: str, answer: str) -> str:
         return ""
 
     lowered_prompt = user_prompt.lower()
-    if "get-drip" in lowered_prompt and _is_bug_list_question(user_prompt):
-        issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(_memory_context_lines(cleaned)))
-        if issues:
-            return _format_issue_list_answer("get-drip", issues)
-    if "get-drip" in lowered_prompt and ("schema" in lowered_prompt or "cleanup" in lowered_prompt):
+    if "get-drip" in lowered_prompt and _is_cleanup_schema_prompt(user_prompt):
         issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(_memory_context_lines(cleaned)))
         if issues:
             summary = _join_human_list(issues)
             return f"The get-drip cleanup was mainly about {summary}."
+    if "get-drip" in lowered_prompt and _is_bug_list_question(user_prompt):
+        issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(_memory_context_lines(cleaned)))
+        if issues:
+            return _format_issue_list_answer("get-drip", issues)
     return cleaned
 
 
@@ -3221,7 +3221,7 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         return None
 
     sections = _memory_context_sections(memory_context)
-    if _is_bug_list_question(user_prompt):
+    if _is_bug_list_question(user_prompt) and not _is_cleanup_schema_prompt(user_prompt):
         issue_lines = [
             _humanize_recalled_line(_clean_memory_line(line), user_prompt)
             for line in [*sections["working"], *sections["external"], *sections["retrieved"]]
@@ -3231,6 +3231,12 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         extracted_issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(issue_lines))
         if extracted_issues:
             return _format_issue_list_answer(issue_subject, extracted_issues)
+    cleanup_summary = _cleanup_summary_from_lines(
+        user_prompt,
+        [_clean_memory_line(line) for line in [*sections["working"], *sections["external"], *sections["retrieved"]]],
+    )
+    if cleanup_summary:
+        return cleanup_summary
     if _is_memory_follow_up_question(user_prompt) and sections["working"]:
         recent_working_lines = _recent_working_follow_up_lines(sections["working"], user_prompt)
         if recent_working_lines:
@@ -3243,6 +3249,8 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
                     if subject:
                         return f"Yes. In {subject}, we fixed those bugs by addressing {issue_summary}."
                     return f"Yes. We fixed those bugs by addressing {issue_summary}."
+                if issue_summary and _is_issue_explanation_follow_up_question(user_prompt):
+                    return f"Yes. It was mainly about {issue_summary}."
                 if issue_summary and ("what were those" in user_prompt.lower() or "those bugs" in user_prompt.lower()):
                     if subject:
                         return f"Yes. In {subject}, the main issues were {issue_summary}."
@@ -3265,6 +3273,8 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
                     if subject:
                         return f"Yes. In {subject}, we fixed those bugs by addressing {synthesized_issues}."
                     return f"Yes. We fixed those bugs by addressing {synthesized_issues}."
+                if _is_issue_explanation_follow_up_question(user_prompt):
+                    return f"Yes. It was mainly about {synthesized_issues}."
                 if _is_bug_list_question(user_prompt):
                     return _format_issue_list_answer(subject, _extract_follow_up_issues(shaped_follow_up))
                 if subject:
@@ -3363,6 +3373,8 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
             if subject:
                 return f"Yes. In {subject}, we fixed those bugs by addressing {issue_summary}."
             return f"Yes. We fixed those bugs by addressing {issue_summary}."
+        if issue_summary and _is_issue_explanation_follow_up_question(user_prompt):
+            return f"Yes. It was mainly about {issue_summary}."
         if issue_summary and ("what were those" in user_prompt.lower() or "those bugs" in user_prompt.lower()):
             if subject:
                 return f"Yes. In {subject}, the main issues were {issue_summary}."
@@ -3388,21 +3400,33 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
 def _memory_context_sections(memory_context: str) -> dict[str, list[str]]:
     lines = {"working": [], "retrieved": [], "external": []}
     active_section: str | None = None
+    current_index: int | None = None
     for raw_line in memory_context.splitlines():
         stripped = raw_line.strip()
         if stripped == "## Working Memory":
             active_section = "working"
+            current_index = None
             continue
         if stripped == "## Retrieved Memory":
             active_section = "retrieved"
+            current_index = None
             continue
         if stripped == "## External Session Context":
             active_section = "external"
+            current_index = None
             continue
         if stripped.startswith("## "):
             active_section = None
-        if active_section and stripped.startswith("- "):
+            current_index = None
+            continue
+        if not active_section:
+            continue
+        if stripped.startswith("- "):
             lines[active_section].append(stripped[2:].strip())
+            current_index = len(lines[active_section]) - 1
+            continue
+        if current_index is not None and stripped:
+            lines[active_section][current_index] += f"\n{stripped}"
     return lines
 
 
@@ -3555,8 +3579,7 @@ def _extract_follow_up_issues(lines: list[str]) -> list[str]:
 
 
 def _issues_relevant_to_prompt(user_prompt: str, issues: list[str]) -> list[str]:
-    lowered = user_prompt.lower()
-    if "get-drip" in lowered and ("schema" in lowered or "cleanup" in lowered):
+    if _is_cleanup_schema_prompt(user_prompt):
         narrowed = [
             issue
             for issue in issues
@@ -3571,6 +3594,15 @@ def _summarize_follow_up_issues(lines: list[str]) -> str | None:
     if issues:
         return _join_human_list(issues)
     return None
+
+
+def _cleanup_summary_from_lines(user_prompt: str, lines: list[str]) -> str | None:
+    if not _is_cleanup_schema_prompt(user_prompt):
+        return None
+    issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(lines))
+    if not issues:
+        return None
+    return f"The get-drip cleanup was mainly about {_join_human_list(issues)}."
 
 
 def _format_issue_list_answer(subject: str | None, issues: list[str]) -> str:
@@ -4066,6 +4098,34 @@ def _is_bug_fix_follow_up_question(user_prompt: str) -> bool:
     )
 
 
+def _is_issue_explanation_follow_up_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "can you explain about it",
+            "can you explain it",
+            "can you elaborate it",
+            "can you elaborate on it",
+            "explain about it",
+            "explain it",
+            "elaborate it",
+            "elaborate on it",
+            "what was it about",
+            "what was that about",
+        )
+    )
+
+
+def _is_cleanup_schema_prompt(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    if "get-drip" not in lowered:
+        return False
+    has_cleanup = any(marker in lowered for marker in ("cleanup", "clean up"))
+    has_schema = any(marker in lowered for marker in ("schema", "schrema"))
+    return has_cleanup or has_schema
+
+
 def _answer_from_recent_conversation_follow_up(user_prompt: str, conversation: list[dict[str, Any]]) -> str | None:
     if not _is_memory_follow_up_question(user_prompt):
         return None
@@ -4091,6 +4151,8 @@ def _answer_from_recent_conversation_follow_up(user_prompt: str, conversation: l
         if subject:
             return f"Yes. In {subject}, we fixed those bugs by addressing {issue_summary}."
         return f"Yes. We fixed those bugs by addressing {issue_summary}."
+    if issue_summary and _is_issue_explanation_follow_up_question(user_prompt):
+        return f"Yes. It was mainly about {issue_summary}."
     if issue_summary and ("what were those" in lowered or "those bugs" in lowered):
         if subject:
             return f"Yes. In {subject}, the main issues were {issue_summary}."
@@ -4103,6 +4165,8 @@ def _is_bug_list_question(user_prompt: str) -> bool:
     return any(
         phrase in lowered
         for phrase in (
+            "do you know about get-drip bugs",
+            "what do you know about get-drip bugs",
             "get-drip bugs",
             "bug list",
             "list the bugs",
@@ -4250,6 +4314,10 @@ def _lexical_memory_terms(user_prompt: str) -> list[str]:
             for extra in ("convex-api.ts", "convex-types.ts", "journey.ts", "test-activate.tsx", "pipeline.tsx"):
                 if extra not in terms:
                     terms.append(extra)
+    if _is_bug_list_question(user_prompt) and "get-drip" in lowered:
+        for extra in ("https", "disabled", "pipeline chat", "test/publish", "root url redirects", "convex generated imports", "authentication bypass"):
+            if extra not in terms:
+                terms.append(extra)
     if "main issues" in lowered or "issues being worked" in lowered:
         for extra in ("salesforce", "pipeline", "workspace", "disabled", "https"):
             if extra not in terms:
