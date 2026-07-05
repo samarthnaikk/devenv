@@ -2817,8 +2817,30 @@ def _extract_readable_replay_answer(content: str) -> str | None:
 def _sanitize_logged_answer(content: str) -> str:
     extracted = _extract_readable_replay_answer(content)
     if extracted:
-        return extracted
-    return str(content or "").strip()
+        return _normalize_logged_answer_text(extracted)
+    return _normalize_logged_answer_text(str(content or "").strip())
+
+
+def _normalize_logged_answer_text(content: str) -> str:
+    text = str(content or "").strip()
+    if not text:
+        return ""
+
+    qa_match = re.match(r"^\s*q\.\s[\s\S]*?\n+a\.\s*([\s\S]+)$", text, flags=re.IGNORECASE)
+    if qa_match:
+        text = qa_match.group(1).strip()
+    else:
+        answer_only_match = re.match(r"^\s*a\.\s*([\s\S]+)$", text, flags=re.IGNORECASE)
+        if answer_only_match:
+            text = answer_only_match.group(1).strip()
+
+    tool_output_index = text.find("\n\nTool output:")
+    if tool_output_index >= 0:
+        text = text[:tool_output_index].rstrip()
+    elif text.startswith("Tool output:"):
+        return ""
+
+    return text.strip()
 
 
 def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str | None:

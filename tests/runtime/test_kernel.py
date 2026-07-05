@@ -17,7 +17,7 @@ from core.memory.storage import SQLiteMemoryStore
 from core.memory.vector_index import InMemoryVectorIndex
 from core.runtime import DevenvKernel
 from core.runtime.context_builder import ContextBuilderService
-from core.runtime.kernel import _answer_from_retrieved_memory, _summarize_directory_listing
+from core.runtime.kernel import _answer_from_retrieved_memory, _sanitize_logged_answer, _summarize_directory_listing
 from core.runtime.local_model import SentenceTransformerLocalModel
 from core.runtime.local_router import LocalRouteDecision
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode
@@ -1054,6 +1054,27 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("candidate-practice CodeGuide backend", answer or "")
         self.assertNotIn("The first sweep shows", answer or "")
         self.assertNotIn("I’m narrowing", answer or "")
+
+    def test_sanitize_logged_answer_strips_tool_output_dump_and_qa_wrapper(self) -> None:
+        cleaned = _sanitize_logged_answer(
+            "\n".join(
+                [
+                    "Q. do you know about get-drip bugs",
+                    "A. Yes.",
+                    "",
+                    "Here are the reviewer answers, based on the current code in [`reviews.md`](/tmp/reviews.md):",
+                    "",
+                    "1. The review findings are still open.",
+                    "",
+                    "Tool output: v.literal(\"rejected\"), v.literal(\"needs_review\")",
+                ]
+            )
+        )
+
+        self.assertTrue(cleaned.startswith("Yes."))
+        self.assertIn("Here are the reviewer answers", cleaned)
+        self.assertNotIn("Tool output:", cleaned)
+        self.assertNotIn("Q. do you know", cleaned)
 
     def test_local_directory_summary_is_not_persisted_to_episodic_memory(self) -> None:
         memory = FakeMemory()
