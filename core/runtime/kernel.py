@@ -4381,6 +4381,13 @@ def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
         '"type":"function"',
         '"name": "list_directory"',
         '"name":"list_directory"',
+        '"required":[',
+        '\\"required\\":[',
+        '"properties":{',
+        '\\"properties\\":{',
+        '"type":"object"',
+        '"type": "object"',
+        '\\"type\\":\\"object\\"',
         'relative_path',
         '"depth":',
         '"is_dir":',
@@ -4436,6 +4443,11 @@ def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
         if normalized.startswith(low_signal_prefixes):
             return False
     if lowered.startswith("{") or lowered.startswith("["):
+        return False
+    if ("how does" in prompt_lowered or "how do" in prompt_lowered or "why does" in prompt_lowered) and any(
+        marker in lowered
+        for marker in ('"required":[', '\\"required\\":[', '"properties":{', '\\"properties\\":{', '"type":"object"', '"type": "object"', '\\"type\\":\\"object\\"')
+    ):
         return False
     if ("how does" in prompt_lowered or "how do" in prompt_lowered or "why does" in prompt_lowered) and "i inspected" in lowered:
         return False

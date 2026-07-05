@@ -1583,6 +1583,50 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(len(ai.chat_calls), 1)
         self.assertEqual(result.steps, [])
 
+    def test_local_knowledge_route_rejects_schema_fragment_memory_for_code_level_question(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context=(
+                '## Retrieved Memory\n'
+                '- [episode] ",\\"type\\":\\"string\\"}},\\"required\\":[\\"content\\",\\"content\\",\\"\\"],\\"type\\":\\"object\\"}]"'
+            )
+        )
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="GetGit decides what content to send by chunking and retrieval.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 5},
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            getgit_path = Path(tempdir) / "getgit"
+            getgit_path.mkdir()
+            (getgit_path / "core.py").write_text("print('core')", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = type(
+                "Router",
+                (),
+                {
+                    "decide": lambda self, prompt: LocalRouteDecision(
+                        use_local_knowledge=True,
+                        confidence=0.7,
+                        knowledge_score=0.8,
+                        remote_score=0.1,
+                        reason="test",
+                    )
+                },
+            )()
+            kernel.register_tool(ListDirectoryTool())
+            result = kernel.execute_turn("how does getgit decide what content to send to ai?")
+
+        self.assertEqual(result.final_response, "GetGit decides what content to send by chunking and retrieval.")
+        self.assertEqual(len(ai.chat_calls), 1)
+        self.assertEqual(result.steps, [])
+
     def test_execute_turn_answers_tool_strategy_question_before_local_knowledge_routing(self) -> None:
         memory = FakeMemory()
         ai = ExplodingAI([])
