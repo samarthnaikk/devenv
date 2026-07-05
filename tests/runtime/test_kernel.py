@@ -2757,6 +2757,26 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(memory.logs, [])
 
+    def test_backend_entrypoint_summary_is_not_persisted_to_episodic_memory(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            ai_dir = Path(tempdir) / "core" / "ai"
+            ai_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (runtime_dir / "web.py").write_text("class DevenvWebApp:\n    pass\n", encoding="utf-8")
+            (ai_dir / "routing.py").write_text("class RoutingAICore:\n    pass\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("what is the backend?")
+
+        self.assertIn("I inspected the backend entry points locally.", result.final_response or "")
+        self.assertEqual(memory.logs, [])
+
     def test_repair_directory_path_fixes_missing_inline_guess(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             (Path(tempdir) / "rvidia").mkdir()

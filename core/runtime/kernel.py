@@ -731,7 +731,7 @@ class DevenvKernel:
                 user_prompt,
                 final_response or "",
                 conversation,
-                persist_memory=(not incognito) and not (final_response or "").startswith("I inspected `"),
+                persist_memory=(not incognito) and _should_persist_episodic_response(final_response or ""),
                 persist_working_memory=not incognito,
                 metadata=turn_metadata,
             )
@@ -761,7 +761,7 @@ class DevenvKernel:
             user_prompt,
             final_response or "",
             conversation,
-            persist_memory=(not incognito) and not (final_response or "").startswith("I inspected `"),
+            persist_memory=(not incognito) and _should_persist_episodic_response(final_response or ""),
             persist_working_memory=not incognito,
             metadata=turn_metadata,
         )
@@ -4334,6 +4334,17 @@ def _extract_tool_payload_json(output: str) -> dict[str, Any] | list[Any] | None
         return json.loads(output[start_index:])
     except json.JSONDecodeError:
         return None
+
+
+def _should_persist_episodic_response(final_response: str) -> bool:
+    lowered = str(final_response or "").strip().lower()
+    if not lowered:
+        return False
+    if lowered.startswith("i inspected `"):
+        return False
+    if lowered.startswith("i inspected the backend entry points locally."):
+        return False
+    return True
 
 
 def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
