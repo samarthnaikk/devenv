@@ -234,6 +234,52 @@ class OpenCodeRoutingTest(unittest.TestCase):
         self.assertEqual(status.metadata["session_id"], "ses_new")
         self.assertEqual(status.metadata["transport"], "server")
 
+    def test_opencode_core_retries_without_structured_output_after_400(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            client = _FakeOpenCodeClient(
+                responses=[
+                    OpenCodeClientError("Model does not support structured output", status_code=400),
+                    _fake_message("msg_2", structured_output=None, usage={"total_tokens": 7}, text="Recovered plain text"),
+                ]
+            )
+            manager = Mock()
+            manager.ensure_server.return_value = Mock()
+            manager.inspect.return_value = _fake_server_status()
+
+            core = OpenCodeAICore(workspace_path=tempdir, executable="opencode", client=client, server_manager=manager)
+            response = core.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
+
+        self.assertEqual(response.content, "Recovered plain text")
+        self.assertEqual(len(client.sent_messages), 2)
+        self.assertEqual(client.sent_messages[0]["output_format"]["type"], "json_schema")
+        self.assertIsNone(client.sent_messages[1]["output_format"])
+        self.assertIn("retried without output schema", core.last_backend_fallback.lower())
+
+    def test_opencode_core_retries_tool_turn_without_structured_output_after_400(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            client = _FakeOpenCodeClient(
+                responses=[
+                    OpenCodeClientError("response_format unsupported", status_code=400),
+                    _fake_message(
+                        "msg_2",
+                        structured_output=None,
+                        usage={"total_tokens": 9},
+                        text='{"type":"tool_call","tool_name":"read_file","arguments":{"path":"README.md"}}',
+                    ),
+                ]
+            )
+            manager = Mock()
+            manager.ensure_server.return_value = Mock()
+            manager.inspect.return_value = _fake_server_status()
+
+            core = OpenCodeAICore(workspace_path=tempdir, executable="opencode", client=client, server_manager=manager)
+            core.register_tool(FakeTool())
+            response = core.chat(messages=[{"role": "user", "content": "open the readme"}], tool_names=["read_file"])
+
+        self.assertEqual(response.finish_reason, "tool_calls")
+        self.assertEqual(response.tool_calls[0].tool_name, "read_file")
+        self.assertIsNone(client.sent_messages[1]["output_format"])
+
 
 class _FakeOpenCodeClient:
     def __init__(self, *, responses: list[Any] | None = None, error: Exception | None = None, session_ids: list[str] | None = None) -> None:
@@ -262,13 +308,14 @@ class _FakeOpenCodeClient:
         return True
 
 
-def _fake_message(message_id: str, *, structured_output: dict[str, Any], usage: dict[str, int]):
+def _fake_message(message_id: str, *, structured_output: dict[str, Any] | None, usage: dict[str, int], text: str | None = None):
+    rendered_text = text if text is not None else (structured_output or {}).get("content", "")
     return type(
         "Message",
         (),
         {
-            "raw": {"info": {"id": message_id, "structured_output": structured_output, "usage": usage}, "parts": [{"type": "text", "text": structured_output.get("content", "")}]},
-            "parts": ({"type": "text", "text": structured_output.get("content", "")},),
+            "raw": {"info": {"id": message_id, "structured_output": structured_output, "usage": usage}, "parts": [{"type": "text", "text": rendered_text}]},
+            "parts": ({"type": "text", "text": rendered_text},),
             "structured_output": structured_output,
         },
     )()

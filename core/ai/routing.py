@@ -35,6 +35,7 @@ class OpenCodeAICore:
         self.system_instructions = system_instructions.strip()
         self.last_backend_used = "opencode"
         self.last_backend_reason = ""
+        self.last_backend_fallback = ""
         self.last_error = ""
         self._tools: dict[str, BaseTool] = {}
         self.server_manager = server_manager or OpenCodeServerManager(
@@ -119,6 +120,7 @@ class OpenCodeAICore:
             memory_context,
             resolved_tool_names,
         )
+        self.last_backend_fallback = ""
         try:
             session_id = self._ensure_session()
             response = self._send_server_message(session_id, prompt=prompt, resolved_tool_names=resolved_tool_names)
@@ -193,24 +195,60 @@ class OpenCodeAICore:
         return self._session_id
 
     def _send_server_message(self, session_id: str, *, prompt: str, resolved_tool_names: list[str]):
+        tools = [_tool_spec_from_runtime_tool(self._tools[name]) for name in resolved_tool_names]
+        output_format = _opencode_output_format(resolved_tool_names)
         try:
-            return self.client.send_message(
+            return self._send_server_message_once(
                 session_id,
-                parts=[{"type": "text", "text": prompt}],
-                output_format=_opencode_output_format(resolved_tool_names),
-                tools=[_tool_spec_from_runtime_tool(self._tools[name]) for name in resolved_tool_names],
+                prompt=prompt,
+                tools=tools,
+                output_format=output_format,
             )
         except OpenCodeClientError as exc:
+            if _is_structured_output_retryable(exc):
+                self.last_backend_fallback = "OpenCode rejected structured output; retried without output schema."
+                return self._send_server_message_once(
+                    session_id,
+                    prompt=prompt,
+                    tools=tools,
+                    output_format=None,
+                )
             if not _is_recoverable_session_error(exc):
                 raise
             self.reset_session()
             recovered_session_id = self._ensure_session()
-            return self.client.send_message(
-                recovered_session_id,
-                parts=[{"type": "text", "text": prompt}],
-                output_format=_opencode_output_format(resolved_tool_names),
-                tools=[_tool_spec_from_runtime_tool(self._tools[name]) for name in resolved_tool_names],
-            )
+            try:
+                return self._send_server_message_once(
+                    recovered_session_id,
+                    prompt=prompt,
+                    tools=tools,
+                    output_format=output_format,
+                )
+            except OpenCodeClientError as retry_exc:
+                if _is_structured_output_retryable(retry_exc):
+                    self.last_backend_fallback = "OpenCode rejected structured output after session recovery; retried without output schema."
+                    return self._send_server_message_once(
+                        recovered_session_id,
+                        prompt=prompt,
+                        tools=tools,
+                        output_format=None,
+                    )
+                raise
+
+    def _send_server_message_once(
+        self,
+        session_id: str,
+        *,
+        prompt: str,
+        tools: list[OpenCodeToolSpec],
+        output_format: dict[str, Any] | None,
+    ):
+        return self.client.send_message(
+            session_id,
+            parts=[{"type": "text", "text": prompt}],
+            output_format=output_format,
+            tools=tools,
+        )
 
     def _compile_prompt(self, messages: list[dict[str, Any]], memory_context: str | None) -> str:
         sections: list[str] = []
@@ -343,6 +381,29 @@ def _is_recoverable_session_error(exc: OpenCodeClientError) -> bool:
         return True
     lowered = str(exc).lower()
     return "unknown session" in lowered or "session" in lowered and "not found" in lowered
+
+
+def _is_structured_output_retryable(exc: OpenCodeClientError) -> bool:
+    if exc.status_code != 400:
+        return False
+    detail = str(exc).lower()
+    payload = exc.payload
+    if isinstance(payload, dict):
+        payload_text = json.dumps(payload, sort_keys=True).lower()
+        detail = f"{detail} {payload_text}".strip()
+    return any(
+        token in detail
+        for token in (
+            "structured",
+            "json_schema",
+            "json schema",
+            "outputformat",
+            "output format",
+            "response_format",
+            "response format",
+            "schema",
+        )
+    )
 
 
 def _opencode_output_format(allowed_tools: list[str]) -> dict[str, Any]:
