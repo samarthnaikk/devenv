@@ -14,6 +14,8 @@ from core.ai.models import AIBackendStatus, AIResponse, ToolCallRequest
 from core.ai.opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeServerManager, OpenCodeToolSpec, default_opencode_server_config
 from core.tools.base import BaseTool
 
+DEFAULT_OPENCODE_MODEL = "openrouter/anthropic/claude-sonnet-4"
+
 
 class OpenCodeAICore:
     provider_label = "OpenCode CLI"
@@ -31,7 +33,7 @@ class OpenCodeAICore:
     ) -> None:
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
         self.executable = executable
-        self.model = model or os.getenv("OPENCODE_MODEL") or ""
+        self.model = model or os.getenv("OPENCODE_MODEL") or DEFAULT_OPENCODE_MODEL
         self.system_instructions = system_instructions.strip()
         self.last_backend_used = "opencode"
         self.last_backend_reason = ""

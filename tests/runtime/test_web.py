@@ -7,6 +7,7 @@ import unittest
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 from core.ai.models import AIResponse
 from core.runtime.models import CheckpointTask, ExecutionBlueprint
@@ -89,6 +90,22 @@ class FakeAI:
 
 
 class DevenvWebAppTest(unittest.TestCase):
+    def test_health_payload_reuses_cached_setup_readiness(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            readiness = inspect_setup(RunConfig(workspace_path=tempdir), include_optional=True)
+            with mock.patch("core.runtime.web.inspect_setup", return_value=readiness) as inspect_mock:
+                first = app.build_health_payload()
+                second = app.build_health_payload()
+
+        self.assertTrue(first["setup"]["checked_at"])
+        self.assertEqual(first["setup"], second["setup"])
+        self.assertEqual(inspect_mock.call_count, 1)
+
     def test_payload_helpers_expose_workspace_state(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             Path(tempdir, "README.md").write_text("hello", encoding="utf-8")

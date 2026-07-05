@@ -6,6 +6,7 @@ import os
 import re
 import sysconfig
 import inspect
+import time
 from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -201,6 +202,8 @@ class DevenvWebApp:
         for tool in build_runtime_tools(self.kernel.memory, context_builder=self.context_builder):
             self.kernel.register_tool(tool)
         self.access_policy = AccessPolicy()
+        self._setup_cache: dict[str, object] | None = None
+        self._setup_cache_ttl_seconds = 20.0
 
     def create_handler(self):
         return partial(DevenvRequestHandler, app=self)
@@ -222,7 +225,7 @@ class DevenvWebApp:
         ai_statuses = getattr(self.kernel.ai, "status", lambda: {})()
         active_backend = getattr(self.kernel.ai, "last_backend_used", "opencode")
         active_provider_label = "OpenCode CLI"
-        setup = inspect_setup(self.config, include_optional=True)
+        setup = self._cached_setup_readiness()
         privacy = PrivacyModeState(no_memory=self.privacy_mode["no_memory"], incognito=self.privacy_mode["incognito"])
         tool_readiness = self._build_tool_readiness()
         opencode_server = {}
@@ -251,6 +254,20 @@ class DevenvWebApp:
             "privacy": privacy.to_dict(),
             "tool_readiness": {name: readiness.to_dict() for name, readiness in tool_readiness.items()},
         }
+
+    def _cached_setup_readiness(self):
+        now = time.time()
+        cached = self._setup_cache or {}
+        expires_at = float(cached.get("expires_at", 0) or 0)
+        readiness = cached.get("readiness")
+        if readiness is not None and expires_at > now:
+            return readiness
+        readiness = inspect_setup(self.config, include_optional=True)
+        self._setup_cache = {
+            "readiness": readiness,
+            "expires_at": now + self._setup_cache_ttl_seconds,
+        }
+        return readiness
 
     def _build_tool_readiness(self) -> dict[str, ToolReadiness]:
         return {

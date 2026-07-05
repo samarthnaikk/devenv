@@ -22,7 +22,12 @@ from core.runtime.local_model import SentenceTransformerLocalModel
 from core.runtime.local_router import LocalRouteDecision
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode
 from core.tools.list_directory import ListDirectoryTool
+from core.tools.manage_memory import ManageMemoryTool
+from core.tools.peek_lines import PeekLinesTool
 from core.tools.read_file import ReadFileTool
+from core.tools.run_shell import RunShellTool
+from core.tools.search_text import SearchTextTool
+from core.tools.web_search import WebSearchTool
 from core.tools.write_file import WriteFileTool
 
 
@@ -351,6 +356,54 @@ class DevenvKernelTest(unittest.TestCase):
             result = kernel.execute_turn("Do you know about Project Atlas?", local_only=True)
 
         self.assertIn("Project Atlas", result.final_response or "")
+
+    def test_direct_tool_scope_defaults_to_read_only_tools_for_memory_question(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(SearchTextTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(WriteFileTool())
+            kernel.register_tool(RunShellTool())
+            kernel.register_tool(WebSearchTool())
+            kernel.register_tool(ManageMemoryTool(FakeMemory()))
+
+            scope = kernel._resolve_direct_tool_scope("what do you know about get-drip?")
+
+        self.assertIn("read_file", scope)
+        self.assertIn("list_directory", scope)
+        self.assertNotIn("write_file", scope)
+        self.assertNotIn("run_shell", scope)
+        self.assertNotIn("manage_memory", scope)
+        self.assertNotIn("web_search", scope)
+
+    def test_direct_tool_scope_offers_web_search_for_current_docs_questions(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(WebSearchTool())
+
+            scope = kernel._resolve_direct_tool_scope("search the latest docs for opencode")
+
+        self.assertEqual(scope, ["web_search"])
+
+    def test_execution_tool_scope_adds_mutation_and_shell_tools_only_when_needed(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(WriteFileTool())
+            kernel.register_tool(RunShellTool())
+
+            scope = kernel._resolve_execution_tool_scope(
+                "fix the backend and run tests",
+                "Edit the relevant file and run diagnostics",
+            )
+
+        self.assertIn("write_file", scope)
+        self.assertIn("run_shell", scope)
+        self.assertIn("read_file", scope)
 
     def test_local_only_mode_can_answer_from_external_tool_output_context(self) -> None:
         memory = FakeMemory()

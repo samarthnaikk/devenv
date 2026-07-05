@@ -47,6 +47,7 @@ WRITE_EXECUTION_TOOLS = frozenset({"write_file", "edit_file"})
 DELETE_EXECUTION_TOOLS = frozenset({"remove_file"})
 SHELL_EXECUTION_TOOLS = frozenset({"run_shell", "run_diagnostics", "audit_changes"})
 MEMORY_EXECUTION_TOOLS = frozenset({"manage_memory", "inspect_trace"})
+WEB_EXECUTION_TOOLS = frozenset({"web_search"})
 PLANNING_MEMORY_CHAR_LIMIT = 900
 EXECUTION_MEMORY_CHAR_LIMIT = 1400
 SCAFFOLD_EXECUTION_TOOLS = frozenset({"list_directory", "write_file", "edit_file"})
@@ -1789,8 +1790,11 @@ class DevenvKernel:
         *,
         selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
     ) -> list[str]:
-        del user_prompt, task_description
-        return self._scoped_tool_names(selected_tools)
+        return self._tool_scope_for_prompt(
+            f"{user_prompt}\n{task_description}",
+            selected_tools=selected_tools,
+            execution_phase=True,
+        )
 
     def _resolve_execution_memory(self, *, user_prompt: str, task_description: str, memory_context: str) -> str:
         text = f"{user_prompt} {task_description}".lower()
@@ -1976,8 +1980,7 @@ class DevenvKernel:
         *,
         selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
     ) -> list[str]:
-        del user_prompt
-        return self._scoped_tool_names(selected_tools)
+        return self._tool_scope_for_prompt(user_prompt, selected_tools=selected_tools, execution_phase=False)
 
     def _resolve_selected_tools(self, selected_tools: list[str] | tuple[str, ...] | set[str] | None) -> set[str]:
         return {
@@ -1989,6 +1992,147 @@ class DevenvKernel:
     def _scoped_tool_names(self, selected_tools: list[str] | tuple[str, ...] | set[str] | None = None) -> list[str]:
         resolved = sorted(self._resolve_selected_tools(selected_tools))
         return resolved or sorted(self.tools)
+
+    def _tool_scope_for_prompt(
+        self,
+        prompt: str,
+        *,
+        selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
+        execution_phase: bool,
+    ) -> list[str]:
+        selected_scope = self._resolve_selected_tools(selected_tools)
+        if selected_scope:
+            return sorted(selected_scope)
+
+        available = set(self.tools)
+        if not available:
+            return []
+
+        lowered = prompt.lower()
+        scope: set[str] = set()
+
+        if execution_phase:
+            scope.update(READ_ONLY_EXECUTION_TOOLS & available)
+        else:
+            scope.update((READ_ONLY_EXECUTION_TOOLS - {"search_text"}) & available)
+
+        if self._should_offer_web_search(lowered):
+            if not execution_phase and self._should_prefer_web_only(lowered):
+                web_only_scope = WEB_EXECUTION_TOOLS & available
+                if web_only_scope:
+                    return sorted(web_only_scope)
+            scope.update(WEB_EXECUTION_TOOLS & available)
+
+        if self._should_offer_shell_tools(lowered):
+            scope.update(SHELL_EXECUTION_TOOLS & available)
+
+        if self._should_offer_memory_tools(lowered):
+            scope.update(MEMORY_EXECUTION_TOOLS & available)
+
+        if execution_phase and self._text_requires_mutation_tools(lowered):
+            scope.update((WRITE_EXECUTION_TOOLS | DELETE_EXECUTION_TOOLS) & available)
+
+        if execution_phase and self._is_scaffold_request(lowered):
+            scope.update(SCAFFOLD_EXECUTION_TOOLS & available)
+
+        if not scope:
+            fallback = READ_ONLY_EXECUTION_TOOLS & available
+            scope.update(fallback or available)
+        return sorted(scope)
+
+    def _should_offer_web_search(self, lowered_prompt: str) -> bool:
+        return any(
+            marker in lowered_prompt
+            for marker in (
+                "latest",
+                "current",
+                "today",
+                "recent",
+                "browse",
+                "google",
+                "look up",
+                "search",
+                "search the web",
+                "web search",
+                "news",
+                "docs",
+                "documentation",
+                "president",
+                "prime minister",
+                "ceo",
+            )
+        )
+
+    def _should_offer_shell_tools(self, lowered_prompt: str) -> bool:
+        return any(
+            marker in lowered_prompt
+            for marker in (
+                "run",
+                "test",
+                "pytest",
+                "unittest",
+                "diagnostic",
+                "diagnostics",
+                "build",
+                "compile",
+                "lint",
+                "format",
+                "server",
+                "smoke",
+                "benchmark",
+            )
+        )
+
+    def _should_prefer_web_only(self, lowered_prompt: str) -> bool:
+        return any(
+            marker in lowered_prompt
+            for marker in (
+                "latest docs",
+                "current docs",
+                "search the web",
+                "look up",
+                "browse",
+                "google",
+                "latest documentation",
+            )
+        )
+
+    def _should_offer_memory_tools(self, lowered_prompt: str) -> bool:
+        return any(
+            marker in lowered_prompt
+            for marker in (
+                "memory",
+                "trace",
+                "retrieval",
+                "episodic",
+                "working memory",
+            )
+        )
+
+    def _text_requires_mutation_tools(self, lowered_prompt: str) -> bool:
+        return any(
+            marker in lowered_prompt
+            for marker in (
+                "create",
+                "make",
+                "add",
+                "build",
+                "generate",
+                "write",
+                "edit",
+                "update",
+                "modify",
+                "change",
+                "fix",
+                "refactor",
+                "delete",
+                "remove",
+                "rename",
+                "move",
+                "implement",
+                "patch",
+            )
+        )
 
     def _selected_tool_messages(self, selected_tools: list[str] | tuple[str, ...] | set[str] | None) -> list[dict[str, str]]:
         resolved = self._scoped_tool_names(selected_tools) if selected_tools else []

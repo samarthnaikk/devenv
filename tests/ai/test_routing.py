@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 from core.ai.models import AIResponse, ToolCallRequest
 from core.ai.opencode_client import OpenCodeClientError
-from core.ai.routing import OpenCodeAICore, RoutingAICore, _opencode_output_format
+from core.ai.routing import DEFAULT_OPENCODE_MODEL, OpenCodeAICore, RoutingAICore, _opencode_output_format
 from core.tools.base import BaseTool, ToolResult
 
 
@@ -32,6 +32,12 @@ class FakeTool(BaseTool):
 
 
 class OpenCodeRoutingTest(unittest.TestCase):
+    def test_opencode_core_uses_stable_default_model_when_env_is_unset(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            core = OpenCodeAICore(workspace_path=".")
+
+        self.assertEqual(core.model, DEFAULT_OPENCODE_MODEL)
+
     def test_tool_prompt_includes_web_and_large_file_policy(self) -> None:
         core = OpenCodeAICore(workspace_path=".")
         core.register_tool(FakeTool())
