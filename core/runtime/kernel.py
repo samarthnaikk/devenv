@@ -5401,6 +5401,28 @@ def _summarize_local_text_file(file_name: str, content: str) -> str | None:
     first_lines = [line.strip() for line in stripped.splitlines() if line.strip()][:3]
     preview = " ".join(first_lines)
     preview = re.sub(r"\s+", " ", preview)[:220].rstrip()
+    if file_name.lower() == "readme.md":
+        heading = next((line.strip().lstrip("#").strip() for line in stripped.splitlines() if line.strip().startswith("#")), "")
+        prose_lines = [
+            line.strip()
+            for line in stripped.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        prose_block = re.sub(r"\s+", " ", " ".join(prose_lines[:4])).strip()
+        sentence_parts = re.split(r"(?<=[.!?])\s+", prose_block)
+        prose_preview = " ".join(part.strip() for part in sentence_parts[:2] if part.strip()).strip()
+        if heading and prose_preview:
+            sentence = prose_preview
+            if heading.lower().startswith("devenv ai is "):
+                sentence = prose_preview
+            elif prose_preview.lower().startswith(heading.lower()):
+                sentence = prose_preview
+            else:
+                sentence = f"{heading} is {prose_preview[0].lower() + prose_preview[1:]}" if len(prose_preview) > 1 else f"{heading} is {prose_preview.lower()}"
+            prefix = "`README.md` says" if sentence.lower().startswith(heading.lower()) else "`README.md` describes"
+            if frameworks:
+                return f"{prefix} {sentence} It also references {', '.join(frameworks[:4])}."
+            return f"{prefix} {sentence}"
     if frameworks:
         return f"`{file_name}` references {', '.join(frameworks[:4])}. Preview: {preview}"
     return f"`{file_name}` preview: {preview}"

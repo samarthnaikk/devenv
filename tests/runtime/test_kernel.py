@@ -22,6 +22,7 @@ from core.runtime.kernel import (
     _compose_external_memory_query,
     _memory_context_sections,
     _sanitize_logged_answer,
+    _summarize_local_text_file,
     _summarize_directory_listing,
 )
 from core.runtime.local_model import FallbackLocalModel, SentenceTransformerLocalModel, load_local_small_model
@@ -1167,6 +1168,23 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("README.md", result.final_response or "")
         self.assertNotIn("env.py", result.final_response or "")
         self.assertEqual(ai.chat_calls, [])
+
+    def test_readme_summary_is_humanized_for_repo_answers(self) -> None:
+        summary = _summarize_local_text_file(
+            "README.md",
+            "\n".join(
+                [
+                    "# Devenv AI",
+                    "",
+                    "Devenv AI is a local-first coding agent foundation for running project-aware workflows on your machine.",
+                    "It combines a runtime layer with a persistent Cognitive Memory Engine (CME).",
+                ]
+            ),
+        )
+
+        self.assertIn("local-first coding agent foundation", summary or "")
+        self.assertIn("persistent Cognitive Memory Engine", summary or "")
+        self.assertNotIn("Preview:", summary or "")
 
     def test_repo_work_prompt_routes_to_local_architecture_summary(self) -> None:
         memory = FakeMemory()
