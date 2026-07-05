@@ -2382,6 +2382,18 @@ class DevenvKernel:
                 "Devenv should answer from memory/retrieval, and only fall back if prior context is not reliable enough."
             )
 
+        if _is_repo_summary_question(subject_prompt):
+            return (
+                "For that repo-summary question Devenv should stay in charge of retrieval. "
+                "It would usually inspect the workspace with `list_directory`, then ground the answer with `read_file` and `inspect_symbols`."
+            )
+
+        if _is_architecture_question(subject_prompt):
+            return (
+                "For that architecture question Devenv should stay in charge of retrieval. "
+                "It would usually inspect the workspace with `list_directory`, then ground the answer with `inspect_symbols` on the main backend files."
+            )
+
         scoped_tools = self._resolve_direct_tool_scope(subject_prompt, selected_tools=selected_tools)
         if not scoped_tools:
             return "I would answer that directly without tools unless the first pass showed missing context."
@@ -4979,7 +4991,20 @@ def _lexical_line_score(summary: str, user_prompt: str, terms: list[str]) -> int
 
 def _is_architecture_question(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
-    return any(marker in lowered for marker in ("architecture", "backend", "same architecture", "look different"))
+    return any(
+        marker in lowered
+        for marker in (
+            "architecture",
+            "backend",
+            "same architecture",
+            "look different",
+            "how does the repo work",
+            "how does the repository work",
+            "how does the codebase work",
+            "how does this repo work",
+            "how does this repository work",
+        )
+    )
 
 
 def _should_skip_exact_logged_fast_path(user_prompt: str) -> bool:

@@ -653,6 +653,35 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(scope, ["inspect_symbols", "list_directory", "peek_lines", "read_file"])
 
+    def test_tool_strategy_question_uses_actual_repo_summary_retrieval_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+
+            answer = kernel._answer_tool_strategy_question("what tools do you need to answer summarize this repo")
+
+        self.assertIn("list_directory", answer or "")
+        self.assertIn("read_file", answer or "")
+        self.assertIn("inspect_symbols", answer or "")
+        self.assertNotIn("peek_lines", answer or "")
+
+    def test_tool_strategy_question_uses_actual_backend_retrieval_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+
+            answer = kernel._answer_tool_strategy_question("what tools do you need to answer how does the backend work")
+
+        self.assertIn("list_directory", answer or "")
+        self.assertIn("inspect_symbols", answer or "")
+        self.assertNotIn("peek_lines", answer or "")
+
     def test_direct_turn_sends_compact_code_inspection_scope_for_backend_question(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
@@ -1065,6 +1094,28 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("README.md", result.final_response or "")
         self.assertNotIn("env.py", result.final_response or "")
         self.assertEqual(ai.chat_calls, [])
+
+    def test_repo_work_prompt_routes_to_local_architecture_summary(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            ai_dir = Path(tempdir) / "core" / "ai"
+            ai_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (runtime_dir / "web.py").write_text("class DevenvWebApp:\n    pass\n", encoding="utf-8")
+            (ai_dir / "routing.py").write_text("class RoutingAICore:\n    pass\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("how does the repo work?")
+
+        self.assertIn("main orchestrator", result.final_response or "")
+        self.assertIn("local web backend", result.final_response or "")
+        self.assertNotIn("OpenCode backend access is not granted right now", result.final_response or "")
+        self.assertEqual(result.steps[0].tool_name, "list_directory")
 
     def test_local_knowledge_route_can_inspect_workspace_without_ai(self) -> None:
         memory = FakeMemory()
