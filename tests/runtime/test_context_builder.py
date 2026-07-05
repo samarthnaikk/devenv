@@ -1021,6 +1021,59 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertIn("Create Workspace should accept the https link", context)
         self.assertIn("DRIP pipeline chat does not work", context)
 
+    def test_runtime_memory_context_prefers_cleanup_session_over_unrelated_project_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "07" / "05"
+            sessions_dir.mkdir(parents=True)
+            cleanup_id = "session-cleanup"
+            validators_id = "session-validators"
+            (codex_root / "session_index.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"id": cleanup_id, "thread_name": "Clean up schema", "updated_at": "2026-07-05T12:00:00Z"}),
+                        json.dumps({"id": validators_id, "thread_name": "Explain validators", "updated_at": "2026-07-05T12:05:00Z"}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-05T12-00-00-{cleanup_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-05T12:00:00Z", "type": "session_meta", "payload": {"id": cleanup_id, "cwd": "/Users/samarthnaik/Desktop/LoopedIn/get-drip"}}),
+                        json.dumps({"timestamp": "2026-07-05T12:00:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "The schema cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-05T12-05-00-{validators_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-05T12:05:00Z", "type": "session_meta", "payload": {"id": validators_id, "cwd": "/Users/samarthnaik/Desktop/LoopedIn/get-drip"}}),
+                        json.dumps({"timestamp": "2026-07-05T12:05:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "They are Convex argument validators defined in shared.ts for mock CRM sources."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            context, session_ids, _metadata = service.build_runtime_memory_context("what do you know about clean up schrema og get-drip")
+
+        self.assertIn(cleanup_id, session_ids)
+        self.assertIn("root URL redirects", context)
+        self.assertNotIn("validators", context.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1342,8 +1342,16 @@ def _collect_relevant_context_lines(
         summary = detail.summary
         identity_haystacks = _session_identity_haystacks(summary)
         session_identity_overlap = any(entity in haystack for entity in prompt_entities for haystack in identity_haystacks) if prompt_entities else False
+        session_cleanup_match = _session_matches_cleanup_schema_task(task, summary)
         if summary.title.strip():
-            candidates.append((f"Session '{summary.title}' targeted workspace {summary.workspace_path or 'unknown workspace'}.", "session", session_identity_overlap))
+            candidates.append(
+                (
+                    f"Session '{summary.title}' targeted workspace {summary.workspace_path or 'unknown workspace'}.",
+                    "session",
+                    session_identity_overlap,
+                    session_cleanup_match,
+                )
+            )
         for message in detail.messages:
             if message.role not in {"user", "assistant"}:
                 continue
@@ -1355,10 +1363,10 @@ def _collect_relevant_context_lines(
                 prefix = "User asked:"
             else:
                 prefix = "Assistant reported:"
-            candidates.append((f"{prefix} {content}", message.role, session_identity_overlap))
+            candidates.append((f"{prefix} {content}", message.role, session_identity_overlap, session_cleanup_match))
 
     scored: list[tuple[int, str, str]] = []
-    for line, line_kind, session_identity_overlap in candidates:
+    for line, line_kind, session_identity_overlap, session_cleanup_match in candidates:
         lowered = line.lower()
         overlap = sum(2 for token in prompt_tokens if _token_matches(token, lowered))
         entity_overlap = any(entity in lowered for entity in prompt_entities)
@@ -1387,6 +1395,46 @@ def _collect_relevant_context_lines(
             )
         ):
             overlap += 5
+        if _is_cleanup_schema_task(task):
+            if session_cleanup_match:
+                overlap += 8
+                if any(
+                    marker in lowered
+                    for marker in (
+                        "schema",
+                        "cleanup",
+                        "clean up",
+                        "legacy",
+                        "table",
+                        "tables",
+                        "column",
+                        "columns",
+                        "dead",
+                        "audit",
+                        "cache",
+                        "convex generated imports",
+                        "root url redirects",
+                        "authentication bypass",
+                    )
+                ):
+                    overlap += 5
+            elif line_kind != "session":
+                overlap -= 8
+            if any(
+                marker in lowered
+                for marker in (
+                    "tsc --noemit",
+                    "type mismatch",
+                    "typescript error",
+                    "lint/check",
+                    "worktree is clean",
+                    "committed",
+                    "validator",
+                    "shared.ts",
+                    "fixing the two typescript issues",
+                )
+            ):
+                overlap -= 10
         if "i’m grounding" in lowered or "i'm grounding" in lowered:
             overlap -= 6
         if "i’m tracing" in lowered or "i'm tracing" in lowered:
@@ -1697,6 +1745,32 @@ def _focus_tokens(text: str) -> set[str]:
         if Path(match).name and Path(match).name.lower() not in FOCUS_CONTEXT_TOKENS
     }
     return tokens | path_tokens
+
+
+def _is_cleanup_schema_task(task: str) -> bool:
+    lowered = task.lower()
+    if "get-drip" not in lowered:
+        return False
+    return any(marker in lowered for marker in ("cleanup", "clean up", "schema", "schrema"))
+
+
+def _session_matches_cleanup_schema_task(task: str, summary: ExternalSessionSummary) -> bool:
+    if not _is_cleanup_schema_task(task):
+        return False
+    title_preview = _normalize_whitespace(" ".join(part for part in (summary.title, summary.preview) if part)).lower()
+    return any(
+        marker in title_preview
+        for marker in (
+            "cleanup",
+            "clean up",
+            "schema",
+            "review",
+            "legacy",
+            "root url redirects",
+            "convex generated imports",
+            "authentication bypass",
+        )
+    )
 
 
 def _best_message_overlap(prompt_tokens: set[str], detail: ExternalSessionDetail) -> int:

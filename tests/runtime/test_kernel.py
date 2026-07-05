@@ -481,6 +481,59 @@ class DevenvKernelTest(unittest.TestCase):
             "The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
         )
 
+    def test_local_only_cleanup_schema_prompt_prefers_cleanup_session_over_validator_session(self) -> None:
+        memory = EmptyMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "07" / "05"
+            sessions_dir.mkdir(parents=True)
+            cleanup_id = "session-cleanup"
+            validators_id = "session-validators"
+            (codex_root / "session_index.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"id": cleanup_id, "thread_name": "Clean up schema", "updated_at": "2026-07-05T12:00:00Z"}),
+                        json.dumps({"id": validators_id, "thread_name": "Explain validators", "updated_at": "2026-07-05T12:05:00Z"}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-05T12-00-00-{cleanup_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-05T12:00:00Z", "type": "session_meta", "payload": {"id": cleanup_id, "cwd": "/Users/samarthnaik/Desktop/LoopedIn/get-drip"}}),
+                        json.dumps({"timestamp": "2026-07-05T12:00:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "The schema cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-05T12-05-00-{validators_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-05T12:05:00Z", "type": "session_meta", "payload": {"id": validators_id, "cwd": "/Users/samarthnaik/Desktop/LoopedIn/get-drip"}}),
+                        json.dumps({"timestamp": "2026-07-05T12:05:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "They are Convex argument validators defined in shared.ts for mock CRM sources."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.context_builder = ContextBuilderService(
+                tempdir,
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            result = kernel.execute_turn("what do you know about clean up schrema og get-drip", local_only=True)
+
+        self.assertIn("root URL redirects", result.final_response or "")
+        self.assertNotIn("validators", (result.final_response or "").lower())
+
     def test_execute_turn_appends_external_session_context_to_memory(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
@@ -2028,6 +2081,39 @@ class DevenvKernelTest(unittest.TestCase):
             answer,
             "Yes. It was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
         )
+
+    def test_answer_from_retrieved_memory_humanizes_cleanup_narrative_summary(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "what do you know about clean up schrema og get-drip",
+            "\n".join(
+                [
+                    "## External Session Context",
+                    "- Assistant reported: The repo points to a conservative default: there are very few whole tables that are obviously dead, but there are some strong legacy-column cleanup candidates in `campaigns` and `crmCustomers`, plus a few audit/cache/helper tables that are easy to misclassify as unused because they have narrow call sites.",
+                ]
+            ),
+        )
+
+        self.assertEqual(
+            answer,
+            "The get-drip cleanup was mainly about removing legacy columns and duplicated state, focusing the schema pass on `campaigns` and `crmCustomers`, keeping the cleanup conservative instead of deleting whole tables, and keeping audit, cache, and helper tables that still support live flows.",
+        )
+
+    def test_execute_turn_answers_cleanup_explain_follow_up_from_recent_conversation(self) -> None:
+        memory = FailingMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.ephemeral_history = [
+                {
+                    "role": "assistant",
+                    "content": "The get-drip cleanup was mainly about removing legacy columns and duplicated state, focusing the schema pass on `campaigns` and `crmCustomers`, keeping the cleanup conservative instead of deleting whole tables, and keeping audit, cache, and helper tables that still support live flows.",
+                }
+            ]
+            result = kernel.execute_turn("can you explain about it")
+
+        self.assertIn("removing legacy columns and duplicated state", result.final_response or "")
+        self.assertNotIn("main.py", result.final_response or "")
 
     def test_typo_cleanup_prompt_is_treated_as_cleanup_specific(self) -> None:
         answer = _answer_from_retrieved_memory(

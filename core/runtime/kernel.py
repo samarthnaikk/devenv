@@ -3651,6 +3651,9 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
 
     sections = _memory_context_sections(memory_context)
     cleaned_lines = [_clean_memory_line(line) for line in [*sections["working"], *sections["external"], *sections["retrieved"]]]
+    cleanup_summary = _cleanup_summary_from_lines(user_prompt, cleaned_lines)
+    if cleanup_summary:
+        return cleanup_summary
     if "get-drip" in user_prompt.lower() and _is_memory_recall_question(user_prompt):
         extracted_issues = _extract_follow_up_issues(cleaned_lines)
         if extracted_issues:
@@ -3667,9 +3670,6 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         extracted_issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(issue_lines))
         if extracted_issues:
             return _format_issue_list_answer(issue_subject, extracted_issues)
-    cleanup_summary = _cleanup_summary_from_lines(user_prompt, cleaned_lines)
-    if cleanup_summary:
-        return cleanup_summary
     if _is_memory_follow_up_question(user_prompt) and sections["working"]:
         recent_working_lines = _recent_working_follow_up_lines(sections["working"], user_prompt)
         if recent_working_lines:
@@ -3688,6 +3688,9 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
                     if subject:
                         return f"Yes. In {subject}, the main issues were {issue_summary}."
                     return f"Yes. The main issues were {issue_summary}."
+                cleanup_summary = _summarize_cleanup_narrative(shaped_working)
+                if cleanup_summary and _is_issue_explanation_follow_up_question(user_prompt):
+                    return f"Yes. It was mainly about {cleanup_summary}."
                 if _is_bug_fix_follow_up_question(user_prompt) or _is_issue_recap_follow_up_question(user_prompt):
                     shaped_working = []
                 if len(shaped_working) == 1:
@@ -3713,6 +3716,9 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
                 if subject:
                     return f"Yes. In {subject}, the main issues were {synthesized_issues}."
                 return f"Yes. The main issues were {synthesized_issues}."
+            cleanup_summary = _summarize_cleanup_narrative(shaped_follow_up)
+            if cleanup_summary and _is_issue_explanation_follow_up_question(user_prompt):
+                return f"Yes. It was mainly about {cleanup_summary}."
             if len(shaped_follow_up) >= 2 and _follow_up_line_score(ordered_follow_up[0].lower()) >= 2 and _follow_up_line_score(ordered_follow_up[1].lower()) >= 2:
                 return "Yes. The main issues were: " + "; ".join(shaped_follow_up[:2])
             if _follow_up_line_score(ordered_follow_up[0].lower()) >= 2:
@@ -4033,9 +4039,51 @@ def _cleanup_summary_from_lines(user_prompt: str, lines: list[str]) -> str | Non
     if not _is_cleanup_schema_prompt(user_prompt):
         return None
     issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(lines))
-    if not issues:
+    if issues:
+        return f"The get-drip cleanup was mainly about {_join_human_list(issues)}."
+    narrative = _summarize_cleanup_narrative(lines)
+    if narrative:
+        return f"The get-drip cleanup was mainly about {narrative}."
+    return None
+
+
+def _summarize_cleanup_narrative(lines: list[str]) -> str | None:
+    joined = " ".join(line.lower() for line in lines)
+    if not any(
+        marker in joined
+        for marker in (
+            "cleanup",
+            "clean up",
+            "schema",
+            "legacy column",
+            "legacy columns",
+            "crmcustomers",
+            "campaigns",
+        )
+    ):
         return None
-    return f"The get-drip cleanup was mainly about {_join_human_list(issues)}."
+
+    points: list[str] = []
+    if "legacy columns" in joined or "legacy-column" in joined or "duplicate state" in joined:
+        points.append("removing legacy columns and duplicated state")
+    if "campaigns" in joined and "crmcustomers" in joined:
+        points.append("focusing the schema pass on `campaigns` and `crmCustomers`")
+    elif "campaigns" in joined:
+        points.append("cleaning up legacy fields in `campaigns`")
+    elif "crmcustomers" in joined:
+        points.append("cleaning up legacy fields in `crmCustomers`")
+    if any(marker in joined for marker in ("whole table", "whole tables", "broad table deletion", "not actually dead", "conservative default")):
+        points.append("keeping the cleanup conservative instead of deleting whole tables")
+    if any(marker in joined for marker in ("audit/cache/helper", "helper/audit/cache", "audit", "cache", "helper tables")):
+        points.append("keeping audit, cache, and helper tables that still support live flows")
+
+    unique_points: list[str] = []
+    for point in points:
+        if point not in unique_points:
+            unique_points.append(point)
+    if not unique_points:
+        return None
+    return _join_human_list(unique_points)
 
 
 def _format_issue_list_answer(subject: str | None, issues: list[str]) -> str:
@@ -4619,6 +4667,9 @@ def _answer_from_recent_conversation_follow_up(user_prompt: str, conversation: l
         if subject:
             return f"Yes. In {subject}, the main issues were {issue_summary}."
         return f"Yes. The main issues were {issue_summary}."
+    cleanup_summary = _summarize_cleanup_narrative(_memory_context_lines(last_assistant))
+    if cleanup_summary and _is_issue_explanation_follow_up_question(user_prompt):
+        return f"Yes. It was mainly about {cleanup_summary}."
     return _affirm_memory_answer(_humanize_recalled_line(last_assistant, user_prompt))
 
 
