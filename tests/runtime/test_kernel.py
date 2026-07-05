@@ -2224,6 +2224,22 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("Referenced context:", query)
         self.assertIn("get-drip", query)
 
+    def test_compose_external_memory_query_prefers_recent_user_subject_over_assistant_file_clues(self) -> None:
+        query = _compose_external_memory_query(
+            "can you explain about it",
+            [
+                {"role": "user", "content": "what do you know about clean up schrema og get-drip"},
+                {
+                    "role": "assistant",
+                    "content": "Yes. The strongest clues point to src/convex-types.ts, src/convex-api.ts, src/routes/workspace.$workspaceId.campaigns.$campaignId.test-activate.tsx, src/routes/workspace.$workspaceId.campaigns.$campaignId.pipeline.tsx, src/routes/workspace.$workspaceId.tsx.",
+                },
+            ],
+        )
+
+        self.assertIn("Referenced context:", query)
+        self.assertIn("get-drip", query)
+        self.assertIn("Referenced context: get-drip", query)
+
     def test_answer_from_retrieved_memory_does_not_duplicate_yes_prefix(self) -> None:
         answer = _answer_from_retrieved_memory(
             "what do you know about get-drip?",

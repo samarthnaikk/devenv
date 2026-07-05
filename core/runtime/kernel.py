@@ -5449,18 +5449,28 @@ def _has_explicit_memory_subject(user_prompt: str) -> bool:
 
 
 def _recent_memory_subject_hints(user_prompt: str, conversation: list[dict[str, Any]]) -> list[str]:
-    recent_hints: list[str] = []
+    user_hints: list[str] = []
+    assistant_hints: list[str] = []
     for message in reversed(conversation[-6:]):
         role = str(message.get("role") or "")
         content = str(message.get("content") or "").strip()
         if role not in {"user", "assistant"} or not content or content == user_prompt:
             continue
+        target = user_hints if role == "user" else assistant_hints
         for hint in _memory_subject_hints(content):
-            if hint not in recent_hints:
-                recent_hints.append(hint)
-        if len(recent_hints) >= 4:
+            if hint not in target:
+                target.append(hint)
+        if len(user_hints) >= 4 and len(assistant_hints) >= 4:
             break
-    return recent_hints
+
+    prioritized_hints: list[str] = []
+    for group in (user_hints, assistant_hints):
+        for hint in group:
+            if hint not in prioritized_hints:
+                prioritized_hints.append(hint)
+            if len(prioritized_hints) >= 8:
+                return prioritized_hints
+    return prioritized_hints
 
 
 def _is_ambiguous_memory_follow_up(user_prompt: str, conversation: list[dict[str, Any]]) -> bool:
