@@ -1480,7 +1480,7 @@ class DevenvKernel:
             return _summarize_directory_listing(candidate_path, listing_step.output)
 
         relevant_paths = self._select_local_relevant_paths(user_prompt, listing_step.output)
-        if _is_repo_summary_question(user_prompt):
+        if _is_repo_overview_question(user_prompt):
             relevant_paths = self._ensure_repo_summary_paths(relevant_paths, listing_step.output)
         if _is_architecture_question(user_prompt):
             relevant_paths = self._ensure_architecture_summary_paths(relevant_paths, listing_step.output)
@@ -1497,7 +1497,7 @@ class DevenvKernel:
         if not summary_sections:
             return _summarize_directory_listing(candidate_path, listing_step.output)
         ai_logs.append("Local-only answer assembled from workspace files")
-        if _is_architecture_question(user_prompt):
+        if _is_architecture_question(user_prompt) and not _is_repo_overview_question(user_prompt):
             joined = "\n- ".join(summary_sections)
             return "I inspected the backend entry points locally. The main pieces are:\n- " + joined
         return "\n\n".join(summary_sections)
@@ -2863,7 +2863,7 @@ class DevenvKernel:
             "opencode_client.py",
         }
         scored: list[tuple[int, str]] = []
-        repo_summary_prompt = _is_repo_summary_question(user_prompt)
+        repo_summary_prompt = _is_repo_overview_question(user_prompt)
         architecture_prompt = _is_architecture_question(user_prompt)
         if isinstance(entries, list):
             for entry in entries:
@@ -5162,6 +5162,22 @@ def _is_repo_summary_question(user_prompt: str) -> bool:
             "explain this repository",
             "summarize this codebase",
             "summarize the codebase",
+        )
+    )
+
+
+def _is_repo_overview_question(user_prompt: str) -> bool:
+    if _is_repo_summary_question(user_prompt):
+        return True
+    lowered = user_prompt.lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "how does the repo work",
+            "how does the repository work",
+            "how does the codebase work",
+            "how does this repo work",
+            "how does this repository work",
         )
     )
 

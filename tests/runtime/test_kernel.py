@@ -1237,6 +1237,30 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertNotIn("env.py", result.final_response or "")
         self.assertEqual(ai.chat_calls, [])
 
+    def test_repo_overview_prompt_prefers_repo_summary_shape_over_backend_only_shape(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            ai_dir = Path(tempdir) / "core" / "ai"
+            ai_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (runtime_dir / "web.py").write_text("class DevenvWebApp:\n    pass\n", encoding="utf-8")
+            (ai_dir / "routing.py").write_text("class RoutingAICore:\n    pass\n", encoding="utf-8")
+            (Path(tempdir) / "README.md").write_text("# Demo repo\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("how does the repo work?")
+
+        self.assertIn("README.md", result.final_response or "")
+        self.assertIn("kernel.py", result.final_response or "")
+        self.assertNotIn("I inspected the backend entry points locally.", result.final_response or "")
+
     def test_repo_summary_prompt_uses_opencode_to_summarize_bounded_local_evidence_when_enabled(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
