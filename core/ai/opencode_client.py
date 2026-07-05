@@ -180,7 +180,7 @@ class OpenCodeClient:
         if message_id:
             body["messageID"] = message_id
         if output_format:
-            body["format"] = output_format
+            body["outputFormat"] = output_format
         payload = self._request_json("POST", f"/session/{parse.quote(session_id, safe='')}/message", body=body)
         return _message_from_payload(payload)
 

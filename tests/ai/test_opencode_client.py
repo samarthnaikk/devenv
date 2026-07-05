@@ -81,6 +81,7 @@ class OpenCodeClientTest(unittest.TestCase):
         self.assertEqual(sent_body["model"]["providerID"], "openrouter")
         self.assertEqual(sent_body["system"], "Be brief")
         self.assertEqual(sent_body["tools"][0]["function"]["name"], "read_file")
+        self.assertEqual(sent_body["outputFormat"]["type"], "json_schema")
 
     def test_list_messages_and_abort_session(self) -> None:
         def fake_urlopen(req, timeout=0):
