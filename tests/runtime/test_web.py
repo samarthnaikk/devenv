@@ -126,7 +126,7 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertTrue(health["context_builder_enabled"])
         self.assertIn("context_sources", health)
         self.assertTrue(health["opencode_server"]["reachable"])
-        self.assertEqual(health["performance_mode"], "medium")
+        self.assertEqual(health["performance_mode"], "low")
         self.assertFalse(health["privacy"]["no_memory"])
         self.assertFalse(health["privacy"]["incognito"])
         self.assertIn("setup", health)

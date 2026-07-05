@@ -686,7 +686,7 @@ def main() -> int:
     parser.add_argument("--db-path", default="memory.db")
     parser.add_argument("--vector-dir", default="vectors")
     parser.add_argument("--max-consecutive-tools", type=int, default=5)
-    parser.add_argument("--performance-mode", default="medium", choices=("low", "medium", "high"))
+    parser.add_argument("--performance-mode", default="low", choices=("low", "medium", "high"))
     parser.add_argument("--port", type=int, default=4173)
     parser.add_argument("--log-level", default=None)
     args = parser.parse_args()

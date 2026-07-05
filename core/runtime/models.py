@@ -177,7 +177,7 @@ class RunConfig:
     db_path: str = "memory.db"
     vector_dir: str = "vectors"
     max_consecutive_tools: int = 5
-    performance_mode: str = PerformanceMode.MEDIUM.value
+    performance_mode: str = PerformanceMode.LOW.value
     no_memory: bool = False
     incognito: bool = False
     external_session_configs: tuple["ExternalSessionProviderConfig", ...] = ()
