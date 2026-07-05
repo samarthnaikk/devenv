@@ -3315,6 +3315,9 @@ class DevenvKernel:
             "external_context_session_count": 0,
             "external_context_session_ids": [],
         }
+        if self._should_skip_current_workspace_memory_lookup(user_prompt):
+            metadata["external_context_reason"] = "Skipped memory retrieval for a current-workspace inspection prompt."
+            return "", metadata
         lexical_query = _compose_external_memory_query(user_prompt, self.ephemeral_history)
         lexical_context = self._retrieve_lexical_memory_context(user_prompt, search_query=lexical_query)
         if lexical_context:
@@ -3356,6 +3359,11 @@ class DevenvKernel:
         if not memory_context.strip():
             return external_context, metadata
         return f"{memory_context.rstrip()}\n\n{external_context}", metadata
+
+    def _should_skip_current_workspace_memory_lookup(self, user_prompt: str) -> bool:
+        if not _should_skip_current_workspace_memory_lookup(user_prompt):
+            return False
+        return "list_directory" in self.tools
 
     def _persist_last_retrieval_trace(self, trace: Any) -> None:
         if trace is None:
@@ -4792,6 +4800,10 @@ def _tool_strategy_subject_prompt(user_prompt: str) -> str | None:
 
 
 def _should_skip_external_session_context(user_prompt: str) -> bool:
+    return _should_skip_current_workspace_memory_lookup(user_prompt)
+
+
+def _should_skip_current_workspace_memory_lookup(user_prompt: str) -> bool:
     lowered = user_prompt.lower().strip()
     if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt) or _is_session_history_question(user_prompt):
         return False
@@ -4801,6 +4813,10 @@ def _should_skip_external_session_context(user_prompt: str) -> bool:
             "summarize this repo",
             "summarize the repo",
             "summarize this repository",
+            "explain the repo",
+            "explain this repo",
+            "explain the repository",
+            "explain this repository",
             "how does the backend work",
             "how does this backend work",
             "explain the backend",

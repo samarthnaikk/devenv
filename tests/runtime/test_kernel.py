@@ -512,7 +512,41 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(builder.calls, 0)
         self.assertEqual(
             result.metadata["external_context_reason"],
-            "Skipped external session lookup for a current-workspace inspection prompt.",
+            "Skipped memory retrieval for a current-workspace inspection prompt.",
+        )
+        self.assertIn("README.md", result.final_response or "")
+
+    def test_execute_turn_skips_all_memory_lookup_for_current_workspace_repo_prompt_when_tools_are_available(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: (_ for _ in ()).throw(AssertionError("retrieve_context should be skipped"))
+        ai = FakeAI([])
+
+        class CountingBuilder:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def build_runtime_memory_context(self, task: str):
+                self.calls += 1
+                return "", (), {}
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (Path(tempdir) / "README.md").write_text("# Demo repo\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            builder = CountingBuilder()
+            kernel.context_builder = builder
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("Explain the repo")
+
+        self.assertEqual(builder.calls, 0)
+        self.assertEqual(
+            result.metadata["external_context_reason"],
+            "Skipped memory retrieval for a current-workspace inspection prompt.",
         )
         self.assertIn("README.md", result.final_response or "")
 
