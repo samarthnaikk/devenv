@@ -30,6 +30,14 @@ uv pip install devenv-ai
 
 Point Devenv AI at the folder you want it to work inside.
 
+Devenv's OpenCode integration is server-backed by default. Install the `opencode` CLI and make sure `opencode serve` can run locally; Devenv will connect to the OpenCode HTTP server at `http://127.0.0.1:4096` by default. You can override this with:
+
+```bash
+export OPENCODE_SERVER_URL=http://127.0.0.1:4096
+export OPENCODE_SERVER_USERNAME=opencode
+export OPENCODE_SERVER_PASSWORD=your-password
+```
+
 Launch the local web experience:
 
 ```bash
@@ -156,6 +164,16 @@ Key areas:
 - `core.memory`: memory interfaces, storage, retrieval, consolidation, embeddings, and models
 - `core.runtime`: terminal runtime, web runtime, MCP server, and runtime orchestration
 - `core.tools`: base tool abstractions and local tool implementations
+- `core.ai`: OpenCode transport, routing, and model-facing contracts
+
+### OpenCode runtime architecture
+
+Devenv keeps control of planning, memory retrieval, verification, transcript persistence, and tool execution. OpenCode is used as the AI backend through its server/session APIs.
+
+- Devenv talks to OpenCode through a Python HTTP client instead of scraping `opencode run` output
+- OpenCode sessions are reused across a Devenv conversation and reset when a new thread starts
+- Devenv tools remain the only executable tool surface; OpenCode can request them, but Devenv validates and executes them
+- the legacy CLI parser is still available only as an emergency fallback when `DEVENV_OPENCODE_USE_LEGACY_CLI=1`
 
 Main public memory entry point:
 

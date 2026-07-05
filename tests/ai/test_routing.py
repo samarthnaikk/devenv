@@ -192,8 +192,16 @@ class OpenCodeRoutingTest(unittest.TestCase):
             )
             script_path.chmod(script_path.stat().st_mode | stat.S_IEXEC)
 
-            core = OpenCodeAICore(workspace_path=tempdir, executable=str(script_path), model="openrouter/test")
-            response = core.chat(messages=[{"role": "user", "content": "hello"}], memory_context="## Memory")
+            previous = os.environ.get("DEVENV_OPENCODE_USE_LEGACY_CLI")
+            os.environ["DEVENV_OPENCODE_USE_LEGACY_CLI"] = "1"
+            try:
+                core = OpenCodeAICore(workspace_path=tempdir, executable=str(script_path), model="openrouter/test")
+                response = core.chat(messages=[{"role": "user", "content": "hello"}], memory_context="## Memory")
+            finally:
+                if previous is None:
+                    os.environ.pop("DEVENV_OPENCODE_USE_LEGACY_CLI", None)
+                else:
+                    os.environ["DEVENV_OPENCODE_USE_LEGACY_CLI"] = previous
 
         self.assertEqual(response.content, "OpenCode answered")
         self.assertEqual(response.usage["total_tokens"], 13)

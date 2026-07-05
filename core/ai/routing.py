@@ -103,9 +103,7 @@ class OpenCodeAICore:
 
     def _should_use_legacy_cli(self) -> bool:
         explicit = os.getenv("DEVENV_OPENCODE_USE_LEGACY_CLI", "").strip().lower()
-        if explicit in {"1", "true", "yes", "on"}:
-            return True
-        return self.executable != "opencode"
+        return explicit in {"1", "true", "yes", "on"}
 
     def _server_chat(
         self,
