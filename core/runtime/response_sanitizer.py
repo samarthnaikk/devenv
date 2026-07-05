@@ -4,6 +4,46 @@ import json
 import re
 
 
+def _extract_ui_transcript_answer(content: str) -> str | None:
+    raw = str(content or "").strip()
+    if not raw:
+        return None
+
+    lines = raw.splitlines()
+    extracted_answers: list[str] = []
+    index = 0
+    total = len(lines)
+
+    while index < total:
+        if lines[index].strip().lower() != "you":
+            index += 1
+            continue
+
+        index += 1
+        while index < total and lines[index].strip().lower() != "devenv status":
+            index += 1
+        if index >= total:
+            break
+
+        while index < total and lines[index].strip().lower() != "devenv":
+            index += 1
+        if index >= total:
+            break
+
+        index += 1
+        answer_lines: list[str] = []
+        while index < total and lines[index].strip().lower() != "you":
+            answer_lines.append(lines[index])
+            index += 1
+        answer = "\n".join(answer_lines).strip()
+        if answer:
+            extracted_answers.append(answer)
+
+    if not extracted_answers:
+        return None
+    return extracted_answers[-1]
+
+
 def _normalize_replay_error(message: str) -> str:
     cleaned = " ".join(str(message or "").split())
     if not cleaned:
@@ -92,7 +132,7 @@ def trim_response_noise(content: str | None) -> str | None:
 
 
 def normalize_response_text(content: str) -> str:
-    text = str(content or "").strip()
+    text = _extract_ui_transcript_answer(str(content or "")) or str(content or "").strip()
     if not text:
         return ""
 
@@ -131,6 +171,8 @@ def normalize_response_text(content: str) -> str:
     noisy_lines = {
         "devenv status",
         "tool trace",
+        "opencode",
+        "devenv",
         "prepared the final answer",
         "prepared the context for the next tool step",
         "reasoned through the next step",
@@ -142,7 +184,7 @@ def normalize_response_text(content: str) -> str:
         if not normalized:
             cleaned_lines.append("")
             continue
-        if normalized in noisy_lines:
+        if normalized in noisy_lines or normalized == "⚡" or re.fullmatch(r"\d+s", normalized):
             continue
         cleaned_lines.append(line)
 

@@ -651,6 +651,50 @@ class DevenvWebAppTest(unittest.TestCase):
             "Yes. The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
         )
 
+    def test_run_turn_extracts_assistant_answer_from_ui_transcript_dump(self) -> None:
+        noisy = "\n".join(
+            [
+                "You",
+                "",
+                "what do you know about clean up schrema og get-drip",
+                "",
+                "Devenv status",
+                "Tool trace",
+                "2s",
+                "OpenCode",
+                "⚡",
+                "Prepared the final answer",
+                "TracePrepared the final answer",
+                "Devenv",
+                "",
+                "Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.",
+            ]
+        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.kernel.execute_turn = lambda prompt, **kwargs: type(
+                "Result",
+                (),
+                {
+                    "to_dict": lambda self: {
+                        "final_response": noisy,
+                        "total_usage": {},
+                        "metadata": {"backend_used": "opencode", "budget_state": {"blocked": False}},
+                    }
+                },
+            )()
+
+            result = app.run_turn("hello")
+
+        self.assertEqual(
+            result["final_response"],
+            "Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.",
+        )
+
     def test_health_payload_exposes_indexing_progress_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir)
