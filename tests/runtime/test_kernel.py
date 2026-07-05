@@ -243,6 +243,33 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(ai.chat_calls[0]["tool_names"], ["read_file"])
         self.assertIn("User selected tools: read_file", result.system_logs)
 
+    def test_execute_turn_answers_tool_strategy_question_locally_for_memory_recall(self) -> None:
+        memory = FailingMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("what tools do you need to answer what do you know about get-drip bugs")
+
+        self.assertEqual(
+            result.final_response,
+            "For that question I would not need workspace tools first. Devenv should answer from memory/retrieval, and only fall back if prior context is not reliable enough.",
+        )
+
+    def test_execute_turn_answers_tool_strategy_question_locally_for_web_lookup(self) -> None:
+        memory = FailingMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(WebSearchTool())
+            result = kernel.execute_turn("what tools do you need to answer search the latest docs for opencode")
+
+        self.assertEqual(
+            result.final_response,
+            "For that question I would use `web_search` first, then answer from the retrieved results.",
+        )
+
     def test_execute_turn_appends_external_session_context_to_memory(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(

@@ -270,6 +270,33 @@ class DevenvKernel:
                 elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
             )
 
+        tool_strategy_response = self._answer_tool_strategy_question(user_prompt, selected_tools=turn_metadata["selected_tools"])
+        if tool_strategy_response is not None:
+            ai_logs.append("Answered tool-strategy question locally from routing rules")
+            system_logs.append("Tool-strategy fast path bypassed memory retrieval and model usage.")
+            conversation.append({"role": "assistant", "content": tool_strategy_response})
+            self._finalize_turn(
+                user_prompt,
+                tool_strategy_response,
+                conversation,
+                persist_memory=False,
+                persist_working_memory=False,
+                metadata=turn_metadata,
+            )
+            return RuntimeTurnResult(
+                final_response=tool_strategy_response,
+                steps=[],
+                total_usage={},
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                stage_traces=stage_traces,
+                verification_results=verification_results,
+                metadata=turn_metadata,
+                state=self.state.name,
+                blueprint=self.active_blueprint,
+                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+            )
+
         if _is_ambiguous_memory_follow_up(user_prompt, conversation):
             fast_response = "What should I explain? I don't have a clear prior subject in this thread yet."
             ai_logs.append("Blocked ambiguous follow-up from broad memory retrieval")
@@ -2053,6 +2080,32 @@ class DevenvKernel:
             for tool_name in (selected_tools or ())
             if isinstance(tool_name, str) and tool_name.strip() in self.tools
         }
+
+    def _answer_tool_strategy_question(
+        self,
+        user_prompt: str,
+        *,
+        selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
+    ) -> str | None:
+        subject_prompt = _tool_strategy_subject_prompt(user_prompt)
+        if subject_prompt is None:
+            return None
+
+        if _should_try_direct_memory_answer(subject_prompt):
+            return (
+                "For that question I would not need workspace tools first. "
+                "Devenv should answer from memory/retrieval, and only fall back if prior context is not reliable enough."
+            )
+
+        scoped_tools = self._resolve_direct_tool_scope(subject_prompt, selected_tools=selected_tools)
+        if not scoped_tools:
+            return "I would answer that directly without tools unless the first pass showed missing context."
+        if scoped_tools == ["web_search"]:
+            return "For that question I would use `web_search` first, then answer from the retrieved results."
+        return (
+            "For that question Devenv would stay in charge of tool choice. "
+            f"It would start with this bounded tool scope if needed: {', '.join(f'`{name}`' for name in scoped_tools)}."
+        )
 
     def _scoped_tool_names(self, selected_tools: list[str] | tuple[str, ...] | set[str] | None = None) -> list[str]:
         resolved = sorted(self._resolve_selected_tools(selected_tools))
@@ -3916,6 +3969,23 @@ def _memory_only_fallback_response(user_prompt: str) -> str:
     if _is_memory_follow_up_question(user_prompt):
         return "I couldn't recover a reliable prior note for that follow-up."
     return "I couldn't recover a reliable prior answer for that yet."
+
+
+def _tool_strategy_subject_prompt(user_prompt: str) -> str | None:
+    lowered = user_prompt.lower().strip()
+    patterns = (
+        r"^(?:what|which)\s+tools\s+do\s+you\s+need\s+to\s+answer\s+(.+)$",
+        r"^do\s+you\s+need\s+any\s+tools\s+to\s+answer\s+(.+)$",
+        r"^would\s+you\s+need\s+any\s+tools\s+to\s+answer\s+(.+)$",
+        r"^how\s+would\s+you\s+answer\s+(.+)$",
+    )
+    for pattern in patterns:
+        match = re.match(pattern, lowered, flags=re.IGNORECASE)
+        if not match:
+            continue
+        subject = match.group(1).strip()
+        return subject.rstrip(" ?")
+    return None
 
 
 def _lexical_memory_terms(user_prompt: str) -> list[str]:
