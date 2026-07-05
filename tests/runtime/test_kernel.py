@@ -2907,6 +2907,32 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("Relevant paths I found", result.final_response or "")
         self.assertIn("OpenCode server request failed with status 400.", result.error_message or "")
 
+    def test_execute_turn_clarifies_underspecified_troubleshooting_prompt_without_memory_or_ai(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: (_ for _ in ()).throw(AssertionError("retrieve_context should be skipped"))
+        ai = ExplodingAI([])
+
+        class CountingBuilder:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def build_runtime_memory_context(self, task: str):
+                self.calls += 1
+                return "", (), {}
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            builder = CountingBuilder()
+            kernel.context_builder = builder
+            result = kernel.execute_turn("why does this fail?")
+
+        self.assertEqual(
+            result.final_response,
+            "What is failing? Share the command, error message, file, or step that is breaking so I can trace it accurately.",
+        )
+        self.assertEqual(builder.calls, 0)
+        self.assertEqual(result.steps, [])
+
     def test_answer_from_retrieved_memory_does_not_answer_generic_why_does_prompt_from_unrelated_memory(self) -> None:
         answer = _answer_from_retrieved_memory(
             "Why does this fail?",

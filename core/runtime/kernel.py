@@ -353,6 +353,33 @@ class DevenvKernel:
                 elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
             )
 
+        if _is_underspecified_troubleshooting_prompt(user_prompt):
+            fast_response = "What is failing? Share the command, error message, file, or step that is breaking so I can trace it accurately."
+            ai_logs.append("Blocked underspecified troubleshooting prompt from broad retrieval and model usage")
+            system_logs.append("Troubleshooting clarification fast path bypassed memory retrieval and model usage.")
+            conversation.append({"role": "assistant", "content": fast_response})
+            self._finalize_turn(
+                user_prompt,
+                fast_response,
+                conversation,
+                persist_memory=False,
+                persist_working_memory=False,
+                metadata=turn_metadata,
+            )
+            return RuntimeTurnResult(
+                final_response=fast_response,
+                steps=[],
+                total_usage={},
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                stage_traces=stage_traces,
+                verification_results=verification_results,
+                metadata=turn_metadata,
+                state=self.state.name,
+                blueprint=self.active_blueprint,
+                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+            )
+
         if _is_ambiguous_memory_follow_up(user_prompt, conversation):
             fast_response = "What should I explain? I don't have a clear prior subject in this thread yet."
             ai_logs.append("Blocked ambiguous follow-up from broad memory retrieval")
@@ -4813,6 +4840,28 @@ def _tool_strategy_subject_prompt(user_prompt: str) -> str | None:
         subject = match.group(1).strip()
         return subject.rstrip(" ?")
     return None
+
+
+def _is_underspecified_troubleshooting_prompt(user_prompt: str) -> bool:
+    lowered = user_prompt.lower().strip()
+    if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
+        return False
+    if any(token in lowered for token in ("repo", "repository", "codebase", "backend", "system", "project", "get-drip", "getgit")):
+        return False
+    return lowered in {
+        "why does this fail?",
+        "why does this fail",
+        "why is this failing?",
+        "why is this failing",
+        "why did this fail?",
+        "why did this fail",
+        "why doesn't this work?",
+        "why doesn't this work",
+        "why is this broken?",
+        "why is this broken",
+        "what is failing?",
+        "what is failing",
+    }
 
 
 def _should_skip_external_session_context(user_prompt: str) -> bool:
