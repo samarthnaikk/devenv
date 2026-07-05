@@ -1169,6 +1169,75 @@ class DevenvKernelTest(unittest.TestCase):
             "Yes. It was about cleaning up schema-related retrieval and app flow issues.",
         )
 
+    def test_shape_logged_project_answer_humanizes_getdrip_bug_list(self) -> None:
+        memory = FakeMemory()
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                if query == "what do you know about get-drip bugs":
+                    return [
+                        "\n".join(
+                            [
+                                "Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:",
+                                "",
+                                "1. Create Workspace accepting https links and converting them internally",
+                                "2. Salesforce being marked as coming soon or disabled",
+                                "3. The DRIP pipeline chat flow not working",
+                                "4. test/publish staying reachable after approvals",
+                                "5. root URL redirects",
+                                "6. Convex generated imports",
+                                "7. authentication bypass (critical)",
+                            ]
+                        )
+                    ]
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return []
+
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel._lookup_exact_logged_answer("what do you know about get-drip bugs")
+
+        self.assertIn("In get-drip, the recalled bug list was:", result or "")
+        self.assertNotIn("Based on the code in", result or "")
+
+    def test_answer_from_retrieved_memory_explains_bug_fix_follow_up(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "how did we fix those bugs",
+            "\n".join(
+                [
+                    "## Working Memory",
+                    "- assistant: Yes. get-drip came up in prior sessions.",
+                    "## External Session Context",
+                    "- User asked: Create Workspace -> accept the https link and convert it internally.",
+                    "- Assistant reported: get-drip still had bugs around root URL redirects and Convex generated imports.",
+                    "- Assistant reported: the DRIP pipeline chat flow did not work and Salesforce was marked as coming soon.",
+                ]
+            ),
+        )
+
+        self.assertEqual(
+            answer,
+            "Yes. In get-drip, we fixed those bugs by addressing Create Workspace accepting https links and converting them internally, Salesforce being marked as coming soon or disabled, the DRIP pipeline chat flow not working, root URL redirects, and Convex generated imports.",
+        )
+
+    def test_clean_memory_follow_up_rejects_transcript_dump_lines(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "what were those",
+            "\n".join(
+                [
+                    "## External Session Context",
+                    "- Assistant reported: Q. do you know about get-drip bugs A. Yes. Because we fixed correctness/review issues. Devenv status Tool trace 14s OpenCode Prepared the final answer.",
+                    "- Assistant reported: Create Workspace -> accept the https link and convert it internally.",
+                    "- Assistant reported: the DRIP pipeline chat flow did not work.",
+                ]
+            ),
+        )
+
+        self.assertNotIn("Devenv status", answer or "")
+        self.assertNotIn("Tool trace", answer or "")
+
     def test_answer_from_retrieved_memory_rejects_single_file_memory_for_repo_summary_prompt(self) -> None:
         answer = _answer_from_retrieved_memory(
             "Explain the repo",

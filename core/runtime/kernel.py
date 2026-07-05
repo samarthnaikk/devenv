@@ -1462,7 +1462,7 @@ class DevenvKernel:
             except Exception:
                 return None
 
-        allow_fallback_candidates = not _is_bug_list_question(user_prompt)
+        allow_fallback_candidates = True
         fallback_candidates: list[tuple[int, str]] = []
         terms = _lexical_memory_terms(user_prompt)
         for log in logs:
@@ -3176,6 +3176,10 @@ def _shape_logged_project_answer(user_prompt: str, answer: str) -> str:
         return ""
 
     lowered_prompt = user_prompt.lower()
+    if "get-drip" in lowered_prompt and _is_bug_list_question(user_prompt):
+        issues = _extract_follow_up_issues(_memory_context_lines(cleaned))
+        if issues:
+            return _format_issue_list_answer("get-drip", issues)
     if "get-drip" in lowered_prompt and ("schema" in lowered_prompt or "cleanup" in lowered_prompt):
         issues = _extract_follow_up_issues(_memory_context_lines(cleaned))
         if issues:
@@ -3209,6 +3213,10 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
             synthesized_issues = _summarize_follow_up_issues(shaped_follow_up)
             if synthesized_issues:
                 subject = _infer_memory_subject(sections["working"] + sections["external"] + sections["retrieved"])
+                if _is_bug_fix_follow_up_question(user_prompt):
+                    if subject:
+                        return f"Yes. In {subject}, we fixed those bugs by addressing {synthesized_issues}."
+                    return f"Yes. We fixed those bugs by addressing {synthesized_issues}."
                 if _is_bug_list_question(user_prompt):
                     return _format_issue_list_answer(subject, _extract_follow_up_issues(shaped_follow_up))
                 if subject:
@@ -3301,9 +3309,17 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     if not _memory_answer_matches_question(user_prompt, shaped):
         return None
     if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
+        issue_summary = _summarize_follow_up_issues(shaped)
+        subject = _preferred_memory_subject(user_prompt, sections["external"] + sections["working"] + sections["retrieved"])
+        if issue_summary and _is_bug_fix_follow_up_question(user_prompt):
+            if subject:
+                return f"Yes. In {subject}, we fixed those bugs by addressing {issue_summary}."
+            return f"Yes. We fixed those bugs by addressing {issue_summary}."
+        if issue_summary and ("what were those" in user_prompt.lower() or "those bugs" in user_prompt.lower()):
+            if subject:
+                return f"Yes. In {subject}, the main issues were {issue_summary}."
+            return f"Yes. The main issues were {issue_summary}."
         if _has_explicit_memory_subject(user_prompt):
-            subject = _preferred_memory_subject(user_prompt, sections["external"] + sections["working"] + sections["retrieved"])
-            issue_summary = _summarize_follow_up_issues(shaped)
             if issue_summary and _is_bug_list_question(user_prompt):
                 return _format_issue_list_answer(subject, _extract_follow_up_issues(shaped))
             if subject and issue_summary:
@@ -3377,7 +3393,7 @@ def _clean_memory_line(line: str) -> str:
     cleaned = re.sub(r"^\[[^\]]+\]\s*", "", cleaned)
     cleaned = re.sub(r"^(episodic memory|episode)\s+[a-f0-9-]+:\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^(assistant|user|tool):\s*", "", cleaned, flags=re.IGNORECASE)
-    return cleaned.strip()
+    return _sanitize_logged_answer(cleaned).strip()
 
 
 def _affirm_memory_answer(text: str) -> str:
@@ -3450,7 +3466,7 @@ def _extract_follow_up_issues(lines: list[str]) -> list[str]:
         if "salesforce" in lowered and ("coming soon" in lowered or "disable" in lowered):
             detected.append(issue_map["salesforce_state"])
         if "pipeline chat" in lowered and (
-            "does not work" in lowered or "did not work" in lowered or "broken" in lowered or "fix" in lowered
+            "does not work" in lowered or "did not work" in lowered or "not working" in lowered or "broken" in lowered or "fix" in lowered
         ):
             detected.append(issue_map["pipeline_chat"])
         if ("test/publish" in lowered or "test and publish" in lowered) and ("approval" in lowered or "approvals" in lowered):
@@ -3459,7 +3475,7 @@ def _extract_follow_up_issues(lines: list[str]) -> list[str]:
             detected.append(issue_map["root_redirects"])
         if "convex generated imports" in lowered:
             detected.append(issue_map["convex_imports"])
-        if ("authentication bypass" in lowered or "auth bypass" in lowered) and "critical" in lowered:
+        if "authentication bypass" in lowered or "auth bypass" in lowered:
             detected.append(issue_map["auth_bypass"])
         if "open email relay" in lowered:
             detected.append(issue_map["open_email_relay"])
@@ -3678,6 +3694,10 @@ def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
         "i do not have access",
         "good, but its too less of info",
         "good, but it's too less of info",
+        "devenv status",
+        "tool trace",
+        "prepared the final answer",
+        "reasoned through the next step",
     )
     if any(marker in lowered for marker in reject_markers):
         return False
@@ -3944,6 +3964,9 @@ def _is_memory_follow_up_question(user_prompt: str) -> bool:
         "what was that about",
         "those bugs",
         "those reviews",
+        "how did we fix those bugs",
+        "how did we fix them",
+        "how were those fixed",
         "a few reviews",
         "a few bugs",
     )
@@ -3952,11 +3975,24 @@ def _is_memory_follow_up_question(user_prompt: str) -> bool:
     return not _has_explicit_memory_subject(user_prompt)
 
 
+def _is_bug_fix_follow_up_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "how did we fix those bugs",
+            "how did we fix them",
+            "how were those fixed",
+        )
+    )
+
+
 def _is_bug_list_question(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     return any(
         phrase in lowered
         for phrase in (
+            "get-drip bugs",
             "bug list",
             "list the bugs",
             "exact bugs",
