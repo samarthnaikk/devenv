@@ -1313,6 +1313,76 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("routing.py", result.final_response or "")
         self.assertNotIn("requirements.txt", result.final_response or "")
 
+    def test_tool_strategy_parser_handles_how_do_you_decide_tool_prompt(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("how do you decide what tools to use for tell me about the backend?")
+
+        self.assertIn("Devenv should stay in charge of retrieval", result.final_response or "")
+        self.assertIn("inspect_symbols", result.final_response or "")
+        self.assertEqual(result.metadata["backend_used"], "local")
+
+    def test_system_prompt_prefers_current_workspace_architecture_summary(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="## Retrieved Memory\n- An unrelated old session said the system used persona scoring."
+        )
+        ai = TransportErrorAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            ai_dir = Path(tempdir) / "core" / "ai"
+            ai_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (runtime_dir / "web.py").write_text("class DevenvWebApp:\n    pass\n", encoding="utf-8")
+            (ai_dir / "routing.py").write_text("class RoutingAICore:\n    pass\n", encoding="utf-8")
+            (Path(tempdir) / "README.md").write_text("# Demo repo\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("how does the system work?")
+
+        self.assertIn("kernel.py", result.final_response or "")
+        self.assertIn("web.py", result.final_response or "")
+        self.assertIn("routing.py", result.final_response or "")
+        self.assertNotIn("persona scoring", result.final_response or "")
+
+    def test_tell_me_about_system_prompt_prefers_current_workspace_architecture_summary(self) -> None:
+        memory = FakeMemory()
+        ai = TransportErrorAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            ai_dir = Path(tempdir) / "core" / "ai"
+            ai_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (runtime_dir / "web.py").write_text("class DevenvWebApp:\n    pass\n", encoding="utf-8")
+            (ai_dir / "routing.py").write_text("class RoutingAICore:\n    pass\n", encoding="utf-8")
+            (Path(tempdir) / "README.md").write_text("# Demo repo\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("tell me about the system")
+
+        self.assertIn("kernel.py", result.final_response or "")
+        self.assertIn("web.py", result.final_response or "")
+        self.assertIn("routing.py", result.final_response or "")
+
     def test_repo_summary_prompt_uses_opencode_to_summarize_bounded_local_evidence_when_enabled(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(

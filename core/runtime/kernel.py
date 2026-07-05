@@ -2377,7 +2377,7 @@ class DevenvKernel:
     ) -> str | None:
         if _is_opencode_access_denied_error(error):
             lowered = user_prompt.lower()
-            if any(marker in lowered for marker in ("repo", "repository", "codebase")):
+            if any(marker in lowered for marker in ("repo", "repository", "codebase", "backend", "architecture", "system")):
                 workspace_answer = self._answer_from_workspace_inspection(
                     user_prompt=user_prompt,
                     candidate_path=self.workspace_path,
@@ -2412,7 +2412,7 @@ class DevenvKernel:
                 return memory_answer
 
         lowered = user_prompt.lower()
-        if any(marker in lowered for marker in ("repo", "repository", "codebase", "backend", "architecture")):
+        if any(marker in lowered for marker in ("repo", "repository", "codebase", "backend", "architecture", "system")):
             workspace_answer = self._answer_from_workspace_inspection(
                 user_prompt=user_prompt,
                 candidate_path=self.workspace_path,
@@ -4800,6 +4800,8 @@ def _tool_strategy_subject_prompt(user_prompt: str) -> str | None:
     patterns = (
         r"^(?:what|which)\s+tools\s+do\s+you\s+need\s+to\s+answer\s+(.+)$",
         r"^(?:what|which)\s+tools\s+would\s+you\s+use\s+to\s+answer\s+(.+)$",
+        r"^how\s+do\s+you\s+decide\s+what\s+tools\s+to\s+use\s+for\s+(.+)$",
+        r"^how\s+do\s+you\s+choose\s+what\s+tools\s+to\s+use\s+for\s+(.+)$",
         r"^do\s+you\s+need\s+any\s+tools\s+to\s+answer\s+(.+)$",
         r"^would\s+you\s+need\s+any\s+tools\s+to\s+answer\s+(.+)$",
         r"^how\s+would\s+you\s+answer\s+(.+)$",
@@ -4843,12 +4845,16 @@ def _should_skip_current_workspace_memory_lookup(user_prompt: str) -> bool:
             "explain this backend",
             "tell me about the backend",
             "tell me about this backend",
+            "tell me about the system",
+            "tell me about this system",
             "what is the backend architecture",
             "show me the backend architecture",
             "how does this repo work",
             "how does the repo work",
             "how does this repository work",
             "how does the repository work",
+            "how does the system work",
+            "how does this system work",
         )
     )
 
@@ -5138,6 +5144,7 @@ def _is_architecture_question(user_prompt: str) -> bool:
         for marker in (
             "architecture",
             "backend",
+            "system",
             "same architecture",
             "look different",
             "how does the repo work",
@@ -5270,6 +5277,8 @@ def _prefers_deeper_workspace_scan(user_prompt: str) -> bool:
             "tell me about this repository",
             "tell me about the repository",
             "how does the system work",
+            "tell me about the system",
+            "tell me about this system",
             "how does this backend work",
             "tell me about this codebase",
             "tell me about the codebase",
