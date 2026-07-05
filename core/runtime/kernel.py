@@ -533,6 +533,37 @@ class DevenvKernel:
             )
         except RuntimeError as exc:
             system_logs.append(f"Execution failed: {exc}")
+            degraded_response = self._fallback_response_for_runtime_error(
+                user_prompt=user_prompt,
+                error=exc,
+                steps=steps,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+            )
+            if degraded_response is not None:
+                conversation.append({"role": "assistant", "content": degraded_response})
+                self._finalize_turn(
+                    user_prompt,
+                    degraded_response,
+                    conversation,
+                    metadata=turn_metadata,
+                    persist_memory=not incognito,
+                    persist_working_memory=not incognito,
+                )
+                return RuntimeTurnResult(
+                    final_response=degraded_response,
+                    steps=steps,
+                    total_usage=total_usage,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                    stage_traces=stage_traces,
+                    verification_results=verification_results,
+                    metadata=turn_metadata,
+                    state=self.state.name,
+                    blueprint=self.active_blueprint,
+                    error_message=str(exc),
+                    elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                )
             split_blueprint = self._split_active_checkpoint(self.active_blueprint, active_index, reason=str(exc))
             if split_blueprint is not None:
                 self.active_blueprint = split_blueprint
@@ -2065,6 +2096,34 @@ class DevenvKernel:
             "folder",
         )
         return any(marker in text for marker in mutation_markers)
+
+    def _fallback_response_for_runtime_error(
+        self,
+        *,
+        user_prompt: str,
+        error: RuntimeError,
+        steps: list[ToolExecutionStep],
+        ai_logs: list[str],
+        system_logs: list[str],
+    ) -> str | None:
+        if not _is_opencode_access_denied_error(error):
+            return None
+
+        lowered = user_prompt.lower()
+        if any(marker in lowered for marker in ("repo", "repository", "codebase")):
+            workspace_answer = self._answer_from_workspace_inspection(
+                user_prompt=user_prompt,
+                candidate_path=self.workspace_path,
+                steps=steps,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+            )
+            if workspace_answer:
+                ai_logs.append("Returned local workspace fallback after OpenCode access denial")
+                return f"OpenCode backend access is not granted right now, so here's a local workspace summary instead:\n\n{workspace_answer}"
+
+        ai_logs.append("Returned degraded access-denied response")
+        return "OpenCode backend access has not been granted, so I couldn't run the reasoning stage for that prompt."
 
     def _resolve_direct_tool_scope(
         self,
@@ -3642,6 +3701,12 @@ def _is_high_signal_memory_answer(candidate: str, user_prompt: str) -> bool:
         return False
     if normalized.strip(" .,:;!?") == prompt_lowered.strip(" .,:;!?"):
         return False
+    if ("repo" in prompt_lowered or "repository" in prompt_lowered or "codebase" in prompt_lowered) and any(
+        marker in lowered for marker in ("main.py", "server.py", "app.py")
+    ) and not any(
+        marker in lowered for marker in ("repo", "repository", "codebase", "workspace", "files", "folders", "architecture", "backend")
+    ):
+        return False
     if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt):
         if normalized.startswith(low_signal_prefixes):
             return False
@@ -3923,8 +3988,6 @@ def _should_try_direct_memory_answer(user_prompt: str) -> bool:
         for phrase in (
             "what architecture",
             "which architecture",
-            "does ",
-            "why does",
             "list the concrete files",
             "list the files",
             "what other work",
@@ -3932,9 +3995,6 @@ def _should_try_direct_memory_answer(user_prompt: str) -> bool:
             "what can be said confidently",
             "what remains unclear",
             "what was the backend",
-            "how does",
-            "tell me about",
-            "explain",
             "bug list",
             "exact bugs",
             "what bugs did we fix",
@@ -3986,6 +4046,11 @@ def _tool_strategy_subject_prompt(user_prompt: str) -> str | None:
         subject = match.group(1).strip()
         return subject.rstrip(" ?")
     return None
+
+
+def _is_opencode_access_denied_error(error: RuntimeError) -> bool:
+    lowered = str(error).strip().lower()
+    return "opencode backend access has not been granted" in lowered
 
 
 def _lexical_memory_terms(user_prompt: str) -> list[str]:
@@ -4049,6 +4114,18 @@ def _memory_answer_matches_question(user_prompt: str, shaped_lines: list[str]) -
     lowered_prompt = user_prompt.lower()
     joined = " \n ".join(shaped_lines).lower()
 
+    if "repo" in lowered_prompt or "repository" in lowered_prompt or "codebase" in lowered_prompt:
+        return any(
+            marker in joined
+            for marker in ("repo", "repository", "codebase", "workspace", "files", "folders", "module", "architecture", "backend")
+        )
+    if (
+        lowered_prompt.startswith("why ")
+        or lowered_prompt.startswith("how ")
+        or lowered_prompt.startswith("explain ")
+    ) and not (_is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt)):
+        significant_tokens = [token for token in _memory_query_tokens(user_prompt) if token not in {"what", "this", "that", "about"}]
+        return any(token in joined for token in significant_tokens)
     if _is_session_history_question(user_prompt):
         return any(marker in joined for marker in ("merge conflict", "conflict", "resolved", "resolution", "rebase", "branch"))
     if _is_bug_list_question(user_prompt):

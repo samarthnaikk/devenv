@@ -18,7 +18,7 @@ from core.memory.vector_index import InMemoryVectorIndex
 from core.runtime import DevenvKernel
 from core.runtime.context_builder import ContextBuilderService
 from core.runtime.kernel import _answer_from_retrieved_memory, _compose_external_memory_query, _sanitize_logged_answer, _summarize_directory_listing
-from core.runtime.local_model import SentenceTransformerLocalModel
+from core.runtime.local_model import FallbackLocalModel, SentenceTransformerLocalModel, load_local_small_model
 from core.runtime.local_router import LocalRouteDecision
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode
 from core.tools.list_directory import ListDirectoryTool
@@ -144,6 +144,17 @@ class ExplodingAI(FakeAI):
         raise AssertionError("Local-only mode should not call the remote AI client")
 
 
+class AccessDeniedAI(FakeAI):
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        memory_context: str | None = None,
+        temperature: float = 0.2,
+        tool_names: list[str] | tuple[str, ...] | set[str] | None = None,
+    ) -> AIResponse:
+        raise RuntimeError("OpenCode backend access has not been granted.")
+
+
 class DevenvKernelTest(unittest.TestCase):
     def test_sentence_transformer_local_model_falls_back_when_embedding_model_is_unavailable(self) -> None:
         model = SentenceTransformerLocalModel()
@@ -161,6 +172,13 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertTrue(selection.used_fallback)
         self.assertEqual(selection.model_name, "deterministic-fallback")
         self.assertTrue(selection.selected_lines)
+
+    def test_load_local_small_model_defaults_to_deterministic_fallback(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("DEVENV_USE_SENTENCE_TRANSFORMER_LOCAL_MODEL", None)
+            model = load_local_small_model()
+
+        self.assertIsInstance(model, FallbackLocalModel)
 
     def test_register_tool_syncs_runtime_and_ai(self) -> None:
         memory = FakeMemory()
@@ -1151,6 +1169,19 @@ class DevenvKernelTest(unittest.TestCase):
             "Yes. It was about cleaning up schema-related retrieval and app flow issues.",
         )
 
+    def test_answer_from_retrieved_memory_rejects_single_file_memory_for_repo_summary_prompt(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "Explain the repo",
+            "\n".join(
+                [
+                    "## Retrieved Memory",
+                    "- [episode] can you explain how the main.py works | The `main.py` file is a Python script that sets up a simple HTTP server to serve the demo calendar app.",
+                ]
+            ),
+        )
+
+        self.assertIsNone(answer)
+
     def test_execute_turn_clarifies_ambiguous_follow_up_without_memory_lookup(self) -> None:
         memory = FailingMemory()
         ai = ExplodingAI([])
@@ -1688,6 +1719,52 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(result.final_response, "Fallback answer")
         self.assertEqual(ai.chat_calls[0]["memory_context"], "")
+
+    def test_execute_turn_returns_local_repo_summary_when_opencode_access_is_denied(self) -> None:
+        memory = EmptyMemory()
+        ai = AccessDeniedAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            repo_root = Path(tempdir)
+            (repo_root / "src").mkdir()
+            (repo_root / "README.md").write_text("# Demo repo\n", encoding="utf-8")
+            (repo_root / "src" / "app.py").write_text("print('hi')\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            result = kernel.execute_turn("Explain the repo")
+
+        self.assertIsNotNone(result.final_response)
+        self.assertIn("OpenCode backend access is not granted right now", result.final_response or "")
+        self.assertIn("Relevant paths I found", result.final_response or "")
+        self.assertEqual(result.error_message, "OpenCode backend access has not been granted.")
+
+    def test_execute_turn_returns_clear_message_when_opencode_access_is_denied_for_non_repo_prompt(self) -> None:
+        memory = EmptyMemory()
+        ai = AccessDeniedAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("Why does this fail?")
+
+        self.assertEqual(
+            result.final_response,
+            "OpenCode backend access has not been granted, so I couldn't run the reasoning stage for that prompt.",
+        )
+        self.assertEqual(result.error_message, "OpenCode backend access has not been granted.")
+
+    def test_answer_from_retrieved_memory_does_not_answer_generic_why_does_prompt_from_unrelated_memory(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "Why does this fail?",
+            "\n".join(
+                [
+                    "## Retrieved Memory",
+                    "- [episode] can you explain how the main.py works | The `main.py` file is a Python script that sets up a simple HTTP server.",
+                    "- [episode] what architecture was getgit | GetGit looks like a Flask/Python RAG app.",
+                ]
+            ),
+        )
+
+        self.assertIsNone(answer)
 
     def test_execute_turn_returns_partial_success_when_follow_up_ai_call_fails(self) -> None:
         memory = FakeMemory()

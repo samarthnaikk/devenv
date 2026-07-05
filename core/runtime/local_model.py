@@ -88,6 +88,8 @@ class FallbackLocalModel(LocalSmallModel):
 
 
 def load_local_small_model() -> LocalSmallModel:
+    if os.getenv("DEVENV_USE_SENTENCE_TRANSFORMER_LOCAL_MODEL", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return FallbackLocalModel()
     try:
         return SentenceTransformerLocalModel()
     except Exception as exc:
