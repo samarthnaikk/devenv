@@ -759,7 +759,7 @@ class DevenvKernelTest(unittest.TestCase):
             kernel.register_tool(InspectSymbolsTool())
             result = kernel.execute_turn("how does the backend work?", local_only=True)
 
-        self.assertIn("kernel.py", result.final_response or "")
+        self.assertIn("main orchestrator", result.final_response or "")
         self.assertNotIn("RVIDA backend is not a widely known", result.final_response or "")
         self.assertEqual(result.steps[0].tool_name, "list_directory")
 
@@ -819,8 +819,8 @@ class DevenvKernelTest(unittest.TestCase):
             kernel.register_tool(InspectSymbolsTool())
             result = kernel.execute_turn("how does the backend work?")
 
-        self.assertIn("kernel.py", result.final_response or "")
-        self.assertIn("routing.py", result.final_response or "")
+        self.assertIn("main orchestrator", result.final_response or "")
+        self.assertIn("AI backend routing", result.final_response or "")
         self.assertNotIn("RVIDA backend is not a widely known", result.final_response or "")
         self.assertEqual(result.steps[0].tool_name, "list_directory")
 

@@ -1473,14 +1473,10 @@ class DevenvKernel:
         return "\n\n".join(summary_sections)
 
     def _ensure_repo_summary_paths(self, relevant_paths: list[str], listing_output: str) -> list[str]:
-        preferred_paths = list(relevant_paths)
-        if len(preferred_paths) >= 3:
-            return preferred_paths[:3]
-
         payload = _extract_tool_payload_json(listing_output)
         entries = payload.get("entries") if isinstance(payload, dict) else None
         if not isinstance(entries, list):
-            return preferred_paths[:3]
+            return relevant_paths[:3]
 
         supplemental: list[tuple[int, str]] = []
         for entry in entries:
@@ -1492,13 +1488,19 @@ class DevenvKernel:
             lowered = relative_path.lower()
             score = 0
             if lowered == "readme.md":
+                score += 30
+            if lowered == "core/runtime/kernel.py":
+                score += 24
+            if lowered == "core/ai/routing.py":
+                score += 22
+            if lowered == "core/runtime/web.py":
                 score += 20
+            if lowered == "core/ai/opencode_client.py":
+                score += 18
+            if lowered in {"core/runtime/context_builder.py", "core/memory/engine.py"}:
+                score += 16
             if lowered in {"feature.md", "process.md", "pyproject.toml", "requirements.txt"}:
                 score += 10
-            if any(marker in lowered for marker in ("core/runtime/", "core/ai/", "core/memory/", "core/tools/")):
-                score += 8
-            if any(marker in lowered for marker in ("kernel.py", "routing.py", "opencode_client.py", "engine.py", "web.py", "workspace.py")):
-                score += 6
             if any(marker in lowered for marker in ("tests/", "sample-test/", "build/", "docs/screenshots/", "devenv.egg-info/", "devenv1a.egg-info/")):
                 score -= 10
             if Path(lowered).name in {"__init__.py", "env.py", "logging_utils.py"}:
@@ -1507,12 +1509,15 @@ class DevenvKernel:
                 supplemental.append((score, relative_path))
 
         supplemental.sort(key=lambda item: (-item[0], item[1]))
+        ordered_paths: list[str] = []
         for _score, path in supplemental:
-            if path not in preferred_paths:
-                preferred_paths.append(path)
-            if len(preferred_paths) >= 3:
+            if path not in ordered_paths:
+                ordered_paths.append(path)
+            if len(ordered_paths) >= 3:
                 break
-        return preferred_paths[:3]
+        if ordered_paths:
+            return ordered_paths[:3]
+        return relevant_paths[:3]
 
     def _ensure_architecture_summary_paths(self, relevant_paths: list[str], listing_output: str) -> list[str]:
         preferred_paths = list(relevant_paths)
@@ -5234,6 +5239,19 @@ def _summarize_symbol_outline(file_name: str, payload: dict[str, Any] | list[Any
     symbols = payload.get("symbols")
     if not isinstance(symbols, list) or not symbols:
         return None
+
+    special_summaries = {
+        "kernel.py": "`kernel.py` is the main orchestrator: it handles memory retrieval, routing, planning/checkpoint flow, tool execution, and verification for each turn.",
+        "web.py": "`web.py` runs the local web backend: it serves the app, exposes health/files/turn endpoints, and sanitizes noisy replay output before users see it.",
+        "routing.py": "`routing.py` owns AI backend routing: it keeps Devenv in charge of tools while sending bounded prompts and structured replies through OpenCode.",
+        "opencode_client.py": "`opencode_client.py` is the transport layer for OpenCode server health checks, session management, message submission, and recovery.",
+        "context_builder.py": "`context_builder.py` assembles the context packet from memory, workspace evidence, and prior session history before a model turn.",
+        "engine.py": "`engine.py` is the memory engine: it stores episodic and associative memory and retrieves project context for later turns.",
+        "workspace.py": "`workspace.py` provides sandboxed workspace browsing and file access so retrieval stays inside the project boundary.",
+    }
+    special_summary = special_summaries.get(file_name.lower())
+    if special_summary:
+        return special_summary
 
     functions: list[str] = []
     classes: list[str] = []
