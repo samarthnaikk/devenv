@@ -1322,16 +1322,20 @@ class DevenvKernel:
                 direct_responses = store.search_agent_responses_for_external_query(user_prompt, limit=8)
             except Exception:
                 direct_responses = []
-            direct_candidates: list[str] = []
+            direct_candidates: list[tuple[int, str]] = []
+            terms = _lexical_memory_terms(user_prompt)
             for response in direct_responses:
                 if not isinstance(response, str):
                     continue
                 cleaned_response = _sanitize_logged_answer(response)
                 if cleaned_response and _is_usable_logged_project_answer(user_prompt, cleaned_response):
-                    direct_candidates.append(cleaned_response)
+                    direct_candidates.append((_lexical_line_score(cleaned_response, user_prompt, terms), cleaned_response))
             if direct_candidates:
-                self._exact_logged_answer_cache[lowered] = direct_candidates[0]
-                return direct_candidates[0]
+                direct_candidates.sort(key=lambda item: item[0], reverse=True)
+                best_score, best_response = direct_candidates[0]
+                if best_score >= 1:
+                    self._exact_logged_answer_cache[lowered] = best_response
+                    return best_response
 
         logs = []
         if hasattr(store, "search_logs_for_external_query"):
@@ -1346,7 +1350,8 @@ class DevenvKernel:
                 return None
 
         allow_fallback_candidates = not _is_bug_list_question(user_prompt)
-        fallback_candidates: list[str] = []
+        fallback_candidates: list[tuple[int, str]] = []
+        terms = _lexical_memory_terms(user_prompt)
         for log in logs:
             try:
                 payload = json.loads(log.raw_interaction)
@@ -1366,8 +1371,9 @@ class DevenvKernel:
                 self._exact_logged_answer_cache[lowered] = exact_answer
                 return exact_answer
             if allow_fallback_candidates:
-                fallback_candidates.append(cleaned_agent_text)
-        selected = fallback_candidates[0] if fallback_candidates else None
+                fallback_candidates.append((_lexical_line_score(cleaned_agent_text, user_prompt, terms), cleaned_agent_text))
+        fallback_candidates.sort(key=lambda item: item[0], reverse=True)
+        selected = fallback_candidates[0][1] if fallback_candidates and fallback_candidates[0][0] >= 1 else None
         self._exact_logged_answer_cache[lowered] = selected
         return selected
 
@@ -3900,6 +3906,8 @@ def _is_usable_logged_project_answer(user_prompt: str, answer: str) -> bool:
         return False
     if _is_bug_list_question(user_prompt) and "strongest clues point to" in lowered:
         return False
+    if "strongest clues point to" in lowered and ("schema" in lowered_prompt or "cleanup" in lowered_prompt):
+        return False
     if "strongest clues point to" in lowered and "infer the parts of the app" not in lowered_prompt and not _is_file_inventory_question(user_prompt):
         return False
     if "same architecture" in lowered_prompt and "get-drip" not in lowered:
@@ -4010,6 +4018,7 @@ def _extract_path_mentions(text: str) -> list[str]:
 
 def _lexical_line_score(summary: str, user_prompt: str, terms: list[str]) -> int:
     lowered = summary.lower()
+    prompt_lowered = user_prompt.lower()
     score = sum(2 for term in terms if term.lower() in lowered)
     score += len(_extract_path_mentions(summary)) * 3
     if "flask" in lowered or "convex" in lowered or "rag" in lowered:
@@ -4020,9 +4029,15 @@ def _lexical_line_score(summary: str, user_prompt: str, terms: list[str]) -> int
         score += 3
     if "tool output noted:" in lowered:
         score += 2
+    if "strongest clues point to" in lowered and "infer the parts of the app" not in prompt_lowered and not _is_file_inventory_question(user_prompt):
+        score -= 12
+    if ("schema" in prompt_lowered or "cleanup" in prompt_lowered) and not any(
+        marker in lowered for marker in ("schema", "cleanup", "convex generated imports", "root url redirects", "review")
+    ):
+        score -= 8
     if "session '" in lowered and score < 6:
         score -= 2
-    if user_prompt.lower() in lowered:
+    if prompt_lowered in lowered:
         score -= 3
     return score
 

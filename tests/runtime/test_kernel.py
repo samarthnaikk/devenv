@@ -1226,6 +1226,37 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    def test_exact_logged_answer_does_not_reuse_file_clue_answer_for_schema_cleanup_prompt(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                return []
+
+            def search_logs_for_external_query(self, query: str, limit: int = 8) -> list[EpisodicLog]:
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="clue-2",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "agent": "The strongest clues point to src/convex-types.ts, src/convex-api.ts, src/routes/workspace.$workspaceId.tsx.",
+                                "metadata": {"external_context_query": "infer the parts of the app in get-drip"},
+                            }
+                        ),
+                    )
+                ]
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel._lookup_exact_logged_answer("what do you know about clean up schema of get-drip?")
+
+        self.assertIsNone(result)
+
     def test_local_directory_summary_is_not_persisted_to_episodic_memory(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])
