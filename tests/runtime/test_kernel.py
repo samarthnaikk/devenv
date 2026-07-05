@@ -207,6 +207,17 @@ class AccessDeniedAI(FakeAI):
         raise RuntimeError("OpenCode backend access has not been granted.")
 
 
+class TransportErrorAI(FakeAI):
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        memory_context: str | None = None,
+        temperature: float = 0.2,
+        tool_names: list[str] | tuple[str, ...] | set[str] | None = None,
+    ) -> AIResponse:
+        raise RuntimeError("OpenCode server failed: OpenCode server request failed with status 400.")
+
+
 class DevenvKernelTest(unittest.TestCase):
     def test_sentence_transformer_local_model_falls_back_when_embedding_model_is_unavailable(self) -> None:
         model = SentenceTransformerLocalModel()
@@ -375,6 +386,25 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("It was mainly about root URL redirects", result.final_response or "")
         self.assertNotIn("main.py", result.final_response or "")
+
+    def test_execute_turn_answers_what_are_those_follow_up_from_recent_conversation(self) -> None:
+        memory = FailingMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.ephemeral_history = [
+                {
+                    "role": "assistant",
+                    "content": "In get-drip, the recalled bug list was:\n\n**Core product bugs**\n- Create Workspace accepting https links and converting them internally\n- Salesforce being marked as coming soon or disabled\n- the DRIP pipeline chat flow not working",
+                }
+            ]
+            result = kernel.execute_turn("what are those")
+
+        self.assertEqual(
+            result.final_response,
+            "Yes. In get-drip, the main issues were Create Workspace accepting https links and converting them internally, Salesforce being marked as coming soon or disabled, and the DRIP pipeline chat flow not working.",
+        )
 
     def test_execute_turn_does_not_explain_memory_fallback_text(self) -> None:
         memory = FailingMemory()
@@ -2300,6 +2330,21 @@ class DevenvKernelTest(unittest.TestCase):
             "OpenCode backend access has not been granted, so I couldn't run the reasoning stage for that prompt.",
         )
         self.assertEqual(result.error_message, "OpenCode backend access has not been granted.")
+
+    def test_execute_turn_returns_local_repo_summary_when_opencode_transport_fails(self) -> None:
+        memory = EmptyMemory()
+        ai = TransportErrorAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            Path(tempdir, "README.md").write_text("# Demo repo\n", encoding="utf-8")
+            Path(tempdir, "src").mkdir()
+            Path(tempdir, "src", "app.py").write_text("print('hi')\n", encoding="utf-8")
+            kernel.register_tool(ListDirectoryTool())
+            result = kernel.execute_turn("Explain the repo")
+
+        self.assertIn("Relevant paths I found", result.final_response or "")
+        self.assertIn("OpenCode server request failed with status 400.", result.error_message or "")
 
     def test_answer_from_retrieved_memory_does_not_answer_generic_why_does_prompt_from_unrelated_memory(self) -> None:
         answer = _answer_from_retrieved_memory(

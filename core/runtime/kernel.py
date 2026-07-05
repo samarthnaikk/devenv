@@ -2179,11 +2179,44 @@ class DevenvKernel:
         ai_logs: list[str],
         system_logs: list[str],
     ) -> str | None:
-        if not _is_opencode_access_denied_error(error):
+        if _is_opencode_access_denied_error(error):
+            lowered = user_prompt.lower()
+            if any(marker in lowered for marker in ("repo", "repository", "codebase")):
+                workspace_answer = self._answer_from_workspace_inspection(
+                    user_prompt=user_prompt,
+                    candidate_path=self.workspace_path,
+                    steps=steps,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                )
+                if workspace_answer:
+                    ai_logs.append("Returned local workspace fallback after OpenCode access denial")
+                    return f"OpenCode backend access is not granted right now, so here's a local workspace summary instead:\n\n{workspace_answer}"
+
+            ai_logs.append("Returned degraded access-denied response")
+            return "OpenCode backend access has not been granted, so I couldn't run the reasoning stage for that prompt."
+
+        if not _is_opencode_transport_error(error):
             return None
 
+        recent_follow_up = _answer_from_recent_conversation_follow_up(user_prompt, self.ephemeral_history)
+        if recent_follow_up is not None:
+            ai_logs.append("Returned recent-conversation fallback after OpenCode transport failure")
+            return recent_follow_up
+
+        if _should_try_direct_memory_answer(user_prompt):
+            memory_context, _metadata = self._retrieve_memory_context(user_prompt, local_only=True)
+            memory_answer = self._answer_known_project_question_local(user_prompt, memory_context)
+            if memory_answer is None and _should_trust_memory_answer_for_prompt(user_prompt):
+                memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
+            if memory_answer is None and not _should_skip_exact_logged_fast_path(user_prompt):
+                memory_answer = self._lookup_exact_logged_answer(user_prompt)
+            if memory_answer:
+                ai_logs.append("Returned memory fallback after OpenCode transport failure")
+                return memory_answer
+
         lowered = user_prompt.lower()
-        if any(marker in lowered for marker in ("repo", "repository", "codebase")):
+        if any(marker in lowered for marker in ("repo", "repository", "codebase", "backend", "architecture")):
             workspace_answer = self._answer_from_workspace_inspection(
                 user_prompt=user_prompt,
                 candidate_path=self.workspace_path,
@@ -2192,11 +2225,11 @@ class DevenvKernel:
                 system_logs=system_logs,
             )
             if workspace_answer:
-                ai_logs.append("Returned local workspace fallback after OpenCode access denial")
-                return f"OpenCode backend access is not granted right now, so here's a local workspace summary instead:\n\n{workspace_answer}"
+                ai_logs.append("Returned workspace fallback after OpenCode transport failure")
+                return workspace_answer
 
-        ai_logs.append("Returned degraded access-denied response")
-        return "OpenCode backend access has not been granted, so I couldn't run the reasoning stage for that prompt."
+        ai_logs.append("Returned degraded transport-error response")
+        return "OpenCode was temporarily unavailable, and I couldn't recover a reliable local answer for that prompt."
 
     def _resolve_direct_tool_scope(
         self,
@@ -3390,11 +3423,11 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
                     return f"Yes. We fixed those bugs by addressing {issue_summary}."
                 if issue_summary and _is_issue_explanation_follow_up_question(user_prompt):
                     return f"Yes. It was mainly about {issue_summary}."
-                if issue_summary and ("what were those" in user_prompt.lower() or "those bugs" in user_prompt.lower()):
+                if issue_summary and _is_issue_recap_follow_up_question(user_prompt):
                     if subject:
                         return f"Yes. In {subject}, the main issues were {issue_summary}."
                     return f"Yes. The main issues were {issue_summary}."
-                if _is_bug_fix_follow_up_question(user_prompt) or "what were those" in user_prompt.lower() or "those bugs" in user_prompt.lower():
+                if _is_bug_fix_follow_up_question(user_prompt) or _is_issue_recap_follow_up_question(user_prompt):
                     shaped_working = []
                 if len(shaped_working) == 1:
                     return _affirm_memory_answer(shaped_working[0])
@@ -3514,7 +3547,7 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
             return f"Yes. We fixed those bugs by addressing {issue_summary}."
         if issue_summary and _is_issue_explanation_follow_up_question(user_prompt):
             return f"Yes. It was mainly about {issue_summary}."
-        if issue_summary and ("what were those" in user_prompt.lower() or "those bugs" in user_prompt.lower()):
+        if issue_summary and _is_issue_recap_follow_up_question(user_prompt):
             if subject:
                 return f"Yes. In {subject}, the main issues were {issue_summary}."
             return f"Yes. The main issues were {issue_summary}."
@@ -4213,6 +4246,9 @@ def _is_memory_follow_up_question(user_prompt: str) -> bool:
         "explain it",
         "elaborate it",
         "elaborate on it",
+        "what are those",
+        "what are those bugs",
+        "what are those reviews",
         "what were those",
         "tell exactly what",
         "what was it about",
@@ -4238,6 +4274,21 @@ def _is_bug_fix_follow_up_question(user_prompt: str) -> bool:
             "how did we fix those bugs",
             "how did we fix them",
             "how were those fixed",
+        )
+    )
+
+
+def _is_issue_recap_follow_up_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "what are those",
+            "what are those bugs",
+            "what are those reviews",
+            "what were those",
+            "those bugs",
+            "those reviews",
         )
     )
 
@@ -4297,7 +4348,7 @@ def _answer_from_recent_conversation_follow_up(user_prompt: str, conversation: l
         return f"Yes. We fixed those bugs by addressing {issue_summary}."
     if issue_summary and _is_issue_explanation_follow_up_question(user_prompt):
         return f"Yes. It was mainly about {issue_summary}."
-    if issue_summary and ("what were those" in lowered or "those bugs" in lowered):
+    if issue_summary and _is_issue_recap_follow_up_question(user_prompt):
         if subject:
             return f"Yes. In {subject}, the main issues were {issue_summary}."
         return f"Yes. The main issues were {issue_summary}."
@@ -4406,6 +4457,11 @@ def _tool_strategy_subject_prompt(user_prompt: str) -> str | None:
 def _is_opencode_access_denied_error(error: RuntimeError) -> bool:
     lowered = str(error).strip().lower()
     return "opencode backend access has not been granted" in lowered
+
+
+def _is_opencode_transport_error(error: RuntimeError) -> bool:
+    lowered = str(error).strip().lower()
+    return "opencode server failed" in lowered or "opencode cli failed" in lowered
 
 
 def _lexical_memory_terms(user_prompt: str) -> list[str]:
