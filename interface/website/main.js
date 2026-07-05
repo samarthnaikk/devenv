@@ -1465,12 +1465,11 @@ function renderThinkingSearchCard(step) {
 function renderRunningTicker(content = "", options = {}) {
   const useGlobe = state.pendingRunMode === "web" || /query:|result:|searching the web/i.test(String(content || ""));
   const frame = currentRunningFrame(content, options);
+  const pending = Boolean(options.pending);
   return `
     <span class="thinking-live-indicator${useGlobe ? " globe" : ""}" aria-hidden="true">${useGlobe ? "🌐" : "⚡"}</span>
-    <span class="thinking-live-text" data-running-frame>${escapeHtml(frame)}</span>
-    <span class="thinking-live-dots" aria-hidden="true">
-      <span></span><span></span><span></span>
-    </span>
+    <span class="thinking-live-text"${pending ? " data-running-frame" : ""}>${escapeHtml(frame)}</span>
+    ${pending ? '<span class="thinking-live-dots" aria-hidden="true"><span></span><span></span><span></span></span>' : ""}
   `;
 }
 
@@ -1789,9 +1788,26 @@ function sanitizeAssistantResponse(content) {
   }
   const replay = extractReadableReplayText(text);
   if (replay.isReplay) {
-    return clampAssistantResponse(collapseRepeatedBlocks(replay.text));
+    return clampAssistantResponse(normalizeTranscriptAnswer(collapseRepeatedBlocks(replay.text)));
   }
-  return clampAssistantResponse(collapseRepeatedBlocks(text));
+  return clampAssistantResponse(normalizeTranscriptAnswer(collapseRepeatedBlocks(text)));
+}
+
+function normalizeTranscriptAnswer(content) {
+  const text = String(content || "").trim();
+  if (!text) {
+    return "";
+  }
+  const normalized = text.replace(/\r\n/g, "\n");
+  const qaMatch = normalized.match(/^\s*q\.\s[\s\S]*?\n+a\.\s*([\s\S]+)$/i);
+  if (qaMatch && qaMatch[1]) {
+    return qaMatch[1].trim();
+  }
+  const answerOnlyMatch = normalized.match(/^\s*a\.\s*([\s\S]+)$/i);
+  if (answerOnlyMatch && answerOnlyMatch[1]) {
+    return answerOnlyMatch[1].trim();
+  }
+  return text;
 }
 
 function clampAssistantResponse(content) {
