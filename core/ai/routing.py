@@ -11,7 +11,7 @@ from typing import Any
 
 from core.ai.engine import DEFAULT_SYSTEM_INSTRUCTIONS
 from core.ai.models import AIBackendStatus, AIResponse, ToolCallRequest
-from core.ai.opencode_client import OpenCodeServerManager, default_opencode_server_config
+from core.ai.opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeServerManager, OpenCodeToolSpec, default_opencode_server_config
 from core.tools.base import BaseTool
 
 
@@ -27,6 +27,7 @@ class OpenCodeAICore:
         executable: str = "opencode",
         system_instructions: str = "",
         server_manager: OpenCodeServerManager | None = None,
+        client: OpenCodeClient | None = None,
     ) -> None:
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
         self.executable = executable
@@ -40,6 +41,9 @@ class OpenCodeAICore:
             config=default_opencode_server_config(),
             executable=self.executable,
         )
+        self.client = client or OpenCodeClient(self.server_manager.config)
+        self._session_id: str | None = None
+        self._synced_message_count = 0
 
     def register_tool(self, tool: BaseTool) -> None:
         self._tools[tool.name] = tool
@@ -71,6 +75,72 @@ class OpenCodeAICore:
         if not shutil.which(self.executable):
             self.last_error = "OpenCode CLI is not installed."
             raise RuntimeError(self.last_error)
+        if self._should_use_legacy_cli():
+            return self._legacy_cli_chat(messages=messages, memory_context=memory_context, tool_names=tool_names)
+        return self._server_chat(messages=messages, memory_context=memory_context, tool_names=tool_names)
+
+    def reset_session(self) -> None:
+        self._session_id = None
+        self._synced_message_count = 0
+
+    def abort(self) -> bool:
+        if not self._session_id:
+            return False
+        try:
+            aborted = self.client.abort_session(self._session_id)
+        except OpenCodeClientError as exc:
+            self.last_error = f"OpenCode server abort failed: {exc}"
+            raise RuntimeError(self.last_error) from exc
+        if aborted:
+            self.reset_session()
+        return aborted
+
+    def _should_use_legacy_cli(self) -> bool:
+        explicit = os.getenv("DEVENV_OPENCODE_USE_LEGACY_CLI", "").strip().lower()
+        if explicit in {"1", "true", "yes", "on"}:
+            return True
+        return self.executable != "opencode"
+
+    def _server_chat(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        memory_context: str | None,
+        tool_names: Iterable[str] | None,
+    ) -> AIResponse:
+        resolved_tool_names = [name for name in (tool_names or ()) if name in self._tools]
+        prompt_messages = messages[self._synced_message_count :] or messages[-1:]
+        prompt = self._compile_prompt(prompt_messages, memory_context) if not resolved_tool_names else self._compile_tool_prompt(
+            prompt_messages,
+            memory_context,
+            resolved_tool_names,
+        )
+        try:
+            session_id = self._ensure_session()
+            response = self.client.send_message(
+                session_id,
+                parts=[{"type": "text", "text": prompt}],
+                output_format=_opencode_output_format(resolved_tool_names),
+                tools=[_tool_spec_from_runtime_tool(self._tools[name]) for name in resolved_tool_names],
+            )
+        except OpenCodeClientError as exc:
+            self.last_error = f"OpenCode server failed: {exc}"
+            raise RuntimeError(self.last_error) from exc
+        self._synced_message_count = len(messages)
+        content, usage, tool_calls = _parse_server_message(response, allowed_tools=resolved_tool_names)
+        self.last_backend_used = "opencode"
+        self.last_backend_reason = f"OpenCode server session {session_id} handled the turn."
+        self.last_error = ""
+        finish_reason = "tool_calls" if tool_calls else "stop"
+        return AIResponse(content=content, tool_calls=tool_calls, finish_reason=finish_reason, usage=usage)
+
+    def _legacy_cli_chat(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        memory_context: str | None,
+        tool_names: Iterable[str] | None,
+    ) -> AIResponse:
         resolved_tool_names = [name for name in (tool_names or ()) if name in self._tools]
         prompt = self._compile_prompt(messages, memory_context) if not resolved_tool_names else self._compile_tool_prompt(
             messages,
@@ -112,6 +182,16 @@ class OpenCodeAICore:
         self.last_error = ""
         finish_reason = "tool_calls" if tool_calls else "stop"
         return AIResponse(content=content, tool_calls=tool_calls, finish_reason=finish_reason, usage=usage)
+
+    def _ensure_session(self) -> str:
+        if self._session_id:
+            return self._session_id
+        self.server_manager.ensure_server()
+        title = f"Devenv: {Path(self.workspace_path).name or self.workspace_path}"
+        session = self.client.create_session(title=title)
+        self._session_id = session.session_id
+        self._synced_message_count = 0
+        return self._session_id
 
     def _compile_prompt(self, messages: list[dict[str, Any]], memory_context: str | None) -> str:
         sections: list[str] = []
@@ -227,6 +307,72 @@ class RoutingAICore:
         self.last_backend_reason = self.opencode_ai.last_backend_reason
         self.last_backend_fallback = ""
         return response
+
+
+def _tool_spec_from_runtime_tool(tool: BaseTool) -> OpenCodeToolSpec:
+    return OpenCodeToolSpec(name=tool.name, description=tool.description, parameters=tool.input_schema())
+
+
+def _opencode_output_format(allowed_tools: list[str]) -> dict[str, Any]:
+    properties: dict[str, Any] = {
+        "type": {
+            "type": "string",
+            "enum": ["final", "tool_call"] if allowed_tools else ["final"],
+            "description": "Whether to answer directly or request exactly one Devenv tool call.",
+        },
+        "content": {
+            "type": "string",
+            "description": "Required when type is final.",
+        },
+        "tool_name": {
+            "type": "string",
+            "enum": allowed_tools or [""],
+            "description": "Required when type is tool_call.",
+        },
+        "arguments": {
+            "type": "object",
+            "description": "Tool arguments when type is tool_call.",
+        },
+    }
+    return {
+        "type": "json_schema",
+        "schema": {
+            "type": "object",
+            "properties": properties,
+            "required": ["type"],
+            "additionalProperties": False,
+        },
+        "retryCount": 2,
+    }
+
+
+def _parse_server_message(message: Any, *, allowed_tools: list[str]) -> tuple[str, dict[str, int], tuple[ToolCallRequest, ...]]:
+    payload = message.raw if hasattr(message, "raw") else {}
+    info = payload.get("info") if isinstance(payload, dict) else {}
+    usage = _extract_opencode_usage(info) if isinstance(info, dict) else {}
+    structured_output = None
+    if hasattr(message, "structured_output"):
+        structured_output = message.structured_output
+    if isinstance(structured_output, dict):
+        parsed_tool_call = _extract_tool_call_from_payload(structured_output, allowed_tools)
+        if parsed_tool_call is not None:
+            return "", usage, (parsed_tool_call,)
+        content = str(structured_output.get("content") or "").strip()
+        if content:
+            return content, usage, ()
+    part_lines: list[str] = []
+    for part in getattr(message, "parts", ()) or ():
+        if not isinstance(part, dict):
+            continue
+        text = part.get("text")
+        if isinstance(text, str) and text.strip():
+            part_lines.append(text.strip())
+    content = "\n".join(part_lines).strip()
+    if content:
+        parsed_tool_call = _extract_tool_call_from_text(content, allowed_tools)
+        if parsed_tool_call is not None:
+            return "", usage, (parsed_tool_call,)
+    return content, usage, ()
 
 
 def _parse_opencode_output(stdout: str, *, allowed_tools: list[str] | None = None) -> tuple[str, dict[str, int], tuple[ToolCallRequest, ...]]:
