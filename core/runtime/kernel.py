@@ -1586,16 +1586,8 @@ class DevenvKernel:
         return relevant_paths[:3]
 
     def _ensure_architecture_summary_paths(self, relevant_paths: list[str], listing_output: str) -> list[str]:
-        preferred_paths = list(relevant_paths)
-        if len(preferred_paths) >= 3:
-            return preferred_paths[:3]
-
         payload = _extract_tool_payload_json(listing_output)
         entries = payload.get("entries") if isinstance(payload, dict) else None
-        if not isinstance(entries, list):
-            return preferred_paths[:3]
-
-        supplemental: list[tuple[int, str]] = []
         architecture_targets = {
             "core/runtime/kernel.py": 24,
             "core/runtime/web.py": 22,
@@ -1606,6 +1598,20 @@ class DevenvKernel:
             "core/runtime/workspace.py": 10,
             "README.md": 8,
         }
+        scored_paths: dict[str, int] = {}
+        for path in relevant_paths:
+            if not isinstance(path, str) or not path.strip():
+                continue
+            score = architecture_targets.get(path, 0)
+            lowered = path.lower()
+            if any(marker in lowered for marker in ("tests/", "sample-test/", "build/", "docs/screenshots/", "devenv.egg-info/", "devenv1a.egg-info/")):
+                score -= 10
+            scored_paths[path] = max(score, scored_paths.get(path, 0))
+        if not isinstance(entries, list):
+            ordered = sorted(scored_paths.items(), key=lambda item: (-item[1], item[0]))
+            return [path for path, _score in ordered if _score > 0][:3] or relevant_paths[:3]
+
+        supplemental: list[tuple[int, str]] = []
         for entry in entries:
             if not isinstance(entry, dict) or entry.get("is_dir"):
                 continue
@@ -1619,6 +1625,10 @@ class DevenvKernel:
             if score > 0:
                 supplemental.append((score, relative_path))
 
+        preferred_paths: list[str] = []
+        for path, score in sorted(scored_paths.items(), key=lambda item: (-item[1], item[0])):
+            if score > 0 and path not in preferred_paths:
+                preferred_paths.append(path)
         supplemental.sort(key=lambda item: (-item[0], item[1]))
         for _score, path in supplemental:
             if path not in preferred_paths:
@@ -2920,6 +2930,8 @@ class DevenvKernel:
                     score -= 10
                 if architecture_prompt and Path(lowered).name in {"__init__.py", "env.py", "logging_utils.py"}:
                     score -= 8
+                if architecture_prompt and lowered in {"requirements.txt", "feature.md", "process.md", "pyproject.toml"}:
+                    score -= 10
                 if repo_summary_prompt and lowered == "readme.md":
                     score += 10
                 if repo_summary_prompt and any(
@@ -2939,6 +2951,8 @@ class DevenvKernel:
                     score -= 8
                 if repo_summary_prompt and Path(lowered).name in {"__init__.py", "env.py", "logging_utils.py"}:
                     score -= 6
+                if repo_summary_prompt and lowered in {"feature.md", "process.md", "requirements.txt", "pyproject.toml"}:
+                    score -= 8
                 if lowered.endswith((".py", ".md", ".txt")):
                     score += 1
                 scored.append((score, relative_path))
@@ -4813,14 +4827,22 @@ def _should_skip_current_workspace_memory_lookup(user_prompt: str) -> bool:
             "summarize this repo",
             "summarize the repo",
             "summarize this repository",
+            "tell me about this repo",
+            "tell me about the repo",
+            "tell me about this repository",
+            "tell me about the repository",
             "explain the repo",
             "explain this repo",
             "explain the repository",
             "explain this repository",
+            "tell me about this codebase",
+            "tell me about the codebase",
             "how does the backend work",
             "how does this backend work",
             "explain the backend",
             "explain this backend",
+            "tell me about the backend",
+            "tell me about this backend",
             "what is the backend architecture",
             "show me the backend architecture",
             "how does this repo work",
@@ -5156,12 +5178,18 @@ def _is_repo_summary_question(user_prompt: str) -> bool:
             "summarize the repo",
             "summarize this repository",
             "summarize the repository",
+            "tell me about this repo",
+            "tell me about the repo",
+            "tell me about this repository",
+            "tell me about the repository",
             "explain the repo",
             "explain this repo",
             "explain the repository",
             "explain this repository",
             "summarize this codebase",
             "summarize the codebase",
+            "tell me about this codebase",
+            "tell me about the codebase",
         )
     )
 
@@ -5233,10 +5261,18 @@ def _prefers_deeper_workspace_scan(user_prompt: str) -> bool:
         phrase in lowered
         for phrase in (
             "how does the backend work",
+            "tell me about the backend",
+            "tell me about this backend",
             "how does the repo work",
             "how does the repository work",
+            "tell me about this repo",
+            "tell me about the repo",
+            "tell me about this repository",
+            "tell me about the repository",
             "how does the system work",
             "how does this backend work",
+            "tell me about this codebase",
+            "tell me about the codebase",
             "architecture",
             "codebase work",
             "backend work",
