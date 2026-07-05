@@ -9,6 +9,7 @@ import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
+from core.ai.opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeServerManager, default_opencode_server_config
 from core.memory.storage import SQLiteMemoryStore
 
 from .models import RunConfig, SetupCheckStatus, SetupReadiness
@@ -60,6 +61,7 @@ def inspect_setup(
         ),
     )
     optional_checks = (
+        _build_optional_check("opencode_server", _check_opencode_server(opencode_path, start_if_needed=False)),
         _build_optional_check("sentence_transformer_cache", _check_sentence_transformer_cache(warm_model_cache=warm_model_cache)),
         _build_optional_check("web_search_prerequisites", _check_web_search_prerequisites()),
         _build_optional_check("latex_pdf_toolchain", _check_latex_pdf_toolchain()),
@@ -139,6 +141,25 @@ def _check_opencode(opencode_path: str | None) -> tuple[bool, str]:
         return False, f"OpenCode CLI is installed but not healthy: {exc}."
     version = (completed.stdout or completed.stderr or "").strip() or "version reported"
     return True, f"OpenCode CLI available: {version}."
+
+
+def _check_opencode_server(opencode_path: str | None, *, start_if_needed: bool) -> tuple[str, str]:
+    manager = OpenCodeServerManager(config=default_opencode_server_config(), executable=opencode_path or "opencode")
+    try:
+        status = manager.ensure_server() if start_if_needed else manager.inspect()
+    except OpenCodeClientError as exc:
+        return "failed", f"OpenCode server startup failed: {exc}."
+    if not status.reachable:
+        return "pending" if opencode_path else "failed", status.detail or "OpenCode server is unavailable."
+    if not status.healthy:
+        return "failed", status.detail or "OpenCode server reported an unhealthy status."
+    client = OpenCodeClient(manager.config)
+    try:
+        session = client.create_session(title="devenv-setup-check")
+        client.delete_session(session.session_id)
+    except OpenCodeClientError as exc:
+        return "failed", f"OpenCode server is reachable but session APIs failed: {exc}."
+    return "ready", f"OpenCode server reachable at {status.base_url} ({status.version or 'version unknown'})."
 
 
 def _ensure_workspace_state(*, db_path: str, vector_dir: str, apply_changes: bool) -> tuple[bool, str]:

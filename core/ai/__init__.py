@@ -1,6 +1,17 @@
 from .engine import AICore
 from .models import AIBackendStatus, AIResponse, ToolCallRequest
-from .opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeModelRef, OpenCodeServerConfig, OpenCodeSession, OpenCodeToolSpec
+from .opencode_client import (
+    OpenCodeClient,
+    OpenCodeClientError,
+    OpenCodeModelRef,
+    OpenCodeServerConfig,
+    OpenCodeServerHealth,
+    OpenCodeServerManager,
+    OpenCodeServerRuntimeStatus,
+    OpenCodeSession,
+    OpenCodeToolSpec,
+    default_opencode_server_config,
+)
 from .routing import OpenCodeAICore, RoutingAICore
 
 __all__ = [
@@ -12,8 +23,12 @@ __all__ = [
     "OpenCodeClientError",
     "OpenCodeModelRef",
     "OpenCodeServerConfig",
+    "OpenCodeServerHealth",
+    "OpenCodeServerManager",
+    "OpenCodeServerRuntimeStatus",
     "OpenCodeSession",
     "OpenCodeToolSpec",
     "RoutingAICore",
     "ToolCallRequest",
+    "default_opencode_server_config",
 ]

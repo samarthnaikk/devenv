@@ -4,9 +4,16 @@ import io
 import json
 import unittest
 from urllib import error
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from core.ai.opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeModelRef, OpenCodeServerConfig, OpenCodeToolSpec
+from core.ai.opencode_client import (
+    OpenCodeClient,
+    OpenCodeClientError,
+    OpenCodeModelRef,
+    OpenCodeServerConfig,
+    OpenCodeServerManager,
+    OpenCodeToolSpec,
+)
 
 
 class _FakeHTTPResponse:
@@ -113,6 +120,31 @@ class OpenCodeClientTest(unittest.TestCase):
 
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertEqual(str(ctx.exception), "bad request")
+
+    def test_server_manager_reports_reachable_health(self) -> None:
+        manager = OpenCodeServerManager(config=self.client.config)
+        with patch.object(OpenCodeClient, "health", return_value=type("Health", (), {"healthy": True, "version": "1.3.3", "detail": ""})()):
+            status = manager.inspect()
+
+        self.assertTrue(status.reachable)
+        self.assertTrue(status.healthy)
+        self.assertEqual(status.version, "1.3.3")
+
+    def test_server_manager_starts_process_when_needed(self) -> None:
+        manager = OpenCodeServerManager(config=self.client.config, executable="opencode", startup_timeout_seconds=0.2)
+        process = MagicMock()
+        process.poll.return_value = None
+        with patch.object(OpenCodeServerManager, "inspect", side_effect=[
+            type("Status", (), {"reachable": False, "healthy": False, "detail": "down", "base_url": self.client.config.base_url})(),
+            type("Status", (), {"reachable": True, "healthy": True, "detail": "up", "base_url": self.client.config.base_url})(),
+        ]), patch("core.ai.opencode_client.shutil.which", return_value="/opt/homebrew/bin/opencode"), patch(
+            "core.ai.opencode_client.subprocess.Popen",
+            return_value=process,
+        ):
+            status = manager.ensure_server()
+
+        self.assertTrue(status.reachable)
+        self.assertTrue(status.healthy)
 
 
 if __name__ == "__main__":

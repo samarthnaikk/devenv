@@ -11,6 +11,7 @@ from typing import Any
 
 from core.ai.engine import DEFAULT_SYSTEM_INSTRUCTIONS
 from core.ai.models import AIBackendStatus, AIResponse, ToolCallRequest
+from core.ai.opencode_client import OpenCodeServerManager, default_opencode_server_config
 from core.tools.base import BaseTool
 
 
@@ -25,6 +26,7 @@ class OpenCodeAICore:
         model: str | None = None,
         executable: str = "opencode",
         system_instructions: str = "",
+        server_manager: OpenCodeServerManager | None = None,
     ) -> None:
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
         self.executable = executable
@@ -34,6 +36,10 @@ class OpenCodeAICore:
         self.last_backend_reason = ""
         self.last_error = ""
         self._tools: dict[str, BaseTool] = {}
+        self.server_manager = server_manager or OpenCodeServerManager(
+            config=default_opencode_server_config(),
+            executable=self.executable,
+        )
 
     def register_tool(self, tool: BaseTool) -> None:
         self._tools[tool.name] = tool
@@ -43,6 +49,7 @@ class OpenCodeAICore:
         detail = "Installed" if executable_path else "CLI not found on PATH"
         if self.last_error:
             detail = self.last_error
+        server_status = self.server_manager.inspect()
         return AIBackendStatus(
             name="opencode",
             available=bool(executable_path),
@@ -50,6 +57,7 @@ class OpenCodeAICore:
             model=self.model,
             detail=detail,
             supports_tool_calls=True,
+            metadata={"server": server_status.to_metadata()},
         )
 
     def chat(

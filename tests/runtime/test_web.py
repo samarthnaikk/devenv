@@ -51,6 +51,29 @@ class FakeAI:
     def register_tool(self, tool) -> None:
         self.registered_tools.append(tool.name)
 
+    def status(self) -> dict[str, object]:
+        from core.ai.models import AIBackendStatus
+
+        return {
+            "opencode": AIBackendStatus(
+                name="opencode",
+                available=True,
+                enabled=True,
+                model=self.model,
+                detail="Server reachable",
+                metadata={
+                    "server": {
+                        "reachable": True,
+                        "healthy": True,
+                        "version": "1.3.3",
+                        "detail": "OpenCode server reachable: 1.3.3",
+                        "base_url": "http://127.0.0.1:4096",
+                        "started_by_manager": False,
+                    }
+                },
+            )
+        }
+
     def chat(
         self,
         messages: list[dict[str, Any]],
@@ -81,6 +104,7 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertIn("fake-opencode-model", health["available_models"])
         self.assertTrue(health["context_builder_enabled"])
         self.assertIn("context_sources", health)
+        self.assertTrue(health["opencode_server"]["reachable"])
         self.assertEqual(health["performance_mode"], "medium")
         self.assertFalse(health["privacy"]["no_memory"])
         self.assertFalse(health["privacy"]["incognito"])
@@ -124,7 +148,7 @@ class DevenvWebAppTest(unittest.TestCase):
 
         self.assertEqual(readiness.required_checks[0].name, "workspace")
         self.assertEqual(readiness.required_checks[0].status, "ready")
-        self.assertEqual(readiness.optional_checks[0].name, "sentence_transformer_cache")
+        self.assertEqual(readiness.optional_checks[0].name, "opencode_server")
         self.assertIsNotNone(readiness.checked_at)
 
     def test_file_payload_supports_image_preview(self) -> None:

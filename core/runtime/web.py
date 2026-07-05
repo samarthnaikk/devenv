@@ -198,6 +198,11 @@ class DevenvWebApp:
         setup = inspect_setup(self.config, include_optional=True)
         privacy = PrivacyModeState(no_memory=self.privacy_mode["no_memory"], incognito=self.privacy_mode["incognito"])
         tool_readiness = self._build_tool_readiness()
+        opencode_server = {}
+        if isinstance(ai_statuses, dict):
+            opencode_status = ai_statuses.get("opencode")
+            if opencode_status is not None:
+                opencode_server = dict(getattr(opencode_status, "metadata", {}) or {}).get("server", {})
         return {
             "workspace_path": self.config.workspace_path,
             "port": self.port,
@@ -210,6 +215,7 @@ class DevenvWebApp:
             "context_sources": [source.to_dict() for source in self.context_builder.list_sources()],
             "access_policy": self.access_policy.snapshot(),
             "ai_backends": {name: status.to_dict() for name, status in ai_statuses.items()},
+            "opencode_server": opencode_server,
             "active_backend": active_backend,
             "preferred_backend": getattr(self.kernel.ai, "preferred_backend", "opencode"),
             "indexing": self.context_builder.indexing_status(),
