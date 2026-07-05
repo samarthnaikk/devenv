@@ -1369,11 +1369,23 @@ class DevenvKernel:
                     True,
                 )
 
+        candidate_path = self._resolve_workspace_candidate(user_prompt)
+        if candidate_path and candidate_path != self.workspace_path and "list_directory" in self.tools:
+            workspace_answer = self._answer_from_workspace_inspection(
+                user_prompt=user_prompt,
+                candidate_path=candidate_path,
+                steps=steps,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+            )
+            if workspace_answer:
+                self._mark_local_backend_response()
+                return workspace_answer, True
+
         if not self._can_answer_from_structure(user_prompt):
             ai_logs.append("Local knowledge mode deferred because the question needs code-level inspection")
             return None, False
 
-        candidate_path = self._resolve_workspace_candidate(user_prompt)
         if candidate_path is None or "list_directory" not in self.tools:
             ai_logs.append("Local knowledge mode found no strong memory or workspace candidate")
             return None, False

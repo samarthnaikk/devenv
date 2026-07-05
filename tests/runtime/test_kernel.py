@@ -1549,23 +1549,18 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(len(result.steps), 1)
         self.assertEqual(result.steps[0].tool_name, "list_directory")
 
-    def test_local_knowledge_route_defers_code_level_question_without_memory_answer(self) -> None:
+    def test_local_knowledge_route_prefers_named_project_inspection_for_code_level_question(self) -> None:
         memory = FakeMemory()
-        ai = FakeAI(
-            [
-                AIResponse(
-                    content="GetGit decides what content to send by chunking and retrieval.",
-                    tool_calls=(),
-                    finish_reason="stop",
-                    usage={"prompt_tokens": 5},
-                )
-            ]
-        )
+        ai = ExplodingAI([])
 
         with tempfile.TemporaryDirectory() as tempdir:
             getgit_path = Path(tempdir) / "getgit"
             getgit_path.mkdir()
-            (getgit_path / "core.py").write_text("print('core')", encoding="utf-8")
+            (getgit_path / "core.py").write_text("def answer_query():\n    pass\n\ndef main():\n    pass\n", encoding="utf-8")
+            (getgit_path / "README.md").write_text(
+                "# GetGit\n\nRepository intelligence system using RAG.\n",
+                encoding="utf-8",
+            )
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
             kernel.local_router = type(
                 "Router",
@@ -1581,11 +1576,14 @@ class DevenvKernelTest(unittest.TestCase):
                 },
             )()
             kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(InspectSymbolsTool())
             result = kernel.execute_turn("how does getgit decide what content to send to ai?")
 
-        self.assertEqual(result.final_response, "GetGit decides what content to send by chunking and retrieval.")
-        self.assertEqual(len(ai.chat_calls), 1)
-        self.assertEqual(result.steps, [])
+        self.assertIn("README.md", result.final_response or "")
+        self.assertIn("core.py", result.final_response or "")
+        self.assertEqual(result.metadata["backend_used"], "local")
+        self.assertEqual([step.tool_name for step in result.steps], ["list_directory", "read_file", "inspect_symbols"])
 
     def test_local_knowledge_route_rejects_schema_fragment_memory_for_code_level_question(self) -> None:
         memory = FakeMemory()
@@ -1609,7 +1607,11 @@ class DevenvKernelTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             getgit_path = Path(tempdir) / "getgit"
             getgit_path.mkdir()
-            (getgit_path / "core.py").write_text("print('core')", encoding="utf-8")
+            (getgit_path / "core.py").write_text("def answer_query():\n    pass\n\ndef main():\n    pass\n", encoding="utf-8")
+            (getgit_path / "README.md").write_text(
+                "# GetGit\n\nRepository intelligence system using RAG.\n",
+                encoding="utf-8",
+            )
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
             kernel.local_router = type(
                 "Router",
@@ -1625,11 +1627,14 @@ class DevenvKernelTest(unittest.TestCase):
                 },
             )()
             kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(InspectSymbolsTool())
             result = kernel.execute_turn("how does getgit decide what content to send to ai?")
 
-        self.assertEqual(result.final_response, "GetGit decides what content to send by chunking and retrieval.")
-        self.assertEqual(len(ai.chat_calls), 1)
-        self.assertEqual(result.steps, [])
+        self.assertIn("README.md", result.final_response or "")
+        self.assertIn("core.py", result.final_response or "")
+        self.assertEqual(result.metadata["backend_used"], "local")
+        self.assertEqual([step.tool_name for step in result.steps], ["list_directory", "read_file", "inspect_symbols"])
 
     def test_execute_turn_answers_tool_strategy_question_before_local_knowledge_routing(self) -> None:
         memory = FakeMemory()
@@ -3332,10 +3337,9 @@ class DevenvKernelTest(unittest.TestCase):
             kernel.register_tool(ListDirectoryTool())
             result = kernel.execute_turn("how does getgit decide what content to send to ai?")
 
-        self.assertIn("OpenCode backend access is not granted right now", result.final_response or "")
         self.assertIn("Relevant paths I found", result.final_response or "")
         self.assertIn("core.py", result.final_response or "")
-        self.assertEqual(result.error_message, "OpenCode backend access has not been granted.")
+        self.assertIsNone(result.error_message)
 
     def test_execute_turn_returns_local_repo_summary_when_opencode_transport_fails(self) -> None:
         memory = EmptyMemory()
