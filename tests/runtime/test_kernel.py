@@ -1055,6 +1055,22 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertNotIn("The first sweep shows", answer or "")
         self.assertNotIn("I’m narrowing", answer or "")
 
+    def test_answer_from_retrieved_memory_does_not_duplicate_yes_prefix(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "what do you know about get-drip?",
+            "\n".join(
+                [
+                    "## External Session Context",
+                    "- Assistant reported: Yes. get-drip was the project where we were improving retrieval quality across stored sessions.",
+                ]
+            ),
+        )
+
+        self.assertEqual(
+            answer,
+            "Yes. get-drip was the project where we were improving retrieval quality across stored sessions.",
+        )
+
     def test_sanitize_logged_answer_strips_tool_output_dump_and_qa_wrapper(self) -> None:
         cleaned = _sanitize_logged_answer(
             "\n".join(
@@ -1096,6 +1112,37 @@ class DevenvKernelTest(unittest.TestCase):
             cleaned,
             "Yes.\n\nHere are the reviewer answers, based on the current code in [`reviews.md`](/tmp/reviews.md).",
         )
+
+    def test_exact_logged_answer_does_not_reuse_file_clue_answer_for_generic_getdrip_recall(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                return []
+
+            def search_logs_for_external_query(self, query: str, limit: int = 8) -> list[EpisodicLog]:
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="clue-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "agent": "The strongest clues point to src/convex-types.ts, src/convex-api.ts, src/routes/workspace.$workspaceId.tsx.",
+                                "metadata": {"external_context_query": "infer the parts of the app in get-drip"},
+                            }
+                        ),
+                    )
+                ]
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel._lookup_exact_logged_answer("what do you know about get-drip?")
+
+        self.assertIsNone(result)
 
     def test_local_directory_summary_is_not_persisted_to_episodic_memory(self) -> None:
         memory = FakeMemory()

@@ -2882,9 +2882,9 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
             if len(shaped_follow_up) >= 2 and _follow_up_line_score(ordered_follow_up[0].lower()) >= 2 and _follow_up_line_score(ordered_follow_up[1].lower()) >= 2:
                 return "Yes. The main issues were: " + "; ".join(shaped_follow_up[:2])
             if _follow_up_line_score(ordered_follow_up[0].lower()) >= 2:
-                return f"Yes. {shaped_follow_up[0]}"
+                return _affirm_memory_answer(shaped_follow_up[0])
             if len(shaped_follow_up) == 1:
-                return f"Yes. {shaped_follow_up[0]}"
+                return _affirm_memory_answer(shaped_follow_up[0])
             return "Yes.\n\n" + "\n\n".join(shaped_follow_up[:3])
     primary_lines = [*sections["retrieved"], *sections["external"]]
     working_lines = sections["working"]
@@ -2976,10 +2976,10 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
             if shaped[0].startswith("Session '"):
                 descriptive = next((line for line in shaped if not line.startswith("Session '")), None)
                 if descriptive:
-                    return f"Yes. {descriptive}"
-            return f"Yes. {shaped[0]}"
+                    return _affirm_memory_answer(descriptive)
+            return _affirm_memory_answer(shaped[0])
         if len(shaped) == 1:
-            return f"Yes. {shaped[0]}"
+            return _affirm_memory_answer(shaped[0])
         return "Yes.\n\n" + "\n\n".join(shaped[:3])
     if len(shaped) == 1:
         return shaped[0]
@@ -3043,6 +3043,13 @@ def _clean_memory_line(line: str) -> str:
     cleaned = re.sub(r"^(episodic memory|episode)\s+[a-f0-9-]+:\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"^(assistant|user|tool):\s*", "", cleaned, flags=re.IGNORECASE)
     return cleaned.strip()
+
+
+def _affirm_memory_answer(text: str) -> str:
+    stripped = text.strip()
+    if re.match(r"^(yes|yeah|yep)\b", stripped, flags=re.IGNORECASE):
+        return stripped
+    return f"Yes. {stripped}"
 
 
 def _humanize_recalled_line(line: str, user_prompt: str) -> str:
@@ -3727,6 +3734,8 @@ def _is_usable_logged_project_answer(user_prompt: str, answer: str) -> bool:
     if "convex/email_g..." in lowered:
         return False
     if _is_bug_list_question(user_prompt) and "strongest clues point to" in lowered:
+        return False
+    if "strongest clues point to" in lowered and "infer the parts of the app" not in lowered_prompt and not _is_file_inventory_question(user_prompt):
         return False
     if "same architecture" in lowered_prompt and "get-drip" not in lowered:
         return False
