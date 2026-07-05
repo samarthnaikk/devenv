@@ -379,6 +379,10 @@ class OpenCodeServerManager:
                 base_url=self.config.normalized_base_url(),
                 started_by_manager=False,
             )
+        if not _is_local_server_target(self.config.normalized_base_url()):
+            raise OpenCodeClientError(status.detail or "OpenCode server target is remote and was unreachable.")
+        if _is_non_startable_server_error(status.detail):
+            raise OpenCodeClientError(status.detail or "OpenCode server was unreachable.")
         self._start_server_process()
         deadline = time.monotonic() + self.startup_timeout_seconds
         last_status = status
@@ -444,3 +448,21 @@ def _float_env(name: str, default: float) -> float:
         return float(raw)
     except ValueError:
         return default
+
+
+def _is_local_server_target(base_url: str) -> bool:
+    parsed = parse.urlparse(base_url)
+    hostname = (parsed.hostname or "").strip().lower()
+    return hostname in {"127.0.0.1", "localhost", "::1"}
+
+
+def _is_non_startable_server_error(detail: str) -> bool:
+    lowered = str(detail or "").strip().lower()
+    return any(
+        token in lowered
+        for token in (
+            "operation not permitted",
+            "permission denied",
+            "not allowed",
+        )
+    )

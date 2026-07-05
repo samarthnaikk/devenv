@@ -1530,8 +1530,8 @@ class DevenvKernel:
         except RuntimeError as exc:
             ai_logs.append(f"OpenCode synthesis skipped after local retrieval: {exc}")
             system_logs.append("Local workspace evidence fell back to direct Devenv summary after OpenCode synthesis failed.")
-            if hasattr(self.ai, "last_backend_used"):
-                self.ai.last_backend_used = "local"
+            setattr(self.ai, "last_backend_used", "local")
+            setattr(self.ai, "last_backend_fallback", str(exc))
             return workspace_answer
         if total_usage is not None:
             _merge_usage(total_usage, ai_response.usage)

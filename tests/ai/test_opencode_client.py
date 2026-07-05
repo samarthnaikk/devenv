@@ -155,6 +155,39 @@ class OpenCodeClientTest(unittest.TestCase):
         self.assertTrue(status.reachable)
         self.assertTrue(status.healthy)
 
+    def test_server_manager_skips_local_start_for_non_local_server_target(self) -> None:
+        remote_config = OpenCodeServerConfig(base_url="https://opencode.example.com", timeout_seconds=2.0)
+        manager = OpenCodeServerManager(config=remote_config, executable="opencode", startup_timeout_seconds=0.2)
+
+        with patch.object(
+            OpenCodeServerManager,
+            "inspect",
+            return_value=type("Status", (), {"reachable": False, "healthy": False, "detail": "Unable to reach OpenCode server: timed out", "base_url": remote_config.base_url})(),
+        ), patch("core.ai.opencode_client.shutil.which", return_value="/opt/homebrew/bin/opencode"), patch(
+            "core.ai.opencode_client.subprocess.Popen",
+            side_effect=AssertionError("local server should not start for remote target"),
+        ):
+            with self.assertRaises(OpenCodeClientError) as ctx:
+                manager.ensure_server()
+
+        self.assertIn("timed out", str(ctx.exception).lower())
+
+    def test_server_manager_skips_local_start_for_non_startable_permission_error(self) -> None:
+        manager = OpenCodeServerManager(config=self.client.config, executable="opencode", startup_timeout_seconds=0.2)
+
+        with patch.object(
+            OpenCodeServerManager,
+            "inspect",
+            return_value=type("Status", (), {"reachable": False, "healthy": False, "detail": "Unable to reach OpenCode server: [Errno 1] Operation not permitted", "base_url": self.client.config.base_url})(),
+        ), patch("core.ai.opencode_client.shutil.which", return_value="/opt/homebrew/bin/opencode"), patch(
+            "core.ai.opencode_client.subprocess.Popen",
+            side_effect=AssertionError("server should not start for non-startable permission error"),
+        ):
+            with self.assertRaises(OpenCodeClientError) as ctx:
+                manager.ensure_server()
+
+        self.assertIn("operation not permitted", str(ctx.exception).lower())
+
 
 if __name__ == "__main__":
     unittest.main()

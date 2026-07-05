@@ -2717,6 +2717,7 @@ class DevenvKernelTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
             Path(tempdir, "README.md").write_text("# Demo repo\n", encoding="utf-8")
             Path(tempdir, "src").mkdir()
             Path(tempdir, "src", "app.py").write_text("print('hi')\n", encoding="utf-8")
