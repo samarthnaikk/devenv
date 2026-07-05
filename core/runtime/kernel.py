@@ -240,7 +240,7 @@ class DevenvKernel:
             "external_context_session_count": 0,
             "external_context_session_ids": [],
             "backend_preference": backend_preference,
-            "backend_used": "local" if local_only else "opencode",
+            "backend_used": "local",
             "backend_fallback": "",
             "selected_tools": sorted(self._resolve_selected_tools(selected_tools)),
             "no_memory": no_memory,
@@ -4774,6 +4774,7 @@ def _tool_strategy_subject_prompt(user_prompt: str) -> str | None:
     lowered = user_prompt.lower().strip()
     patterns = (
         r"^(?:what|which)\s+tools\s+do\s+you\s+need\s+to\s+answer\s+(.+)$",
+        r"^(?:what|which)\s+tools\s+would\s+you\s+use\s+to\s+answer\s+(.+)$",
         r"^do\s+you\s+need\s+any\s+tools\s+to\s+answer\s+(.+)$",
         r"^would\s+you\s+need\s+any\s+tools\s+to\s+answer\s+(.+)$",
         r"^how\s+would\s+you\s+answer\s+(.+)$",

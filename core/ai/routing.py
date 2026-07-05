@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 import uuid
 from collections.abc import Iterable
 from pathlib import Path
@@ -47,6 +48,9 @@ class OpenCodeAICore:
         self.client = client or OpenCodeClient(self.server_manager.config)
         self._session_id: str | None = None
         self._synced_message_count = 0
+        self._structured_output_supported: bool | None = None
+        self._transport_backoff_until = 0.0
+        self._transport_backoff_reason = ""
 
     def register_tool(self, tool: BaseTool) -> None:
         self._tools[tool.name] = tool
@@ -69,6 +73,8 @@ class OpenCodeAICore:
                 "transport": "legacy_cli" if self._should_use_legacy_cli() else "server",
                 "session_id": self._session_id or "",
                 "synced_message_count": self._synced_message_count,
+                "structured_output_supported": self._structured_output_supported,
+                "transport_backoff_active": self._transport_backoff_until > time.monotonic(),
                 "last_error": self.last_error,
             },
         )
@@ -86,6 +92,7 @@ class OpenCodeAICore:
             raise RuntimeError(self.last_error)
         if self._should_use_legacy_cli():
             return self._legacy_cli_chat(messages=messages, memory_context=memory_context, tool_names=tool_names)
+        self._raise_if_transport_backoff_active()
         return self._server_chat(messages=messages, memory_context=memory_context, tool_names=tool_names)
 
     def reset_session(self) -> None:
@@ -141,9 +148,14 @@ class OpenCodeAICore:
                 self.last_backend_fallback = fallback_note
                 self.last_error = ""
                 return cli_response
+            if _is_transport_backoff_worthy(exc):
+                self._transport_backoff_until = time.monotonic() + _transport_backoff_seconds()
+                self._transport_backoff_reason = str(exc).strip() or "unknown transport failure"
             self.last_error = f"OpenCode server failed: {exc}"
             raise RuntimeError(self.last_error) from exc
         self._synced_message_count = len(messages)
+        self._transport_backoff_until = 0.0
+        self._transport_backoff_reason = ""
         content, usage, tool_calls = _parse_server_message(response, allowed_tools=resolved_tool_names)
         self.last_backend_used = "opencode"
         self.last_backend_reason = f"OpenCode server session {session_id} handled the turn."
@@ -211,15 +223,19 @@ class OpenCodeAICore:
         return self._session_id
 
     def _send_server_message(self, session_id: str, *, prompt: str, resolved_tool_names: list[str]):
-        output_format = _opencode_output_format(resolved_tool_names)
+        output_format = None if self._structured_output_supported is False else _opencode_output_format(resolved_tool_names)
         try:
-            return self._send_server_message_once(
+            response = self._send_server_message_once(
                 session_id,
                 prompt=prompt,
                 output_format=output_format,
             )
+            if output_format is not None:
+                self._structured_output_supported = True
+            return response
         except OpenCodeClientError as exc:
             if _is_structured_output_retryable(exc):
+                self._structured_output_supported = False
                 self.last_backend_fallback = "OpenCode rejected structured output; retried without output schema."
                 return self._send_server_message_once(
                     session_id,
@@ -231,13 +247,17 @@ class OpenCodeAICore:
             self.reset_session()
             recovered_session_id = self._ensure_session()
             try:
-                return self._send_server_message_once(
+                response = self._send_server_message_once(
                     recovered_session_id,
                     prompt=prompt,
                     output_format=output_format,
                 )
+                if output_format is not None:
+                    self._structured_output_supported = True
+                return response
             except OpenCodeClientError as retry_exc:
                 if _is_structured_output_retryable(retry_exc):
+                    self._structured_output_supported = False
                     self.last_backend_fallback = "OpenCode rejected structured output after session recovery; retried without output schema."
                     return self._send_server_message_once(
                         recovered_session_id,
@@ -245,6 +265,14 @@ class OpenCodeAICore:
                         output_format=None,
                     )
                 raise
+
+    def _raise_if_transport_backoff_active(self) -> None:
+        if self._transport_backoff_until <= time.monotonic():
+            return
+        remaining = max(int(self._transport_backoff_until - time.monotonic()), 1)
+        detail = self._transport_backoff_reason or "recent transport failure"
+        self.last_error = f"OpenCode server failed: recent transport failure cached for {remaining}s ({detail})."
+        raise RuntimeError(self.last_error)
 
     def _send_server_message_once(
         self,
@@ -418,6 +446,32 @@ def _should_fallback_to_legacy_cli(exc: OpenCodeClientError) -> bool:
     if exc.status_code is None:
         return True
     return exc.status_code >= 400
+
+
+def _transport_backoff_seconds() -> float:
+    raw = os.getenv("DEVENV_OPENCODE_TRANSPORT_BACKOFF_SECONDS", "").strip()
+    if not raw:
+        return 20.0
+    try:
+        return max(float(raw), 0.0)
+    except ValueError:
+        return 20.0
+
+
+def _is_transport_backoff_worthy(exc: OpenCodeClientError) -> bool:
+    if exc.status_code is not None:
+        return exc.status_code >= 500
+    lowered = str(exc).lower()
+    return any(
+        token in lowered
+        for token in (
+            "unable to reach opencode server",
+            "timed out",
+            "connection refused",
+            "operation not permitted",
+            "network is unreachable",
+        )
+    )
 
 
 def _opencode_output_format(allowed_tools: list[str]) -> dict[str, Any]:

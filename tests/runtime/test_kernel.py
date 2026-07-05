@@ -1340,6 +1340,21 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(len(ai.chat_calls), 1)
         self.assertEqual(result.steps, [])
 
+    def test_execute_turn_answers_tool_strategy_question_before_local_knowledge_routing(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("what tools would you use to answer how does backend work?")
+
+        self.assertIn("Devenv should stay in charge of retrieval", result.final_response or "")
+        self.assertIn("`list_directory`", result.final_response or "")
+        self.assertIn("`inspect_symbols`", result.final_response or "")
+
     def test_summarize_directory_listing_parses_structured_payload_without_leaking_json(self) -> None:
         summary = _summarize_directory_listing(
             "/tmp/getgit",

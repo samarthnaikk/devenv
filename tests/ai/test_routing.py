@@ -289,6 +289,49 @@ class OpenCodeRoutingTest(unittest.TestCase):
         self.assertEqual(response.tool_calls[0].tool_name, "read_file")
         self.assertIsNone(client.sent_messages[1]["output_format"])
 
+    def test_opencode_core_disables_structured_output_after_first_400_retry(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            client = _FakeOpenCodeClient(
+                responses=[
+                    OpenCodeClientError("response_format unsupported", status_code=400),
+                    _fake_message("msg_1", structured_output=None, usage={"total_tokens": 5}, text="Recovered plain text"),
+                    _fake_message("msg_2", structured_output=None, usage={"total_tokens": 4}, text="Second plain text"),
+                ]
+            )
+            manager = Mock()
+            manager.ensure_server.return_value = Mock()
+            manager.inspect.return_value = _fake_server_status()
+
+            core = OpenCodeAICore(workspace_path=tempdir, executable="opencode", client=client, server_manager=manager)
+            first = core.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
+            second = core.chat(messages=[{"role": "user", "content": "hello"}, {"role": "assistant", "content": first.content}, {"role": "user", "content": "again"}], tool_names=[])
+
+        self.assertEqual(first.content, "Recovered plain text")
+        self.assertEqual(second.content, "Second plain text")
+        self.assertEqual(len(client.sent_messages), 3)
+        self.assertEqual(client.sent_messages[0]["output_format"]["type"], "json_schema")
+        self.assertIsNone(client.sent_messages[1]["output_format"])
+        self.assertIsNone(client.sent_messages[2]["output_format"])
+        self.assertFalse(core.status().metadata["structured_output_supported"])
+
+    def test_opencode_core_caches_transport_failure_backoff(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            client = _FakeOpenCodeClient(
+                responses=[OpenCodeClientError("Unable to reach OpenCode server: operation not permitted")]
+            )
+            manager = Mock()
+            manager.ensure_server.return_value = Mock()
+            manager.inspect.return_value = _fake_server_status()
+
+            core = OpenCodeAICore(workspace_path=tempdir, executable="opencode", client=client, server_manager=manager)
+            with self.assertRaises(RuntimeError):
+                core.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
+            with self.assertRaises(RuntimeError) as retry_ctx:
+                core.chat(messages=[{"role": "user", "content": "hello again"}], tool_names=[])
+
+        self.assertEqual(len(client.sent_messages), 1)
+        self.assertIn("recent transport failure cached", str(retry_ctx.exception).lower())
+
     def test_opencode_core_raises_when_server_400_persists_without_cli_fallback_flag(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             client = _FakeOpenCodeClient(
