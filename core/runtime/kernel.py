@@ -1321,6 +1321,7 @@ class DevenvKernel:
         ai_logs.append("Local router selected knowledge mode")
         memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
         if memory_answer is not None and _should_trust_memory_answer_for_prompt(user_prompt):
+            self._mark_local_backend_response()
             ai_logs.append("Local knowledge answer assembled from memory")
             return memory_answer, True
 
@@ -1333,6 +1334,7 @@ class DevenvKernel:
                 system_logs=system_logs,
             )
             if workspace_answer:
+                self._mark_local_backend_response()
                 return (
                     self._maybe_synthesize_local_workspace_answer(
                         user_prompt=user_prompt,
@@ -1354,6 +1356,7 @@ class DevenvKernel:
                 system_logs=system_logs,
             )
             if workspace_answer:
+                self._mark_local_backend_response()
                 return (
                     self._maybe_synthesize_local_workspace_answer(
                         user_prompt=user_prompt,
@@ -1402,6 +1405,7 @@ class DevenvKernel:
         ai_logs.append("Local-only runtime selected")
         structured_answer = self._answer_known_project_question_local(user_prompt, memory_context)
         if structured_answer is not None:
+            self._mark_local_backend_response()
             ai_logs.append("Local-only answer assembled from structured project facts")
             return structured_answer
         candidate_path = self._resolve_workspace_candidate(user_prompt)
@@ -1414,10 +1418,12 @@ class DevenvKernel:
                 system_logs=system_logs,
             )
             if workspace_answer:
+                self._mark_local_backend_response()
                 return workspace_answer
 
         memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
         if memory_answer is not None and _should_trust_memory_answer_for_prompt(user_prompt):
+            self._mark_local_backend_response()
             ai_logs.append("Local-only answer assembled from memory")
             return memory_answer
 
@@ -1429,6 +1435,7 @@ class DevenvKernel:
             system_logs=system_logs,
         )
         if handled_locally and local_response:
+            self._mark_local_backend_response()
             return local_response
 
         if "list_directory" not in self.tools:
@@ -1452,6 +1459,7 @@ class DevenvKernel:
         relevant_paths = self._select_local_relevant_paths(user_prompt, listing_step.output)
         if not relevant_paths:
             ai_logs.append("Local-only answer fell back to directory summary")
+            self._mark_local_backend_response()
             return _summarize_directory_listing(candidate_path, listing_step.output)
 
         summary_sections: list[str] = []
@@ -1464,9 +1472,11 @@ class DevenvKernel:
 
         if summary_sections:
             ai_logs.append("Local-only answer assembled from workspace files")
+            self._mark_local_backend_response()
             return "\n\n".join(summary_sections)
 
         ai_logs.append("Local-only answer fell back to directory summary")
+        self._mark_local_backend_response()
         return _summarize_directory_listing(candidate_path, listing_step.output)
 
     def _should_prefer_workspace_inspection(self, user_prompt: str, candidate_path: str) -> bool:
@@ -1522,11 +1532,14 @@ class DevenvKernel:
             if file_summary and file_summary not in summary_sections:
                 summary_sections.append(file_summary)
         if not summary_sections:
+            self._mark_local_backend_response()
             return _summarize_directory_listing(candidate_path, listing_step.output)
         ai_logs.append("Local-only answer assembled from workspace files")
         if _is_architecture_question(user_prompt) and not _is_repo_overview_question(user_prompt):
             joined = "\n- ".join(summary_sections)
+            self._mark_local_backend_response()
             return "I inspected the backend entry points locally. The main pieces are:\n- " + joined
+        self._mark_local_backend_response()
         return "\n\n".join(summary_sections)
 
     def _maybe_synthesize_local_workspace_answer(
@@ -1564,6 +1577,12 @@ class DevenvKernel:
             _merge_usage(total_usage, ai_response.usage)
         ai_logs.append("OpenCode synthesized the final answer from bounded local workspace evidence")
         return ai_response.content or workspace_answer
+
+    def _mark_local_backend_response(self) -> None:
+        if self.ai is None:
+            return
+        setattr(self.ai, "last_backend_used", "local")
+        setattr(self.ai, "last_backend_fallback", "")
 
     def _ensure_repo_summary_paths(self, relevant_paths: list[str], listing_output: str) -> list[str]:
         payload = _extract_tool_payload_json(listing_output)

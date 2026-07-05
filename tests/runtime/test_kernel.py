@@ -1312,6 +1312,7 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("web.py", result.final_response or "")
         self.assertIn("routing.py", result.final_response or "")
         self.assertNotIn("requirements.txt", result.final_response or "")
+        self.assertEqual(result.metadata["backend_used"], "local")
 
     def test_tool_strategy_parser_handles_how_do_you_decide_tool_prompt(self) -> None:
         memory = FakeMemory()
@@ -1357,6 +1358,7 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("web.py", result.final_response or "")
         self.assertIn("routing.py", result.final_response or "")
         self.assertNotIn("persona scoring", result.final_response or "")
+        self.assertEqual(result.metadata["backend_used"], "local")
 
     def test_tell_me_about_system_prompt_prefers_current_workspace_architecture_summary(self) -> None:
         memory = FakeMemory()
@@ -1382,6 +1384,7 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("kernel.py", result.final_response or "")
         self.assertIn("web.py", result.final_response or "")
         self.assertIn("routing.py", result.final_response or "")
+        self.assertEqual(result.metadata["backend_used"], "local")
 
     def test_what_is_backend_prompt_prefers_current_workspace_architecture_summary(self) -> None:
         memory = FakeMemory()
@@ -1411,6 +1414,7 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("web.py", result.final_response or "")
         self.assertIn("routing.py", result.final_response or "")
         self.assertNotIn("persona scoring", result.final_response or "")
+        self.assertEqual(result.metadata["backend_used"], "local")
 
     def test_repo_summary_prompt_uses_opencode_to_summarize_bounded_local_evidence_when_enabled(self) -> None:
         memory = FakeMemory()
