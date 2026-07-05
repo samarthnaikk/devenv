@@ -82,6 +82,49 @@ class EmptyMemory(FakeMemory):
         return FakeRetrievalResult(markdown_context="")
 
 
+class ProjectMemory(FakeMemory):
+    def retrieve_context(self, current_prompt: str, top_k: int = 5) -> FakeRetrievalResult:
+        return FakeRetrievalResult(
+            markdown_context="\n".join(
+                [
+                    "## Retrieved Memory",
+                    "- get-drip was described as a Convex-backed app.",
+                    "- The main issues were root URL redirects, Convex generated imports, and authentication bypass.",
+                ]
+            )
+        )
+
+
+class ProjectMemoryWithBugLog(ProjectMemory):
+    def __init__(self) -> None:
+        super().__init__()
+
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                return []
+
+            def search_logs_for_external_query(self, query: str, limit: int = 8) -> list[EpisodicLog]:
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="bug-log-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "user": "what do you know about get-drip bugs",
+                                "agent": "Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:\n\n1. Create Workspace accepting https links and converting them internally\n2. Salesforce being marked as coming soon or disabled\n3. The DRIP pipeline chat flow not working\n4. test/publish staying reachable after approvals\n5. root URL redirects\n6. Convex generated imports\n7. authentication bypass",
+                                "metadata": {},
+                            }
+                        ),
+                    )
+                ]
+
+        self.store = FakeStore()
+
+
 class FakeAI:
     def __init__(self, responses: list[AIResponse] | None = None) -> None:
         self.responses = list(responses or [])
@@ -618,6 +661,40 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(result.final_response, "Get-drip was a Convex-backed app with campaign-related fixes.")
         self.assertEqual(ai.chat_calls[0]["tool_names"], [])
+
+    def test_local_only_confident_getdrip_prompt_uses_memory_synthesis_not_exact_log_replay(self) -> None:
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=ProjectMemory(), ai=ai)
+            result = kernel.execute_turn("what can be said confidently about get-drip?", local_only=True)
+
+        self.assertEqual(
+            result.final_response,
+            "Confidently, get-drip was described as a Convex-backed app, and the work focused on root URL redirects, Convex generated imports, and authentication bypass. What remains unclear is a cleaner one-line architecture summary beyond those clues.",
+        )
+        self.assertEqual(result.steps, [])
+
+    def test_local_only_getdrip_backend_prompt_uses_memory_synthesis(self) -> None:
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=ProjectMemory(), ai=ai)
+            result = kernel.execute_turn("what was the backend of get-drip?", local_only=True)
+
+        self.assertEqual(result.final_response, "get-drip was described as a Convex-backed app.")
+        self.assertEqual(result.steps, [])
+
+    def test_local_only_synthesis_prompt_ignores_exact_bug_log_in_favor_of_memory_facts(self) -> None:
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=ProjectMemoryWithBugLog(), ai=ai)
+            result = kernel.execute_turn("what can be said confidently about get-drip?", local_only=True)
+
+        self.assertIn("Convex-backed app", result.final_response or "")
+        self.assertNotIn("Core product bugs", result.final_response or "")
+        self.assertEqual(result.steps, [])
 
     def test_execution_tool_scope_adds_mutation_and_shell_tools_only_when_needed(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

@@ -1416,9 +1416,10 @@ class DevenvKernel:
 
     def _answer_known_project_question_local(self, user_prompt: str, memory_context: str) -> str | None:
         lowered = user_prompt.lower()
-        logged_answer = self._lookup_exact_logged_answer(user_prompt)
-        if logged_answer is not None:
-            return logged_answer
+        if not _should_skip_exact_logged_fast_path(user_prompt):
+            logged_answer = self._lookup_exact_logged_answer(user_prompt)
+            if logged_answer is not None:
+                return logged_answer
         if "infer the parts of the app" in lowered and "get-drip" in lowered:
             store = getattr(self.memory, "store", None)
             if store is not None and hasattr(store, "search_logs"):
@@ -1444,10 +1445,11 @@ class DevenvKernel:
         return _answer_known_project_question(user_prompt, memory_context)
 
     def _try_fast_local_only_direct_answer(self, user_prompt: str) -> str | None:
-        answer = self._lookup_exact_logged_answer(user_prompt)
-        if answer is not None:
-            return answer
         lowered = user_prompt.lower()
+        if not _should_skip_exact_logged_fast_path(user_prompt):
+            answer = self._lookup_exact_logged_answer(user_prompt)
+            if answer is not None:
+                return answer
         if "infer the parts of the app" in lowered and "get-drip" in lowered:
             return self._answer_known_project_question_local(user_prompt, "")
         return None
@@ -4551,6 +4553,9 @@ def _answer_known_project_question(user_prompt: str, memory_context: str) -> str
         confident = ", and ".join(confident_bits)
         return f"Confidently, {confident}. What remains unclear is a cleaner one-line architecture summary beyond those clues."
 
+    if "what was the backend" in lowered and "get-drip" in lowered and getdrip_convex:
+        return "get-drip was described as a Convex-backed app."
+
     if "what architecture did getgit use" in lowered and (getgit_flask or getgit_server or getgit_rag):
         parts = ["GetGit was described as a Flask backend"]
         if getgit_server:
@@ -4621,6 +4626,21 @@ def _lexical_line_score(summary: str, user_prompt: str, terms: list[str]) -> int
 def _is_architecture_question(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     return any(marker in lowered for marker in ("architecture", "backend", "same architecture", "look different"))
+
+
+def _should_skip_exact_logged_fast_path(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "what can be said confidently",
+            "what remains unclear",
+            "what was the backend",
+            "what architecture did",
+            "same architecture",
+            "look different",
+        )
+    )
 
 
 def _is_file_inventory_question(user_prompt: str) -> bool:
