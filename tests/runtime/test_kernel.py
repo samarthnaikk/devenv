@@ -17,7 +17,7 @@ from core.memory.storage import SQLiteMemoryStore
 from core.memory.vector_index import InMemoryVectorIndex
 from core.runtime import DevenvKernel
 from core.runtime.context_builder import ContextBuilderService
-from core.runtime.kernel import _answer_from_retrieved_memory, _sanitize_logged_answer, _summarize_directory_listing
+from core.runtime.kernel import _answer_from_retrieved_memory, _compose_external_memory_query, _sanitize_logged_answer, _summarize_directory_listing
 from core.runtime.local_model import SentenceTransformerLocalModel
 from core.runtime.local_router import LocalRouteDecision
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode
@@ -1107,6 +1107,35 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("candidate-practice CodeGuide backend", answer or "")
         self.assertNotIn("The first sweep shows", answer or "")
         self.assertNotIn("I’m narrowing", answer or "")
+
+    def test_answer_from_retrieved_memory_humanizes_explain_it_follow_up(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "can you explain about it?",
+            "\n".join(
+                [
+                    "## External Session Context",
+                    "- Assistant reported: get-drip was about cleaning up schema-related retrieval and app flow issues.",
+                ]
+            ),
+        )
+
+        self.assertEqual(
+            answer,
+            "Yes. It was about cleaning up schema-related retrieval and app flow issues.",
+        )
+
+    def test_compose_external_memory_query_anchors_explain_it_follow_up_to_prior_subject(self) -> None:
+        query = _compose_external_memory_query(
+            "can you explain about it?",
+            [
+                {"role": "user", "content": "what do you know about clean up schema of get-drip"},
+                {"role": "assistant", "content": "Yes. get-drip was about cleaning up schema-related retrieval and app flow issues."},
+            ],
+        )
+
+        self.assertIn("can you explain about it?", query)
+        self.assertIn("Referenced context:", query)
+        self.assertIn("get-drip", query)
 
     def test_answer_from_retrieved_memory_does_not_duplicate_yes_prefix(self) -> None:
         answer = _answer_from_retrieved_memory(

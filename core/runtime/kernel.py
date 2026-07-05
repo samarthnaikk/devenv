@@ -3215,7 +3215,20 @@ def _humanize_recalled_line(line: str, user_prompt: str) -> str:
         cleaned = cleaned.split(" I'll ", 1)[0].rstrip(" .,;")
     if " I’ll " in cleaned:
         cleaned = cleaned.split(" I’ll ", 1)[0].rstrip(" .,;")
-    if "what was it about" in user_prompt.lower():
+    if any(
+        marker in user_prompt.lower()
+        for marker in (
+            "what was it about",
+            "can you explain about it",
+            "can you explain it",
+            "can you elaborate it",
+            "can you elaborate on it",
+            "explain about it",
+            "explain it",
+            "elaborate it",
+            "elaborate on it",
+        )
+    ):
         lowered = cleaned.lower()
         if " was about " in lowered and not lowered.startswith("it was about "):
             cleaned = "It was about " + cleaned.split(" was about ", 1)[1].strip()
@@ -3701,6 +3714,14 @@ def _is_memory_recall_question(user_prompt: str) -> bool:
 def _is_memory_follow_up_question(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     referential_markers = (
+        "can you explain about it",
+        "can you explain it",
+        "can you elaborate it",
+        "can you elaborate on it",
+        "explain about it",
+        "explain it",
+        "elaborate it",
+        "elaborate on it",
         "what were those",
         "tell exactly what",
         "what was it about",
@@ -4046,6 +4067,8 @@ def _has_explicit_memory_subject(user_prompt: str) -> bool:
         "about",
         "again",
         "bugs",
+        "elaborate",
+        "explain",
         "exactly",
         "fixed",
         "issue",
