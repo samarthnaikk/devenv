@@ -108,12 +108,47 @@ def _collapse_repeated_blocks(content: str | None) -> str | None:
     return collapsed or raw
 
 
+def _trim_response_noise(content: str | None) -> str | None:
+    raw = str(content or "").strip()
+    if not raw:
+        return None
+    cutoff_markers = (
+        "\nTool output:",
+        "\nDevenv status",
+        "\nTool trace",
+        "\nTracePrepared the final answer",
+        "\nReasoningReasoned through the next step",
+    )
+    trimmed = raw
+    for marker in cutoff_markers:
+        marker_index = trimmed.find(marker)
+        if marker_index >= 0:
+            trimmed = trimmed[:marker_index].rstrip()
+    noisy_blocks = {
+        "devenv status",
+        "tool trace",
+        "prepared the final answer",
+        "reasoned through the next step",
+        "traceprepared the final answer",
+    }
+    cleaned_blocks: list[str] = []
+    for block in trimmed.split("\n\n"):
+        normalized = " ".join(block.strip().split()).lower()
+        if not normalized:
+            continue
+        if normalized in noisy_blocks:
+            continue
+        cleaned_blocks.append(block.strip())
+    result = "\n\n".join(cleaned_blocks).strip()
+    return result or None
+
+
 def _sanitize_replay_text(content: object) -> str | None:
     raw = str(content or "").strip()
     if not raw:
         return None
     if not raw.startswith("{") or "\n" not in raw:
-        return _collapse_repeated_blocks(raw)
+        return _collapse_repeated_blocks(_trim_response_noise(raw))
 
     readable_lines: list[str] = []
     replay_errors: list[str] = []
@@ -167,10 +202,10 @@ def _sanitize_replay_text(content: object) -> str | None:
         if line and line not in unique_lines:
             unique_lines.append(line)
     if unique_lines:
-        return _collapse_repeated_blocks("\n\n".join(unique_lines))
+        return _collapse_repeated_blocks(_trim_response_noise("\n\n".join(unique_lines)))
 
     if replay_errors:
-        return _collapse_repeated_blocks(replay_errors[0])
+        return _collapse_repeated_blocks(_trim_response_noise(replay_errors[0]))
     if tool_failures:
         return "A required tool call was unavailable while replaying that answer."
     return "I couldn't produce a readable answer from that replay."

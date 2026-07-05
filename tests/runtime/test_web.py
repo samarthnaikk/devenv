@@ -617,6 +617,40 @@ class DevenvWebAppTest(unittest.TestCase):
 
         self.assertEqual(result["final_response"], repeated)
 
+    def test_run_turn_trims_tool_output_noise_from_plain_text_response(self) -> None:
+        noisy = (
+            "Yes. The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.\n\n"
+            "Devenv status\n\n"
+            "Tool trace\n\n"
+            "OpenCode\n\n"
+            "Prepared the final answer\n\n"
+            "Tool output: return lowered.endswith(\"?\") def _lexical_memory_terms(user_prompt: str) -> list[str]: ..."
+        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.kernel.execute_turn = lambda prompt, **kwargs: type(
+                "Result",
+                (),
+                {
+                    "to_dict": lambda self: {
+                        "final_response": noisy,
+                        "total_usage": {},
+                        "metadata": {"backend_used": "opencode", "budget_state": {"blocked": False}},
+                    }
+                },
+            )()
+
+            result = app.run_turn("hello")
+
+        self.assertEqual(
+            result["final_response"],
+            "Yes. The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
+        )
+
     def test_health_payload_exposes_indexing_progress_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir)
