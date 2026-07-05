@@ -407,11 +407,11 @@ class DevenvKernel:
                 elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
             )
 
-        if local_only and _should_try_direct_memory_answer(user_prompt):
-            fast_response = self._try_fast_local_only_direct_answer(user_prompt)
+        if _should_try_direct_memory_answer(user_prompt):
+            fast_response = self._try_fast_direct_memory_answer(user_prompt)
             if fast_response is not None:
-                ai_logs.append("Local-only direct answer returned from pre-retrieval fast path")
-                system_logs.append("Fast path: exact logged answer")
+                ai_logs.append("Direct memory answer returned from pre-retrieval fast path")
+                system_logs.append("Direct-memory fast path bypassed retrieval and model usage.")
                 conversation.append({"role": "assistant", "content": fast_response})
                 self._finalize_turn(
                     user_prompt,
@@ -1694,7 +1694,7 @@ class DevenvKernel:
 
         return _answer_known_project_question(user_prompt, memory_context)
 
-    def _try_fast_local_only_direct_answer(self, user_prompt: str) -> str | None:
+    def _try_fast_direct_memory_answer(self, user_prompt: str) -> str | None:
         lowered = user_prompt.lower()
         if not _should_skip_exact_logged_fast_path(user_prompt):
             answer = self._lookup_exact_logged_answer(user_prompt)
@@ -1703,6 +1703,9 @@ class DevenvKernel:
         if "infer the parts of the app" in lowered and "get-drip" in lowered:
             return self._answer_known_project_question_local(user_prompt, "")
         return None
+
+    def _try_fast_local_only_direct_answer(self, user_prompt: str) -> str | None:
+        return self._try_fast_direct_memory_answer(user_prompt)
 
     def _can_skip_external_memory_fetch(self, user_prompt: str, *, memory_context: str, local_only: bool) -> bool:
         if local_only and _should_try_direct_memory_answer(user_prompt):
@@ -1717,7 +1720,7 @@ class DevenvKernel:
 
     def _lookup_exact_logged_answer(self, user_prompt: str) -> str | None:
         lowered = user_prompt.lower()
-        if "getgit" not in lowered and "get-drip" not in lowered:
+        if not _supports_exact_logged_answer_prompt(user_prompt):
             return None
         if lowered in self._exact_logged_answer_cache:
             return self._exact_logged_answer_cache[lowered]
@@ -1736,13 +1739,13 @@ class DevenvKernel:
                 if not isinstance(response, str):
                     continue
                 cleaned_response = _sanitize_logged_answer(response)
-                if cleaned_response and _is_usable_logged_project_answer(user_prompt, cleaned_response):
+                if cleaned_response and _is_usable_logged_answer(user_prompt, cleaned_response):
                     direct_candidates.append((_lexical_line_score(cleaned_response, user_prompt, terms), cleaned_response))
             if direct_candidates:
                 direct_candidates.sort(key=lambda item: item[0], reverse=True)
                 best_score, best_response = direct_candidates[0]
                 if best_score >= 1:
-                    shaped_response = _shape_logged_project_answer(user_prompt, best_response)
+                    shaped_response = _shape_logged_answer_for_prompt(user_prompt, best_response)
                     self._exact_logged_answer_cache[lowered] = shaped_response
                     return shaped_response
 
@@ -1773,12 +1776,12 @@ class DevenvKernel:
             if not isinstance(agent_text, str) or not agent_text.strip():
                 continue
             cleaned_agent_text = _sanitize_logged_answer(agent_text)
-            if not _is_usable_logged_project_answer(user_prompt, cleaned_agent_text):
+            if not _is_usable_logged_answer(user_prompt, cleaned_agent_text):
                 continue
             exact_external_query = str(metadata.get("external_context_query") or "").strip().lower() if isinstance(metadata, dict) else ""
             logged_user = str(payload.get("user") or "").strip().lower()
             if exact_external_query == lowered:
-                exact_answer = _shape_logged_project_answer(user_prompt, cleaned_agent_text)
+                exact_answer = _shape_logged_answer_for_prompt(user_prompt, cleaned_agent_text)
                 self._exact_logged_answer_cache[lowered] = exact_answer
                 return exact_answer
             if logged_user == lowered:
@@ -1786,7 +1789,7 @@ class DevenvKernel:
             if allow_fallback_candidates:
                 fallback_candidates.append((_lexical_line_score(cleaned_agent_text, user_prompt, terms), cleaned_agent_text))
         fallback_candidates.sort(key=lambda item: item[0], reverse=True)
-        selected = _shape_logged_project_answer(user_prompt, fallback_candidates[0][1]) if fallback_candidates and fallback_candidates[0][0] >= 1 else None
+        selected = _shape_logged_answer_for_prompt(user_prompt, fallback_candidates[0][1]) if fallback_candidates and fallback_candidates[0][0] >= 1 else None
         self._exact_logged_answer_cache[lowered] = selected
         return selected
 
@@ -3717,6 +3720,15 @@ def _shape_logged_project_answer(user_prompt: str, answer: str) -> str:
     return cleaned
 
 
+def _shape_logged_answer_for_prompt(user_prompt: str, answer: str) -> str:
+    cleaned = str(answer or "").strip()
+    if not cleaned:
+        return ""
+    if _is_session_history_question(user_prompt):
+        return cleaned
+    return _shape_logged_project_answer(user_prompt, cleaned)
+
+
 def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str | None:
     if not memory_context.strip():
         return None
@@ -5078,6 +5090,15 @@ def _is_usable_logged_project_answer(user_prompt: str, answer: str) -> bool:
     return _memory_answer_matches_question(user_prompt, [cleaned])
 
 
+def _is_usable_logged_answer(user_prompt: str, answer: str) -> bool:
+    cleaned = str(answer or "").strip()
+    if not cleaned:
+        return False
+    if _is_session_history_question(user_prompt):
+        return _is_high_signal_memory_answer(cleaned, user_prompt) and _memory_answer_matches_question(user_prompt, [cleaned])
+    return _is_usable_logged_project_answer(user_prompt, cleaned)
+
+
 def _answer_known_project_question(user_prompt: str, memory_context: str) -> str | None:
     lowered = user_prompt.lower()
     if "getgit" not in lowered and "get-drip" not in lowered:
@@ -5227,6 +5248,11 @@ def _is_architecture_question(user_prompt: str) -> bool:
     )
 
 
+def _supports_exact_logged_answer_prompt(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    return _is_session_history_question(user_prompt) or "getgit" in lowered or "get-drip" in lowered
+
+
 def _should_skip_exact_logged_fast_path(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     return any(
@@ -5235,7 +5261,6 @@ def _should_skip_exact_logged_fast_path(user_prompt: str) -> bool:
             "what can be said confidently",
             "what remains unclear",
             "what was the backend",
-            "what architecture did",
             "same architecture",
             "look different",
         )

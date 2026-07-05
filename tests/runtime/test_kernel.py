@@ -2659,6 +2659,60 @@ class DevenvKernelTest(unittest.TestCase):
             "I couldn't recover a reliable note about the last merge conflict we solved.",
         )
 
+    def test_lookup_exact_logged_answer_supports_session_history_recall(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                if query == "what was the last merge conflict we solved":
+                    return [
+                        "We fixed the last merge conflict by reconciling the OpenCode fallback retry path with the structured output handling."
+                    ]
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return []
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel._lookup_exact_logged_answer("what was the last merge conflict we solved")
+
+        self.assertEqual(
+            result,
+            "We fixed the last merge conflict by reconciling the OpenCode fallback retry path with the structured output handling.",
+        )
+
+    def test_execute_turn_uses_pre_retrieval_fast_path_for_session_history_recall(self) -> None:
+        class RecallOnlyMemory(FakeMemory):
+            def __init__(self) -> None:
+                super().__init__()
+                self.store = type(
+                    "Store",
+                    (),
+                    {
+                        "search_agent_responses_for_external_query": lambda self, query, limit=8: [
+                            "We fixed the last merge conflict by reconciling the OpenCode fallback retry path with the structured output handling."
+                        ]
+                        if query == "what was the last merge conflict we solved"
+                        else [],
+                        "search_logs": lambda self, terms, limit=20: [],
+                    },
+                )()
+
+            def retrieve_context(self, current_prompt: str, top_k: int = 5) -> FakeRetrievalResult:
+                raise AssertionError("session-history exact recall should skip retrieval")
+
+        memory = RecallOnlyMemory()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel.execute_turn("what was the last merge conflict we solved")
+
+        self.assertEqual(
+            result.final_response,
+            "We fixed the last merge conflict by reconciling the OpenCode fallback retry path with the structured output handling.",
+        )
+        self.assertEqual(memory.working_memory_calls, [])
+
     def test_do_you_know_about_getdrip_bugs_uses_bug_list_recall(self) -> None:
         class FakeStore:
             def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
