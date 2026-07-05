@@ -3205,11 +3205,11 @@ def _shape_logged_project_answer(user_prompt: str, answer: str) -> str:
 
     lowered_prompt = user_prompt.lower()
     if "get-drip" in lowered_prompt and _is_bug_list_question(user_prompt):
-        issues = _extract_follow_up_issues(_memory_context_lines(cleaned))
+        issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(_memory_context_lines(cleaned)))
         if issues:
             return _format_issue_list_answer("get-drip", issues)
     if "get-drip" in lowered_prompt and ("schema" in lowered_prompt or "cleanup" in lowered_prompt):
-        issues = _extract_follow_up_issues(_memory_context_lines(cleaned))
+        issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(_memory_context_lines(cleaned)))
         if issues:
             summary = _join_human_list(issues)
             return f"The get-drip cleanup was mainly about {summary}."
@@ -3228,7 +3228,7 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         ]
         issue_lines = [line for line in issue_lines if line and _is_high_signal_memory_answer(line, user_prompt)]
         issue_subject = _preferred_memory_subject(user_prompt, sections["external"] + sections["working"] + sections["retrieved"])
-        extracted_issues = _extract_follow_up_issues(issue_lines)
+        extracted_issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(issue_lines))
         if extracted_issues:
             return _format_issue_list_answer(issue_subject, extracted_issues)
     if _is_memory_follow_up_question(user_prompt) and sections["working"]:
@@ -3552,6 +3552,18 @@ def _extract_follow_up_issues(lines: list[str]) -> list[str]:
         if issue not in unique_detected:
             unique_detected.append(issue)
     return unique_detected
+
+
+def _issues_relevant_to_prompt(user_prompt: str, issues: list[str]) -> list[str]:
+    lowered = user_prompt.lower()
+    if "get-drip" in lowered and ("schema" in lowered or "cleanup" in lowered):
+        narrowed = [
+            issue
+            for issue in issues
+            if issue in {"root URL redirects", "Convex generated imports", "authentication bypass", "open email relay"}
+        ]
+        return narrowed or issues
+    return issues
 
 
 def _summarize_follow_up_issues(lines: list[str]) -> str | None:

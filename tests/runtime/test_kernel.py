@@ -1569,6 +1569,22 @@ class DevenvKernelTest(unittest.TestCase):
             "The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
         )
 
+    def test_cleanup_follow_up_stays_narrow_to_cleanup_specific_issues(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "can you explain about it",
+            "\n".join(
+                [
+                    "## Working Memory",
+                    "- assistant: The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
+                ]
+            ),
+        )
+
+        self.assertEqual(
+            answer,
+            "Yes. It was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
+        )
+
     def test_retrieve_memory_context_skips_vector_lookup_for_session_history_questions(self) -> None:
         class RecallOnlyMemory(FakeMemory):
             def __init__(self) -> None:
