@@ -288,6 +288,42 @@ class DevenvKernelTest(unittest.TestCase):
             "For that question I would use `web_search` first, then answer from the retrieved results.",
         )
 
+    def test_execute_turn_answers_bug_fix_follow_up_from_recent_conversation(self) -> None:
+        memory = FailingMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.ephemeral_history = [
+                {
+                    "role": "assistant",
+                    "content": "In get-drip, the recalled bug list was:\n\n**Core product bugs**\n- Create Workspace accepting https links and converting them internally\n- Salesforce being marked as coming soon or disabled\n- the DRIP pipeline chat flow not working",
+                }
+            ]
+            result = kernel.execute_turn("how did we fix those bugs")
+
+        self.assertEqual(
+            result.final_response,
+            "Yes. In get-drip, we fixed those bugs by addressing Create Workspace accepting https links and converting them internally, Salesforce being marked as coming soon or disabled, and the DRIP pipeline chat flow not working.",
+        )
+
+    def test_execute_turn_answers_explain_it_follow_up_from_recent_conversation(self) -> None:
+        memory = FailingMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.ephemeral_history = [
+                {
+                    "role": "assistant",
+                    "content": "The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
+                }
+            ]
+            result = kernel.execute_turn("can you explain about it")
+
+        self.assertIn("It was mainly about root URL redirects", result.final_response or "")
+        self.assertNotIn("main.py", result.final_response or "")
+
     def test_execute_turn_appends_external_session_context_to_memory(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
@@ -1237,6 +1273,66 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertNotIn("Devenv status", answer or "")
         self.assertNotIn("Tool trace", answer or "")
+
+    def test_follow_up_prefers_recent_working_memory_summary_over_unrelated_retrieved_memory(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "can you explain about it",
+            "\n".join(
+                [
+                    "## Working Memory",
+                    "- assistant: The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
+                    "## Retrieved Memory",
+                    "- [episode] can you explain how the main.py works | The `main.py` file is a Python script that sets up a simple HTTP server.",
+                ]
+            ),
+        )
+
+        self.assertIn("It was mainly about root URL redirects", answer or "")
+        self.assertNotIn("main.py", answer or "")
+
+    def test_retrieve_memory_context_anchors_lexical_follow_up_to_recent_subject(self) -> None:
+        class FakeStore:
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                if "get-drip" in terms:
+                    return [
+                        EpisodicLog(
+                            log_id="anchored-1",
+                            timestamp=2.0,
+                            associated_node_id=None,
+                            raw_interaction=json.dumps(
+                                {
+                                    "user": "what do you know about clean up schema of get-drip",
+                                    "agent": "The get-drip cleanup was mainly about root URL redirects and Convex generated imports.",
+                                }
+                            ),
+                        )
+                    ]
+                return [
+                    EpisodicLog(
+                        log_id="unanchored-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "user": "can you explain how the main.py works",
+                                "agent": "The `main.py` file is a Python script that sets up a simple HTTP server.",
+                            }
+                        ),
+                    )
+                ]
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            kernel.ephemeral_history = [
+                {"role": "user", "content": "what do you know about clean up schema of get-drip"},
+                {"role": "assistant", "content": "The get-drip cleanup was mainly about root URL redirects and Convex generated imports."},
+            ]
+            context, _metadata = kernel._retrieve_memory_context("can you explain about it")
+
+        self.assertIn("get-drip cleanup", context)
+        self.assertNotIn("main.py", context)
 
     def test_answer_from_retrieved_memory_rejects_single_file_memory_for_repo_summary_prompt(self) -> None:
         answer = _answer_from_retrieved_memory(

@@ -270,6 +270,33 @@ class DevenvKernel:
                 elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
             )
 
+        conversation_follow_up = _answer_from_recent_conversation_follow_up(user_prompt, self.ephemeral_history)
+        if conversation_follow_up is not None:
+            ai_logs.append("Answered referential follow-up from recent conversation")
+            system_logs.append("Recent-conversation follow-up fast path bypassed memory retrieval and model usage.")
+            conversation.append({"role": "assistant", "content": conversation_follow_up})
+            self._finalize_turn(
+                user_prompt,
+                conversation_follow_up,
+                conversation,
+                persist_memory=False,
+                persist_working_memory=False,
+                metadata=turn_metadata,
+            )
+            return RuntimeTurnResult(
+                final_response=conversation_follow_up,
+                steps=[],
+                total_usage={},
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                stage_traces=stage_traces,
+                verification_results=verification_results,
+                metadata=turn_metadata,
+                state=self.state.name,
+                blueprint=self.active_blueprint,
+                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+            )
+
         tool_strategy_response = self._answer_tool_strategy_question(user_prompt, selected_tools=turn_metadata["selected_tools"])
         if tool_strategy_response is not None:
             ai_logs.append("Answered tool-strategy question locally from routing rules")
@@ -2817,7 +2844,8 @@ class DevenvKernel:
             "external_context_session_count": 0,
             "external_context_session_ids": [],
         }
-        lexical_context = self._retrieve_lexical_memory_context(user_prompt)
+        lexical_query = _compose_external_memory_query(user_prompt, self.ephemeral_history)
+        lexical_context = self._retrieve_lexical_memory_context(user_prompt, search_query=lexical_query)
         if lexical_context:
             memory_context = lexical_context
             if local_only and _should_try_direct_memory_answer(user_prompt):
@@ -2869,7 +2897,7 @@ class DevenvKernel:
         except Exception as exc:
             logger.warning("Failed to persist retrieval trace state: error=%s", exc)
 
-    def _retrieve_lexical_memory_context(self, user_prompt: str) -> str:
+    def _retrieve_lexical_memory_context(self, user_prompt: str, *, search_query: str | None = None) -> str:
         if not _should_try_direct_memory_answer(user_prompt):
             return ""
 
@@ -2877,7 +2905,7 @@ class DevenvKernel:
         if store is None or not hasattr(store, "search_logs"):
             return ""
 
-        terms = _lexical_memory_terms(user_prompt)
+        terms = _lexical_memory_terms(search_query or user_prompt)
         if not terms:
             return ""
 
@@ -3203,6 +3231,26 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
         extracted_issues = _extract_follow_up_issues(issue_lines)
         if extracted_issues:
             return _format_issue_list_answer(issue_subject, extracted_issues)
+    if _is_memory_follow_up_question(user_prompt) and sections["working"]:
+        recent_working_lines = _recent_working_follow_up_lines(sections["working"], user_prompt)
+        if recent_working_lines:
+            shaped_working = [_humanize_recalled_line(line, user_prompt) for line in recent_working_lines]
+            shaped_working = [line for line in shaped_working if line]
+            if shaped_working:
+                subject = _preferred_memory_subject(user_prompt, sections["working"] + sections["external"] + sections["retrieved"])
+                issue_summary = _summarize_follow_up_issues(shaped_working)
+                if issue_summary and _is_bug_fix_follow_up_question(user_prompt):
+                    if subject:
+                        return f"Yes. In {subject}, we fixed those bugs by addressing {issue_summary}."
+                    return f"Yes. We fixed those bugs by addressing {issue_summary}."
+                if issue_summary and ("what were those" in user_prompt.lower() or "those bugs" in user_prompt.lower()):
+                    if subject:
+                        return f"Yes. In {subject}, the main issues were {issue_summary}."
+                    return f"Yes. The main issues were {issue_summary}."
+                if _is_bug_fix_follow_up_question(user_prompt) or "what were those" in user_prompt.lower() or "those bugs" in user_prompt.lower():
+                    shaped_working = []
+                if len(shaped_working) == 1:
+                    return _affirm_memory_answer(shaped_working[0])
     if _is_memory_follow_up_question(user_prompt) and sections["external"]:
         ordered_follow_up = _ordered_follow_up_lines(user_prompt, sections["external"])
         if ordered_follow_up:
@@ -3358,6 +3406,23 @@ def _memory_context_sections(memory_context: str) -> dict[str, list[str]]:
     return lines
 
 
+def _recent_working_follow_up_lines(lines: list[str], user_prompt: str) -> list[str]:
+    selected: list[str] = []
+    for raw_line in reversed(lines):
+        lowered = raw_line.lower()
+        if not (lowered.startswith("assistant:") or lowered.startswith("assistant reported:")):
+            continue
+        cleaned = _clean_memory_line(raw_line)
+        if not cleaned or not _is_high_signal_memory_answer(cleaned, user_prompt):
+            continue
+        if cleaned not in selected:
+            selected.append(cleaned)
+        if len(selected) >= 2:
+            break
+    selected.reverse()
+    return selected
+
+
 def _summarize_directory_listing(candidate_path: str, output: str) -> str:
     relative_paths: list[str] = []
     payload = _extract_tool_payload_json(output)
@@ -3439,6 +3504,8 @@ def _humanize_recalled_line(line: str, user_prompt: str) -> str:
         lowered = cleaned.lower()
         if " was about " in lowered and not lowered.startswith("it was about "):
             cleaned = "It was about " + cleaned.split(" was about ", 1)[1].strip()
+        elif " was mainly about " in lowered and not lowered.startswith("it was mainly about "):
+            cleaned = "It was mainly about " + cleaned.split(" was mainly about ", 1)[1].strip()
         elif not lowered.startswith("it was about ") and not lowered.startswith("about "):
             cleaned = f"It was about {cleaned[0].lower()}{cleaned[1:]}" if len(cleaned) > 1 else f"It was about {cleaned.lower()}"
     return cleaned.strip()
@@ -3985,6 +4052,38 @@ def _is_bug_fix_follow_up_question(user_prompt: str) -> bool:
             "how were those fixed",
         )
     )
+
+
+def _answer_from_recent_conversation_follow_up(user_prompt: str, conversation: list[dict[str, Any]]) -> str | None:
+    if not _is_memory_follow_up_question(user_prompt):
+        return None
+
+    recent_lines: list[str] = []
+    last_assistant: str | None = None
+    for message in reversed(conversation[-6:]):
+        role = str(message.get("role") or "")
+        content = _sanitize_logged_answer(str(message.get("content") or "").strip())
+        if role not in {"user", "assistant"} or not content:
+            continue
+        recent_lines.append(content)
+        if role == "assistant" and last_assistant is None:
+            last_assistant = content
+
+    if not last_assistant or not _is_high_signal_memory_answer(last_assistant, user_prompt):
+        return None
+
+    subject = _preferred_memory_subject(user_prompt, recent_lines)
+    issue_summary = _summarize_follow_up_issues(_memory_context_lines(last_assistant))
+    lowered = user_prompt.lower()
+    if issue_summary and _is_bug_fix_follow_up_question(user_prompt):
+        if subject:
+            return f"Yes. In {subject}, we fixed those bugs by addressing {issue_summary}."
+        return f"Yes. We fixed those bugs by addressing {issue_summary}."
+    if issue_summary and ("what were those" in lowered or "those bugs" in lowered):
+        if subject:
+            return f"Yes. In {subject}, the main issues were {issue_summary}."
+        return f"Yes. The main issues were {issue_summary}."
+    return _affirm_memory_answer(_humanize_recalled_line(last_assistant, user_prompt))
 
 
 def _is_bug_list_question(user_prompt: str) -> bool:
