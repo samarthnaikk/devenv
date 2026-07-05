@@ -6,8 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
+from core.ai.models import AIResponse, ToolCallRequest
 from core.ai.opencode_client import OpenCodeClientError
 from core.ai.routing import OpenCodeAICore, RoutingAICore, _opencode_output_format
 from core.tools.base import BaseTool, ToolResult
@@ -279,6 +280,56 @@ class OpenCodeRoutingTest(unittest.TestCase):
         self.assertEqual(response.finish_reason, "tool_calls")
         self.assertEqual(response.tool_calls[0].tool_name, "read_file")
         self.assertIsNone(client.sent_messages[1]["output_format"])
+
+    def test_opencode_core_falls_back_to_legacy_cli_when_server_400_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            client = _FakeOpenCodeClient(
+                responses=[
+                    OpenCodeClientError("bad request", status_code=400),
+                ]
+            )
+            manager = Mock()
+            manager.ensure_server.return_value = Mock()
+            manager.inspect.return_value = _fake_server_status()
+
+            core = OpenCodeAICore(workspace_path=tempdir, executable="opencode", client=client, server_manager=manager)
+            with patch.object(
+                core,
+                "_legacy_cli_chat",
+                return_value=AIResponse(content="CLI rescue", tool_calls=(), finish_reason="stop", usage={"total_tokens": 3}),
+            ) as legacy_chat:
+                response = core.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
+
+        self.assertEqual(response.content, "CLI rescue")
+        legacy_chat.assert_called_once()
+        self.assertIn("fell back to cli transport", core.last_backend_fallback.lower())
+        self.assertEqual(core.last_backend_reason, "OpenCode CLI fallback handled the turn after server failure.")
+
+    def test_opencode_core_falls_back_to_legacy_cli_for_tool_turn_when_server_400_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            client = _FakeOpenCodeClient(
+                responses=[
+                    OpenCodeClientError("unprocessable entity", status_code=422),
+                ]
+            )
+            manager = Mock()
+            manager.ensure_server.return_value = Mock()
+            manager.inspect.return_value = _fake_server_status()
+
+            core = OpenCodeAICore(workspace_path=tempdir, executable="opencode", client=client, server_manager=manager)
+            core.register_tool(FakeTool())
+            cli_tool_response = AIResponse(
+                content="",
+                tool_calls=(ToolCallRequest(call_id="call_1", tool_name="read_file", arguments={"path": "README.md"}),),
+                finish_reason="tool_calls",
+                usage={"total_tokens": 4},
+            )
+            with patch.object(core, "_legacy_cli_chat", return_value=cli_tool_response) as legacy_chat:
+                response = core.chat(messages=[{"role": "user", "content": "open the readme"}], tool_names=["read_file"])
+
+        self.assertEqual(response.finish_reason, "tool_calls")
+        self.assertEqual(response.tool_calls[0].tool_name, "read_file")
+        legacy_chat.assert_called_once()
 
 
 class _FakeOpenCodeClient:

@@ -125,6 +125,20 @@ class OpenCodeAICore:
             session_id = self._ensure_session()
             response = self._send_server_message(session_id, prompt=prompt, resolved_tool_names=resolved_tool_names)
         except OpenCodeClientError as exc:
+            if _should_fallback_to_legacy_cli(exc):
+                server_failure = str(exc).strip() or "unknown server failure"
+                fallback_note = f"OpenCode server failed ({server_failure}); fell back to CLI transport."
+                self.reset_session()
+                cli_response = self._legacy_cli_chat(
+                    messages=messages,
+                    memory_context=memory_context,
+                    tool_names=resolved_tool_names,
+                )
+                self.last_backend_used = "opencode"
+                self.last_backend_reason = "OpenCode CLI fallback handled the turn after server failure."
+                self.last_backend_fallback = fallback_note
+                self.last_error = ""
+                return cli_response
             self.last_error = f"OpenCode server failed: {exc}"
             raise RuntimeError(self.last_error) from exc
         self._synced_message_count = len(messages)
@@ -404,6 +418,14 @@ def _is_structured_output_retryable(exc: OpenCodeClientError) -> bool:
             "schema",
         )
     )
+
+
+def _should_fallback_to_legacy_cli(exc: OpenCodeClientError) -> bool:
+    if exc.status_code in {401, 403}:
+        return False
+    if exc.status_code is None:
+        return True
+    return exc.status_code >= 400
 
 
 def _opencode_output_format(allowed_tools: list[str]) -> dict[str, Any]:
