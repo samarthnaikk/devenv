@@ -1914,12 +1914,43 @@ function collapseRepeatedBlocks(content) {
     return text;
   }
   const deduped = [];
-  for (const block of blocks) {
+  const seenCanonical = new Set();
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if (isAffirmativeOnlyBlock(block) && index + 1 < blocks.length) {
+      continue;
+    }
+    const canonical = canonicalizeResponseBlock(block);
+    if (canonical && seenCanonical.has(canonical)) {
+      continue;
+    }
     if (!deduped.length || deduped[deduped.length - 1] !== block) {
       deduped.push(block);
+      if (canonical) {
+        seenCanonical.add(canonical);
+      }
     }
   }
   return deduped.join("\n\n");
+}
+
+function canonicalizeResponseBlock(content) {
+  let text = String(content || "").trim().replace(/\s+/g, " ");
+  if (!text) {
+    return "";
+  }
+  while (/^yes\.\s+yes\.\s+/i.test(text)) {
+    text = text.replace(/^yes\.\s+/i, "").trim();
+  }
+  const nestedMatch = text.match(/^yes\.\s+yes\.\s+(.+)$/i);
+  if (nestedMatch && nestedMatch[1]) {
+    text = `Yes. ${nestedMatch[1].trim()}`;
+  }
+  return text;
+}
+
+function isAffirmativeOnlyBlock(content) {
+  return /^(yes|yeah|yep)\.?$/i.test(String(content || "").trim());
 }
 
 function parseRateLimitError(message) {

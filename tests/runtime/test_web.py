@@ -575,6 +575,31 @@ class DevenvWebAppTest(unittest.TestCase):
 
         self.assertEqual(result["final_response"], repeated)
 
+    def test_run_turn_collapses_affirmative_wrapped_duplicate_blocks(self) -> None:
+        repeated = "Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts."
+        wrapped = f"Yes.\n\n{repeated}"
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.kernel.execute_turn = lambda prompt, **kwargs: type(
+                "Result",
+                (),
+                {
+                    "to_dict": lambda self: {
+                        "final_response": f"{repeated}\n\n{wrapped}\n\nYes. Yes. The strongest clues point to src/convex-types.ts and src/convex-api.ts.",
+                        "total_usage": {},
+                        "metadata": {"backend_used": "opencode", "budget_state": {"blocked": False}},
+                    }
+                },
+            )()
+
+            result = app.run_turn("hello")
+
+        self.assertEqual(result["final_response"], repeated)
+
     def test_health_payload_exposes_indexing_progress_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sysconfig
 import inspect
 from functools import partial
@@ -65,6 +66,22 @@ def _normalize_replay_error(message: str) -> str:
     return f"{cleaned}."
 
 
+def _canonicalize_response_block(content: str) -> str:
+    text = " ".join(str(content or "").strip().split())
+    if not text:
+        return ""
+    while text.lower().startswith("yes. yes. "):
+        text = text[5:].strip()
+    nested_match = re.match(r"^Yes\.\s+Yes\.\s+(.+)$", text, flags=re.IGNORECASE)
+    if nested_match and nested_match.group(1):
+        text = f"Yes. {nested_match.group(1).strip()}"
+    return text
+
+
+def _is_affirmative_only_block(content: str) -> bool:
+    return bool(re.fullmatch(r"(yes|yeah|yep)\.?", str(content or "").strip(), flags=re.IGNORECASE))
+
+
 def _collapse_repeated_blocks(content: str | None) -> str | None:
     raw = str(content or "").strip()
     if not raw:
@@ -73,9 +90,19 @@ def _collapse_repeated_blocks(content: str | None) -> str | None:
     if not blocks:
         return raw
     deduped_blocks: list[str] = []
-    for block in blocks:
+    seen_canonical: set[str] = set()
+    for index, block in enumerate(blocks):
+        if _is_affirmative_only_block(block):
+            next_block = blocks[index + 1] if index + 1 < len(blocks) else ""
+            if next_block:
+                continue
+        canonical = _canonicalize_response_block(block)
+        if canonical and canonical in seen_canonical:
+            continue
         if not deduped_blocks or deduped_blocks[-1] != block:
             deduped_blocks.append(block)
+            if canonical:
+                seen_canonical.add(canonical)
     collapsed = "\n\n".join(deduped_blocks).strip()
     return collapsed or raw
 
