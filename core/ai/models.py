@@ -27,6 +27,7 @@ class AIBackendStatus:
     model: str = ""
     detail: str = ""
     supports_tool_calls: bool = True
+    metadata: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -36,4 +37,5 @@ class AIBackendStatus:
             "model": self.model,
             "detail": self.detail,
             "supports_tool_calls": self.supports_tool_calls,
+            "metadata": dict(self.metadata or {}),
         }
