@@ -286,6 +286,12 @@ class RoutingAICore:
         self.preferred_backend = "opencode"
         self.opencode_enabled = opencode_enabled
 
+    def reset_session(self) -> None:
+        self.opencode_ai.reset_session()
+
+    def abort(self) -> bool:
+        return self.opencode_ai.abort()
+
     def chat(
         self,
         messages: list[dict[str, Any]],

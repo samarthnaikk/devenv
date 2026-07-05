@@ -164,6 +164,25 @@ class OpenCodeRoutingTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 router.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
 
+    def test_routing_core_forwards_session_lifecycle_methods(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            client = _FakeOpenCodeClient(
+                responses=[_fake_message("msg_1", structured_output={"type": "final", "content": "hello"}, usage={"total_tokens": 1})]
+            )
+            manager = Mock()
+            manager.ensure_server.return_value = Mock()
+            manager.inspect.return_value = _fake_server_status()
+            core = OpenCodeAICore(workspace_path=tempdir, executable="opencode", client=client, server_manager=manager)
+            router = RoutingAICore(workspace_path=tempdir, opencode_ai=core)
+            router.set_backend_preference("opencode", opencode_enabled=True)
+
+            router.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
+            aborted = router.abort()
+            router.reset_session()
+
+        self.assertTrue(aborted)
+        self.assertEqual(client.aborted_session_ids, ["ses_123"])
+
     def test_legacy_cli_mode_still_parses_json_line_output(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             script_path = Path(tempdir) / "opencode"
@@ -192,6 +211,7 @@ class _FakeOpenCodeClient:
         self.error = error
         self.created_titles: list[str] = []
         self.sent_messages: list[dict[str, Any]] = []
+        self.aborted_session_ids: list[str] = []
 
     def create_session(self, *, title: str | None = None, parent_id: str | None = None):
         self.created_titles.append(title or "")
@@ -204,6 +224,7 @@ class _FakeOpenCodeClient:
         return self.responses.pop(0)
 
     def abort_session(self, session_id: str) -> bool:
+        self.aborted_session_ids.append(session_id)
         return True
 
 
