@@ -1728,11 +1728,16 @@ class DevenvKernel:
         store = getattr(self.memory, "store", None)
         if store is None or not hasattr(store, "search_logs"):
             return None
+        query_variants = _exact_logged_query_variants(user_prompt)
         if hasattr(store, "search_agent_responses_for_external_query"):
-            try:
-                direct_responses = store.search_agent_responses_for_external_query(user_prompt, limit=8)
-            except Exception:
-                direct_responses = []
+            direct_responses = []
+            for query_variant in query_variants:
+                try:
+                    direct_responses = store.search_agent_responses_for_external_query(query_variant, limit=8)
+                except Exception:
+                    direct_responses = []
+                if direct_responses:
+                    break
             direct_candidates: list[tuple[int, str]] = []
             terms = _lexical_memory_terms(user_prompt)
             for response in direct_responses:
@@ -1751,10 +1756,13 @@ class DevenvKernel:
 
         logs = []
         if hasattr(store, "search_logs_for_external_query"):
-            try:
-                logs = store.search_logs_for_external_query(user_prompt, limit=8)
-            except Exception:
-                logs = []
+            for query_variant in query_variants:
+                try:
+                    logs = store.search_logs_for_external_query(query_variant, limit=8)
+                except Exception:
+                    logs = []
+                if logs:
+                    break
         if not logs:
             try:
                 logs = store.search_logs(_lexical_memory_terms(user_prompt), limit=20)
@@ -1780,11 +1788,11 @@ class DevenvKernel:
                 continue
             exact_external_query = str(metadata.get("external_context_query") or "").strip().lower() if isinstance(metadata, dict) else ""
             logged_user = str(payload.get("user") or "").strip().lower()
-            if exact_external_query == lowered:
+            if exact_external_query in query_variants:
                 exact_answer = _shape_logged_answer_for_prompt(user_prompt, cleaned_agent_text)
                 self._exact_logged_answer_cache[lowered] = exact_answer
                 return exact_answer
-            if logged_user == lowered:
+            if logged_user in query_variants:
                 continue
             if allow_fallback_candidates:
                 fallback_candidates.append((_lexical_line_score(cleaned_agent_text, user_prompt, terms), cleaned_agent_text))
@@ -3717,6 +3725,11 @@ def _shape_logged_project_answer(user_prompt: str, answer: str) -> str:
         issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(_memory_context_lines(cleaned)))
         if issues:
             return _format_issue_list_answer("get-drip", issues)
+    if "get-drip" in lowered_prompt and _is_memory_recall_question(user_prompt):
+        issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(_memory_context_lines(cleaned)))
+        if issues:
+            summary = _join_human_list(issues)
+            return f"Yes. In get-drip, the main issues were {summary}."
     return cleaned
 
 
@@ -5251,6 +5264,31 @@ def _is_architecture_question(user_prompt: str) -> bool:
 def _supports_exact_logged_answer_prompt(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     return _is_session_history_question(user_prompt) or "getgit" in lowered or "get-drip" in lowered
+
+
+def _exact_logged_query_variants(user_prompt: str) -> tuple[str, ...]:
+    variants: list[str] = []
+
+    def add(candidate: str) -> None:
+        normalized = " ".join(str(candidate or "").strip().lower().split())
+        if normalized and normalized not in variants:
+            variants.append(normalized)
+
+    base = user_prompt
+    add(base)
+    add(base.rstrip("?.!"))
+    if "schrema" in base.lower():
+        add(re.sub(r"schrema", "schema", base, flags=re.IGNORECASE))
+    if re.search(r"\bog\b", base, flags=re.IGNORECASE):
+        add(re.sub(r"\bog\b", "of", base, flags=re.IGNORECASE))
+    if "schrema" in base.lower() and re.search(r"\bog\b", base, flags=re.IGNORECASE):
+        add(re.sub(r"\bog\b", "of", re.sub(r"schrema", "schema", base, flags=re.IGNORECASE), flags=re.IGNORECASE))
+    lowered = base.lower()
+    if lowered.startswith("do you know about "):
+        add("what " + base)
+    if lowered.startswith("what do you know about "):
+        add(base.replace("what do you know about", "do you know about", 1))
+    return tuple(variants)
 
 
 def _should_skip_exact_logged_fast_path(user_prompt: str) -> bool:

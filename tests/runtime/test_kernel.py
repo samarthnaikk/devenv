@@ -2510,6 +2510,68 @@ class DevenvKernelTest(unittest.TestCase):
             "The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
         )
 
+    def test_lookup_exact_logged_answer_humanizes_generic_getdrip_recall(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                if query == "what do you know about get-drip":
+                    return [
+                        "\n".join(
+                            [
+                                "Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:",
+                                "",
+                                "1. Create Workspace accepting https links and converting them internally",
+                                "2. Salesforce being marked as coming soon or disabled",
+                                "3. The DRIP pipeline chat flow not working",
+                            ]
+                        )
+                    ]
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return []
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel._lookup_exact_logged_answer("what do you know about get-drip?")
+
+        self.assertEqual(
+            result,
+            "Yes. In get-drip, the main issues were Create Workspace accepting https links and converting them internally, Salesforce being marked as coming soon or disabled, and the DRIP pipeline chat flow not working.",
+        )
+
+    def test_lookup_exact_logged_answer_normalizes_schema_cleanup_typo_variant(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                if query == "what do you know about clean up schema of get-drip":
+                    return [
+                        "\n".join(
+                            [
+                                "Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:",
+                                "",
+                                "1. root URL redirects",
+                                "2. Convex generated imports",
+                                "3. authentication bypass (critical)",
+                            ]
+                        )
+                    ]
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return []
+
+        memory = FakeMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel._lookup_exact_logged_answer("what do you know about clean up schrema og get-drip")
+
+        self.assertEqual(
+            result,
+            "The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
+        )
+
     def test_cleanup_follow_up_stays_narrow_to_cleanup_specific_issues(self) -> None:
         answer = _answer_from_retrieved_memory(
             "can you explain about it",
@@ -2744,6 +2806,42 @@ class DevenvKernelTest(unittest.TestCase):
             result = kernel.execute_turn("do you know about get-drip bugs")
 
         self.assertIn("In get-drip, the recalled bug list was:", result.final_response or "")
+
+    def test_execute_turn_uses_pre_retrieval_fast_path_for_do_you_know_bug_variant(self) -> None:
+        class RecallOnlyMemory(FakeMemory):
+            def __init__(self) -> None:
+                super().__init__()
+                self.store = type(
+                    "Store",
+                    (),
+                    {
+                        "search_agent_responses_for_external_query": lambda self, query, limit=8: [
+                            "\n".join(
+                                [
+                                    "Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:",
+                                    "",
+                                    "1. Create Workspace accepting https links and converting them internally",
+                                    "2. Salesforce being marked as coming soon or disabled",
+                                    "3. The DRIP pipeline chat flow not working",
+                                ]
+                            )
+                        ]
+                        if query == "what do you know about get-drip bugs"
+                        else [],
+                        "search_logs": lambda self, terms, limit=20: [],
+                    },
+                )()
+
+            def retrieve_context(self, current_prompt: str, top_k: int = 5) -> FakeRetrievalResult:
+                raise AssertionError("bug-list exact recall should skip retrieval")
+
+        memory = RecallOnlyMemory()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel.execute_turn("do you know about get-drip bugs")
+
+        self.assertIn("In get-drip, the recalled bug list was:", result.final_response or "")
+        self.assertEqual(memory.working_memory_calls, [])
 
     def test_execute_turn_prefers_structured_project_answer_before_generic_memory_recall(self) -> None:
         class FakeStore:
