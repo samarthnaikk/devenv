@@ -10,6 +10,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from core.ai.codex_backend import CodexAICore
 from core.ai.engine import DEFAULT_SYSTEM_INSTRUCTIONS
 from core.ai.models import AIBackendStatus, AIResponse, ToolCallRequest
 from core.ai.opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeServerManager, default_opencode_server_config
@@ -376,7 +377,10 @@ class RoutingAICore:
             workspace_path=self.workspace_path,
             system_instructions=DEFAULT_SYSTEM_INSTRUCTIONS,
         )
-        self.codex_ai = codex_ai
+        self.codex_ai = codex_ai or CodexAICore(
+            workspace_path=self.workspace_path,
+            system_instructions=DEFAULT_SYSTEM_INSTRUCTIONS,
+        )
         self.model = self.opencode_ai.model
         self.preferred_backend = "opencode"
         self.opencode_enabled = False

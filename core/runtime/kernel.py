@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from core.ai import OpenCodeAICore, RoutingAICore
-from core.ai.models import AIResponse, ToolCallRequest
+from core.ai.models import AIExecutedToolStep, AIResponse, ToolCallRequest
 from core.env import load_dotenv
 from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
@@ -224,6 +224,7 @@ class DevenvKernel:
         selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
         backend_preference: str = "opencode",
         opencode_enabled: bool = False,
+        codex_enabled: bool = False,
         session_budget_tokens: int | None = None,
         no_memory: bool = False,
         incognito: bool = False,
@@ -247,7 +248,11 @@ class DevenvKernel:
             "incognito": incognito,
         }
         if hasattr(self.ai, "set_backend_preference"):
-            self.ai.set_backend_preference(backend_preference, opencode_enabled=opencode_enabled)
+            self.ai.set_backend_preference(
+                backend_preference,
+                opencode_enabled=opencode_enabled,
+                codex_enabled=codex_enabled,
+            )
         if session_budget_tokens is not None and self.session_usage_totals.get("total_tokens", 0) >= session_budget_tokens:
             turn_metadata["budget_state"] = {
                 "blocked": True,
@@ -971,7 +976,7 @@ class DevenvKernel:
                     total_usage=total_usage,
                     ai_logs=ai_logs,
                     system_logs=system_logs,
-                    allow_ai_synthesis=bool(getattr(self.ai, "opencode_enabled", False)),
+                    allow_ai_synthesis=self._remote_backend_enabled(),
                 )
                 if handled_locally:
                     updated = _mark_checkpoint_completed(blueprint, blueprint.active_task_pointer, _summarize_execution_note(local_response))
@@ -1279,6 +1284,16 @@ class DevenvKernel:
             ai_logs.append(
                 f"Direct response: finish_reason={ai_response.finish_reason}, tool_calls={len(ai_response.tool_calls)}, total_tokens={ai_response.usage.get('total_tokens', 0)}"
             )
+            if ai_response.executed_steps:
+                converted_steps = [_runtime_step_from_ai_step(step) for step in ai_response.executed_steps]
+                start_index = len(steps)
+                steps.extend(converted_steps)
+                ai_logs.append(f"Backend executed {len(converted_steps)} MCP tool step(s) directly")
+                for index, step in enumerate(converted_steps, start=start_index + 1):
+                    system_logs.append(f"Tool step {index}: {step.tool_name} success={step.success}")
+                if ai_response.content:
+                    ai_logs.append("Assistant produced direct response after backend-managed tool execution")
+                return ai_response.content
             inline_tool_call = _coerce_inline_tool_call(ai_response.content, tool_scope)
             effective_tool_calls = list(ai_response.tool_calls)
             if inline_tool_call is not None:
@@ -1306,6 +1321,9 @@ class DevenvKernel:
             if ai_response.content:
                 ai_logs.append("Assistant produced direct response")
             return ai_response.content
+
+    def _remote_backend_enabled(self) -> bool:
+        return bool(getattr(self.ai, "opencode_enabled", False) or getattr(self.ai, "codex_enabled", False))
 
     def _run_local_knowledge_turn(
         self,
@@ -1966,6 +1984,15 @@ class DevenvKernel:
             ai_logs.append(
                 f"Planning response: finish_reason={ai_response.finish_reason}, tool_calls={len(ai_response.tool_calls)}, total_tokens={ai_response.usage.get('total_tokens', 0)}"
             )
+            if ai_response.executed_steps:
+                converted_steps = [_runtime_step_from_ai_step(step) for step in ai_response.executed_steps]
+                steps.extend(converted_steps)
+                ai_logs.append(f"Planning backend executed {len(converted_steps)} MCP tool step(s) directly")
+                content = ai_response.content
+                if content:
+                    conversation.append({"role": "assistant", "content": content})
+                    ai_logs.append("Planning blueprint generated")
+                return content, conversation
             if ai_response.tool_calls:
                 for tool_call in ai_response.tool_calls:
                     if tool_call.tool_name not in PLANNING_ALLOWED_TOOLS:
@@ -2066,6 +2093,45 @@ class DevenvKernel:
                 ai_logs.append(
                     f"Execution response: checkpoint={index + 1}, finish_reason={ai_response.finish_reason}, tool_calls={len(ai_response.tool_calls)}, total_tokens={ai_response.usage.get('total_tokens', 0)}"
                 )
+                if ai_response.executed_steps:
+                    converted_steps = [_runtime_step_from_ai_step(step) for step in ai_response.executed_steps]
+                    start_index = len(steps)
+                    steps.extend(converted_steps)
+                    tool_iterations += len(converted_steps)
+                    if tool_iterations > max_consecutive_tools:
+                        raise RuntimeError("Execution tool limit reached before the checkpoint completed.")
+                    for step_index, step in enumerate(converted_steps, start=start_index + 1):
+                        system_logs.append(f"Tool step {step_index}: {step.tool_name} success={step.success}")
+                    if checkpoint_requires_mutation and not any(
+                        step.tool_name in (*WRITE_EXECUTION_TOOLS, *DELETE_EXECUTION_TOOLS) for step in converted_steps
+                    ):
+                        ai_logs.append(f"Checkpoint requires mutation before completion: {task.description}")
+                        system_logs.append(f"Checkpoint {index + 1} requires a file mutation tool before completion")
+                        step_conversation.append(
+                            {
+                                "role": "assistant",
+                                "content": ai_response.content
+                                or "I described the change but did not execute it.",
+                            }
+                        )
+                        step_conversation.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "You have not completed this checkpoint yet. "
+                                    "Use a real workspace modification tool such as write_file or edit_file, "
+                                    "then stop after the tool succeeds."
+                                ),
+                            }
+                        )
+                        continue
+                    final_response = ai_response.content or final_response
+                    trace_log = _summarize_execution_note(ai_response.content)
+                    working_blueprint = _mark_checkpoint_completed(working_blueprint, index, trace_log)
+                    self.active_blueprint = working_blueprint
+                    ai_logs.append(f"Checkpoint completed: {task.description}")
+                    system_logs.append(f"Checkpoint {index + 1} completed")
+                    break
                 if ai_response.tool_calls:
                     tool_call = ai_response.tool_calls[0]
                     tool_iterations += 1
@@ -3569,6 +3635,18 @@ def _format_tool_output(output: str, data: dict[str, Any]) -> str:
     if not data:
         return output
     return f"{output}\n{json.dumps(data, sort_keys=True)}"
+
+
+def _runtime_step_from_ai_step(step: AIExecutedToolStep) -> ToolExecutionStep:
+    return ToolExecutionStep(
+        step_id=step.step_id,
+        tool_name=step.tool_name,
+        arguments=dict(step.arguments),
+        output=step.output,
+        success=step.success and not step.is_error,
+        is_sandboxed_violation=False,
+        data=dict(step.data),
+    )
 
 
 def _merge_usage(total_usage: dict[str, int], usage: dict[str, int]) -> None:

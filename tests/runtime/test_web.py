@@ -349,12 +349,54 @@ class DevenvWebAppTest(unittest.TestCase):
 
             session_payload = app.update_session_access("codex", True)
             backend_payload = app.update_backend_access("opencode", True)
+            codex_backend_payload = app.update_backend_access("codex", True)
             health = app.build_health_payload()
 
         self.assertTrue(session_payload["session_access"]["codex"])
         self.assertTrue(backend_payload["backend_access"]["opencode"])
+        self.assertTrue(codex_backend_payload["backend_access"]["codex"])
         self.assertTrue(health["access_policy"]["session_access"]["codex"])
         self.assertTrue(health["access_policy"]["backend_access"]["opencode"])
+        self.assertTrue(health["access_policy"]["backend_access"]["codex"])
+
+    def test_run_turn_forwards_codex_backend_access_and_preference(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.update_backend_access("codex", True)
+            captured: dict[str, object] = {}
+
+            def fake_execute_turn(
+                prompt,
+                max_consecutive_tools=5,
+                planning_mode=PlanningMode.AUTO,
+                continue_plan=False,
+                local_only=False,
+                selected_tools=None,
+                backend_preference="opencode",
+                opencode_enabled=False,
+                codex_enabled=False,
+            ):
+                captured.update(
+                    {
+                        "prompt": prompt,
+                        "backend_preference": backend_preference,
+                        "opencode_enabled": opencode_enabled,
+                        "codex_enabled": codex_enabled,
+                    }
+                )
+                return type("Result", (), {"to_dict": lambda self: {"final_response": "ok"}})()
+
+            app.kernel.execute_turn = fake_execute_turn
+            result = app.run_turn("hello", backend_preference="codex")
+
+        self.assertEqual(result["final_response"], "ok")
+        self.assertEqual(captured["backend_preference"], "codex")
+        self.assertFalse(captured["opencode_enabled"])
+        self.assertTrue(captured["codex_enabled"])
 
     def test_reset_thread_clears_kernel_conversation_and_ai_session(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

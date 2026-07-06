@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from core.ai.models import AIResponse, ToolCallRequest
+from core.ai.models import AIExecutedToolStep, AIResponse, ToolCallRequest
 from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.memory.models import EpisodicLog
@@ -299,6 +299,39 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(memory.consolidation_runs, 1)
         self.assertTrue(result.ai_logs)
         self.assertTrue(result.system_logs)
+
+    def test_execute_turn_accepts_backend_executed_mcp_steps_for_codex(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="Codex final answer",
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 8, "completion_tokens": 3},
+                    backend="codex",
+                    executed_steps=(
+                        AIExecutedToolStep(
+                            step_id="step_1",
+                            tool_name="read_file",
+                            arguments={"path": "README.md"},
+                            output='{"success": true, "output": "hello", "data": {}}',
+                            success=True,
+                        ),
+                    ),
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
+            result = kernel.execute_turn("Explain the repo", backend_preference="codex", codex_enabled=True)
+
+        self.assertEqual(result.final_response, "Codex final answer")
+        self.assertEqual(len(result.steps), 1)
+        self.assertEqual(result.steps[0].tool_name, "read_file")
+        self.assertEqual(result.steps[0].arguments["path"], "README.md")
+        self.assertTrue(result.steps[0].success)
 
     def test_execute_turn_limits_tool_scope_to_selected_tools(self) -> None:
         memory = FakeMemory()

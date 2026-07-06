@@ -34,7 +34,7 @@ DEFAULT_WEB_MODELS = (
 class AccessPolicy:
     def __init__(self) -> None:
         self.session_access: dict[str, bool] = {"codex": False, "opencode": False}
-        self.backend_access: dict[str, bool] = {"opencode": False}
+        self.backend_access: dict[str, bool] = {"opencode": False, "codex": False}
 
     def set_session_access(self, provider: str, allowed: bool) -> dict[str, object]:
         self.session_access[provider] = allowed
@@ -112,7 +112,10 @@ class DevenvWebApp:
         model = getattr(self.kernel.ai, "model", "unknown")
         ai_statuses = getattr(self.kernel.ai, "status", lambda: {})()
         active_backend = getattr(self.kernel.ai, "last_backend_used", "opencode")
-        active_provider_label = "OpenCode CLI"
+        active_provider_label = {
+            "opencode": "OpenCode CLI",
+            "codex": "Codex via OpenAI",
+        }.get(active_backend, getattr(self.kernel.ai, "provider_label", "OpenCode CLI"))
         setup = self._cached_setup_readiness()
         privacy = PrivacyModeState(no_memory=self.privacy_mode["no_memory"], incognito=self.privacy_mode["incognito"])
         tool_readiness = self._build_tool_readiness()
@@ -258,6 +261,8 @@ class DevenvWebApp:
             kwargs["backend_preference"] = backend_preference
         if "opencode_enabled" in parameters:
             kwargs["opencode_enabled"] = self.access_policy.can_use_backend("opencode")
+        if "codex_enabled" in parameters:
+            kwargs["codex_enabled"] = self.access_policy.can_use_backend("codex")
         if "session_budget_tokens" in parameters:
             kwargs["session_budget_tokens"] = session_budget_tokens
         if "selected_tools" in parameters:
@@ -314,8 +319,8 @@ class DevenvWebApp:
         return snapshot
 
     def update_backend_access(self, backend: str, allowed: bool) -> dict[str, object]:
-        if backend != "opencode":
-            raise ValueError("backend must be: opencode")
+        if backend not in {"opencode", "codex"}:
+            raise ValueError("backend must be one of: opencode, codex")
         return self.access_policy.set_backend_access(backend, allowed)
 
     def update_performance_mode(self, performance_mode: str) -> dict[str, object]:
