@@ -2808,6 +2808,7 @@ class DevenvKernelTest(unittest.TestCase):
             result.final_response,
             "I couldn't recover a reliable note about the last merge conflict we solved.",
         )
+        self.assertEqual(memory.logs, [])
 
     def test_lookup_exact_logged_answer_supports_session_history_recall(self) -> None:
         class FakeStore:
@@ -3324,6 +3325,7 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("Relevant paths I found", result.final_response or "")
         self.assertIn("server.py", result.final_response or "")
         self.assertEqual(result.error_message, "OpenCode backend access has not been granted.")
+        self.assertEqual(memory.logs, [])
 
     def test_execute_turn_returns_local_candidate_summary_when_opencode_access_is_denied_for_code_level_named_project_prompt(self) -> None:
         memory = EmptyMemory()

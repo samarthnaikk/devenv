@@ -469,7 +469,7 @@ class DevenvKernel:
                 direct_response,
                 conversation,
                 metadata=turn_metadata,
-                persist_memory=not incognito,
+                persist_memory=(not incognito) and _should_persist_episodic_response(direct_response),
                 persist_working_memory=not incognito,
             )
             return RuntimeTurnResult(
@@ -497,7 +497,7 @@ class DevenvKernel:
                     direct_memory_answer,
                     conversation,
                     metadata=turn_metadata,
-                    persist_memory=not incognito,
+                    persist_memory=(not incognito) and _should_persist_episodic_response(direct_memory_answer),
                     persist_working_memory=not incognito,
                 )
                 return RuntimeTurnResult(
@@ -522,7 +522,7 @@ class DevenvKernel:
                     fallback_response,
                     conversation,
                     metadata=turn_metadata,
-                    persist_memory=not incognito,
+                    persist_memory=(not incognito) and _should_persist_episodic_response(fallback_response),
                     persist_working_memory=not incognito,
                 )
                 return RuntimeTurnResult(
@@ -563,7 +563,7 @@ class DevenvKernel:
                 "",
                 conversation,
                 metadata=turn_metadata,
-                persist_memory=not incognito,
+                persist_memory=False,
                 persist_working_memory=not incognito,
             )
             return RuntimeTurnResult(
@@ -630,7 +630,7 @@ class DevenvKernel:
                     degraded_response,
                     conversation,
                     metadata=turn_metadata,
-                    persist_memory=not incognito,
+                    persist_memory=(not incognito) and _should_persist_episodic_response(degraded_response),
                     persist_working_memory=not incognito,
                 )
                 return RuntimeTurnResult(
@@ -665,7 +665,7 @@ class DevenvKernel:
                 "",
                 conversation,
                 metadata=turn_metadata,
-                persist_memory=not incognito,
+                persist_memory=False,
                 persist_working_memory=not incognito,
             )
             return RuntimeTurnResult(
@@ -4424,6 +4424,18 @@ def _should_persist_episodic_response(final_response: str) -> bool:
     if lowered.startswith("i inspected `"):
         return False
     if lowered.startswith("i inspected the backend entry points locally."):
+        return False
+    if lowered.startswith("i couldn't recover a reliable prior answer"):
+        return False
+    if lowered.startswith("i couldn't recover a reliable prior note"):
+        return False
+    if lowered.startswith("i couldn't recover a reliable note about the last merge conflict"):
+        return False
+    if lowered.startswith("opencode backend access has not been granted"):
+        return False
+    if lowered.startswith("opencode backend access is not granted right now"):
+        return False
+    if lowered == "nothing left to execute.":
         return False
     return True
 
