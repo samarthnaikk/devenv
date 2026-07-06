@@ -97,3 +97,4 @@ memory.db
 *.sqlite3
 vectors/
 interface/website/dash.html
+stitch_devenv_*

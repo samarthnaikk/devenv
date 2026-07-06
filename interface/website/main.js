@@ -1,6 +1,7 @@
 const STORAGE_THEME_KEY = "devenv-ui-theme";
 const STORAGE_ACCESS_KEY = "devenv-ui-access";
 const STORAGE_BACKEND_KEY = "devenv-ui-backend";
+const READ_ONLY_TOOLS = ["list_directory", "read_file", "glob", "grep", "inspect_symbols", "search_symbols"];
 
 const state = {
   health: null,
@@ -43,6 +44,9 @@ const state = {
   pendingRunMode: "memory",
   selectedTools: [],
   toolPickerOpen: false,
+  planMode: false,
+  planBlueprint: null,
+  showSettings: false,
 };
 
 const root = document.getElementById("root");
@@ -124,6 +128,12 @@ function bindEvents() {
     if (action) {
       event.preventDefault();
       await handleAction(action.getAttribute("data-action"), action);
+      return;
+    }
+
+    if (state.showSettings && !event.target.closest("[data-settings-panel]") && !event.target.closest('[data-action="toggle-settings"]')) {
+      state.showSettings = false;
+      scheduleRender({ preserveComposerFocus: true });
     }
   });
 
@@ -163,12 +173,32 @@ function bindEvents() {
       scheduleRender({ preserveComposerFocus: true });
       return;
     }
+    if (event.target.matches("[data-model-select]")) {
+      const model = event.target.value;
+      if (model) {
+        try {
+          await request("/api/model", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model }),
+          });
+          state.healthMeta.model = model;
+          showToast("Model switched to " + model.split("/").pop());
+        } catch (err) {
+          showToast("Failed to switch model: " + err.message);
+        }
+      }
+      return;
+    }
     if (event.target.matches("[data-performance-select]")) {
       await updatePerformanceMode(event.target.value || "medium");
       return;
     }
     if (event.target.matches("[data-incognito-toggle]")) {
       await updatePrivacyMode({ incognito: Boolean(event.target.checked) });
+    }
+    if (event.target.matches("[data-plan-toggle]")) {
+      updatePlanMode(Boolean(event.target.checked));
     }
   });
 
@@ -181,6 +211,18 @@ function bindEvents() {
 }
 
 async function handleAction(action, element) {
+  if (action === "toggle-settings") {
+    state.showSettings = !state.showSettings;
+    scheduleRender({ preserveComposerFocus: true });
+    return;
+  }
+
+  if (action === "close-settings") {
+    state.showSettings = false;
+    scheduleRender({ preserveComposerFocus: true });
+    return;
+  }
+
   if (action === "theme") {
     state.theme = state.theme === "dark" ? "light" : "dark";
     persistTheme(state.theme);
@@ -372,18 +414,19 @@ async function submitPrompt() {
     let result = null;
     while (true) {
       try {
+        const turnBody = {
+          prompt: nextPrompt,
+          planning_mode: state.planMode ? "force_plan" : "auto",
+          continue_plan: false,
+          local_only: false,
+          selected_tools: state.planMode ? READ_ONLY_TOOLS : state.selectedTools,
+          backend_preference: "opencode",
+          session_budget_tokens: state.sessionBudgetTokens,
+        };
         result = await request("/api/turn", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: nextPrompt,
-            planning_mode: "auto",
-            continue_plan: false,
-            local_only: false,
-            selected_tools: state.selectedTools,
-            backend_preference: "opencode",
-            session_budget_tokens: state.sessionBudgetTokens,
-          }),
+          body: JSON.stringify(turnBody),
         });
         break;
       } catch (error) {
@@ -431,6 +474,15 @@ async function submitPrompt() {
     }
     updateThinkingEntry(thinkingId, formatThinkingFromResult(result), false);
     state.transcript = state.transcript.map((entry) => (entry.id === thinkingId ? { ...entry, pending: false } : entry));
+    if (state.planMode && result.blueprint && result.blueprint.tasks && result.blueprint.tasks.length) {
+      state.planBlueprint = result.blueprint;
+      state.transcript.push({
+        id: `plan-${Date.now()}`,
+        role: "plan",
+        content: "",
+        blueprint: result.blueprint,
+      });
+    }
     state.transcript.push({
       id: `assistant-${Date.now()}`,
       role: result?.error_message ? "error" : "assistant",
@@ -639,6 +691,15 @@ async function updatePrivacyMode({ incognito }) {
   scheduleRender({ preserveComposerFocus: true });
 }
 
+function updatePlanMode(enabled) {
+  state.planMode = Boolean(enabled);
+  if (!state.planMode) {
+    state.planBlueprint = null;
+  }
+  showToast(state.planMode ? "Plan mode enabled — no file edits allowed" : "Plan mode disabled");
+  scheduleRender({ preserveComposerFocus: true });
+}
+
 async function refreshVisibleSessions() {
   const providers = Object.keys(state.providerSessions).filter(
     (provider) => state.visibleSessionProviders[provider] && state.accessPolicy.session_access?.[provider]
@@ -738,6 +799,9 @@ function render(options = {}) {
           <div class="h-1.5 w-1.5 rounded-full bg-primary glowing-pip"></div>
         </div>
         <div class="flex items-center gap-3">
+          <button type="button" class="p-2 rounded-lg hover:bg-surface-variant transition-colors text-on-surface-variant ${state.showSettings ? "bg-surface-variant text-primary" : ""}" data-action="toggle-settings" aria-label="Settings">
+            <span class="material-symbols-outlined text-[20px]">settings</span>
+          </button>
           <button type="button" class="p-2 rounded-lg hover:bg-surface-variant transition-colors text-on-surface-variant" data-action="theme" aria-label="Toggle theme">
             <span class="material-symbols-outlined text-[20px]">${state.theme === "dark" ? "light_mode" : "dark_mode"}</span>
           </button>
@@ -745,6 +809,7 @@ function render(options = {}) {
           <button type="button" class="px-3 py-1.5 font-label-caps text-label-caps border border-outline-variant text-on-surface rounded-lg hover:bg-surface-variant transition-colors" data-action="copy-thread">Copy</button>
         </div>
       </header>
+      ${state.showSettings ? renderSettingsPanel() : ""}
       <main class="flex flex-1 overflow-hidden">
         <!-- Left Column: Chat & Workflow (65%) -->
         <section class="w-[65%] flex flex-col h-full bg-background relative border-r border-outline-variant">
@@ -816,7 +881,10 @@ function render(options = {}) {
           <footer class="p-4 bg-surface-container-highest border-t border-outline-variant flex justify-between items-center shrink-0">
             <div class="flex items-center gap-2">
               <div class="w-2 h-2 rounded-full ${state.isRunning ? "bg-primary glowing-pip animate-pulse" : "bg-primary glowing-pip"}"></div>
-              <span class="font-label-caps text-[10px] text-on-surface">${state.isRunning ? "Running" : formatBackendLabel(state.activeBackend) + " ready"}</span>
+              <div class="flex flex-col">
+                <span class="font-label-caps text-[10px] text-on-surface">${state.isRunning ? "Running" : formatBackendLabel(state.activeBackend) + " ready"}</span>
+                <span class="font-code-sm text-[9px] text-on-surface-variant">${state.healthMeta.model || ""}</span>
+              </div>
             </div>
             <span class="font-code-sm text-[10px] text-on-surface-variant">${contextBudget.remainingLabel}</span>
           </footer>
@@ -960,6 +1028,33 @@ function renderTranscript() {
 
 
 
+function renderSettingsPanel() {
+  const models = state.healthMeta.availableModels.length ? state.healthMeta.availableModels : [state.healthMeta.model || "opencode/claude-sonnet-4"];
+  const currentModel = state.healthMeta.model || models[0];
+  return `
+    <div class="relative z-40">
+      <div class="absolute right-4 top-0 w-72 bg-surface-container-high border border-outline-variant rounded-xl shadow-2xl p-4 space-y-4" data-settings-panel>
+        <div class="flex items-center justify-between">
+          <h3 class="font-label-caps text-label-caps text-on-surface-variant">Settings</h3>
+          <button type="button" class="p-1 rounded hover:bg-surface-variant transition-colors text-on-surface-variant" data-action="close-settings" aria-label="Close settings">
+            <span class="material-symbols-outlined text-[18px]">close</span>
+          </button>
+        </div>
+        <div class="space-y-1.5">
+          <label class="font-label-caps text-[11px] text-on-surface-variant block">Model</label>
+          <select class="w-full bg-surface-container-highest border border-outline-variant rounded-lg font-body-md text-body-md p-2 outline-none focus:border-primary" data-model-select>
+            ${models.map((m) => `<option value="${escapeAttribute(m)}" ${m === currentModel ? "selected" : ""}>${escapeHtml(m)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="pt-2 border-t border-outline-variant/30">
+          <div class="font-label-caps text-[11px] text-on-surface-variant">Backend</div>
+          <div class="font-body-md text-body-md text-on-surface mt-0.5">${formatBackendLabel(state.activeBackend)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderAccessCard() {
   const codexAllowed = Boolean(state.accessPolicy.session_access?.codex);
   const opencodeSessionAllowed = Boolean(state.accessPolicy.session_access?.opencode);
@@ -1000,6 +1095,13 @@ function renderAccessCard() {
         <label class="flex items-center gap-3 cursor-pointer">
           <input class="w-4 h-4 rounded border-outline-variant bg-surface-container text-primary focus:ring-0 focus:ring-offset-0" type="checkbox" data-incognito-toggle ${state.privacyMode.incognito ? "checked" : ""} />
           <span class="font-body-md text-body-md">Incognito</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input class="w-4 h-4 rounded border-outline-variant bg-surface-container text-primary focus:ring-0 focus:ring-offset-0" type="checkbox" data-plan-toggle ${state.planMode ? "checked" : ""} />
+          <div class="flex flex-col">
+            <span class="font-body-md text-body-md">Plan mode</span>
+            <span class="text-[10px] text-on-surface-variant">Only plan &mdash; no file edits</span>
+          </div>
         </label>
       </div>
     </section>
