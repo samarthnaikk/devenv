@@ -1035,6 +1035,7 @@ function renderPlanFlowchart(blueprint) {
   }
   const tasks = blueprint.tasks;
   const activePointer = blueprint.active_task_pointer ?? 0;
+  const allDone = tasks.every((t) => t.is_completed);
   return `
     <div class="flex flex-col gap-2 max-w-3xl">
       <div class="flex items-center gap-2 mb-1">
@@ -1042,35 +1043,40 @@ function renderPlanFlowchart(blueprint) {
           <span class="material-symbols-outlined text-[14px] text-primary">account_tree</span>
         </div>
         <span class="font-label-caps text-label-caps text-primary">Execution Plan</span>
-        <span class="px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant">${blueprint.verification_passed ? "Verified" : tasks.every((t) => t.is_completed) ? "Done" : "In progress"}</span>
+        <span class="px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant">${blueprint.verification_passed ? "Verified" : allDone ? "Done" : "In progress"}</span>
       </div>
       <div class="ml-3 pl-3 border-l-2 border-outline-variant">
         ${tasks.map((task, i) => {
           const isActive = !task.is_completed && i === activePointer;
           const isDone = Boolean(task.is_completed);
-          const dotClass = isDone ? "bg-primary text-on-primary" : isActive ? "bg-surface-container-highest border border-primary text-primary" : "bg-surface-container text-on-surface-variant";
-          const cardBorder = isActive ? "border-primary" : "border-outline-variant/40";
-          const icon = isDone ? "check_circle" : isActive ? "radio_button_checked" : "radio_button_unchecked";
+          const isLast = i === tasks.length - 1;
+          const dotClass = isDone ? "bg-primary text-on-primary shadow-sm" : isActive ? "bg-surface-container-highest border-2 border-primary text-primary shadow-sm" : "bg-surface-container text-on-surface-variant";
+          const cardBorder = isActive ? "border-primary" : "border-outline-variant/30";
+          const icon = isDone ? "check_circle" : isActive ? "play_circle" : "circle";
           const statusLabel = isDone ? "Done" : isActive ? "Running" : "Pending";
-          const statusBadge = isDone ? "bg-primary/20 text-primary" : isActive ? "bg-primary/20 text-primary" : "bg-surface-container-highest text-on-surface-variant";
+          const statusClass = isDone ? "text-primary" : isActive ? "text-primary" : "text-on-surface-variant";
+          const desc = (task.description || "").trim();
+          const isJsonDesc = desc.startsWith("{") || desc.startsWith("[");
           return `
-            <div class="relative pb-4">
+            <div class="relative pb-3 ${isDone ? "opacity-80" : ""}">
               <div class="flex items-start gap-3">
-                <div class="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center ${dotClass}">
-                  <span class="material-symbols-outlined" style="font-size: 14px">${icon}</span>
-                </div>
-                <div class="flex-1 min-w-0 bg-surface-container-low rounded-lg border ${cardBorder} p-3 hover:border-outline-variant transition-colors">
-                  <div class="flex flex-col gap-1">
-                    <div class="flex items-center gap-2 flex-wrap">
-                      <span class="font-code-sm text-[11px] text-on-surface-variant">${escapeHtml(task.task_id || `Step ${i + 1}`)}</span>
-                      <span class="px-1.5 py-0.5 rounded font-code-sm text-[9px] ${statusBadge}">${statusLabel}</span>
-                      ${task.child_checkpoint_ids?.length ? `<span class="px-1.5 py-0.5 rounded bg-surface-container-highest font-code-sm text-[9px] text-on-surface-variant">${task.child_checkpoint_ids.length} subtasks</span>` : ""}
-                      ${task.repair_origin_checkpoint_id ? `<span class="px-1.5 py-0.5 rounded font-code-sm text-[9px] bg-surface-container-highest text-error">Repair</span>` : ""}
-                    </div>
-                    <div class="font-body-md text-body-md text-on-surface leading-relaxed">${renderRichText(task.description)}</div>
-                    ${task.target_path_hint ? `<div class="font-code-sm text-[11px] text-on-surface-variant flex items-center gap-1"><span class="material-symbols-outlined" style="font-size: 11px">description</span>${escapeHtml(task.target_path_hint)}</div>` : ""}
-                    ${task.execution_trace_log ? `<div class="mt-1 pt-1 border-t border-outline-variant/20 font-code-sm text-[11px] text-on-surface-variant">${escapeHtml(summarizePlanText(task.execution_trace_log))}</div>` : ""}
+                <div class="flex-shrink-0 relative flex items-center justify-center" style="width: 22px; height: 22px">
+                  <div class="w-full h-full rounded-full flex items-center justify-center ${dotClass}">
+                    <span class="material-symbols-outlined" style="font-size: 13px; font-variation-settings: 'FILL' 1">${icon}</span>
                   </div>
+                  ${!isLast && !allDone ? `<div class="absolute top-full left-1/2 -translate-x-1/2 w-0.5 h-3 bg-outline-variant"></div>` : ""}
+                </div>
+                <div class="flex-1 min-w-0 bg-surface-container-low rounded-lg border ${cardBorder} p-3 transition-colors">
+                  <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                    <span class="font-code-sm text-[11px] text-on-surface-variant font-medium">${escapeHtml(task.task_id || `Step ${i + 1}`)}</span>
+                    <span class="px-1.5 py-0.5 rounded-sm font-code-sm text-[9px] ${statusClass} ${isDone || isActive ? "bg-primary/10" : "bg-surface-container-highest"}">${statusLabel}</span>
+                    ${task.child_checkpoint_ids?.length ? `<span class="px-1.5 py-0.5 rounded-sm bg-surface-container-highest font-code-sm text-[9px] text-on-surface-variant">${task.child_checkpoint_ids.length} sub</span>` : ""}
+                    ${task.repair_origin_checkpoint_id ? `<span class="px-1.5 py-0.5 rounded-sm font-code-sm text-[9px] bg-error/10 text-error">repair</span>` : ""}
+                    ${task.target_path_hint ? `<span class="font-code-sm text-[10px] text-on-surface-variant ml-auto truncate max-w-[140px]">${escapeHtml(task.target_path_hint)}</span>` : ""}
+                  </div>
+                  ${desc ? (isJsonDesc ? `<pre class="font-code-sm text-[11px] text-on-surface-variant leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-20 overflow-y-auto">${escapeHtml(maybePrettyJson(desc))}</pre>` : `<div class="font-body-md text-body-md text-on-surface leading-relaxed">${renderRichText(desc)}</div>`) : ""}
+                  ${task.execution_trace_log ? `<div class="mt-1.5 pt-1.5 border-t border-outline-variant/15"><span class="font-code-sm text-[10px] text-on-surface-variant">${escapeHtml(summarizePlanText(task.execution_trace_log))}</span></div>` : ""}
+                  ${task.sub_checkpoints?.length ? `<div class="mt-1.5 pt-1.5 border-t border-outline-variant/15">${task.sub_checkpoints.map((sub) => `<div class="flex items-center gap-2 py-0.5"><span class="inline-block w-1.5 h-1.5 rounded-full ${sub.is_completed ? "bg-primary" : "bg-outline-variant"}"></span><span class="font-code-sm text-[11px] text-on-surface-variant">${escapeHtml(sub.description || "")}</span></div>`).join("")}</div>` : ""}
                 </div>
               </div>
             </div>
@@ -1079,6 +1085,14 @@ function renderPlanFlowchart(blueprint) {
       </div>
     </div>
   `;
+}
+
+function maybePrettyJson(text) {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
 }
 
 function summarizePlanText(text) {
