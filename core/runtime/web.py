@@ -17,7 +17,13 @@ from core.logging_utils import configure_logging
 from .context_builder import ContextBuilderService
 from .kernel import DevenvKernel
 from .mcp_http import MCPHTTPServerManager, default_mcp_http_server_config
-from .models import PlanningMode, PreparedPromptRequest, PrivacyModeState, RunConfig, ToolReadiness
+from .models import (
+    PlanningMode,
+    PreparedPromptRequest,
+    PrivacyModeState,
+    RunConfig,
+    ToolReadiness,
+)
 from .response_sanitizer import sanitize_replay_text
 from .setup import inspect_setup
 from .tooling import build_runtime_tools
@@ -25,9 +31,11 @@ from .workspace import WorkspaceBrowser
 
 logger = logging.getLogger(__name__)
 DEFAULT_WEB_MODELS = (
-    "openrouter/anthropic/claude-sonnet-4",
-    "openrouter/openai/gpt-5-mini",
-    "openrouter/google/gemini-2.5-pro",
+    "opencode/claude-sonnet-4",
+    "opencode/deepseek-v4-flash-free",
+    "opencode/claude-sonnet-5",
+    "opencode/claude-haiku-4-5",
+    "opencode/north-mini-code-free",
 )
 
 
@@ -58,12 +66,21 @@ class AccessPolicy:
 
 
 class DevenvWebApp:
-    def __init__(self, config: RunConfig, port: int = 4173, *, memory=None, ai=None) -> None:
+    def __init__(
+        self, config: RunConfig, port: int = 4173, *, memory=None, ai=None
+    ) -> None:
         self.config = config
         self.port = port
         self.static_root = _resolve_static_root()
-        self.performance_mode = config.performance_mode if config.performance_mode in {"low", "medium", "high"} else "medium"
-        self.privacy_mode = {"no_memory": bool(config.no_memory), "incognito": bool(config.incognito)}
+        self.performance_mode = (
+            config.performance_mode
+            if config.performance_mode in {"low", "medium", "high"}
+            else "medium"
+        )
+        self.privacy_mode = {
+            "no_memory": bool(config.no_memory),
+            "incognito": bool(config.incognito),
+        }
         self.kernel = DevenvKernel(
             workspace_path=config.workspace_path,
             db_path=config.db_path,
@@ -80,7 +97,9 @@ class DevenvWebApp:
         )
         self.context_builder.set_runtime_allowed_providers(set())
         self.kernel.context_builder = self.context_builder
-        for tool in build_runtime_tools(self.kernel.memory, context_builder=self.context_builder):
+        for tool in build_runtime_tools(
+            self.kernel.memory, context_builder=self.context_builder
+        ):
             self.kernel.register_tool(tool)
         self.access_policy = AccessPolicy()
         self._setup_cache: dict[str, object] | None = None
@@ -100,7 +119,11 @@ class DevenvWebApp:
 
     def serve(self) -> None:
         server = self.create_server()
-        logger.info("Starting Devenv web server: url=http://127.0.0.1:%s workspace=%s", self.port, self.config.workspace_path)
+        logger.info(
+            "Starting Devenv web server: url=http://127.0.0.1:%s workspace=%s",
+            self.port,
+            self.config.workspace_path,
+        )
         print(f"Devenv website running at http://127.0.0.1:{server.server_address[1]}")
         try:
             server.serve_forever()
@@ -117,7 +140,10 @@ class DevenvWebApp:
             "codex": "Codex via OpenAI",
         }.get(active_backend, getattr(self.kernel.ai, "provider_label", "OpenCode CLI"))
         setup = self._cached_setup_readiness()
-        privacy = PrivacyModeState(no_memory=self.privacy_mode["no_memory"], incognito=self.privacy_mode["incognito"])
+        privacy = PrivacyModeState(
+            no_memory=self.privacy_mode["no_memory"],
+            incognito=self.privacy_mode["incognito"],
+        )
         tool_readiness = self._build_tool_readiness()
         mcp_server = self._mcp_server_manager.inspect().to_metadata()
         opencode_server = {}
@@ -125,7 +151,9 @@ class DevenvWebApp:
         if isinstance(ai_statuses, dict):
             opencode_status = ai_statuses.get("opencode")
             if opencode_status is not None:
-                opencode_server = dict(getattr(opencode_status, "metadata", {}) or {}).get("server", {})
+                opencode_server = dict(
+                    getattr(opencode_status, "metadata", {}) or {}
+                ).get("server", {})
             codex_status = ai_statuses.get("codex")
             if codex_status is not None:
                 codex_backend = dict(getattr(codex_status, "metadata", {}) or {})
@@ -138,18 +166,26 @@ class DevenvWebApp:
             "ai_model": model,
             "available_models": self._available_models(current_model=model),
             "context_builder_enabled": True,
-            "context_sources": [source.to_dict() for source in self.context_builder.list_sources()],
+            "context_sources": [
+                source.to_dict() for source in self.context_builder.list_sources()
+            ],
             "access_policy": self.access_policy.snapshot(),
-            "ai_backends": {name: status.to_dict() for name, status in ai_statuses.items()},
+            "ai_backends": {
+                name: status.to_dict() for name, status in ai_statuses.items()
+            },
             "opencode_server": opencode_server,
             "codex_backend": codex_backend,
             "active_backend": active_backend,
-            "preferred_backend": getattr(self.kernel.ai, "preferred_backend", "opencode"),
+            "preferred_backend": getattr(
+                self.kernel.ai, "preferred_backend", "opencode"
+            ),
             "indexing": self.context_builder.indexing_status(),
             "setup": setup.to_dict(),
             "performance_mode": self.performance_mode,
             "privacy": privacy.to_dict(),
-            "tool_readiness": {name: readiness.to_dict() for name, readiness in tool_readiness.items()},
+            "tool_readiness": {
+                name: readiness.to_dict() for name, readiness in tool_readiness.items()
+            },
             "mcp_server": mcp_server,
         }
 
@@ -188,7 +224,9 @@ class DevenvWebApp:
 
     def _available_models(self, *, current_model: str) -> list[str]:
         configured = os.getenv("DEVENV_AVAILABLE_MODELS", "")
-        configured_models = [item.strip() for item in configured.split(",") if item.strip()]
+        configured_models = [
+            item.strip() for item in configured.split(",") if item.strip()
+        ]
         ordered: list[str] = []
         for model_name in [current_model, *configured_models, *DEFAULT_WEB_MODELS]:
             if model_name and model_name not in ordered:
@@ -198,15 +236,22 @@ class DevenvWebApp:
     def build_files_payload(self, relative_path: str = "") -> dict[str, object]:
         return {
             "path": relative_path,
-            "entries": [entry.to_dict() for entry in self.workspace.list_entries(relative_path)],
+            "entries": [
+                entry.to_dict() for entry in self.workspace.list_entries(relative_path)
+            ],
         }
 
     def build_file_payload(self, relative_path: str) -> dict[str, object]:
-        return {"path": relative_path, **self.workspace.read_file_preview(relative_path)}
+        return {
+            "path": relative_path,
+            **self.workspace.read_file_preview(relative_path),
+        }
 
     def build_context_sources_payload(self) -> dict[str, object]:
         return {
-            "sources": [source.to_dict() for source in self.context_builder.list_sources()],
+            "sources": [
+                source.to_dict() for source in self.context_builder.list_sources()
+            ],
             "access_policy": self.access_policy.snapshot(),
         }
 
@@ -214,28 +259,39 @@ class DevenvWebApp:
         self._require_provider_access(provider_name)
         return {
             "provider": provider_name,
-            "sessions": [session.to_dict() for session in self.context_builder.list_sessions(provider_name)],
+            "sessions": [
+                session.to_dict()
+                for session in self.context_builder.list_sessions(provider_name)
+            ],
         }
 
-    def build_context_session_payload(self, provider_name: str, session_id: str) -> dict[str, object]:
+    def build_context_session_payload(
+        self, provider_name: str, session_id: str
+    ) -> dict[str, object]:
         self._require_provider_access(provider_name)
         detail = self.context_builder.get_session(provider_name, session_id)
         return detail.to_dict()
 
-    def build_prepared_prompt_payload(self, payload: dict[str, object]) -> dict[str, object]:
+    def build_prepared_prompt_payload(
+        self, payload: dict[str, object]
+    ) -> dict[str, object]:
         task = payload.get("task")
         if not isinstance(task, str) or not task.strip():
             raise ValueError("Missing required field: task")
         provider = payload.get("provider")
         session_ids_raw = payload.get("session_ids") or []
-        if not isinstance(session_ids_raw, list) or any(not isinstance(item, str) for item in session_ids_raw):
+        if not isinstance(session_ids_raw, list) or any(
+            not isinstance(item, str) for item in session_ids_raw
+        ):
             raise ValueError("session_ids must be a list of strings")
         include_workspace_scan = bool(payload.get("include_workspace_scan", True))
         include_prior_context = bool(payload.get("include_prior_context", True))
         output_format = str(payload.get("output_format", "compact"))
         request = PreparedPromptRequest(
             task=task.strip(),
-            provider=provider if isinstance(provider, str) and provider.strip() else None,
+            provider=provider
+            if isinstance(provider, str) and provider.strip()
+            else None,
             session_ids=tuple(session_ids_raw),
             include_workspace_scan=include_workspace_scan,
             include_prior_context=include_prior_context,
@@ -256,7 +312,8 @@ class DevenvWebApp:
     ) -> dict[str, object]:
         execute_turn = self.kernel.execute_turn
         kwargs = {
-            "max_consecutive_tools": max_consecutive_tools or self.config.max_consecutive_tools,
+            "max_consecutive_tools": max_consecutive_tools
+            or self.config.max_consecutive_tools,
             "planning_mode": planning_mode,
             "continue_plan": continue_plan,
             "local_only": local_only,
@@ -283,13 +340,21 @@ class DevenvWebApp:
         result["backend_used"] = metadata.get("backend_used", "opencode")
         result["budget_state"] = metadata.get("budget_state")
         result["usage_sample"] = {
-            "prompt_tokens": int(result.get("total_usage", {}).get("prompt_tokens", 0) or 0),
-            "completion_tokens": int(result.get("total_usage", {}).get("completion_tokens", 0) or 0),
-            "total_tokens": int(result.get("total_usage", {}).get("total_tokens", 0) or 0),
+            "prompt_tokens": int(
+                result.get("total_usage", {}).get("prompt_tokens", 0) or 0
+            ),
+            "completion_tokens": int(
+                result.get("total_usage", {}).get("completion_tokens", 0) or 0
+            ),
+            "total_tokens": int(
+                result.get("total_usage", {}).get("total_tokens", 0) or 0
+            ),
         }
         return result
 
-    def run_tool(self, tool_name: str, arguments: dict[str, object]) -> dict[str, object]:
+    def run_tool(
+        self, tool_name: str, arguments: dict[str, object]
+    ) -> dict[str, object]:
         tool = self.kernel.tools.get(tool_name)
         if tool is None:
             raise ValueError(f"Unknown tool: {tool_name}")
@@ -319,7 +384,11 @@ class DevenvWebApp:
         if provider not in {"codex", "opencode"}:
             raise ValueError("provider must be one of: codex, opencode")
         snapshot = self.access_policy.set_session_access(provider, allowed)
-        allowed_providers = {name for name, permitted in self.access_policy.session_access.items() if permitted}
+        allowed_providers = {
+            name
+            for name, permitted in self.access_policy.session_access.items()
+            if permitted
+        }
         self.context_builder.set_runtime_allowed_providers(allowed_providers)
         return snapshot
 
@@ -337,7 +406,9 @@ class DevenvWebApp:
             self.context_builder.set_performance_mode(cleaned)
         return {"performance_mode": self.performance_mode}
 
-    def update_privacy_mode(self, *, no_memory: bool, incognito: bool) -> dict[str, object]:
+    def update_privacy_mode(
+        self, *, no_memory: bool, incognito: bool
+    ) -> dict[str, object]:
         self.privacy_mode["incognito"] = bool(incognito)
         self.privacy_mode["no_memory"] = bool(no_memory or incognito)
         return {"privacy": dict(self.privacy_mode)}
@@ -352,7 +423,9 @@ class DevenvWebApp:
 
     def _require_provider_access(self, provider_name: str) -> None:
         if not self.access_policy.can_access_provider(provider_name):
-            raise PermissionError(f"Access to {provider_name} sessions requires explicit user permission.")
+            raise PermissionError(
+                f"Access to {provider_name} sessions requires explicit user permission."
+            )
 
 
 class DevenvRequestHandler(SimpleHTTPRequestHandler):
@@ -369,15 +442,21 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/files":
                 query = parse_qs(parsed.query)
                 relative_path = query.get("path", [""])[0]
-                self._write_json(HTTPStatus.OK, self.app.build_files_payload(relative_path))
+                self._write_json(
+                    HTTPStatus.OK, self.app.build_files_payload(relative_path)
+                )
                 return
             if parsed.path == "/api/file":
                 query = parse_qs(parsed.query)
                 relative_path = query.get("path", [""])[0]
-                self._write_json(HTTPStatus.OK, self.app.build_file_payload(relative_path))
+                self._write_json(
+                    HTTPStatus.OK, self.app.build_file_payload(relative_path)
+                )
                 return
             if parsed.path == "/api/context-sources":
-                self._write_json(HTTPStatus.OK, self.app.build_context_sources_payload())
+                self._write_json(
+                    HTTPStatus.OK, self.app.build_context_sources_payload()
+                )
                 return
             if parsed.path.startswith("/api/context-sources/"):
                 payload = self._match_context_source_path(parsed.path)
@@ -386,11 +465,22 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
                     return
                 provider_name, session_id = payload
                 if session_id is None:
-                    self._write_json(HTTPStatus.OK, self.app.build_context_sessions_payload(provider_name))
+                    self._write_json(
+                        HTTPStatus.OK,
+                        self.app.build_context_sessions_payload(provider_name),
+                    )
                     return
-                self._write_json(HTTPStatus.OK, self.app.build_context_session_payload(provider_name, session_id))
+                self._write_json(
+                    HTTPStatus.OK,
+                    self.app.build_context_session_payload(provider_name, session_id),
+                )
                 return
-        except (FileNotFoundError, IsADirectoryError, NotADirectoryError, PermissionError) as exc:
+        except (
+            FileNotFoundError,
+            IsADirectoryError,
+            NotADirectoryError,
+            PermissionError,
+        ) as exc:
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             return
 
@@ -416,7 +506,10 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             provider = payload.get("provider")
             allowed = payload.get("allowed")
             if not isinstance(provider, str) or not isinstance(allowed, bool):
-                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "provider and allowed are required"})
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "provider and allowed are required"},
+                )
                 return
             try:
                 result = self.app.update_session_access(provider, allowed)
@@ -429,7 +522,10 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             backend = payload.get("backend")
             allowed = payload.get("allowed")
             if not isinstance(backend, str) or not isinstance(allowed, bool):
-                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "backend and allowed are required"})
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "backend and allowed are required"},
+                )
                 return
             try:
                 result = self.app.update_backend_access(backend, allowed)
@@ -441,7 +537,9 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/model":
             model = payload.get("model")
             if not isinstance(model, str):
-                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "Missing required field: model"})
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST, {"error": "Missing required field: model"}
+                )
                 return
             try:
                 result = self.app.set_model(model)
@@ -454,10 +552,15 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             tool_name = payload.get("tool_name")
             arguments = payload.get("arguments", {})
             if not isinstance(tool_name, str):
-                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "Missing required field: tool_name"})
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "Missing required field: tool_name"},
+                )
                 return
             if not isinstance(arguments, dict):
-                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "arguments must be an object"})
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST, {"error": "arguments must be an object"}
+                )
                 return
             try:
                 result = self.app.run_tool(tool_name, arguments)
@@ -469,7 +572,10 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/performance":
             performance_mode = payload.get("performance_mode")
             if not isinstance(performance_mode, str):
-                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "Missing required field: performance_mode"})
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "Missing required field: performance_mode"},
+                )
                 return
             try:
                 result = self.app.update_performance_mode(performance_mode)
@@ -482,9 +588,14 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             no_memory = payload.get("no_memory", False)
             incognito = payload.get("incognito", False)
             if not isinstance(no_memory, bool) or not isinstance(incognito, bool):
-                self._write_json(HTTPStatus.BAD_REQUEST, {"error": "no_memory and incognito must be booleans"})
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "no_memory and incognito must be booleans"},
+                )
                 return
-            result = self.app.update_privacy_mode(no_memory=no_memory, incognito=incognito)
+            result = self.app.update_privacy_mode(
+                no_memory=no_memory, incognito=incognito
+            )
             self._write_json(HTTPStatus.OK, result)
             return
         if parsed.path == "/api/thread/reset":
@@ -496,41 +607,71 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
 
         prompt = payload.get("prompt")
         if not isinstance(prompt, str) or not prompt.strip():
-            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "Missing required field: prompt"})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"error": "Missing required field: prompt"}
+            )
             return
 
         max_consecutive_tools = payload.get("max_consecutive_tools")
-        if max_consecutive_tools is not None and not isinstance(max_consecutive_tools, int):
-            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "max_consecutive_tools must be an integer"})
+        if max_consecutive_tools is not None and not isinstance(
+            max_consecutive_tools, int
+        ):
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "max_consecutive_tools must be an integer"},
+            )
             return
         planning_mode_value = payload.get("planning_mode", PlanningMode.AUTO.value)
         if not isinstance(planning_mode_value, str):
-            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "planning_mode must be a string"})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"error": "planning_mode must be a string"}
+            )
             return
         try:
             planning_mode = PlanningMode(planning_mode_value)
         except ValueError:
-            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "planning_mode must be one of: auto, force_plan, force_direct"})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {
+                    "error": "planning_mode must be one of: auto, force_plan, force_direct"
+                },
+            )
             return
         continue_plan = payload.get("continue_plan", False)
         if not isinstance(continue_plan, bool):
-            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "continue_plan must be a boolean"})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"error": "continue_plan must be a boolean"}
+            )
             return
         local_only = payload.get("local_only", False)
         if not isinstance(local_only, bool):
-            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "local_only must be a boolean"})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"error": "local_only must be a boolean"}
+            )
             return
         selected_tools = payload.get("selected_tools", [])
-        if not isinstance(selected_tools, list) or any(not isinstance(item, str) for item in selected_tools):
-            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "selected_tools must be a list of strings"})
+        if not isinstance(selected_tools, list) or any(
+            not isinstance(item, str) for item in selected_tools
+        ):
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "selected_tools must be a list of strings"},
+            )
             return
         backend_preference = payload.get("backend_preference", "opencode")
         if not isinstance(backend_preference, str):
-            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "backend_preference must be a string"})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST, {"error": "backend_preference must be a string"}
+            )
             return
         session_budget_tokens = payload.get("session_budget_tokens")
-        if session_budget_tokens is not None and not isinstance(session_budget_tokens, int):
-            self._write_json(HTTPStatus.BAD_REQUEST, {"error": "session_budget_tokens must be an integer"})
+        if session_budget_tokens is not None and not isinstance(
+            session_budget_tokens, int
+        ):
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "session_budget_tokens must be an integer"},
+            )
             return
 
         try:
@@ -571,9 +712,19 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
 
     def _match_context_source_path(self, path: str) -> tuple[str, str | None] | None:
         parts = [part for part in path.split("/") if part]
-        if len(parts) == 4 and parts[0] == "api" and parts[1] == "context-sources" and parts[3] == "sessions":
+        if (
+            len(parts) == 4
+            and parts[0] == "api"
+            and parts[1] == "context-sources"
+            and parts[3] == "sessions"
+        ):
             return parts[2], None
-        if len(parts) == 5 and parts[0] == "api" and parts[1] == "context-sources" and parts[3] == "sessions":
+        if (
+            len(parts) == 5
+            and parts[0] == "api"
+            and parts[1] == "context-sources"
+            and parts[3] == "sessions"
+        ):
             return parts[2], parts[4]
         return None
 
@@ -582,11 +733,18 @@ def main() -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description="Launch the Devenv website runtime.")
-    parser.add_argument("workspace", nargs="?", default=".", help="Workspace path to sandbox the runtime within.")
+    parser.add_argument(
+        "workspace",
+        nargs="?",
+        default=".",
+        help="Workspace path to sandbox the runtime within.",
+    )
     parser.add_argument("--db-path", default="memory.db")
     parser.add_argument("--vector-dir", default="vectors")
     parser.add_argument("--max-consecutive-tools", type=int, default=5)
-    parser.add_argument("--performance-mode", default="low", choices=("low", "medium", "high"))
+    parser.add_argument(
+        "--performance-mode", default="low", choices=("low", "medium", "high")
+    )
     parser.add_argument("--port", type=int, default=4173)
     parser.add_argument("--log-level", default=None)
     args = parser.parse_args()
@@ -616,7 +774,13 @@ def _resolve_static_root() -> Path:
     if _is_valid_static_root(source_candidate):
         return source_candidate
 
-    data_candidate = Path(sysconfig.get_path("data")).resolve() / "share" / "devenv" / "interface" / "website"
+    data_candidate = (
+        Path(sysconfig.get_path("data")).resolve()
+        / "share"
+        / "devenv"
+        / "interface"
+        / "website"
+    )
     if _is_valid_static_root(data_candidate):
         return data_candidate
 
@@ -627,7 +791,12 @@ def _resolve_static_root() -> Path:
 
 
 def _is_valid_static_root(path: Path) -> bool:
-    return path.is_dir() and (path / "index.html").is_file() and (path / "main.js").is_file() and (path / "styles.css").is_file()
+    return (
+        path.is_dir()
+        and (path / "index.html").is_file()
+        and (path / "main.js").is_file()
+        and (path / "styles.css").is_file()
+    )
 
 
 if __name__ == "__main__":

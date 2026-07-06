@@ -13,10 +13,15 @@ from typing import Any
 from core.ai.codex_backend import CodexAICore
 from core.ai.engine import DEFAULT_SYSTEM_INSTRUCTIONS
 from core.ai.models import AIBackendStatus, AIResponse, ToolCallRequest
-from core.ai.opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeServerManager, default_opencode_server_config
+from core.ai.opencode_client import (
+    OpenCodeClient,
+    OpenCodeClientError,
+    OpenCodeServerManager,
+    default_opencode_server_config,
+)
 from core.tools.base import BaseTool
 
-DEFAULT_OPENCODE_MODEL = "openrouter/anthropic/claude-sonnet-4"
+DEFAULT_OPENCODE_MODEL = "opencode/claude-sonnet-4"
 
 
 class OpenCodeAICore:
@@ -71,11 +76,14 @@ class OpenCodeAICore:
             supports_tool_calls=True,
             metadata={
                 "server": server_status.to_metadata(),
-                "transport": "legacy_cli" if self._should_use_legacy_cli() else "server",
+                "transport": "legacy_cli"
+                if self._should_use_legacy_cli()
+                else "server",
                 "session_id": self._session_id or "",
                 "synced_message_count": self._synced_message_count,
                 "structured_output_supported": self._structured_output_supported,
-                "transport_backoff_active": self._transport_backoff_until > time.monotonic(),
+                "transport_backoff_active": self._transport_backoff_until
+                > time.monotonic(),
                 "last_error": self.last_error,
             },
         )
@@ -92,9 +100,13 @@ class OpenCodeAICore:
             self.last_error = "OpenCode CLI is not installed."
             raise RuntimeError(self.last_error)
         if self._should_use_legacy_cli():
-            return self._legacy_cli_chat(messages=messages, memory_context=memory_context, tool_names=tool_names)
+            return self._legacy_cli_chat(
+                messages=messages, memory_context=memory_context, tool_names=tool_names
+            )
         self._raise_if_transport_backoff_active()
-        return self._server_chat(messages=messages, memory_context=memory_context, tool_names=tool_names)
+        return self._server_chat(
+            messages=messages, memory_context=memory_context, tool_names=tool_names
+        )
 
     def reset_session(self) -> None:
         self._session_id = None
@@ -123,17 +135,25 @@ class OpenCodeAICore:
         memory_context: str | None,
         tool_names: Iterable[str] | None,
     ) -> AIResponse:
-        resolved_tool_names = [name for name in (tool_names or ()) if name in self._tools]
+        resolved_tool_names = [
+            name for name in (tool_names or ()) if name in self._tools
+        ]
         prompt_messages = messages[self._synced_message_count :] or messages[-1:]
-        prompt = self._compile_prompt(prompt_messages, memory_context) if not resolved_tool_names else self._compile_tool_prompt(
-            prompt_messages,
-            memory_context,
-            resolved_tool_names,
+        prompt = (
+            self._compile_prompt(prompt_messages, memory_context)
+            if not resolved_tool_names
+            else self._compile_tool_prompt(
+                prompt_messages,
+                memory_context,
+                resolved_tool_names,
+            )
         )
         self.last_backend_fallback = ""
         try:
             session_id = self._ensure_session()
-            response = self._send_server_message(session_id, prompt=prompt, resolved_tool_names=resolved_tool_names)
+            response = self._send_server_message(
+                session_id, prompt=prompt, resolved_tool_names=resolved_tool_names
+            )
         except OpenCodeClientError as exc:
             if _should_fallback_to_legacy_cli(exc):
                 server_failure = str(exc).strip() or "unknown server failure"
@@ -145,21 +165,31 @@ class OpenCodeAICore:
                     tool_names=resolved_tool_names,
                 )
                 self.last_backend_used = "opencode"
-                self.last_backend_reason = "OpenCode CLI fallback handled the turn after server failure."
+                self.last_backend_reason = (
+                    "OpenCode CLI fallback handled the turn after server failure."
+                )
                 self.last_backend_fallback = fallback_note
                 self.last_error = ""
                 return cli_response
             if _is_transport_backoff_worthy(exc):
-                self._transport_backoff_until = time.monotonic() + _transport_backoff_seconds()
-                self._transport_backoff_reason = str(exc).strip() or "unknown transport failure"
+                self._transport_backoff_until = (
+                    time.monotonic() + _transport_backoff_seconds()
+                )
+                self._transport_backoff_reason = (
+                    str(exc).strip() or "unknown transport failure"
+                )
             self.last_error = f"OpenCode server failed: {exc}"
             raise RuntimeError(self.last_error) from exc
         self._synced_message_count = len(messages)
         self._transport_backoff_until = 0.0
         self._transport_backoff_reason = ""
-        content, usage, tool_calls = _parse_server_message(response, allowed_tools=resolved_tool_names)
+        content, usage, tool_calls = _parse_server_message(
+            response, allowed_tools=resolved_tool_names
+        )
         self.last_backend_used = "opencode"
-        self.last_backend_reason = f"OpenCode server session {session_id} handled the turn."
+        self.last_backend_reason = (
+            f"OpenCode server session {session_id} handled the turn."
+        )
         self.last_error = ""
         finish_reason = "tool_calls" if tool_calls else "stop"
         return AIResponse(
@@ -181,11 +211,17 @@ class OpenCodeAICore:
         memory_context: str | None,
         tool_names: Iterable[str] | None,
     ) -> AIResponse:
-        resolved_tool_names = [name for name in (tool_names or ()) if name in self._tools]
-        prompt = self._compile_prompt(messages, memory_context) if not resolved_tool_names else self._compile_tool_prompt(
-            messages,
-            memory_context,
-            resolved_tool_names,
+        resolved_tool_names = [
+            name for name in (tool_names or ()) if name in self._tools
+        ]
+        prompt = (
+            self._compile_prompt(messages, memory_context)
+            if not resolved_tool_names
+            else self._compile_tool_prompt(
+                messages,
+                memory_context,
+                resolved_tool_names,
+            )
         )
         command = [
             self.executable,
@@ -212,11 +248,17 @@ class OpenCodeAICore:
             raise RuntimeError(self.last_error) from exc
 
         if completed.returncode != 0:
-            detail = completed.stderr.strip() or completed.stdout.strip() or f"exit status {completed.returncode}"
+            detail = (
+                completed.stderr.strip()
+                or completed.stdout.strip()
+                or f"exit status {completed.returncode}"
+            )
             self.last_error = f"OpenCode CLI failed: {detail}"
             raise RuntimeError(self.last_error)
 
-        content, usage, tool_calls = _parse_opencode_output(completed.stdout, allowed_tools=resolved_tool_names)
+        content, usage, tool_calls = _parse_opencode_output(
+            completed.stdout, allowed_tools=resolved_tool_names
+        )
         self.last_backend_used = "opencode"
         self.last_backend_reason = "OpenCode handled the turn directly."
         self.last_error = ""
@@ -242,8 +284,14 @@ class OpenCodeAICore:
         self._synced_message_count = 0
         return self._session_id
 
-    def _send_server_message(self, session_id: str, *, prompt: str, resolved_tool_names: list[str]):
-        output_format = None if self._structured_output_supported is False else _opencode_output_format(resolved_tool_names)
+    def _send_server_message(
+        self, session_id: str, *, prompt: str, resolved_tool_names: list[str]
+    ):
+        output_format = (
+            None
+            if self._structured_output_supported is False
+            else _opencode_output_format(resolved_tool_names)
+        )
         try:
             response = self._send_server_message_once(
                 session_id,
@@ -307,7 +355,9 @@ class OpenCodeAICore:
             output_format=output_format,
         )
 
-    def _compile_prompt(self, messages: list[dict[str, Any]], memory_context: str | None) -> str:
+    def _compile_prompt(
+        self, messages: list[dict[str, Any]], memory_context: str | None
+    ) -> str:
         sections: list[str] = []
         if self.system_instructions:
             sections.extend(["## System", self.system_instructions])
@@ -343,8 +393,8 @@ class OpenCodeAICore:
                 "## Required Response Format",
                 (
                     "Return exactly one JSON object and nothing else. "
-                    "If a tool is needed, return {\"type\":\"tool_call\",\"tool_name\":\"<tool>\",\"arguments\":{...}}. "
-                    "If no tool is needed, return {\"type\":\"final\",\"content\":\"<response>\"}. "
+                    'If a tool is needed, return {"type":"tool_call","tool_name":"<tool>","arguments":{...}}. '
+                    'If no tool is needed, return {"type":"final","content":"<response>"}. '
                     "Use only one tool call at a time and only from the listed tools."
                 ),
                 "## Tool Use Policy",
@@ -404,12 +454,18 @@ class RoutingAICore:
     def set_model(self, model: str) -> None:
         cleaned = model.strip()
         self.model = cleaned
-        if self.preferred_backend == "codex" and self.codex_ai is not None and hasattr(self.codex_ai, "set_model"):
+        if (
+            self.preferred_backend == "codex"
+            and self.codex_ai is not None
+            and hasattr(self.codex_ai, "set_model")
+        ):
             self.codex_ai.set_model(cleaned)
         else:
             self.opencode_ai.model = cleaned
 
-    def set_backend_preference(self, backend: str, *, opencode_enabled: bool, codex_enabled: bool = False) -> None:
+    def set_backend_preference(
+        self, backend: str, *, opencode_enabled: bool, codex_enabled: bool = False
+    ) -> None:
         cleaned = str(backend or "opencode").strip().lower() or "opencode"
         if cleaned not in {"opencode", "codex"}:
             raise ValueError("backend must be one of: opencode, codex")
@@ -441,7 +497,9 @@ class RoutingAICore:
                 self.last_backend_fallback = "Codex backend is not configured."
                 raise RuntimeError(self.last_backend_fallback)
             if not self.codex_enabled:
-                self.last_backend_fallback = "Codex backend access has not been granted."
+                self.last_backend_fallback = (
+                    "Codex backend access has not been granted."
+                )
                 raise RuntimeError(self.last_backend_fallback)
             response = self.codex_ai.chat(
                 messages=messages,
@@ -450,7 +508,9 @@ class RoutingAICore:
                 tool_names=tool_names,
             )
             self.last_backend_used = "codex"
-            self.last_backend_reason = getattr(self.codex_ai, "last_backend_reason", "Codex handled the turn.")
+            self.last_backend_reason = getattr(
+                self.codex_ai, "last_backend_reason", "Codex handled the turn."
+            )
             self.last_backend_fallback = ""
             self.model = getattr(self.codex_ai, "model", self.model)
             return response
@@ -468,11 +528,15 @@ class RoutingAICore:
         self.last_backend_fallback = ""
         self.model = self.opencode_ai.model
         return response
+
+
 def _is_recoverable_session_error(exc: OpenCodeClientError) -> bool:
     if exc.status_code == 404:
         return True
     lowered = str(exc).lower()
-    return "unknown session" in lowered or "session" in lowered and "not found" in lowered
+    return (
+        "unknown session" in lowered or "session" in lowered and "not found" in lowered
+    )
 
 
 def _is_structured_output_retryable(exc: OpenCodeClientError) -> bool:
@@ -500,7 +564,7 @@ def _is_structured_output_retryable(exc: OpenCodeClientError) -> bool:
 
 def _should_fallback_to_legacy_cli(exc: OpenCodeClientError) -> bool:
     explicit = os.getenv("DEVENV_OPENCODE_ALLOW_CLI_FALLBACK", "").strip().lower()
-    if explicit not in {"1", "true", "yes", "on"}:
+    if explicit == "0" or explicit == "false" or explicit == "off":
         return False
     if exc.status_code in {401, 403}:
         return False
@@ -568,7 +632,9 @@ def _opencode_output_format(allowed_tools: list[str]) -> dict[str, Any]:
     }
 
 
-def _parse_server_message(message: Any, *, allowed_tools: list[str]) -> tuple[str, dict[str, int], tuple[ToolCallRequest, ...]]:
+def _parse_server_message(
+    message: Any, *, allowed_tools: list[str]
+) -> tuple[str, dict[str, int], tuple[ToolCallRequest, ...]]:
     payload = message.raw if hasattr(message, "raw") else {}
     info = payload.get("info") if isinstance(payload, dict) else {}
     usage = _extract_opencode_usage(info) if isinstance(info, dict) else {}
@@ -576,7 +642,9 @@ def _parse_server_message(message: Any, *, allowed_tools: list[str]) -> tuple[st
     if hasattr(message, "structured_output"):
         structured_output = message.structured_output
     if isinstance(structured_output, dict):
-        parsed_tool_call = _extract_tool_call_from_payload(structured_output, allowed_tools)
+        parsed_tool_call = _extract_tool_call_from_payload(
+            structured_output, allowed_tools
+        )
         if parsed_tool_call is not None:
             return "", usage, (parsed_tool_call,)
         content = str(structured_output.get("content") or "").strip()
@@ -597,7 +665,9 @@ def _parse_server_message(message: Any, *, allowed_tools: list[str]) -> tuple[st
     return content, usage, ()
 
 
-def _parse_opencode_output(stdout: str, *, allowed_tools: list[str] | None = None) -> tuple[str, dict[str, int], tuple[ToolCallRequest, ...]]:
+def _parse_opencode_output(
+    stdout: str, *, allowed_tools: list[str] | None = None
+) -> tuple[str, dict[str, int], tuple[ToolCallRequest, ...]]:
     content_lines: list[str] = []
     usage: dict[str, int] = {}
     tool_calls: list[ToolCallRequest] = []
@@ -634,7 +704,9 @@ def _parse_opencode_output(stdout: str, *, allowed_tools: list[str] | None = Non
     return content, usage, tuple(tool_calls[:1])
 
 
-def _extract_tool_call_from_text(stdout: str, allowed_tools: list[str]) -> ToolCallRequest | None:
+def _extract_tool_call_from_text(
+    stdout: str, allowed_tools: list[str]
+) -> ToolCallRequest | None:
     candidate = stdout.strip()
     if not candidate:
         return None
@@ -649,13 +721,19 @@ def _extract_tool_call_from_text(stdout: str, allowed_tools: list[str]) -> ToolC
     return _extract_tool_call_from_payload(payload, allowed_tools)
 
 
-def _extract_tool_call_from_payload(payload: Any, allowed_tools: list[str]) -> ToolCallRequest | None:
+def _extract_tool_call_from_payload(
+    payload: Any, allowed_tools: list[str]
+) -> ToolCallRequest | None:
     if not isinstance(payload, dict):
         return None
     payload_type = str(payload.get("type") or "").strip().lower()
     tool_name = payload.get("tool_name") or payload.get("tool")
     arguments = payload.get("arguments")
-    if payload_type not in {"tool_call", "tool"} or not isinstance(tool_name, str) or tool_name not in allowed_tools:
+    if (
+        payload_type not in {"tool_call", "tool"}
+        or not isinstance(tool_name, str)
+        or tool_name not in allowed_tools
+    ):
         return None
     if not isinstance(arguments, dict):
         return None
