@@ -727,93 +727,100 @@ function render(options = {}) {
   const provider = state.healthMeta.provider || "Unknown";
 
   root.innerHTML = `
-    <div class="app-shell chat-shell">
-      <main class="chat-main">
-        <div class="workspace-grid">
-          <section class="content-panel terminal-panel${state.transcript.length ? " has-messages" : ""}">
-            <div class="codex-window-chrome">
-              <div class="brand-slot">
-                <span class="brand-name">Devenv</span>
-              </div>
-              <div class="thread-title">${state.transcript.length ? "Memory thread" : "New memory lookup"}</div>
-              <div class="top-actions">
-                <button type="button" class="ghost-action icon-action" data-action="theme" aria-label="Toggle theme">
-                  ${state.theme === "dark" ? sunIcon() : moonIcon()}
-                </button>
-                <button type="button" class="ghost-action" data-action="new-thread">New</button>
-                <button type="button" class="ghost-action" data-action="copy-thread">Copy</button>
-              </div>
-            </div>
-            <div class="terminal-scroll-region">
-              ${
-                state.transcript.length
-                  ? renderTranscript()
-                  : `
-                    <div class="codex-empty-state">
-                      <div class="hero-stack">
-                        <div class="codex-glyph" aria-hidden="true">${devenvCloudIcon()}</div>
-                        <h1 class="hero-title">What should we recall?</h1>
-                        <div class="hero-subtitle markdown-body">Ask Devenv to search memory, inspect prior sessions, or route turns through OpenCode with explicit consent.</div>
-                      </div>
-                      <div class="suggestion-row">
-                        ${SUGGESTIONS.map(
-                          (suggestion) =>
-                            `<button type="button" class="suggestion-card" data-suggestion="${escapeAttribute(suggestion)}">${escapeHtml(suggestion)}</button>`
-                        ).join("")}
-                      </div>
-                    </div>
-                  `
-              }
-            </div>
-            <form class="terminal-form codex-composer" data-composer-form>
-              <div class="composer-shell">
+    <div class="flex flex-col h-screen overflow-hidden bg-background">
+      <!-- TopAppBar -->
+      <header class="flex justify-between items-center h-14 px-margin-desktop w-full z-50 bg-surface border-b border-outline-variant shrink-0">
+        <div class="flex items-center gap-4">
+          <span class="font-headline-md text-headline-md font-bold text-on-surface">Devenv</span>
+        </div>
+        <div class="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface-container-high border border-outline-variant">
+          <span class="font-label-caps text-label-caps text-on-surface-variant uppercase">${state.transcript.length ? "Memory thread" : "New memory lookup"}</span>
+          <div class="h-1.5 w-1.5 rounded-full bg-primary glowing-pip"></div>
+        </div>
+        <div class="flex items-center gap-3">
+          <button type="button" class="p-2 rounded-lg hover:bg-surface-variant transition-colors text-on-surface-variant" data-action="theme" aria-label="Toggle theme">
+            <span class="material-symbols-outlined text-[20px]">${state.theme === "dark" ? "light_mode" : "dark_mode"}</span>
+          </button>
+          <button type="button" class="px-3 py-1.5 font-label-caps text-label-caps bg-primary text-on-primary rounded-lg hover:opacity-80 transition-opacity" data-action="new-thread">New</button>
+          <button type="button" class="px-3 py-1.5 font-label-caps text-label-caps border border-outline-variant text-on-surface rounded-lg hover:bg-surface-variant transition-colors" data-action="copy-thread">Copy</button>
+        </div>
+      </header>
+      <main class="flex flex-1 overflow-hidden">
+        <!-- Left Column: Chat & Workflow (65%) -->
+        <section class="w-[65%] flex flex-col h-full bg-background relative border-r border-outline-variant">
+          <div class="flex-1 overflow-y-auto p-margin-desktop space-y-8" data-scroll-region>
+            ${
+              state.transcript.length
+                ? renderTranscript()
+                : renderEmptyState()
+            }
+          </div>
+          <!-- Bottom Composer -->
+          <form class="p-margin-desktop bg-surface-container-low border-t border-outline-variant" data-composer-form>
+            <div class="max-w-4xl mx-auto flex flex-col gap-3">
+              <div class="relative inset-terminal rounded-xl border border-outline-variant p-4 focus-within:border-primary transition-all">
                 <textarea
-                  class="terminal-input composer-input"
-                  rows="${state.transcript.length ? 3 : 2}"
+                  class="w-full bg-transparent border-none focus:ring-0 font-body-md text-body-md text-on-surface resize-none h-20 placeholder:text-outline outline-none"
                   data-prompt-input
                   placeholder="${escapeAttribute(
                     isCoolingDown()
                       ? `Cooldown active. Input unlocks in ${formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))}.`
                       : isBudgetBlocked()
                         ? "Session budget reached. Increase the limit in the right rail to continue."
-                        : "Ask Devenv what it remembers from earlier Codex or OpenCode sessions"
+                        : "Ask Devenv..."
                   )}"
                   ${isCoolingDown() || isBudgetBlocked() ? "disabled" : ""}
                 >${escapeHtml(state.prompt)}</textarea>
-                <div class="composer-toolbar">
-                  <div class="composer-toolbar-left">
+                <div class="flex justify-between items-center mt-2 pt-2 border-t border-outline-variant/30">
+                  <div class="flex items-center gap-2">
                     ${renderToolPicker()}
                   </div>
-                  <div class="composer-toolbar-right">
-                    <button
-                      class="terminal-submit composer-submit"
-                      type="submit"
-                      data-submit
-                      ${state.isRunning ? 'data-live-submit-label="true"' : ""}
-                      ${state.isRunning || isCoolingDown() || isBudgetBlocked() || !state.prompt.trim() ? "disabled" : ""}
-                    >${
-                      isCoolingDown()
-                        ? formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))
-                        : isBudgetBlocked()
-                          ? "Blocked"
-                        : state.isRunning
-                          ? runningButtonLabel()
-                          : "Ask"
-                    }</button>
-                  </div>
+                  <button
+                    type="button"
+                    class="px-6 py-2 bg-primary text-on-primary rounded-full font-label-caps text-label-caps font-bold hover:opacity-90 transition-opacity"
+                    data-submit
+                    ${state.isRunning ? 'data-live-submit-label="true"' : ""}
+                    ${state.isRunning || isCoolingDown() || isBudgetBlocked() || !state.prompt.trim() ? "disabled" : ""}
+                  >${
+                    isCoolingDown()
+                      ? formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))
+                      : isBudgetBlocked()
+                        ? "Blocked"
+                      : state.isRunning
+                        ? runningButtonLabel()
+                        : "Ask"
+                  }</button>
                 </div>
-                ${state.isRunning ? `<div class="composer-running-line">${renderRunningTicker(currentPendingThinkingContent())}</div>` : ""}
+                ${state.isRunning ? `<div class="mt-2">${renderRunningTicker(currentPendingThinkingContent())}</div>` : ""}
               </div>
-              <div class="composer-hint markdown-body inline-markdown">${renderRichText("Press Cmd/Ctrl + Enter to send. Use + to choose tools like web_search.")}</div>
-            </form>
-            ${state.toast ? `<div class="toast-banner markdown-body inline-markdown">${renderRichText(state.toast)}</div>` : ""}
-          </section>
-          <aside class="side-rail">
+            </div>
+          </form>
+          ${state.toast ? `<div class="toast-banner markdown-body inline-markdown">${renderRichText(state.toast)}</div>` : ""}
+        </section>
+        <!-- Right Column: Sidebar (35%) -->
+        <aside class="w-[35%] flex flex-col h-full bg-surface-container-low border-l border-outline-variant">
+          <div class="flex-1 overflow-y-auto p-4 space-y-6" data-rail-region>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="font-label-caps text-label-caps text-primary">DEVELOPER WORKSPACE</span>
+            </div>
             ${renderAccessCard()}
             ${renderSessionsCard()}
             ${renderUsageCard(contextBudget)}
-          </aside>
-        </div>
+            <!-- Generate Prompt Button -->
+            <button type="button" class="w-full py-4 border-2 border-dashed border-outline-variant rounded-xl flex items-center justify-center gap-2 text-on-surface-variant hover:border-primary hover:text-primary transition-all group" data-action="generate-prompt">
+              <span class="material-symbols-outlined group-hover:scale-110 transition-transform text-[20px]">auto_awesome</span>
+              <span class="font-label-caps text-label-caps uppercase font-bold">Generate Prompt</span>
+            </button>
+          </div>
+          <!-- Sidebar Footer -->
+          <footer class="p-4 bg-surface-container-highest border-t border-outline-variant flex justify-between items-center shrink-0">
+            <div class="flex items-center gap-2">
+              <div class="w-2 h-2 rounded-full bg-primary glowing-pip"></div>
+              <span class="font-label-caps text-[10px] text-on-surface">${state.isRunning ? "Running" : "OpenCode ready"}</span>
+            </div>
+            <span class="font-code-sm text-[10px] text-on-surface-variant">${contextBudget.remainingLabel} (${Math.round((contextBudget.remaining / 12000) * 100)}%)</span>
+          </footer>
+        </aside>
       </main>
     </div>
   `;
@@ -824,6 +831,26 @@ function render(options = {}) {
   }
   restoreUIState(uiState, options);
   syncComposerState();
+}
+
+function renderEmptyState() {
+  return `
+    <div class="flex flex-col items-center justify-center min-h-[60vh] gap-10 px-12">
+      <div class="flex flex-col items-center gap-4">
+        <div class="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-on-primary">
+          <span class="material-symbols-outlined text-[24px]">neurology</span>
+        </div>
+        <h1 class="font-headline-lg text-headline-lg text-on-surface text-center">What should we recall?</h1>
+        <div class="max-w-lg text-center font-body-lg text-body-lg text-on-surface-variant">Ask Devenv to search memory, inspect prior sessions, or route turns through OpenCode with explicit consent.</div>
+      </div>
+      <div class="grid grid-cols-1 gap-3 w-full max-w-2xl">
+        ${SUGGESTIONS.map(
+          (suggestion) =>
+            `<button type="button" class="text-left p-4 bg-surface-container border border-outline-variant rounded-lg hover:bg-surface-container-high transition-colors font-body-md text-body-md text-on-surface" data-suggestion="${escapeAttribute(suggestion)}">${escapeHtml(suggestion)}</button>`
+        ).join("")}
+      </div>
+    </div>
+  `;
 }
 
 function shouldPollHealthDuringBoot() {
@@ -857,16 +884,16 @@ function renderStartupShell(indexing) {
   const message = indexing?.message || "Preparing Devenv memory retrieval…";
   const providerLabel = (indexing?.providers || []).length ? String(indexing.providers.join(" + ")).toUpperCase() : "LOCAL";
   return `
-    <div class="startup-shell">
+    <div class="loading-shell">
       <div class="startup-card">
-        <div class="startup-kicker">${escapeHtml(providerLabel)} CHUNKING</div>
-        <h1 class="startup-title">Preparing session memory</h1>
-        <div class="startup-copy markdown-body">${renderRichText(message)}</div>
-        <div class="startup-progress-track" aria-hidden="true">
+        <div class="font-label-caps text-label-caps text-on-surface-variant">${escapeHtml(providerLabel)} CHUNKING</div>
+        <h1 class="font-headline-sm text-headline-sm text-on-surface" style="margin: 8px 0 12px">Preparing session memory</h1>
+        <div class="font-body-md text-body-md text-on-surface-variant markdown-body">${renderRichText(message)}</div>
+        <div class="startup-progress-track" style="margin-top: 16px;">
           <div class="startup-progress-fill" style="width:${percent}%;"></div>
         </div>
-        <div class="startup-progress-meta">
-          <strong>${escapeHtml(`${percent}%`)}</strong>
+        <div class="flex gap-4 mt-3 font-body-md text-body-md text-on-surface-variant">
+          <strong class="text-on-surface">${escapeHtml(`${percent}%`)}</strong>
           <span>${escapeHtml(total ? `${processed}/${total} sessions` : "Counting sessions")}</span>
           <span>${escapeHtml(`ETA ${eta}`)}</span>
         </div>
@@ -876,135 +903,121 @@ function renderStartupShell(indexing) {
 }
 
 function renderTranscript() {
-  return `
-    <div class="chat-thread">
-      ${state.transcript
-        .map((item) => {
-          const body = item.role === "thinking" ? renderThinkingDetail(item.content, item.pending) : renderRichText(item.content);
-          return `
-            <article class="thread-message ${item.role}">
-              <div class="thread-message-header">
-                <div class="thread-message-role">${escapeHtml(roleLabel(item))}</div>
-                ${
-                  item.role === "user" || item.role === "assistant" || item.role === "error"
-                    ? `
-                        <button
-                          type="button"
-                          class="message-copy-button"
-                          data-action="copy-message"
-                          data-message-id="${escapeAttribute(item.id)}"
-                          aria-label="Copy ${escapeAttribute(roleLabel(item))} message"
-                          title="Copy"
-                        >
-                          ${copyIcon()}
-                        </button>
-                      `
-                    : ""
-                }
+  return state.transcript
+    .map((item) => {
+      if (item.role === "user") {
+        return `
+          <div class="flex flex-col gap-2 max-w-3xl">
+            <div class="flex items-center gap-2">
+              <div class="w-6 h-6 rounded-full bg-surface-container-highest flex items-center justify-center">
+                <span class="material-symbols-outlined text-[14px] text-on-surface">person</span>
               </div>
-              <div class="thread-message-body markdown-body">${body}</div>
-            </article>
-          `;
-        })
-        .join("")}
-    </div>
-  `;
+              <span class="font-label-caps text-label-caps text-on-surface">You</span>
+              <button type="button" class="ml-auto p-1 rounded hover:bg-surface-container transition-colors text-on-surface-variant" data-action="copy-message" data-message-id="${escapeAttribute(item.id)}" title="Copy">
+                <span class="material-symbols-outlined text-[16px]">content_copy</span>
+              </button>
+            </div>
+            <div class="font-body-lg text-body-lg text-on-surface ml-8">${renderRichText(item.content)}</div>
+          </div>
+        `;
+      }
+      if (item.role === "thinking") {
+        return renderThinkingDetail(item.content, item.pending);
+      }
+      if (item.role === "error") {
+        return `
+          <div class="flex flex-col gap-2 max-w-3xl">
+            <div class="flex items-center gap-2">
+              <div class="w-6 h-6 rounded-full bg-error flex items-center justify-center">
+                <span class="material-symbols-outlined text-[14px] text-on-error">error</span>
+              </div>
+              <span class="font-label-caps text-label-caps text-error">Error</span>
+              <button type="button" class="ml-auto p-1 rounded hover:bg-surface-container transition-colors text-on-surface-variant" data-action="copy-message" data-message-id="${escapeAttribute(item.id)}" title="Copy">
+                <span class="material-symbols-outlined text-[16px]">content_copy</span>
+              </button>
+            </div>
+            <div class="font-body-lg text-body-lg text-error ml-8">${renderRichText(item.content)}</div>
+          </div>
+        `;
+      }
+      return `
+        <div class="flex flex-col gap-2 max-w-3xl">
+          <div class="flex items-center gap-2">
+            <div class="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+              <span class="material-symbols-outlined text-on-primary text-[14px]">smart_toy</span>
+            </div>
+            <span class="font-label-caps text-label-caps text-primary">Devenv</span>
+            <button type="button" class="ml-auto p-1 rounded hover:bg-surface-container transition-colors text-on-surface-variant" data-action="copy-message" data-message-id="${escapeAttribute(item.id)}" title="Copy">
+              <span class="material-symbols-outlined text-[16px]">content_copy</span>
+            </button>
+          </div>
+          <div class="font-body-lg text-body-lg text-on-surface ml-8 leading-relaxed">${renderRichText(item.content)}</div>
+        </div>
+      `;
+    })
+    .join("");
 }
 
-function copyIcon() {
-  return `
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.8"></rect>
-      <path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-    </svg>
-  `;
-}
+
 
 function renderAccessCard() {
   const codexAllowed = Boolean(state.accessPolicy.session_access?.codex);
   const opencodeSessionAllowed = Boolean(state.accessPolicy.session_access?.opencode);
   const opencodeBackendAllowed = Boolean(state.accessPolicy.backend_access?.opencode);
-  const opencode = state.backends.opencode || {};
   const activeBackendLabel = formatBackendLabel(state.activeBackend);
-  const preferredBackendLabel = formatBackendLabel(state.preferredBackend);
   return `
-    <section class="rail-card">
-      <div class="rail-card-header">
-        <div>
-          <div class="panel-label">Access & Providers</div>
-          <h2 class="rail-title">Consent and backend state</h2>
+    <section class="space-y-3">
+      <h3 class="font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2">
+        <span class="material-symbols-outlined text-[16px]">vpn_key</span>
+        ACCESS &amp; PROVIDERS
+      </h3>
+      <div class="bg-surface-container rounded-lg border border-outline-variant overflow-hidden">
+        <div class="p-3 border-b border-outline-variant/30 flex justify-between items-center">
+          <span class="font-body-md text-body-md">Consent</span>
+          <span class="text-primary material-symbols-outlined text-[18px]">check_circle</span>
         </div>
-        <div class="backend-badge ${escapeAttribute(state.activeBackend)}">${escapeHtml(activeBackendLabel)}</div>
-      </div>
-      <div class="provider-grid">
-        ${renderProviderAccessRow("codex", "Codex sessions", codexAllowed)}
-        ${renderProviderAccessRow("opencode", "OpenCode sessions", opencodeSessionAllowed)}
-      </div>
-      <div class="backend-card">
-        <div class="backend-copy">
-          <strong>Current backend</strong>
-          <span class="markdown-body inline-markdown">${renderRichText(
-            `${activeBackendLabel}`
-          )}</span>
-        </div>
-        <div class="backend-actions">
-          <button type="button" class="context-action-button ${opencodeBackendAllowed ? "" : "primary"}" data-action="${opencodeBackendAllowed ? "revoke-backend" : "grant-backend"}" ${state.accessUpdating ? "disabled" : ""}>
+        ${renderProviderRow("codex", "Codex", codexAllowed, "session")}
+        ${renderProviderRow("opencode", "OpenCode", opencodeSessionAllowed, "session")}
+        <div class="p-3 flex justify-between items-center">
+          <div class="flex flex-col">
+            <span class="font-body-md text-body-md">Backend</span>
+            <span class="text-[10px] text-outline uppercase font-bold">${escapeHtml(activeBackendLabel)}</span>
+          </div>
+          <button type="button" class="px-3 py-1 rounded bg-surface-variant text-on-surface font-label-caps text-[10px] hover:bg-error hover:text-on-error transition-colors" data-action="${opencodeBackendAllowed ? "revoke-backend" : "grant-backend"}" ${state.accessUpdating ? "disabled" : ""}>
             ${opencodeBackendAllowed ? "Revoke" : "Grant"}
           </button>
         </div>
       </div>
-      <div class="backend-summary">
-        <div class="markdown-body inline-markdown">${renderRichText(`**OpenCode:** ${opencode.detail || (opencode.available ? "Available" : "Unavailable")}`)}</div>
-      </div>
-      <div class="backend-card">
-        <div class="backend-copy">
-          <strong>Performance mode</strong>
-          <span class="markdown-body inline-markdown">${renderRichText(`Current profile: **${state.performanceMode}**`)}</span>
-        </div>
-        <div class="backend-actions">
-          <select class="backend-select" data-performance-select>
+      <div class="space-y-3 pt-2">
+        <div class="flex flex-col gap-1.5">
+          <label class="font-label-caps text-label-caps text-on-surface-variant">PERFORMANCE MODE</label>
+          <select class="bg-surface-container-highest border border-outline-variant rounded-lg font-body-md text-body-md p-2 outline-none focus:border-primary" data-performance-select>
             <option value="low" ${state.performanceMode === "low" ? "selected" : ""}>Low</option>
-            <option value="medium" ${state.performanceMode === "medium" ? "selected" : ""}>Medium</option>
+            <option value="medium" ${state.performanceMode === "medium" ? "selected" : ""}>Med</option>
             <option value="high" ${state.performanceMode === "high" ? "selected" : ""}>High</option>
           </select>
         </div>
-      </div>
-      <div class="backend-card">
-        <div class="backend-copy">
-          <strong>Incognito mode</strong>
-          <span class="markdown-body inline-markdown">${renderRichText(
-            state.privacyMode.incognito
-              ? "Prior memory is off, and this session will not write memory."
-              : "Use memory normally and persist this session as usual."
-          )}</span>
-        </div>
-        <div class="backend-actions">
-          <label class="terminal-toggle inline-toggle${state.privacyMode.incognito ? " enabled" : ""}">
-            <input type="checkbox" data-incognito-toggle ${state.privacyMode.incognito ? "checked" : ""} />
-            <span>Incognito</span>
-          </label>
-        </div>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input class="w-4 h-4 rounded border-outline-variant bg-surface-container text-primary focus:ring-0 focus:ring-offset-0" type="checkbox" data-incognito-toggle ${state.privacyMode.incognito ? "checked" : ""} />
+          <span class="font-body-md text-body-md">Incognito</span>
+        </label>
       </div>
     </section>
   `;
 }
 
-function renderProviderAccessRow(provider, label, allowed) {
+function renderProviderRow(provider, label, allowed, type) {
+  const grantedClass = allowed ? "text-primary" : "text-outline";
+  const grantedText = allowed ? "Granted" : "Not granted";
+  const action = allowed ? "revoke" : "grant";
+  const actionAttr = type === "session" ? `${action}-session` : `${action}-backend`;
   return `
-      <div class="provider-row">
-        <div class="provider-copy">
-          <strong>${escapeHtml(label)}</strong>
-          <span class="markdown-body inline-markdown">${renderRichText(
-            allowed ? "Granted" : "Permission required before Devenv can read these sessions."
-          )}</span>
-        </div>
-      <button
-        type="button"
-        class="context-action-button ${allowed ? "" : "primary"}"
-        data-action="${allowed ? "revoke-session" : "grant-session"}"
-        data-provider="${escapeAttribute(provider)}"
-        ${state.accessUpdating ? "disabled" : ""}
-      >
+    <div class="p-3 border-b border-outline-variant/30 flex justify-between items-center">
+      <div class="flex flex-col">
+        <span class="font-body-md text-body-md">${escapeHtml(label)}</span>
+        <span class="text-[10px] ${grantedClass} uppercase font-bold">${grantedText}</span>
+      </div>
+      <button type="button" class="px-3 py-1 rounded bg-surface-variant text-on-surface font-label-caps text-[10px] hover:bg-error hover:text-on-error transition-colors" data-action="${actionAttr}" data-provider="${escapeAttribute(provider)}" ${state.accessUpdating ? "disabled" : ""}>
         ${allowed ? "Revoke" : "Grant"}
       </button>
     </div>
@@ -1012,207 +1025,93 @@ function renderProviderAccessRow(provider, label, allowed) {
 }
 
 function renderSessionsCard() {
-  const selectedProviderVisible = Boolean(state.visibleSessionProviders[state.selectedProvider]);
-  const detail = selectedProviderVisible ? state.sessionDetails[`${state.selectedProvider}:${state.selectedSessionId}`] || null : null;
+  const codexAllowed = Boolean(state.accessPolicy.session_access?.codex);
+  const opencodeAllowed = Boolean(state.accessPolicy.session_access?.opencode);
+  const codexVisible = Boolean(state.visibleSessionProviders?.codex);
+  const opencodeVisible = Boolean(state.visibleSessionProviders?.opencode);
   return `
-    <section class="rail-card">
-      <div class="rail-card-header">
-        <div>
-          <div class="panel-label">Sessions</div>
-          <h2 class="rail-title">Browsable history</h2>
-        </div>
-        <button type="button" class="context-action-button" data-action="refresh-sessions" ${state.sessionLoading ? "disabled" : ""}>Refresh</button>
+    <section class="space-y-3">
+      <div class="flex justify-between items-center">
+        <h3 class="font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2">
+          <span class="material-symbols-outlined text-[16px]">history</span>
+          SESSIONS
+        </h3>
+        <button type="button" class="p-1 hover:text-primary transition-colors text-on-surface-variant" data-action="refresh-sessions" ${state.sessionLoading ? "disabled" : ""}>
+          <span class="material-symbols-outlined text-[18px]">refresh</span>
+        </button>
       </div>
-      <div class="provider-group-stack">
-        ${renderProviderSessionGroup("codex", "Codex")}
-        ${renderProviderSessionGroup("opencode", "OpenCode")}
-      </div>
-      <div class="session-detail">
-        ${
-          detail
-            ? `
-              <div class="session-detail-header">
-                <strong>${escapeHtml(detail.summary?.title || "Untitled session")}</strong>
-                <span>${escapeHtml(detail.summary?.workspace_path || detail.summary?.updated_at || "No workspace hint")}</span>
-              </div>
-              <div class="session-detail-messages">
-                ${(detail.messages || [])
-                  .slice(0, 10)
-                  .map(
-                    (message) => `
-                      <article class="context-message ${escapeAttribute(message.role)}">
-                        <div class="bubble-role">${escapeHtml(message.role)}</div>
-                        <div class="markdown-body">${renderRichText(message.content)}</div>
-                      </article>
-                    `
-                  )
-                  .join("")}
-              </div>
-            `
-            : `<div class="rail-empty">${
-                selectedProviderVisible
-                  ? "Select a session to inspect the transcript summary."
-                  : "Open Codex or OpenCode history when you want to browse sessions."
-              }</div>`
-        }
-      </div>
+      ${renderSessionRow("codex", "Codex History", codexAllowed, codexVisible)}
+      ${renderSessionRow("opencode", "OpenCode History", opencodeAllowed, opencodeVisible)}
     </section>
   `;
 }
 
-function renderProviderSessionGroup(provider, label) {
-  const allowed = Boolean(state.accessPolicy.session_access?.[provider]);
-  const visible = Boolean(state.visibleSessionProviders[provider]);
+function renderSessionRow(provider, label, allowed, visible) {
   const sessions = state.providerSessions[provider] || [];
   return `
-    <section class="provider-session-group">
-      <div class="provider-group-header">
-        <div class="provider-group-copy">
-          <strong>${escapeHtml(label)}</strong>
-          <div class="panel-caption provider-group-caption markdown-body inline-markdown">${renderRichText(
-            allowed
-              ? visible
-                ? `${sessions.length} loaded session${sessions.length === 1 ? "" : "s"}`
-                : "Hidden until you choose to view it"
-              : "Grant access before loading sessions"
-          )}</div>
-        </div>
-        <button
-          type="button"
-          class="context-action-button"
-          data-action="toggle-session-provider"
-          data-provider="${escapeAttribute(provider)}"
-          ${!allowed ? "disabled" : ""}
-        >
+    <div class="bg-surface-container rounded-lg border border-outline-variant overflow-hidden">
+      <div class="p-3 flex justify-between items-center">
+        <span class="font-body-md text-body-md">${escapeHtml(label)}</span>
+        <button type="button" class="px-3 py-1 rounded bg-surface-variant text-on-surface font-label-caps text-[10px] hover:bg-primary hover:text-on-primary transition-colors" data-action="toggle-session-provider" data-provider="${escapeAttribute(provider)}" ${!allowed ? "disabled" : ""}>
           ${visible ? "Hide" : "Show"}
         </button>
       </div>
-      ${
-        !allowed
-          ? `<div class="rail-empty markdown-body">Grant ${escapeHtml(label)} access to load these sessions.</div>`
-          : !visible
-            ? `<div class="rail-empty compact markdown-body">${renderRichText(`${label} history stays collapsed until you open it.`)}</div>`
-            : `
-            <div class="session-list ${state.sessionLoading ? "loading" : ""}">
-              ${
-                sessions.length
-                  ? sessions
-                      .map(
-                        (session) => `
-                          <button
-                            type="button"
-                            class="session-card${state.selectedProvider === provider && state.selectedSessionId === session.session_id ? " selected" : ""}"
-                            data-action="select-session"
-                            data-provider="${escapeAttribute(provider)}"
-                            data-session-id="${escapeAttribute(session.session_id)}"
-                          >
-                            <strong>${escapeHtml(session.title || "Untitled session")}</strong>
-                            <span>${escapeHtml(session.updated_at || session.workspace_path || "Unknown update time")}</span>
-                            <div class="markdown-body inline-markdown"><p>${renderInlineMarkdown(session.preview || session.workspace_path || "No preview available.")}</p></div>
-                          </button>
-                        `
-                      )
-                      .join("")
-                  : `<div class="rail-empty">${state.sessionLoading ? "Loading sessions..." : "No sessions available."}</div>`
-              }
-            </div>
-          `
-      }
-    </section>
+      ${visible && allowed ? `
+        <div class="border-t border-outline-variant/30 p-2 space-y-1 max-h-48 overflow-y-auto">
+          ${sessions.length ? sessions.map(session => `
+            <button type="button" class="w-full text-left p-2 rounded-lg ${state.selectedProvider === provider && state.selectedSessionId === session.session_id ? "bg-surface-container-highest border border-primary" : "bg-surface-dim border border-transparent"} hover:bg-surface-container-highest transition-colors" data-action="select-session" data-provider="${escapeAttribute(provider)}" data-session-id="${escapeAttribute(session.session_id)}">
+              <div class="font-label-caps text-label-caps text-on-surface text-[11px]">${escapeHtml(session.title || "Untitled session")}</div>
+              <div class="font-code-sm text-code-sm text-on-surface-variant truncate">${escapeHtml(session.updated_at || session.workspace_path || "")}</div>
+            </button>
+          `).join("") : `<div class="font-body-md text-body-md text-on-surface-variant p-2">${state.sessionLoading ? "Loading..." : "No sessions"}</div>`}
+        </div>
+      ` : ""}
+    </div>
   `;
 }
 
 function renderUsageCard(contextBudget) {
   const budgetState = buildBudgetState();
-  const usageSummary = buildUsageSummary();
+  const statusLabel = state.isRunning ? "Running" : "Idle";
+  const statusColor = state.isRunning ? "bg-primary" : "bg-outline";
   return `
-    <section class="rail-card">
-      <div class="rail-card-header">
-        <div>
-          <div class="panel-label">Usage & Runtime</div>
-          <h2 class="rail-title">Tokens, budget, and status</h2>
+    <section class="space-y-3">
+      <h3 class="font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2">
+        <span class="material-symbols-outlined text-[16px]">analytics</span>
+        USAGE &amp; RUNTIME
+      </h3>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="p-3 bg-surface-container rounded-lg border border-outline-variant">
+          <div class="font-label-caps text-label-caps text-outline mb-1 uppercase">Status</div>
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full ${statusColor}"></div>
+            <span class="font-body-md text-body-md font-bold uppercase">${escapeHtml(statusLabel)}</span>
+          </div>
         </div>
-        <div class="runtime-pill ${state.isRunning ? "running" : ""}">
-          ${state.isRunning ? "Running" : "Idle"}
-        </div>
-      </div>
-      <div class="metrics-grid">
-        <div class="metric-box">
-          <span>Last request</span>
-          <strong>${escapeHtml(String(state.latestTurnTokens || 0))}</strong>
-        </div>
-        <div class="metric-box">
-          <span>Session total</span>
-          <strong>${escapeHtml(String(state.sessionUsageTotal || 0))}</strong>
-        </div>
-        <div class="metric-box">
-          <span>Elapsed</span>
-          <strong data-live-elapsed>${escapeHtml(
+        <div class="p-3 bg-surface-container rounded-lg border border-outline-variant">
+          <div class="font-label-caps text-label-caps text-outline mb-1 uppercase">Elapsed</div>
+          <div class="font-body-md text-body-md font-bold" data-live-elapsed>${escapeHtml(
             formatDuration(state.isRunning ? Date.now() - state.runStartedAt : state.latestElapsedMs || 0)
-          )}</strong>
+          )}</div>
+        </div>
+        <div class="p-3 bg-surface-container rounded-lg border border-outline-variant">
+          <div class="font-label-caps text-label-caps text-outline mb-1 uppercase">Last request</div>
+          <div class="font-body-md text-body-md font-bold">${escapeHtml(formatDuration(state.latestElapsedMs || 0))}</div>
+        </div>
+        <div class="p-3 bg-surface-container rounded-lg border border-outline-variant">
+          <div class="font-label-caps text-label-caps text-outline mb-1 uppercase">Session total</div>
+          <div class="font-body-md text-body-md font-bold">${escapeHtml(String(state.sessionUsageTotal || 0))} tokens</div>
         </div>
       </div>
-      <div class="chart-stack">
-        <div class="chart-block">
-          <div class="chart-label">Per-turn tokens</div>
-          ${renderUsageBars(state.usageWindow)}
-          <div class="chart-footer markdown-body inline-markdown">${renderRichText(usageSummary.turnsLabel)}</div>
+      <div class="flex flex-col gap-1.5 pt-2">
+        <label class="font-label-caps text-label-caps text-on-surface-variant">TOKEN BUDGET</label>
+        <div class="flex gap-2">
+          <input class="flex-1 bg-surface-container-highest border border-outline-variant rounded-lg font-code-sm text-code-sm px-3 py-2 outline-none focus:border-primary" data-budget-input type="text" value="${escapeAttribute(state.budgetInput)}" />
+          <button type="button" class="px-4 py-2 bg-surface-variant text-on-surface rounded-lg font-label-caps text-label-caps hover:bg-outline-variant transition-colors" data-action="apply-budget">Apply</button>
         </div>
-        <div class="chart-block">
-          <div class="chart-label">Session token trend</div>
-          ${renderCumulativeUsageChart(state.usageWindow)}
-          <div class="context-note markdown-body inline-markdown">${renderRichText(usageSummary.sessionLabel)}</div>
-        </div>
-      </div>
-      <div class="budget-editor">
-        <label>
-          <span>Session token budget</span>
-          <input class="budget-input" data-budget-input type="number" min="0" placeholder="No limit" value="${escapeAttribute(state.budgetInput)}" />
-        </label>
-        <button type="button" class="context-action-button primary" data-action="apply-budget">Apply</button>
-      </div>
-      <div class="budget-editor">
-        <label>
-          <span>Prompt helper</span>
-          <div class="panel-caption markdown-body inline-markdown">${renderRichText("Generate a strict coding prompt from the current composer text.")}</div>
-        </label>
-        <button type="button" class="context-action-button" data-action="generate-prompt">Generate Prompt</button>
-      </div>
-      <div class="budget-status markdown-body inline-markdown ${budgetState.blocked ? "blocked" : ""}">
-        ${renderRichText(budgetState.label)}
-      </div>
-      ${budgetState.blocked ? `<button type="button" class="context-action-button" data-action="increase-budget" data-increase="1000">Increase by 1000</button>` : ""}
-      <div class="runtime-summary">
-        ${
-          state.isRunning
-            ? renderRunningTicker(currentPendingThinkingContent())
-            : `<div class="thinking-live-text markdown-body inline-markdown">${renderRichText(
-                `${formatBackendLabel(state.activeBackend)} ready · ${contextBudget.remainingLabel} in the current minute`
-              )}</div>`
-        }
       </div>
     </section>
   `;
-}
-
-function renderUsageBars(entries) {
-  const points = entries.slice(-12);
-  const maxValue = Math.max(...points.map((entry) => entry.totalTokens), 1);
-  const bars = points
-    .map((entry, index) => {
-      const height = Math.max(Math.round((entry.totalTokens / maxValue) * 52), 4);
-      return `<rect x="${index * 12}" y="${60 - height}" width="8" height="${height}" rx="3"></rect>`;
-    })
-    .join("");
-  const placeholders = Array.from({ length: Math.max(12 - points.length, 0) }, (_, index) => {
-    const x = (points.length + index) * 12;
-    return `<rect class="placeholder-bar" x="${x}" y="54" width="8" height="6" rx="3"></rect>`;
-  }).join("");
-  return `<svg class="usage-chart" viewBox="0 0 144 60" preserveAspectRatio="none">
-    <line class="usage-grid-line" x1="0" y1="59" x2="144" y2="59"></line>
-    ${placeholders}
-    ${bars}
-  </svg>`;
 }
 
 function renderToolPicker() {
@@ -1220,32 +1119,32 @@ function renderToolPicker() {
   const selected = new Set(state.selectedTools);
   const label = selected.size ? `${selected.size} selected` : "All tools";
   return `
-    <div class="tool-picker${state.toolPickerOpen ? " open" : ""}">
-      <button type="button" class="tool-picker-trigger" data-action="toggle-tool-picker" aria-label="Choose tools" aria-expanded="${state.toolPickerOpen ? "true" : "false"}">+</button>
-      <div class="tool-picker-summary">
-        <span class="tool-picker-summary-label">Tools</span>
-        <strong>${escapeHtml(label)}</strong>
-      </div>
+    <div class="relative${state.toolPickerOpen ? " open" : ""}">
+      <button type="button" class="flex items-center gap-2 px-3 py-1.5 bg-surface-container-highest rounded-lg border border-outline-variant hover:bg-surface-variant transition-colors" data-action="toggle-tool-picker" aria-label="Choose tools">
+        <span class="font-label-caps text-label-caps text-primary">TOOLS</span>
+        <span class="text-outline">/</span>
+        <span class="font-label-caps text-label-caps text-on-surface">${escapeHtml(label)}</span>
+      </button>
       ${
         state.toolPickerOpen
           ? `
-            <div class="tool-picker-menu">
-              <div class="tool-picker-header">
-                <strong>Choose functions</strong>
-                <button type="button" class="tool-picker-clear" data-action="clear-tool-selection">Use all</button>
+            <div class="absolute left-0 bottom-full mb-2 z-10 w-72 max-h-80 overflow-auto border border-outline-variant rounded-lg bg-surface-container p-3 shadow-xl">
+              <div class="flex items-center justify-between mb-2">
+                <strong class="font-label-caps text-label-caps text-on-surface">Choose functions</strong>
+                <button type="button" class="font-label-caps text-label-caps text-primary bg-transparent border-0" data-action="clear-tool-selection">Use all</button>
               </div>
-              <div class="tool-picker-options">
+              <div class="flex flex-col gap-1.5">
                 ${availableTools
                   .map(
                     (toolName) => `
                       <button
                         type="button"
-                        class="tool-picker-option${selected.has(toolName) ? " selected" : ""}"
+                        class="flex items-center justify-between w-full px-3 py-2 rounded-md border ${selected.has(toolName) ? "border-primary bg-surface" : "border-outline-variant bg-surface-dim"} text-left font-body-md text-body-md text-on-surface hover:bg-surface-container-higher transition-colors"
                         data-action="toggle-tool"
                         data-tool-name="${escapeAttribute(toolName)}"
                       >
-                        <span class="tool-picker-check" aria-hidden="true">${selected.has(toolName) ? "✓" : ""}</span>
                         <span>${escapeHtml(toolName)}</span>
+                        <span class="text-primary">${selected.has(toolName) ? "check_circle" : ""}</span>
                       </button>
                     `
                   )
@@ -1276,24 +1175,36 @@ function renderThinkingDetail(content, pending) {
   const headline = pending ? (pendingWebSearch ? "Live web search" : "Live tool trace") : pendingWebSearch ? "Web search trace" : "Tool trace";
   const searchCards = steps.filter((step) => step.kind === "web_search");
   const timelineSteps = steps.filter((step) => step.kind !== "web_search");
+  const lastStatus = timelineSteps.length ? timelineSteps[timelineSteps.length - 1].text : "";
   return `
-    <div class="thinking-card thinking-card-detailed">
-      <div class="thinking-card-topline">
-        <strong>${escapeHtml(headline)}</strong>
+    <div class="ml-8 space-y-4">
+      <div class="inset-terminal rounded-lg border border-outline-variant p-4">
+        <div class="flex justify-between items-center mb-4">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary text-[18px]">terminal</span>
+            <span class="font-label-caps text-label-caps text-on-surface uppercase">${escapeHtml(headline)}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="font-label-caps text-label-caps text-on-surface-variant" data-live-elapsed>${escapeHtml(
+              formatDuration(state.isRunning ? Date.now() - state.runStartedAt : state.latestElapsedMs || 0)
+            )}</span>
+            <span class="px-2 py-0.5 rounded bg-secondary-container text-on-secondary-container font-label-caps text-[10px]">${escapeHtml(formatBackendLabel(state.activeBackend))}</span>
+          </div>
+        </div>
+        <div class="space-y-1 font-code-sm text-code-sm text-on-surface-variant">
+          ${timelineSteps.map((step, i) => `
+            <div class="flex gap-4">
+              <span class="text-outline w-4 shrink-0">${i + 1}</span>
+              <span>[${escapeHtml(step.label || "TRACE").toUpperCase()}] ${escapeHtml(step.text)}</span>
+            </div>
+          `).join("")}
+        </div>
       </div>
-      <div class="thinking-detail-meta">
-        <span data-live-elapsed>${escapeHtml(
-          formatDuration(state.isRunning ? Date.now() - state.runStartedAt : state.latestElapsedMs || 0)
-        )}</span>
-        <span>${escapeHtml(formatBackendLabel(state.activeBackend))}</span>
+      ${searchCards.length ? `<div class="space-y-2">${searchCards.map(renderThinkingSearchCard).join("")}</div>` : ""}
+      <div class="flex items-center gap-3 px-4 py-2 bg-surface-container rounded-full border border-outline-variant w-fit">
+        <span class="material-symbols-outlined text-primary text-[16px]${pending ? " animate-pulse" : ""}">bolt</span>
+        <span class="font-body-md text-body-md text-on-surface">${escapeHtml(lastStatus || (pending ? "Processing..." : "Completed"))}</span>
       </div>
-      <div class="thinking-live-row thinking-hero-row">${renderRunningTicker(content, { pending })}</div>
-      ${searchCards.length ? `<div class="thinking-search-stack">${searchCards.map(renderThinkingSearchCard).join("")}</div>` : ""}
-      <ol class="thinking-step-list">
-        ${timelineSteps
-          .map((step) => `<li><span class="thinking-step-badge">${escapeHtml(step.label || "Step")}</span>${escapeHtml(step.text)}</li>`)
-          .join("")}
-      </ol>
     </div>
   `;
 }
@@ -1440,23 +1351,23 @@ function renderThinkingSearchCard(step) {
   const query = String(step.query || "").trim();
   const results = Array.isArray(step.results) ? step.results : [];
   return `
-    <div class="thinking-search-card">
-      <div class="thinking-search-header">
-        <span class="thinking-globe" aria-hidden="true">🌐</span>
-        <strong>${escapeHtml(query || "Web search")}</strong>
+    <div class="border border-outline-variant rounded-lg bg-terminal p-3">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="material-symbols-outlined text-primary text-[16px]">public</span>
+        <strong class="font-code-sm text-code-sm text-on-surface-variant">${escapeHtml(query || "Web search")}</strong>
       </div>
       ${
         results.length
-          ? `<ul class="thinking-search-results">
+          ? `<ul class="font-code-sm text-code-sm text-on-surface-variant space-y-1">
               ${results
                 .map(
-                  (item) => `<li><span>${escapeHtml(item.title || item.url || "Result")}</span>${
-                    item.url ? `<a href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.url)}</a>` : ""
+                  (item) => `<li class="flex flex-col"><span>${escapeHtml(item.title || item.url || "Result")}</span>${
+                    item.url ? `<a class="text-primary/60 hover:text-primary" href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.url)}</a>` : ""
                   }</li>`
                 )
                 .join("")}
             </ul>`
-          : `<div class="thinking-search-empty">Search completed.</div>`
+          : `<div class="font-code-sm text-code-sm text-on-surface-variant">Search completed.</div>`
       }
     </div>
   `;
@@ -1467,9 +1378,11 @@ function renderRunningTicker(content = "", options = {}) {
   const frame = currentRunningFrame(content, options);
   const pending = Boolean(options.pending);
   return `
-    <span class="thinking-live-indicator${useGlobe ? " globe" : ""}" aria-hidden="true">${useGlobe ? "🌐" : "⚡"}</span>
-    <span class="thinking-live-text"${pending ? " data-running-frame" : ""}>${escapeHtml(frame)}</span>
-    ${pending ? '<span class="thinking-live-dots" aria-hidden="true"><span></span><span></span><span></span></span>' : ""}
+    <span class="inline-flex items-center gap-2 px-4 py-2 bg-surface-container rounded-full border border-outline-variant">
+      <span class="material-symbols-outlined text-primary text-[16px]${pending ? " animate-pulse" : ""}">${useGlobe ? "public" : "bolt"}</span>
+      <span class="font-body-md text-body-md text-on-surface"${pending ? " data-running-frame" : ""}>${escapeHtml(frame)}</span>
+      ${pending ? '<span class="inline-flex gap-1"><span class="w-1 h-1 rounded-full bg-on-surface/25 animate-bounce" style="animation-delay:0s"></span><span class="w-1 h-1 rounded-full bg-on-surface/25 animate-bounce" style="animation-delay:0.18s"></span><span class="w-1 h-1 rounded-full bg-on-surface/25 animate-bounce" style="animation-delay:0.36s"></span></span>' : ""}
+    </span>
   `;
 }
 
@@ -1605,8 +1518,8 @@ function currentPendingThinkingContent() {
 function captureUIState() {
   const activeElement = document.activeElement;
   const textarea = root.querySelector("[data-prompt-input]");
-  const transcriptScroller = root.querySelector(".terminal-scroll-region");
-  const railScroller = root.querySelector(".side-rail");
+  const transcriptScroller = root.querySelector("[data-scroll-region]");
+  const railScroller = root.querySelector("[data-rail-region]");
   return {
     composerFocused: Boolean(activeElement && textarea && activeElement === textarea),
     selectionStart: textarea?.selectionStart ?? null,
@@ -1621,8 +1534,8 @@ function captureUIState() {
 
 function restoreUIState(previous, options = {}) {
   const textarea = root.querySelector("[data-prompt-input]");
-  const transcriptScroller = root.querySelector(".terminal-scroll-region");
-  const railScroller = root.querySelector(".side-rail");
+  const transcriptScroller = root.querySelector("[data-scroll-region]");
+  const railScroller = root.querySelector("[data-rail-region]");
   if (transcriptScroller) {
     transcriptScroller.scrollTop = previous?.transcriptNearBottom
       ? transcriptScroller.scrollHeight
@@ -1727,39 +1640,6 @@ function renderInlineMarkdown(text) {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^\*])\*([^*]+)\*/g, "$1<em>$2</em>")
     .replace(/`([^`]+)`/g, "<code>$1</code>");
-}
-
-function renderCumulativeUsageChart(entries) {
-  const points = entries.slice(-12);
-  const cumulative = [];
-  let running = 0;
-  for (const entry of points) {
-    running += entry.totalTokens;
-    cumulative.push(running);
-  }
-  const maxValue = Math.max(...cumulative, 1);
-  const path = cumulative
-    .map((value, index) => {
-      const x = points.length === 1 ? 72 : (index / Math.max(points.length - 1, 1)) * 144;
-      const y = 56 - (value / maxValue) * 44;
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(" ");
-  return `<svg class="usage-chart cumulative" viewBox="0 0 144 60" preserveAspectRatio="none">
-    <line class="usage-grid-line" x1="0" y1="59" x2="144" y2="59"></line>
-    ${path ? `<path class="usage-line" d="${path}"></path>` : `<path class="usage-line usage-line-empty" d="M 0 56 L 144 56"></path>`}
-  </svg>`;
-}
-
-function buildUsageSummary() {
-  const turns = state.usageWindow.length;
-  const sessionTotal = state.sessionUsageTotal || 0;
-  return {
-    turnsLabel: turns
-      ? `${turns} recent request${turns === 1 ? "" : "s"} sampled · includes prompt, memory context, and answer tokens`
-      : "Waiting for the first request to plot usage",
-    sessionLabel: sessionTotal ? `${sessionTotal} total session tokens tracked so far` : "Session graph will rise as turns complete",
-  };
 }
 
 function formatBackendLabel(value) {
@@ -2083,31 +1963,7 @@ function showToast(message) {
   scheduleRender({ preserveComposerFocus: true });
 }
 
-function moonIcon() {
-  return `
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path d="M13.9 2.8a6.8 6.8 0 1 0 3.3 12.8A7.9 7.9 0 1 1 13.9 2.8Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  `;
-}
 
-function sunIcon() {
-  return `
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <circle cx="10" cy="10" r="3.5" stroke="currentColor" stroke-width="1.7"/>
-      <path d="M10 1.8V4M10 16v2.2M18.2 10H16M4 10H1.8M15.9 4.1 14.3 5.7M5.7 14.3 4.1 15.9M15.9 15.9 14.3 14.3M5.7 5.7 4.1 4.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
-    </svg>
-  `;
-}
-
-function devenvCloudIcon() {
-  return `
-    <svg viewBox="0 0 28 28" fill="none">
-      <path d="M10.1 22.2c-3.1 0-5.8-2.5-5.8-5.7 0-2.9 2-5.2 4.8-5.7.7-3.2 3.4-5.4 6.9-5.4 4 0 7.2 3.1 7.2 7.1v.3c1.7.8 2.8 2.5 2.8 4.5 0 2.7-2.2 4.9-5 4.9H10.1Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M12 14h.01M17 14h.01" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  `;
-}
 
 function escapeHtml(value) {
   return String(value || "")
