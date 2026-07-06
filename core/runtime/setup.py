@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import urllib.request
@@ -64,6 +65,7 @@ def inspect_setup(
     optional_checks = (
         _build_optional_check("opencode_server", _check_opencode_server(opencode_path, start_if_needed=False)),
         _build_optional_check("mcp_http_server", _check_mcp_http_server(config, start_if_needed=False)),
+        _build_optional_check("codex_backend", _check_codex_backend()),
         _build_optional_check("sentence_transformer_cache", _check_sentence_transformer_cache(warm_model_cache=warm_model_cache)),
         _build_optional_check("web_search_prerequisites", _check_web_search_prerequisites()),
         _build_optional_check("latex_pdf_toolchain", _check_latex_pdf_toolchain()),
@@ -181,6 +183,20 @@ def _check_mcp_http_server(config: RunConfig, *, start_if_needed: bool) -> tuple
     if status.auth_enabled:
         detail += " Auth token configured."
     return "ready", detail
+
+
+def _check_codex_backend() -> tuple[str, str]:
+    api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+    model = (os.getenv("DEVENV_CODEX_MODEL") or "").strip()
+    if not api_key and not model:
+        return "pending", "Codex backend is not configured yet: set OPENAI_API_KEY and DEVENV_CODEX_MODEL."
+    if not api_key:
+        return "failed", "Codex backend is missing OPENAI_API_KEY."
+    if not model:
+        return "failed", "Codex backend is missing DEVENV_CODEX_MODEL."
+    if importlib.util.find_spec("agents") is None:
+        return "failed", "Codex backend credentials are present, but the OpenAI Agents SDK is not installed."
+    return "ready", f"Codex backend configured for model {model}."
 
 
 def _ensure_workspace_state(*, db_path: str, vector_dir: str, apply_changes: bool) -> tuple[bool, str]:

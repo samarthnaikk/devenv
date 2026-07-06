@@ -73,7 +73,21 @@ class FakeAI:
                         "started_by_manager": False,
                     }
                 },
-            )
+            ),
+            "codex": AIBackendStatus(
+                name="codex",
+                available=True,
+                enabled=True,
+                model="gpt-5-codex",
+                detail="Configured",
+                metadata={
+                    "transport": "responses_mcp",
+                    "mcp_server": {
+                        "reachable": True,
+                        "base_url": "http://127.0.0.1:8765/mcp",
+                    },
+                },
+            ),
         }
 
     def chat(
@@ -133,6 +147,8 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertIn("tool_readiness", health)
         self.assertIn("web_search", health["tool_readiness"])
         self.assertIn("mcp_server", health)
+        self.assertIn("codex_backend", health)
+        self.assertEqual(health["codex_backend"]["transport"], "responses_mcp")
         self.assertEqual(files["entries"][0]["name"], "README.md")
         self.assertEqual(file_payload["content"], "hello")
         self.assertEqual(file_payload["kind"], "text")

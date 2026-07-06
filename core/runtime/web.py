@@ -121,10 +121,14 @@ class DevenvWebApp:
         tool_readiness = self._build_tool_readiness()
         mcp_server = self._mcp_server_manager.inspect().to_metadata()
         opencode_server = {}
+        codex_backend = {}
         if isinstance(ai_statuses, dict):
             opencode_status = ai_statuses.get("opencode")
             if opencode_status is not None:
                 opencode_server = dict(getattr(opencode_status, "metadata", {}) or {}).get("server", {})
+            codex_status = ai_statuses.get("codex")
+            if codex_status is not None:
+                codex_backend = dict(getattr(codex_status, "metadata", {}) or {})
         return {
             "workspace_path": self.config.workspace_path,
             "port": self.port,
@@ -138,6 +142,7 @@ class DevenvWebApp:
             "access_policy": self.access_policy.snapshot(),
             "ai_backends": {name: status.to_dict() for name, status in ai_statuses.items()},
             "opencode_server": opencode_server,
+            "codex_backend": codex_backend,
             "active_backend": active_backend,
             "preferred_backend": getattr(self.kernel.ai, "preferred_backend", "opencode"),
             "indexing": self.context_builder.indexing_status(),

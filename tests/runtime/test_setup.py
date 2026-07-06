@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core.runtime.models import RunConfig
-from core.runtime.setup import inspect_setup
+from core.runtime.setup import _check_codex_backend, inspect_setup
 
 
 class SetupInspectionTest(unittest.TestCase):
@@ -40,6 +40,7 @@ class SetupInspectionTest(unittest.TestCase):
     @patch("core.runtime.setup._find_missing_dependencies", return_value=[])
     @patch("core.runtime.setup._check_opencode", return_value=(True, "OpenCode CLI available: 1.0.0."))
     @patch("core.runtime.setup._check_opencode_server", return_value=("ready", "OpenCode server reachable at http://127.0.0.1:4096 (1.0.0)."))
+    @patch("core.runtime.setup._check_codex_backend", return_value=("ready", "Codex backend configured for model gpt-5-codex."))
     @patch("core.runtime.setup._check_sentence_transformer_cache", return_value=("ready", "cache ready"))
     @patch("core.runtime.setup._check_web_search_prerequisites", return_value=("ready", "web ready"))
     @patch("core.runtime.setup._check_latex_pdf_toolchain", return_value=("pending", "latex pending"))
@@ -48,6 +49,7 @@ class SetupInspectionTest(unittest.TestCase):
         _mock_latex,
         _mock_web,
         _mock_cache,
+        _mock_codex,
         _mock_server,
         _mock_opencode,
         _mock_deps,
@@ -57,9 +59,26 @@ class SetupInspectionTest(unittest.TestCase):
 
         self.assertEqual(result.optional_checks[0].name, "opencode_server")
         self.assertEqual(result.optional_checks[0].status, "ready")
-        self.assertEqual(result.optional_checks[2].detail, "cache ready")
-        self.assertEqual(result.optional_checks[3].detail, "web ready")
-        self.assertEqual(result.optional_checks[4].status, "pending")
+        self.assertEqual(result.optional_checks[2].name, "codex_backend")
+        self.assertEqual(result.optional_checks[2].status, "ready")
+        self.assertEqual(result.optional_checks[3].detail, "cache ready")
+        self.assertEqual(result.optional_checks[4].detail, "web ready")
+        self.assertEqual(result.optional_checks[5].status, "pending")
+
+    @patch("core.runtime.setup.importlib.util.find_spec", return_value=None)
+    def test_codex_check_distinguishes_missing_sdk_after_credentials(self, _mock_find_spec) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENAI_API_KEY": "test-key",
+                "DEVENV_CODEX_MODEL": "gpt-5-codex",
+            },
+            clear=False,
+        ):
+            status, detail = _check_codex_backend()
+
+        self.assertEqual(status, "failed")
+        self.assertIn("agents sdk", detail.lower())
 
 
 if __name__ == "__main__":

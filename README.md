@@ -33,10 +33,22 @@ Point Devenv AI at the folder you want it to work inside.
 Devenv's OpenCode integration is server-backed by default. Install the `opencode` CLI and make sure `opencode serve` can run locally; Devenv will connect to the OpenCode HTTP server at `http://127.0.0.1:4096` by default. You can override this with:
 
 ```bash
+export OPENCODE_MODEL=openrouter/anthropic/claude-sonnet-4
 export OPENCODE_SERVER_URL=http://127.0.0.1:4096
 export OPENCODE_SERVER_USERNAME=opencode
 export OPENCODE_SERVER_PASSWORD=your-password
 ```
+
+You can also enable Codex as a first-class backend. Codex does not use a CLI subprocess; it connects through the official OpenAI MCP path and Devenv's local MCP HTTP server. Configure it with:
+
+```bash
+export OPENAI_API_KEY=your-openai-key
+export DEVENV_CODEX_MODEL=your-codex-model
+export OPENAI_BASE_URL=https://api.openai.com/v1   # optional
+export DEVENV_CODEX_TIMEOUT_SECONDS=60             # optional
+```
+
+At runtime, users can choose `opencode` or `codex` as the backend per session and override it per turn. OpenCode remains the default for backward compatibility.
 
 Launch the local web experience:
 
@@ -166,15 +178,21 @@ Key areas:
 - `core.tools`: base tool abstractions and local tool implementations
 - `core.ai`: OpenCode transport, routing, and model-facing contracts
 
-### OpenCode runtime architecture
+### Runtime architecture
 
-Devenv keeps control of planning, memory retrieval, verification, transcript persistence, and tool execution. OpenCode is used as the AI backend through its server/session APIs.
+Devenv keeps control of planning, memory retrieval, verification, transcript persistence, and tool execution. Users can choose between two backends:
+
+- OpenCode: server-backed session transport with default model `openrouter/anthropic/claude-sonnet-4`
+- Codex: official OpenAI MCP integration against Devenv's local MCP HTTP server
+
+Behavioral rules:
 
 - Devenv talks to OpenCode through a Python HTTP client instead of scraping `opencode run` output
+- Codex uses the official OpenAI MCP path and the Devenv MCP HTTP server rather than a CLI subprocess
 - OpenCode sessions are reused across a Devenv conversation and reset when a new thread starts
-- Devenv tools remain the only executable tool surface; OpenCode can request them, but Devenv validates and executes them
 - runtime tool execution uses an in-process transport by default to avoid extra MCP subprocess overhead; set `DEVENV_TOOL_TRANSPORT=mcp` if you explicitly want the stdio MCP hop
-- the legacy CLI parser is still available only as an emergency fallback when `DEVENV_OPENCODE_USE_LEGACY_CLI=1`
+- explicit backend selection does not silently fall back to the other backend
+- the legacy OpenCode CLI parser is available only as an emergency fallback when `DEVENV_OPENCODE_USE_LEGACY_CLI=1`
 
 Main public memory entry point:
 
