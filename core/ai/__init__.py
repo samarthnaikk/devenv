@@ -1,3 +1,4 @@
+from .codex_backend import CodexAICore, CodexRunResult
 from .engine import AICore
 from .models import AIBackendStatus, AIBackendTurnResult, AIExecutedToolStep, AIResponse, ToolCallRequest
 from .opencode_client import (
@@ -20,6 +21,8 @@ __all__ = [
     "AIBackendTurnResult",
     "AIExecutedToolStep",
     "AIResponse",
+    "CodexAICore",
+    "CodexRunResult",
     "OpenCodeAICore",
     "OpenCodeClient",
     "OpenCodeClientError",
