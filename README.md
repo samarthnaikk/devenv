@@ -105,6 +105,40 @@ After installation, the package exposes these commands:
 - `devenv-smoke`
 - `devenv-mcp`
 
+## Version History
+
+### v0.1.3
+
+This release turned the runtime into a much more usable daily driver and added several of the operational controls that the current web experience depends on.
+
+- Added runtime setup inspection and workspace bootstrap commands.
+- Added optional capability reporting for setup, privacy, and health.
+- Added performance-mode plumbing for session indexing.
+- Added `web_search` as a real runtime tool and improved guidance for web search and large-file handling.
+- Added tool-backed prompt generation and exposed it in the web UI.
+- Added `no_memory` and `incognito` privacy controls, including a web toggle.
+- Improved the live tool trace, tool picker, and web-search feedback in the UI.
+- Switched runtime tool execution to the OpenCode-only execution path used at that point in the project.
+
+### v0.1.2
+
+This was mainly a stability and packaging release focused on making fresh-machine installs work more reliably.
+
+- Hardened first-run and fresh-machine setup behavior.
+- Tightened the package/release flow around the published install.
+- Shipped the `0.1.2` package version bump with setup fixes rather than new product surface area.
+
+### v0.1.1
+
+This was the first release-shaped version of the web/runtime product and packaged the early OpenCode-backed workflow into something publishable.
+
+- Added the web runtime foundations for session browsing, consent controls, and richer turn metadata.
+- Added external session indexing and surfaced session/provider rails in the UI.
+- Added startup chunking progress and related provider/status displays.
+- Taught the OpenCode adapter to emit real tool calls into the runtime.
+- Improved replay rendering, markdown display, copy actions, scroll behavior, and live status presentation.
+- Wired release publishing to happen from release tags.
+
 ## What It Does Today
 
 The current implementation is centered on the Cognitive Memory Engine and a small runtime/tooling foundation.
@@ -177,6 +211,169 @@ Key areas:
 - `core.runtime`: terminal runtime, web runtime, MCP server, and runtime orchestration
 - `core.tools`: base tool abstractions and local tool implementations
 - `core.ai`: OpenCode transport, routing, and model-facing contracts
+
+## How A Message Flows
+
+### Top-level overview
+
+When a user sends a message, Devenv does not immediately hand the whole problem to the model. It first decides what kind of turn this is, gathers just enough local context, chooses the backend, and only then asks the backend to think within Devenv's boundaries.
+
+In the normal path:
+
+1. The runtime receives the user prompt through the terminal or web server.
+2. Devenv checks fast local paths first, such as greetings, direct recall answers, or simple follow-ups it can answer without a backend call.
+3. If the turn needs context, Devenv gathers memory context from working memory, episodic memory, and optional external session history.
+4. Devenv decides whether this is a direct answer turn, a planning turn, or a checkpoint execution turn.
+5. Devenv picks the backend the user selected.
+   OpenCode remains the default backend and default model is `openrouter/anthropic/claude-sonnet-4`.
+6. The backend either:
+   asks Devenv to execute a tool call, or
+   executes MCP tools directly in the Codex path and returns the executed steps.
+7. Devenv records the result, sanitizes the final response, updates memory when appropriate, and returns the answer to the user.
+
+### Proper explanation
+
+#### 1. Entry point and turn setup
+
+The web runtime in `core.runtime.web` or the terminal runtime builds a `DevenvKernel` and calls `execute_turn(...)`.
+
+At the start of a turn, the kernel:
+
+- records basic metadata such as workspace, privacy mode, backend preference, and selected tools
+- appends the new user message to ephemeral conversation history
+- checks whether the session budget is already exhausted
+- forwards backend-access flags into the AI router
+
+This is the point where per-session or per-turn backend choice matters. The router can now direct the turn to either OpenCode or Codex.
+
+#### 2. Fast local answers before retrieval or model work
+
+Before doing any heavier work, the kernel tries several cheap paths:
+
+- greeting handling
+- recent follow-up resolution from the current conversation
+- tool-strategy questions answered from local rules
+- ambiguity checks for underspecified troubleshooting prompts
+- exact logged-answer recall for certain memory-style prompts
+
+These paths exist to reduce CPU use and avoid unnecessary backend calls. They also help prevent the model from drifting when Devenv already has the answer locally.
+
+#### 3. Memory and context building
+
+If the turn still needs context, Devenv builds it in layers:
+
+- working memory: the recent in-thread context window
+- episodic memory: stored user/assistant interactions
+- associative memory: structured summaries and graph-like links
+- external session context: optional Codex/OpenCode history archives if access is allowed
+
+The kernel does not dump everything into the backend. It trims and shapes memory depending on the turn type:
+
+- direct turns use a smaller focused memory window
+- planning uses a compact planning-oriented memory slice
+- checkpoint execution uses task-specific execution memory
+
+This is one of the main places where Devenv stays in charge instead of behaving like a thin chat wrapper.
+
+#### 4. Turn classification
+
+Once context exists, Devenv chooses one of three broad modes:
+
+- direct answer: answer a question, possibly with tools
+- planning: create a bounded checklist/blueprint
+- execution: work one checkpoint at a time and verify it
+
+The runtime state machine in `core.runtime.kernel` tracks those stages explicitly, including planning, executing, and verifying.
+
+#### 5. Backend routing
+
+Routing lives in `core.ai.routing`.
+
+Today the router can send turns to:
+
+- OpenCode
+- Codex
+
+OpenCode path:
+
+- uses OpenCode server sessions
+- reuses a backend session across the Devenv conversation
+- returns either a final answer or a Devenv tool request
+
+Codex path:
+
+- uses the official OpenAI MCP integration path
+- connects to Devenv's local MCP HTTP server
+- returns a final answer plus any already-executed MCP tool steps
+
+Devenv does not silently switch to the other backend when the user explicitly chose one. It reports the failure clearly instead.
+
+#### 6. Tool execution model
+
+There are two tool-execution styles now.
+
+OpenCode style:
+
+- OpenCode selects a tool from the bounded tool list
+- Devenv validates the request
+- Devenv executes the tool itself through the runtime tool client
+- the tool result is fed back into the next backend turn
+
+Codex style:
+
+- Codex talks to Devenv's MCP HTTP server directly
+- only the filtered, allowed tools are exposed for that turn
+- Codex executes tools through MCP
+- the backend returns executed tool steps back to Devenv for tracing and auditing
+
+Even in the Codex path, Devenv still owns the tool surface because Devenv decides which tools are exposed, how path sandboxing works, and which write/delete actions are allowed.
+
+#### 7. Planning and checkpoint execution
+
+For work that is not a simple direct answer, Devenv creates an execution blueprint made of checkpoints.
+
+Planning phase:
+
+- the backend is asked for a bounded checklist-style plan
+- planning tool scope stays restricted
+- non-planning tools are blocked
+
+Execution phase:
+
+- Devenv activates one checkpoint at a time
+- builds task-specific context
+- exposes only the tools appropriate for that checkpoint
+- enforces single-step or bounded-step behavior depending on the path
+
+Verification phase:
+
+- Devenv verifies the resulting artifact or workspace state
+- failed verification can split or repair checkpoints instead of pretending the work is done
+
+This checkpoint architecture is what keeps the runtime closer to an agent than a plain chat UI.
+
+#### 8. Sanitization, memory persistence, and response delivery
+
+After the backend finishes, Devenv:
+
+- merges token usage into session totals
+- sanitizes noisy or replayed answer text
+- compacts the conversation history
+- records working memory
+- persists episodic memory only for high-signal responses
+
+That last rule matters because low-signal fallback answers and noisy transcript dumps can pollute later retrieval if they are stored carelessly.
+
+Finally, the runtime returns a `RuntimeTurnResult` containing:
+
+- the final response
+- tool execution steps
+- usage
+- metadata
+- verification state
+- error information when relevant
+
+That result is what the web UI and terminal renderer display back to the user.
 
 ### Runtime architecture
 
