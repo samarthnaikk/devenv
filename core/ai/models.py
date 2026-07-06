@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from typing import Any
 
 
@@ -12,11 +13,31 @@ class ToolCallRequest:
 
 
 @dataclass(frozen=True)
-class AIResponse:
+class AIExecutedToolStep:
+    step_id: str
+    tool_name: str
+    arguments: dict[str, Any]
+    output: str
+    success: bool
+    data: dict[str, Any] = field(default_factory=dict)
+    is_error: bool = False
+
+
+@dataclass(frozen=True)
+class AIBackendTurnResult:
     content: str | None
-    tool_calls: tuple[ToolCallRequest, ...]
     finish_reason: str
-    usage: dict[str, int]
+    tool_calls: tuple[ToolCallRequest, ...] = ()
+    executed_steps: tuple[AIExecutedToolStep, ...] = ()
+    usage: dict[str, int] = field(default_factory=dict)
+    backend: str = "opencode"
+    metadata: dict[str, Any] = field(default_factory=dict)
+    abortable: bool = True
+
+
+@dataclass(frozen=True)
+class AIResponse(AIBackendTurnResult):
+    pass
 
 
 @dataclass(frozen=True)

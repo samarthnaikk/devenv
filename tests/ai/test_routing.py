@@ -104,6 +104,49 @@ class OpenCodeRoutingTest(unittest.TestCase):
 
         self.assertEqual(response.content, "OpenCode primary path")
         self.assertEqual(router.last_backend_used, "opencode")
+        self.assertEqual(response.backend, "opencode")
+
+    def test_routing_core_prefers_codex_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            codex = _FakeCodexCore(
+                response=AIResponse(
+                    content="Codex primary path",
+                    finish_reason="stop",
+                    usage={"total_tokens": 7},
+                    backend="codex",
+                    metadata={"transport": "responses_mcp"},
+                )
+            )
+            router = RoutingAICore(
+                workspace_path=tempdir,
+                opencode_ai=_FakeOpenCodeCore(),
+                codex_ai=codex,
+            )
+            router.set_backend_preference("codex", opencode_enabled=False, codex_enabled=True)
+            response = router.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
+
+        self.assertEqual(response.content, "Codex primary path")
+        self.assertEqual(response.backend, "codex")
+        self.assertEqual(router.last_backend_used, "codex")
+
+    def test_routing_core_rejects_invalid_backend_preference(self) -> None:
+        router = RoutingAICore(workspace_path=".", opencode_ai=_FakeOpenCodeCore())
+
+        with self.assertRaises(ValueError):
+            router.set_backend_preference("invalid", opencode_enabled=True)
+
+    def test_routing_core_requires_codex_access(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            router = RoutingAICore(
+                workspace_path=tempdir,
+                opencode_ai=_FakeOpenCodeCore(),
+                codex_ai=_FakeCodexCore(
+                    response=AIResponse(content="Codex primary path", finish_reason="stop", usage={}, backend="codex")
+                ),
+            )
+            router.set_backend_preference("codex", opencode_enabled=False, codex_enabled=False)
+            with self.assertRaises(RuntimeError):
+                router.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
 
     def test_opencode_core_emits_tool_call_from_json_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -409,6 +452,67 @@ class _FakeOpenCodeClient:
     def abort_session(self, session_id: str) -> bool:
         self.aborted_session_ids.append(session_id)
         return True
+
+
+class _FakeCodexCore:
+    def __init__(self, *, response: AIResponse) -> None:
+        self.response = response
+        self.model = "gpt-5-codex"
+        self.last_backend_reason = "Codex handled the turn."
+        self.registered_tools: list[str] = []
+        self.reset_calls = 0
+        self.abort_calls = 0
+
+    def register_tool(self, tool: BaseTool) -> None:
+        self.registered_tools.append(tool.name)
+
+    def status(self):
+        from core.ai.models import AIBackendStatus
+
+        return AIBackendStatus(
+            name="codex",
+            available=True,
+            enabled=True,
+            model=self.model,
+            detail="Configured",
+            metadata={"transport": "responses_mcp"},
+        )
+
+    def set_model(self, model: str) -> None:
+        self.model = model
+
+    def reset_session(self) -> None:
+        self.reset_calls += 1
+
+    def abort(self) -> bool:
+        self.abort_calls += 1
+        return True
+
+    def chat(self, **kwargs) -> AIResponse:
+        return self.response
+
+
+class _FakeOpenCodeCore:
+    def __init__(self) -> None:
+        self.model = "openrouter/test"
+        self.last_backend_reason = "OpenCode handled the turn."
+
+    def register_tool(self, tool: BaseTool) -> None:
+        return None
+
+    def status(self):
+        from core.ai.models import AIBackendStatus
+
+        return AIBackendStatus(name="opencode", available=True, enabled=True, model=self.model, detail="Configured")
+
+    def reset_session(self) -> None:
+        return None
+
+    def abort(self) -> bool:
+        return True
+
+    def chat(self, **kwargs) -> AIResponse:
+        return AIResponse(content="OpenCode", finish_reason="stop", usage={"total_tokens": 1}, backend="opencode")
 
 
 def _fake_message(message_id: str, *, structured_output: dict[str, Any] | None, usage: dict[str, int], text: str | None = None):

@@ -1,5 +1,5 @@
 from .engine import AICore
-from .models import AIBackendStatus, AIResponse, ToolCallRequest
+from .models import AIBackendStatus, AIBackendTurnResult, AIExecutedToolStep, AIResponse, ToolCallRequest
 from .opencode_client import (
     OpenCodeClient,
     OpenCodeClientError,
@@ -17,6 +17,8 @@ from .routing import OpenCodeAICore, RoutingAICore
 __all__ = [
     "AICore",
     "AIBackendStatus",
+    "AIBackendTurnResult",
+    "AIExecutedToolStep",
     "AIResponse",
     "OpenCodeAICore",
     "OpenCodeClient",

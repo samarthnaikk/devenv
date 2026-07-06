@@ -161,7 +161,17 @@ class OpenCodeAICore:
         self.last_backend_reason = f"OpenCode server session {session_id} handled the turn."
         self.last_error = ""
         finish_reason = "tool_calls" if tool_calls else "stop"
-        return AIResponse(content=content, tool_calls=tool_calls, finish_reason=finish_reason, usage=usage)
+        return AIResponse(
+            content=content,
+            tool_calls=tool_calls,
+            finish_reason=finish_reason,
+            usage=usage,
+            backend="opencode",
+            metadata={
+                "transport": "server",
+                "session_id": session_id,
+            },
+        )
 
     def _legacy_cli_chat(
         self,
@@ -210,7 +220,16 @@ class OpenCodeAICore:
         self.last_backend_reason = "OpenCode handled the turn directly."
         self.last_error = ""
         finish_reason = "tool_calls" if tool_calls else "stop"
-        return AIResponse(content=content, tool_calls=tool_calls, finish_reason=finish_reason, usage=usage)
+        return AIResponse(
+            content=content,
+            tool_calls=tool_calls,
+            finish_reason=finish_reason,
+            usage=usage,
+            backend="opencode",
+            metadata={
+                "transport": "legacy_cli",
+            },
+        )
 
     def _ensure_session(self) -> str:
         if self._session_id:
@@ -350,41 +369,60 @@ class RoutingAICore:
         *,
         workspace_path: str,
         opencode_ai: OpenCodeAICore | None = None,
+        codex_ai: Any | None = None,
     ) -> None:
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
         self.opencode_ai = opencode_ai or OpenCodeAICore(
             workspace_path=self.workspace_path,
             system_instructions=DEFAULT_SYSTEM_INSTRUCTIONS,
         )
+        self.codex_ai = codex_ai
         self.model = self.opencode_ai.model
         self.preferred_backend = "opencode"
         self.opencode_enabled = False
+        self.codex_enabled = False
         self.last_backend_used = "opencode"
         self.last_backend_reason = "OpenCode handled the turn."
         self.last_backend_fallback = ""
 
     def register_tool(self, tool: BaseTool) -> None:
         self.opencode_ai.register_tool(tool)
+        if self.codex_ai is not None and hasattr(self.codex_ai, "register_tool"):
+            self.codex_ai.register_tool(tool)
 
     def status(self) -> dict[str, AIBackendStatus]:
         opencode_status = self.opencode_ai.status()
-        return {"opencode": opencode_status}
+        statuses = {"opencode": opencode_status}
+        if self.codex_ai is not None and hasattr(self.codex_ai, "status"):
+            statuses["codex"] = self.codex_ai.status()
+        return statuses
 
     def set_model(self, model: str) -> None:
         cleaned = model.strip()
         self.model = cleaned
-        self.opencode_ai.model = cleaned
+        if self.preferred_backend == "codex" and self.codex_ai is not None and hasattr(self.codex_ai, "set_model"):
+            self.codex_ai.set_model(cleaned)
+        else:
+            self.opencode_ai.model = cleaned
 
-    def set_backend_preference(self, backend: str, *, opencode_enabled: bool) -> None:
-        del backend
-        self.preferred_backend = "opencode"
+    def set_backend_preference(self, backend: str, *, opencode_enabled: bool, codex_enabled: bool = False) -> None:
+        cleaned = str(backend or "opencode").strip().lower() or "opencode"
+        if cleaned not in {"opencode", "codex"}:
+            raise ValueError("backend must be one of: opencode, codex")
+        self.preferred_backend = cleaned
         self.opencode_enabled = opencode_enabled
+        self.codex_enabled = codex_enabled
 
     def reset_session(self) -> None:
         self.opencode_ai.reset_session()
+        if self.codex_ai is not None and hasattr(self.codex_ai, "reset_session"):
+            self.codex_ai.reset_session()
 
     def abort(self) -> bool:
-        return self.opencode_ai.abort()
+        aborted = self.opencode_ai.abort()
+        if self.codex_ai is not None and hasattr(self.codex_ai, "abort"):
+            aborted = bool(self.codex_ai.abort()) or aborted
+        return aborted
 
     def chat(
         self,
@@ -394,6 +432,24 @@ class RoutingAICore:
         tool_names: Iterable[str] | None = None,
     ) -> AIResponse:
         del temperature
+        if self.preferred_backend == "codex":
+            if self.codex_ai is None:
+                self.last_backend_fallback = "Codex backend is not configured."
+                raise RuntimeError(self.last_backend_fallback)
+            if not self.codex_enabled:
+                self.last_backend_fallback = "Codex backend access has not been granted."
+                raise RuntimeError(self.last_backend_fallback)
+            response = self.codex_ai.chat(
+                messages=messages,
+                memory_context=memory_context,
+                temperature=0.2,
+                tool_names=tool_names,
+            )
+            self.last_backend_used = "codex"
+            self.last_backend_reason = getattr(self.codex_ai, "last_backend_reason", "Codex handled the turn.")
+            self.last_backend_fallback = ""
+            self.model = getattr(self.codex_ai, "model", self.model)
+            return response
         if not self.opencode_enabled:
             self.last_backend_fallback = "OpenCode backend access has not been granted."
             raise RuntimeError(self.last_backend_fallback)
@@ -406,6 +462,7 @@ class RoutingAICore:
         self.last_backend_used = "opencode"
         self.last_backend_reason = self.opencode_ai.last_backend_reason
         self.last_backend_fallback = ""
+        self.model = self.opencode_ai.model
         return response
 def _is_recoverable_session_error(exc: OpenCodeClientError) -> bool:
     if exc.status_code == 404:
