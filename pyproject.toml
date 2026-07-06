@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "devenv-ai"
-version = "0.1.3"
+version = "0.1.4"
 description = "Local-first coding agent foundations."
 readme = "README.md"
 requires-python = ">=3.12"
