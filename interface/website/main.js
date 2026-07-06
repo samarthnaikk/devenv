@@ -815,10 +815,10 @@ function render(options = {}) {
           <!-- Sidebar Footer -->
           <footer class="p-4 bg-surface-container-highest border-t border-outline-variant flex justify-between items-center shrink-0">
             <div class="flex items-center gap-2">
-              <div class="w-2 h-2 rounded-full bg-primary glowing-pip"></div>
-              <span class="font-label-caps text-[10px] text-on-surface">${state.isRunning ? "Running" : "OpenCode ready"}</span>
+              <div class="w-2 h-2 rounded-full ${state.isRunning ? "bg-primary glowing-pip animate-pulse" : "bg-primary glowing-pip"}"></div>
+              <span class="font-label-caps text-[10px] text-on-surface">${state.isRunning ? "Running" : formatBackendLabel(state.activeBackend) + " ready"}</span>
             </div>
-            <span class="font-code-sm text-[10px] text-on-surface-variant">${contextBudget.remainingLabel} (${Math.round((contextBudget.remaining / 12000) * 100)}%)</span>
+            <span class="font-code-sm text-[10px] text-on-surface-variant">${contextBudget.remainingLabel}</span>
           </footer>
         </aside>
       </main>
