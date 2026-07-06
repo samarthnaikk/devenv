@@ -12,6 +12,7 @@ from pathlib import Path
 from core.ai.opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeServerManager, default_opencode_server_config
 from core.memory.storage import SQLiteMemoryStore
 
+from .mcp_http import MCPHTTPServerManager, default_mcp_http_server_config
 from .models import RunConfig, SetupCheckStatus, SetupReadiness
 from .state import resolve_memory_paths
 
@@ -62,6 +63,7 @@ def inspect_setup(
     )
     optional_checks = (
         _build_optional_check("opencode_server", _check_opencode_server(opencode_path, start_if_needed=False)),
+        _build_optional_check("mcp_http_server", _check_mcp_http_server(config, start_if_needed=False)),
         _build_optional_check("sentence_transformer_cache", _check_sentence_transformer_cache(warm_model_cache=warm_model_cache)),
         _build_optional_check("web_search_prerequisites", _check_web_search_prerequisites()),
         _build_optional_check("latex_pdf_toolchain", _check_latex_pdf_toolchain()),
@@ -160,6 +162,25 @@ def _check_opencode_server(opencode_path: str | None, *, start_if_needed: bool) 
     except OpenCodeClientError as exc:
         return "failed", f"OpenCode server is reachable but session APIs failed: {exc}."
     return "ready", f"OpenCode server reachable at {status.base_url} ({status.version or 'version unknown'})."
+
+
+def _check_mcp_http_server(config: RunConfig, *, start_if_needed: bool) -> tuple[str, str]:
+    manager = MCPHTTPServerManager(
+        workspace_path=config.workspace_path,
+        db_path=config.db_path,
+        vector_dir=config.vector_dir,
+        config=default_mcp_http_server_config(),
+    )
+    try:
+        status = manager.ensure_server() if start_if_needed else manager.inspect()
+    except RuntimeError as exc:
+        return "failed", f"Devenv MCP HTTP server startup failed: {exc}."
+    if not status.reachable:
+        return "pending", status.detail or "Devenv MCP HTTP server is unavailable."
+    detail = f"Devenv MCP HTTP server reachable at {status.base_url}."
+    if status.auth_enabled:
+        detail += " Auth token configured."
+    return "ready", detail
 
 
 def _ensure_workspace_state(*, db_path: str, vector_dir: str, apply_changes: bool) -> tuple[bool, str]:

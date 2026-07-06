@@ -57,8 +57,9 @@ class SetupInspectionTest(unittest.TestCase):
 
         self.assertEqual(result.optional_checks[0].name, "opencode_server")
         self.assertEqual(result.optional_checks[0].status, "ready")
-        self.assertEqual(result.optional_checks[2].detail, "web ready")
-        self.assertEqual(result.optional_checks[3].status, "pending")
+        self.assertEqual(result.optional_checks[2].detail, "cache ready")
+        self.assertEqual(result.optional_checks[3].detail, "web ready")
+        self.assertEqual(result.optional_checks[4].status, "pending")
 
 
 if __name__ == "__main__":

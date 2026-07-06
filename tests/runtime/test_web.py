@@ -132,6 +132,7 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertIn("setup", health)
         self.assertIn("tool_readiness", health)
         self.assertIn("web_search", health["tool_readiness"])
+        self.assertIn("mcp_server", health)
         self.assertEqual(files["entries"][0]["name"], "README.md")
         self.assertEqual(file_payload["content"], "hello")
         self.assertEqual(file_payload["kind"], "text")

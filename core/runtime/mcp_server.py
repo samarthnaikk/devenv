@@ -7,7 +7,6 @@ import logging
 from pathlib import Path
 from typing import Annotated, Any, Literal, get_args
 
-from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
 from core.logging_utils import configure_logging
@@ -21,14 +20,15 @@ from .tooling import build_runtime_tools
 logger = logging.getLogger(__name__)
 
 
-def create_mcp_server(*, workspace_path: str, db_path: str = "memory.db", vector_dir: str = "vectors") -> FastMCP:
+def create_mcp_server(*, workspace_path: str, db_path: str = "memory.db", vector_dir: str = "vectors"):
+    fastmcp = _load_fastmcp()
     resolved_db_path, resolved_vector_dir = resolve_memory_paths(db_path, vector_dir)
     memory = MemoryEngine(
         db_path=resolved_db_path,
         vector_dir=resolved_vector_dir,
         embedder=HashingEmbedder(dimension=384),
     )
-    mcp = FastMCP("Devenv Local Tool Deck")
+    mcp = fastmcp("Devenv Local Tool Deck")
 
     for tool in build_runtime_tools(memory):
         wrapper = _build_tool_wrapper(tool)
@@ -106,6 +106,10 @@ def main() -> int:
     parser.add_argument("--workspace", default=".")
     parser.add_argument("--db-path", default="memory.db")
     parser.add_argument("--vector-dir", default="vectors")
+    parser.add_argument("--transport", default="stdio", choices=("stdio", "streamable-http"))
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--path", default="/mcp")
     parser.add_argument("--log-level", default=None)
     args = parser.parse_args()
 
@@ -116,8 +120,40 @@ def main() -> int:
         vector_dir=args.vector_dir,
     )
     logger.info("Starting Devenv MCP server for workspace=%s", args.workspace)
-    server.run(transport="stdio")
+    _run_server(
+        server,
+        transport=args.transport,
+        host=args.host,
+        port=args.port,
+        path=args.path,
+    )
     return 0
+
+
+def _run_server(server, *, transport: str, host: str, port: int, path: str) -> None:
+    run_signature = inspect.signature(server.run)
+    kwargs: dict[str, Any] = {"transport": transport}
+    if "host" in run_signature.parameters:
+        kwargs["host"] = host
+    if "port" in run_signature.parameters:
+        kwargs["port"] = port
+    if "path" in run_signature.parameters:
+        kwargs["path"] = path
+    try:
+        server.run(**kwargs)
+    except TypeError:
+        # Some FastMCP versions expose fewer transport kwargs; fall back to the common subset.
+        server.run(transport=transport)
+
+
+def _load_fastmcp():
+    try:
+        from mcp.server.fastmcp import FastMCP
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "The optional 'mcp' dependency is not installed. Install project dependencies to run the Devenv MCP server."
+        ) from exc
+    return FastMCP
 
 
 if __name__ == "__main__":

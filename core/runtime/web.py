@@ -16,6 +16,7 @@ from core.logging_utils import configure_logging
 
 from .context_builder import ContextBuilderService
 from .kernel import DevenvKernel
+from .mcp_http import MCPHTTPServerManager, default_mcp_http_server_config
 from .models import PlanningMode, PreparedPromptRequest, PrivacyModeState, RunConfig, ToolReadiness
 from .response_sanitizer import sanitize_replay_text
 from .setup import inspect_setup
@@ -84,6 +85,12 @@ class DevenvWebApp:
         self.access_policy = AccessPolicy()
         self._setup_cache: dict[str, object] | None = None
         self._setup_cache_ttl_seconds = 20.0
+        self._mcp_server_manager = MCPHTTPServerManager(
+            workspace_path=config.workspace_path,
+            db_path=config.db_path,
+            vector_dir=config.vector_dir,
+            config=default_mcp_http_server_config(),
+        )
 
     def create_handler(self):
         return partial(DevenvRequestHandler, app=self)
@@ -98,6 +105,7 @@ class DevenvWebApp:
         try:
             server.serve_forever()
         finally:
+            self._mcp_server_manager.close()
             self.kernel.close()
 
     def build_health_payload(self) -> dict[str, object]:
@@ -108,6 +116,7 @@ class DevenvWebApp:
         setup = self._cached_setup_readiness()
         privacy = PrivacyModeState(no_memory=self.privacy_mode["no_memory"], incognito=self.privacy_mode["incognito"])
         tool_readiness = self._build_tool_readiness()
+        mcp_server = self._mcp_server_manager.inspect().to_metadata()
         opencode_server = {}
         if isinstance(ai_statuses, dict):
             opencode_status = ai_statuses.get("opencode")
@@ -133,6 +142,7 @@ class DevenvWebApp:
             "performance_mode": self.performance_mode,
             "privacy": privacy.to_dict(),
             "tool_readiness": {name: readiness.to_dict() for name, readiness in tool_readiness.items()},
+            "mcp_server": mcp_server,
         }
 
     def _cached_setup_readiness(self):
