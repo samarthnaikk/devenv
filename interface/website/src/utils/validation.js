@@ -3,6 +3,21 @@ export function validatePlanBlueprint(data) {
     return { valid: false, error: "Blueprint must be an object with a 'tasks' or 'nodes' array" };
   }
 
+  if (Array.isArray(data.tasks)) {
+    for (let i = 0; i < data.tasks.length; i++) {
+      const t = data.tasks[i];
+      if (t && typeof t === "object" && !t.task_id && !t.id) {
+        t.task_id = `task-${i}`;
+      }
+    }
+    if (data.tasks.length > 1 && (!Array.isArray(data.edges) || data.edges.length === 0)) {
+      data.edges = [];
+      for (let i = 0; i < data.tasks.length - 1; i++) {
+        data.edges.push({ from: data.tasks[i].task_id || `task-${i}`, to: data.tasks[i + 1].task_id || `task-${i + 1}` });
+      }
+    }
+  }
+
   const hasTasks = Array.isArray(data.tasks);
   const hasNodes = Array.isArray(data.nodes);
 
