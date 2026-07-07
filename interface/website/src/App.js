@@ -13,6 +13,7 @@ function AppInner() {
   const clockRef = React.useRef(null);
   const healthRef = React.useRef(false);
   const pollingRef = React.useRef(null);
+  const [setupDone, setSetupDone] = React.useState(false);
 
   React.useEffect(() => {
     clockRef.current = window.setInterval(() => {
@@ -49,7 +50,7 @@ function AppInner() {
   React.useEffect(() => {
     const indexing = state.health?.indexing;
     const hasAccess = Object.values(state.accessPolicy?.session_access || {}).some(Boolean);
-    const needsPoll = indexing?.active || (hasAccess && indexing && !indexing.completed && Number(indexing.total_sessions || 0) > 0);
+    const needsPoll = hasAccess && indexing && !indexing.completed;
     if (!needsPoll) {
       if (pollingRef.current) {
         window.clearInterval(pollingRef.current);
@@ -106,13 +107,15 @@ function AppInner() {
 
   const indexing = state.health.indexing || null;
   const hasAccess = Object.values(state.accessPolicy?.session_access || {}).some(Boolean);
+  const needsSetup = !setupDone && indexing && !indexing.completed && (!hasAccess || indexing.active || Number(indexing.total_sessions || 0) > 0);
 
-  if (indexing && !indexing.active && !indexing.completed && !hasAccess) {
-    return React.createElement(ConsentScreen, { dispatch, accessPolicy: state.accessPolicy });
-  }
-
-  if (shouldShowStartupShell(indexing, hasAccess)) {
-    return React.createElement(StartupShell, { indexing });
+  if (needsSetup) {
+    return React.createElement(ConsentScreen, {
+      dispatch,
+      accessPolicy: state.accessPolicy,
+      indexing,
+      onFinish: () => setSetupDone(true),
+    });
   }
 
   return React.createElement(
@@ -130,127 +133,255 @@ function AppInner() {
   );
 }
 
-function shouldShowStartupShell(indexing, hasAccess) {
-  if (!indexing) return false;
-  if (indexing.active) return true;
-  return hasAccess && !indexing.completed && Number(indexing.total_sessions || 0) > 0;
-}
+function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
+  const codexGranted = Boolean(accessPolicy.session_access?.codex);
+  const opencodeGranted = Boolean(accessPolicy.session_access?.opencode);
 
-function ConsentScreen({ dispatch, accessPolicy }) {
-  const codexAllowed = Boolean(accessPolicy.session_access?.codex);
-  const opencodeAllowed = Boolean(accessPolicy.session_access?.opencode);
-  const backendAllowed = Boolean(accessPolicy.backend_access?.opencode);
-  const [updating, setUpdating] = React.useState(false);
+  const [phase, setPhase] = React.useState(
+    codexGranted && !indexing?.active ? "codex_done" :
+    codexGranted && indexing?.active ? "indexing_codex" :
+    "idle"
+  );
+  const [logs, setLogs] = React.useState([]);
+  const lastPercentRef = React.useRef(0);
+  const prevActiveRef = React.useRef(indexing?.active);
+  const initRef = React.useRef(false);
 
-  const handleGrant = async (type, provider) => {
-    setUpdating(true);
-    try {
-      let payload;
-      if (type === "session") {
-        payload = await apiUpdateSessionAccess(provider, true);
-      } else {
-        payload = await apiUpdateBackendAccess(provider, true);
+  const addLog = React.useCallback((message, type) => {
+    setLogs((prev) => [...prev, { id: Date.now() + (prev.length + 1), message, type: type || "info", ts: new Date().toLocaleTimeString() }]);
+  }, []);
+
+  React.useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
+    if (codexGranted && indexing?.active) {
+      addLog("Access granted for Codex");
+      addLog(`Chunking started: ${indexing.total_sessions || "?"} sessions`);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const prev = prevActiveRef.current;
+    prevActiveRef.current = indexing?.active;
+    const pct = Math.floor(Number(indexing?.percent) || 0);
+    const proc = Number(indexing?.processed_sessions) || 0;
+    const total = Number(indexing?.total_sessions) || 0;
+
+    if ((phase === "indexing_codex" || phase === "indexing_opencode") && indexing?.active && !prev) {
+      addLog("Access granted for " + (phase === "indexing_codex" ? "Codex" : "OpenCode"));
+      addLog(`Chunking started: ${total || "?"} sessions`);
+      lastPercentRef.current = pct;
+    }
+
+    if (indexing?.active && (phase === "indexing_codex" || phase === "indexing_opencode")) {
+      if (pct > lastPercentRef.current) {
+        addLog(`${proc}/${total} sessions chunked (${pct}%)`, "progress");
+        lastPercentRef.current = pct;
       }
+    }
+
+    if (!indexing?.active && prev && (phase === "indexing_codex" || phase === "indexing_opencode")) {
+      addLog("Chunking complete!", "done");
+      const next = phase === "indexing_codex" ? "codex_done" : "all_done";
+      window.setTimeout(() => setPhase(next), 600);
+    }
+  }, [indexing?.active, indexing?.percent, indexing?.processed_sessions]);
+
+  const handleGrant = async (provider) => {
+    setPhase(provider === "codex" ? "indexing_codex" : "indexing_opencode");
+    try {
+      const payload = await apiUpdateSessionAccess(provider, true);
       dispatch({ type: "SET_ACCESS_POLICY", payload });
       persistAccess(payload);
+      try {
+        const bp = await apiUpdateBackendAccess("opencode", true);
+        dispatch({ type: "SET_ACCESS_POLICY", payload: bp });
+        persistAccess(bp);
+      } catch {}
     } catch {
-    } finally {
-      setUpdating(false);
+      addLog(`Failed to grant ${provider} access`, "error");
+      setPhase("idle");
     }
   };
+
+  const progress = {
+    percent: Math.max(0, Math.min(100, Number(indexing?.percent || 0))),
+    processed: Number(indexing?.processed_sessions || 0),
+    total: Number(indexing?.total_sessions || 0),
+    message: indexing?.message || "",
+  };
+
+  const isChunking = phase === "indexing_codex" || phase === "indexing_opencode";
+  const activeProvider = phase === "indexing_codex" || phase === "codex_done" ? "Codex" : "OpenCode";
+  const codexDone = phase === "codex_done" || phase === "all_done";
+  const opencodeDone = phase === "all_done";
 
   return React.createElement(
     "div",
     { className: "loading-shell" },
     React.createElement(
       "div",
-      { className: "startup-card", style: { maxWidth: "420px" } },
+      { className: "startup-card", style: { maxWidth: "560px" } },
       React.createElement(
         "div",
-        { className: "flex items-center gap-3 mb-4" },
+        { className: "flex items-center justify-between mb-5" },
         React.createElement(
           "div",
-          { className: "w-10 h-10 rounded-full bg-primary flex items-center justify-center" },
-          React.createElement("span", { className: "material-symbols-outlined text-on-primary text-[20px]" }, "vpn_key")
-        ),
-        React.createElement(
-          "div",
-          null,
-          React.createElement("h1", { className: "font-headline-sm text-headline-sm text-on-surface", style: { margin: 0 } }, "Access & Consent"),
-          React.createElement("p", { className: "font-body-md text-body-md text-on-surface-variant", style: { margin: "2px 0 0" } }, "Grant access to search prior sessions")
+          { className: "flex items-center gap-3" },
+          React.createElement(
+            "div",
+            { className: "w-10 h-10 rounded-full bg-primary flex items-center justify-center" },
+            React.createElement("span", { className: "material-symbols-outlined text-on-primary text-[20px]" }, "vpn_key")
+          ),
+          React.createElement(
+            "div",
+            null,
+            React.createElement("h1", { className: "font-headline-sm text-headline-sm text-on-surface", style: { margin: 0 } }, "Set up memory access"),
+            React.createElement("p", { className: "font-body-md text-body-md text-on-surface-variant", style: { margin: "2px 0 0" } }, "Grant access and chunk prior sessions")
+          )
         )
       ),
       React.createElement(
         "div",
-        { className: "space-y-2" },
-        consentRow("codex", "Codex", codexAllowed, "session", handleGrant, updating),
-        consentRow("opencode", "OpenCode", opencodeAllowed, "session", handleGrant, updating),
-        consentRow("opencode", "OpenCode Backend", backendAllowed, "backend", handleGrant, updating)
-      )
+        { className: "grid grid-cols-2 gap-4" },
+        React.createElement(
+          "div",
+          { className: "space-y-3" },
+          React.createElement(
+            "div",
+            { className: "font-label-caps text-label-caps text-outline mb-2" },
+            "PROVIDERS"
+          ),
+          setupRow("codex", "Codex", codexGranted, codexDone, isChunking && phase === "indexing_codex", handleGrant),
+          setupRow("opencode", "OpenCode", opencodeGranted, opencodeDone, isChunking && phase === "indexing_opencode", handleGrant)
+        ),
+        React.createElement(
+          "div",
+          { className: "space-y-3" },
+          React.createElement(
+            "div",
+            { className: "font-label-caps text-label-caps text-outline mb-2" },
+            "PROGRESS"
+          ),
+          React.createElement(
+            "div",
+            { className: "bg-surface-container rounded-lg border border-outline-variant p-3", style: { minHeight: "180px", maxHeight: "220px", overflowY: "auto", display: "flex", flexDirection: "column" } },
+            isChunking || codexDone || opencodeDone
+              ? React.createElement(
+                  React.Fragment,
+                  null,
+                  React.createElement(
+                    "div",
+                    { className: "font-label-caps text-label-caps text-on-surface mb-2" },
+                    activeProvider,
+                    isChunking ? " chunking" : " chunked"
+                  ),
+                  isChunking
+                    ? React.createElement(
+                        React.Fragment,
+                        null,
+                        React.createElement(
+                          "div",
+                          { className: "startup-progress-track", style: { marginBottom: "8px", height: "6px" } },
+                          React.createElement("div", {
+                            className: "startup-progress-fill",
+                            style: { width: `${progress.percent}%`, height: "6px", transition: "width 0.8s ease" },
+                          })
+                        ),
+                        React.createElement(
+                          "div",
+                          { className: "flex gap-3 font-code-sm text-code-sm text-on-surface-variant mb-3" },
+                          React.createElement("span", { className: "text-on-surface font-bold" }, `${progress.percent}%`),
+                          React.createElement("span", null, progress.total ? `${progress.processed}/${progress.total} sessions` : "Counting sessions"),
+                          React.createElement("span", null, indexing?.eta_seconds != null ? `ETA ${formatDuration(Number(indexing.eta_seconds) * 1000)}` : "Estimating\u2026")
+                        )
+                      )
+                    : React.createElement(
+                        "div",
+                        { className: "flex items-center gap-2 mb-3 text-primary font-label-caps text-label-caps" },
+                        React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "check_circle"),
+                        "Done"
+                      ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1 flex-1", style: { overflowY: "auto" } },
+                    logs.map((log) =>
+                      React.createElement(
+                        "div",
+                        {
+                          key: log.id,
+                          className: "consent-log-row",
+                          style: {
+                            fontSize: "11px",
+                            lineHeight: "1.5",
+                            color: log.type === "done" ? "#4fdbc8" : log.type === "error" ? "#ffb4ab" : log.type === "progress" ? "#859490" : "#bbcac6",
+                            padding: "2px 0",
+                            display: "flex",
+                            gap: "8px",
+                          },
+                        },
+                        React.createElement("span", { style: { color: "#3c4947", flexShrink: 0, fontFamily: "JetBrains Mono, monospace" } }, log.ts),
+                        log.message
+                      )
+                    )
+                  )
+                )
+              : React.createElement(
+                  "div",
+                  { className: "flex items-center justify-center h-full text-on-surface-variant font-body-md text-body-md" },
+                  "Grant a provider to begin"
+                )
+          )
+        )
+      ),
+      phase === "all_done"
+        ? React.createElement(
+            "button",
+            {
+              type: "button",
+              className: "mt-5 w-full py-3 bg-primary text-on-primary rounded-xl font-label-caps text-label-caps font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2",
+              onClick: onFinish,
+            },
+            "Finish Setup",
+            React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "arrow_forward")
+          )
+        : null
     )
   );
 }
 
-function consentRow(provider, label, allowed, type, handleGrant, updating) {
+function setupRow(provider, label, granted, done, isActive, handleGrant) {
+  const isButtonDisabled = granted || done || isActive;
   return React.createElement(
     "div",
-    { key: provider + type, className: "flex items-center justify-between p-3 bg-surface-container rounded-lg border border-outline-variant" },
+    {
+      key: provider,
+      className: "flex items-center justify-between p-3 bg-surface-container rounded-lg border " + (done || granted ? "border-primary/40" : "border-outline-variant"),
+    },
     React.createElement(
       "div",
       { className: "flex items-center gap-3" },
       React.createElement(
         "span",
-        { className: "material-symbols-outlined text-[18px] " + (allowed ? "text-primary" : "text-outline") },
-        allowed ? "check_circle" : "radio_button_unchecked"
+        { className: "material-symbols-outlined text-[18px] " + (done ? "text-primary" : "text-outline") },
+        done ? "check_circle" : "radio_button_unchecked"
       ),
       React.createElement(
         "div",
         null,
         React.createElement("div", { className: "font-body-md text-body-md text-on-surface" }, label),
-        React.createElement("div", { className: "font-code-sm text-code-sm " + (allowed ? "text-primary" : "text-outline") }, allowed ? "Granted" : "Not granted")
+        React.createElement("div", { className: "font-code-sm text-code-sm " + (done ? "text-primary" : "text-outline") }, done || granted ? "Granted" : "Not granted")
       )
     ),
     React.createElement(
       "button",
       {
         type: "button",
-        className: "px-4 py-1.5 rounded-lg font-label-caps text-label-caps transition-colors " + (allowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"),
-        onClick: () => !allowed && handleGrant(type, provider),
-        disabled: allowed || updating,
+        className: "px-4 py-1.5 rounded-lg font-label-caps text-label-caps transition-colors " + (isButtonDisabled ? "bg-surface-variant text-on-surface-variant cursor-default" : "bg-primary text-on-primary hover:opacity-80"),
+        onClick: () => !isButtonDisabled && handleGrant(provider),
+        disabled: isButtonDisabled,
       },
-      allowed ? "Revoke" : "Grant"
-    )
-  );
-}
-
-function StartupShell({ indexing }) {
-  const percent = Math.max(0, Math.min(100, Number(indexing?.percent || 0)));
-  const processed = Number(indexing?.processed_sessions || 0);
-  const total = Number(indexing?.total_sessions || 0);
-  const message = indexing?.message || "Preparing Devenv memory retrieval\u2026";
-  const providerLabel = (indexing?.providers || []).length ? String(indexing.providers.join(" + ")).toUpperCase() : "LOCAL";
-
-  return React.createElement(
-    "div",
-    { className: "loading-shell" },
-    React.createElement(
-      "div",
-      { className: "startup-card" },
-      React.createElement("div", { className: "font-label-caps text-label-caps text-on-surface-variant" }, providerLabel, " CHUNKING"),
-      React.createElement("h1", { className: "font-headline-sm text-headline-sm text-on-surface", style: { margin: "8px 0 12px" } }, "Preparing session memory"),
-      React.createElement("div", { className: "font-body-md text-body-md text-on-surface-variant" }, message),
-      React.createElement(
-        "div",
-        { className: "startup-progress-track", style: { marginTop: "16px" } },
-        React.createElement("div", { className: "startup-progress-fill", style: { width: `${percent}%` } })
-      ),
-      React.createElement(
-        "div",
-        { className: "flex gap-4 mt-3 font-body-md text-body-md text-on-surface-variant" },
-        React.createElement("strong", { className: "text-on-surface" }, `${percent}%`),
-        React.createElement("span", null, total ? `${processed}/${total} sessions` : "Counting sessions"),
-        React.createElement("span", null, "ETA " + (indexing?.eta_seconds != null ? formatDuration(Number(indexing.eta_seconds) * 1000) : "Estimating\u2026"))
-      )
+      done ? "Done" : granted ? "Granted" : isActive ? "Processing\u2026" : "Grant"
     )
   );
 }

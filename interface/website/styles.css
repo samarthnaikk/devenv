@@ -239,6 +239,15 @@ pre {
   50% { opacity: 0.95; transform: translateY(-2px); }
 }
 
+@keyframes consent-log-slide {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.consent-log-row {
+  animation: consent-log-slide 0.3s ease-out;
+}
+
 /* React Flow overrides */
 .react-flow__node-blueprint {
   cursor: default;
