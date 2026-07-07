@@ -5,12 +5,14 @@ import { SettingsDropdown } from "./components/SettingsDropdown.js";
 import { ChatColumn } from "./components/ChatColumn.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { Toast } from "./components/Toast.js";
-import { fetchHealth } from "./api.js";
+import { fetchHealth, updateSessionAccess as apiUpdateSessionAccess, updateBackendAccess as apiUpdateBackendAccess } from "./api.js";
+import { persistAccess } from "./utils/storage.js";
 
 function AppInner() {
   const { state, dispatch } = useApp();
   const clockRef = React.useRef(null);
   const healthRef = React.useRef(false);
+  const pollingRef = React.useRef(null);
 
   React.useEffect(() => {
     clockRef.current = window.setInterval(() => {
@@ -31,8 +33,6 @@ function AppInner() {
     });
   }, [state.clock]);
 
-  const pollingRef = React.useRef(null);
-
   React.useEffect(() => {
     if (healthRef.current) return;
     healthRef.current = true;
@@ -48,7 +48,9 @@ function AppInner() {
 
   React.useEffect(() => {
     const indexing = state.health?.indexing;
-    if (!indexing?.active) {
+    const hasAccess = Object.values(state.accessPolicy?.session_access || {}).some(Boolean);
+    const needsPoll = indexing?.active || (hasAccess && indexing && !indexing.completed && Number(indexing.total_sessions || 0) > 0);
+    if (!needsPoll) {
       if (pollingRef.current) {
         window.clearInterval(pollingRef.current);
         pollingRef.current = null;
@@ -70,7 +72,7 @@ function AppInner() {
         pollingRef.current = null;
       }
     };
-  }, [state.health?.indexing?.active]);
+  }, [state.health?.indexing?.active, state.health?.indexing?.completed, state.accessPolicy?.session_access]);
 
   React.useEffect(() => {
     const handler = (e) => {
@@ -103,8 +105,14 @@ function AppInner() {
   }
 
   const indexing = state.health.indexing || null;
-  if (indexing?.active) {
-    return React.createElement(StartupShell, { indexing, state, dispatch });
+  const hasAccess = Object.values(state.accessPolicy?.session_access || {}).some(Boolean);
+
+  if (indexing && !indexing.active && !indexing.completed && !hasAccess) {
+    return React.createElement(ConsentScreen, { dispatch, accessPolicy: state.accessPolicy });
+  }
+
+  if (shouldShowStartupShell(indexing, hasAccess)) {
+    return React.createElement(StartupShell, { indexing });
   }
 
   return React.createElement(
@@ -119,6 +127,99 @@ function AppInner() {
       React.createElement(Sidebar, null)
     ),
     React.createElement(Toast, null)
+  );
+}
+
+function shouldShowStartupShell(indexing, hasAccess) {
+  if (!indexing) return false;
+  if (indexing.active) return true;
+  return hasAccess && !indexing.completed && Number(indexing.total_sessions || 0) > 0;
+}
+
+function ConsentScreen({ dispatch, accessPolicy }) {
+  const codexAllowed = Boolean(accessPolicy.session_access?.codex);
+  const opencodeAllowed = Boolean(accessPolicy.session_access?.opencode);
+  const backendAllowed = Boolean(accessPolicy.backend_access?.opencode);
+  const [updating, setUpdating] = React.useState(false);
+
+  const handleGrant = async (type, provider) => {
+    setUpdating(true);
+    try {
+      let payload;
+      if (type === "session") {
+        payload = await apiUpdateSessionAccess(provider, true);
+      } else {
+        payload = await apiUpdateBackendAccess(provider, true);
+      }
+      dispatch({ type: "SET_ACCESS_POLICY", payload });
+      persistAccess(payload);
+    } catch {
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  return React.createElement(
+    "div",
+    { className: "loading-shell" },
+    React.createElement(
+      "div",
+      { className: "startup-card", style: { maxWidth: "420px" } },
+      React.createElement(
+        "div",
+        { className: "flex items-center gap-3 mb-4" },
+        React.createElement(
+          "div",
+          { className: "w-10 h-10 rounded-full bg-primary flex items-center justify-center" },
+          React.createElement("span", { className: "material-symbols-outlined text-on-primary text-[20px]" }, "vpn_key")
+        ),
+        React.createElement(
+          "div",
+          null,
+          React.createElement("h1", { className: "font-headline-sm text-headline-sm text-on-surface", style: { margin: 0 } }, "Access & Consent"),
+          React.createElement("p", { className: "font-body-md text-body-md text-on-surface-variant", style: { margin: "2px 0 0" } }, "Grant access to search prior sessions")
+        )
+      ),
+      React.createElement(
+        "div",
+        { className: "space-y-2" },
+        consentRow("codex", "Codex", codexAllowed, "session", handleGrant, updating),
+        consentRow("opencode", "OpenCode", opencodeAllowed, "session", handleGrant, updating),
+        consentRow("opencode", "OpenCode Backend", backendAllowed, "backend", handleGrant, updating)
+      )
+    )
+  );
+}
+
+function consentRow(provider, label, allowed, type, handleGrant, updating) {
+  return React.createElement(
+    "div",
+    { key: provider + type, className: "flex items-center justify-between p-3 bg-surface-container rounded-lg border border-outline-variant" },
+    React.createElement(
+      "div",
+      { className: "flex items-center gap-3" },
+      React.createElement(
+        "span",
+        { className: "material-symbols-outlined text-[18px] " + (allowed ? "text-primary" : "text-outline") },
+        allowed ? "check_circle" : "radio_button_unchecked"
+      ),
+      React.createElement(
+        "div",
+        null,
+        React.createElement("div", { className: "font-body-md text-body-md text-on-surface" }, label),
+        React.createElement("div", { className: "font-code-sm text-code-sm " + (allowed ? "text-primary" : "text-outline") }, allowed ? "Granted" : "Not granted")
+      )
+    ),
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        className: "px-4 py-1.5 rounded-lg font-label-caps text-label-caps transition-colors " + (allowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"),
+        onClick: () => !allowed && handleGrant(type, provider),
+        disabled: allowed || updating,
+      },
+      allowed ? "Revoke" : "Grant"
+    )
   );
 }
 
