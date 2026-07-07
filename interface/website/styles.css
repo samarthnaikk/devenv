@@ -238,3 +238,26 @@ pre {
   0%, 100% { opacity: 0.25; transform: translateY(0); }
   50% { opacity: 0.95; transform: translateY(-2px); }
 }
+
+/* React Flow overrides */
+.react-flow__node-blueprint {
+  cursor: default;
+}
+
+.react-flow__background {
+  background-color: #0a0c0e !important;
+}
+
+.react-flow__controls button {
+  background: #1e2023;
+  border: 1px solid #3c4947;
+  fill: #e2e2e6;
+}
+
+.react-flow__controls button:hover {
+  background: #282a2d;
+}
+
+.react-flow__attribution {
+  display: none !important;
+}

@@ -433,6 +433,14 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
         self.app = app
         super().__init__(*args, directory=str(app.static_root), **kwargs)
 
+    def guess_type(self, path: str | os.PathLike[str]) -> str:
+        path_str = str(path)
+        if path_str.endswith(".js") or path_str.endswith(".mjs"):
+            return "application/javascript"
+        if path_str.endswith(".css"):
+            return "text/css"
+        return super().guess_type(path)
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         try:
@@ -794,7 +802,6 @@ def _is_valid_static_root(path: Path) -> bool:
     return (
         path.is_dir()
         and (path / "index.html").is_file()
-        and (path / "main.js").is_file()
         and (path / "styles.css").is_file()
     )
 

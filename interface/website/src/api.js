@@ -40,7 +40,15 @@ export async function fetchFile(path) {
   return request(`/api/file${query}`);
 }
 
-export async function runTurn(prompt, planningMode = "auto", continuePlan = false, localOnly = false, selectedTools = []) {
+export async function runTurn({
+  prompt,
+  planningMode = "auto",
+  continuePlan = false,
+  localOnly = false,
+  selectedTools = [],
+  sessionBudgetTokens = null,
+  backendPreference = "opencode",
+}) {
   return request("/api/turn", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -50,7 +58,57 @@ export async function runTurn(prompt, planningMode = "auto", continuePlan = fals
       continue_plan: continuePlan,
       local_only: localOnly,
       selected_tools: selectedTools,
+      session_budget_tokens: sessionBudgetTokens,
+      backend_preference: backendPreference,
     }),
+  });
+}
+
+export async function resetThread() {
+  return request("/api/thread/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+}
+
+export async function updateSessionAccess(provider, allowed) {
+  return request("/api/session-access", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider, allowed }),
+  });
+}
+
+export async function updateBackendAccess(backend, allowed) {
+  return request("/api/backend-access", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ backend, allowed }),
+  });
+}
+
+export async function updatePerformance(performanceMode) {
+  return request("/api/performance", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ performance_mode: performanceMode }),
+  });
+}
+
+export async function updatePrivacy({ no_memory, incognito }) {
+  return request("/api/privacy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ no_memory: Boolean(no_memory), incognito: Boolean(incognito) }),
+  });
+}
+
+export async function callTool({ toolName, arguments: args }) {
+  return request("/api/tool", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tool_name: toolName, arguments: args }),
   });
 }
 
