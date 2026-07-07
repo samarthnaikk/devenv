@@ -14,8 +14,8 @@ export function SettingsDropdown() {
     if (!model) return;
     try {
       const { updateModel } = await import("../api.js");
-      await updateModel(model);
-      dispatch({ type: "SET_HEALTH_META", payload: { ...state.healthMeta, model } });
+      const result = await updateModel(model);
+      dispatch({ type: "SET_HEALTH_META", payload: { provider: result.ai_provider || state.healthMeta.provider, model: result.ai_model || model, availableModels: result.available_models || state.healthMeta.availableModels } });
       const { showToast } = await import("./Header.js");
       showToast(dispatch, "Model switched to " + model.split("/").pop());
     } catch (err) {

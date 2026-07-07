@@ -78,6 +78,7 @@ export function Header() {
         "button",
         {
           type: "button",
+          "data-action": "toggle-settings",
           className: `p-2 rounded-lg hover:bg-surface-variant transition-colors text-on-surface-variant ${state.showSettings ? "bg-surface-variant text-primary" : ""}`,
           onClick: toggleSettings,
           "aria-label": "Settings",

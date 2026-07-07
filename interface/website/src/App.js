@@ -14,6 +14,7 @@ function AppInner() {
   const healthRef = React.useRef(false);
   const pollingRef = React.useRef(null);
   const [setupDone, setSetupDone] = React.useState(false);
+  const setupStartedRef = React.useRef(false);
 
   React.useEffect(() => {
     clockRef.current = window.setInterval(() => {
@@ -108,8 +109,12 @@ function AppInner() {
   const indexing = state.health.indexing || null;
   const hasAccess = Object.values(state.accessPolicy?.session_access || {}).some(Boolean);
   const needsSetup = !setupDone && indexing && !indexing.completed && (!hasAccess || indexing.active || Number(indexing.total_sessions || 0) > 0);
-
   if (needsSetup) {
+    setupStartedRef.current = true;
+  }
+  const showSetup = needsSetup || (setupStartedRef.current && !setupDone);
+
+  if (showSetup) {
     return React.createElement(ConsentScreen, {
       dispatch,
       accessPolicy: state.accessPolicy,
@@ -137,12 +142,17 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
   const codexGranted = Boolean(accessPolicy.session_access?.codex);
   const opencodeGranted = Boolean(accessPolicy.session_access?.opencode);
 
-  const [phase, setPhase] = React.useState(
-    codexGranted && !indexing?.active ? "codex_done" :
-    codexGranted && indexing?.active ? "indexing_codex" :
-    "idle"
-  );
+  const [phase, setPhase] = React.useState(() => {
+    if (codexGranted && opencodeGranted) {
+      return indexing?.active ? "indexing_opencode" : "all_done";
+    }
+    if (codexGranted) {
+      return indexing?.active ? "indexing_codex" : "codex_done";
+    }
+    return "idle";
+  });
   const [logs, setLogs] = React.useState([]);
+  const logContainerRef = React.useRef(null);
   const lastPercentRef = React.useRef(0);
   const prevActiveRef = React.useRef(indexing?.active);
   const initRef = React.useRef(false);
@@ -187,8 +197,17 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
     }
   }, [indexing?.active, indexing?.percent, indexing?.processed_sessions]);
 
+  React.useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
+
   const handleGrant = async (provider) => {
     setPhase(provider === "codex" ? "indexing_codex" : "indexing_opencode");
+    if (provider === "opencode") {
+      lastPercentRef.current = 0;
+    }
     try {
       const payload = await apiUpdateSessionAccess(provider, true);
       dispatch({ type: "SET_ACCESS_POLICY", payload });
@@ -212,7 +231,7 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
   };
 
   const isChunking = phase === "indexing_codex" || phase === "indexing_opencode";
-  const activeProvider = phase === "indexing_codex" || phase === "codex_done" ? "Codex" : "OpenCode";
+  const activeProvider = phase === "idle" ? "\u2014" : phase === "indexing_codex" || phase === "codex_done" ? "Codex" : "OpenCode";
   const codexDone = phase === "codex_done" || phase === "all_done";
   const opencodeDone = phase === "all_done";
 
@@ -304,7 +323,7 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
                       ),
                   React.createElement(
                     "div",
-                    { className: "space-y-1 flex-1", style: { overflowY: "auto" } },
+                    { ref: logContainerRef, className: "space-y-1 flex-1", style: { overflowY: "auto" } },
                     logs.map((log) =>
                       React.createElement(
                         "div",
