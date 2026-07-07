@@ -66,7 +66,39 @@ export function Composer() {
 
       let result = null;
       let planRetries = 0;
-      let currentPrompt = originalPrompt;
+      let currentPrompt = state.planMode
+        ? `The user asked: "${originalPrompt}"
+
+Your task is to produce a JSON execution plan. You MUST return ONLY valid JSON — no markdown fences, no explanatory text around it, no code blocks.
+
+Required JSON structure:
+{
+  "tasks": [
+    {
+      "task_id": "a-short-kebab-id",
+      "description": "Clear actionable description of what this step does",
+      "level": 0
+    }
+  ],
+  "edges": [
+    { "from": "id-of-source-task", "to": "id-of-target-task" }
+  ]
+}
+
+Rules:
+- Every task MUST have all three fields: "task_id" (string), "description" (non-empty string), "level" (integer >= 0).
+- "task_id" values must be unique — use short kebab-case like "research-api", "implement-core", "write-tests".
+- "level" is the depth in the plan graph: 0 for root/initial tasks, 1 for their children, 2 for grandchildren, etc.
+- For a flat list of sequential steps, give all tasks level 0 and connect them with edges from first to second to third...
+- "edges" is REQUIRED when there are multiple tasks. Each edge has "from" and "to" referencing existing task_ids.
+- DO NOT wrap the JSON in \`\`\` fences or code blocks. Return raw JSON only.
+- DO NOT include extra fields like "status", "label", "id" (use "task_id" instead).
+
+Example of a correct plan for "build a login page":
+{"tasks":[{"task_id":"design-ui","description":"Design the login page UI mockup","level":0},{"task_id":"implement-frontend","description":"Build the login form component with validation","level":0},{"task_id":"add-backend","description":"Add login API endpoint with session handling","level":1},{"task_id":"write-tests","description":"Write unit and integration tests for login flow","level":1}],"edges":[{"from":"design-ui","to":"implement-frontend"},{"from":"implement-frontend","to":"add-backend"},{"from":"add-backend","to":"write-tests"}]}
+
+Return ONLY the JSON object. No explanations, no markdown.`
+        : originalPrompt;
       let planValidationError = null;
 
       while (true) {
@@ -102,39 +134,11 @@ export function Composer() {
           if (!validation.valid && planRetries < MAX_PLAN_RETRIES) {
             planRetries++;
             planValidationError = validation.error;
-            currentPrompt = `The user asked: "${originalPrompt}"
+            currentPrompt = `The format was invalid. Fix the JSON and return it again following the format specification provided earlier.
 
-Your task is to produce a JSON execution plan. You MUST return ONLY valid JSON — no markdown fences, no explanatory text around it, no code blocks.
+Previous error: ${validation.error}
 
-Required JSON structure:
-{
-  "tasks": [
-    {
-      "task_id": "a-short-kebab-id",
-      "description": "Clear actionable description of what this step does",
-      "level": 0
-    }
-  ],
-  "edges": [
-    { "from": "id-of-source-task", "to": "id-of-target-task" }
-  ]
-}
-
-Rules:
-- Every task MUST have all three fields: "task_id" (string), "description" (non-empty string), "level" (integer >= 0).
-- "task_id" values must be unique — use short kebab-case like "research-api", "implement-core", "write-tests".
-- "level" is the depth in the plan graph: 0 for root/initial tasks, 1 for their children, 2 for grandchildren, etc.
-- For a flat list of sequential steps, give all tasks level 0 and connect them with edges from first to second to third...
-- "edges" is REQUIRED when there are multiple tasks. Each edge has "from" and "to" referencing existing task_ids.
-- DO NOT wrap the JSON in \`\`\` fences or code blocks. Return raw JSON only.
-- DO NOT include extra fields like "status", "label", "id" (use "task_id" instead).
-
-Example of a correct plan for "build a login page":
-{"tasks":[{"task_id":"design-ui","description":"Design the login page UI mockup","level":0},{"task_id":"implement-frontend","description":"Build the login form component with validation","level":0},{"task_id":"add-backend","description":"Add login API endpoint with session handling","level":1},{"task_id":"write-tests","description":"Write unit and integration tests for login flow","level":1}],"edges":[{"from":"design-ui","to":"implement-frontend"},{"from":"implement-frontend","to":"add-backend"},{"from":"add-backend","to":"write-tests"}]}
-
-Previous attempt error: ${validation.error}
-
-Return ONLY the JSON object. No explanations, no markdown.`;
+Return ONLY the raw JSON object. No markdown fences, no explanations.`;
             updateThinking(thinkingId, dispatch, [
               { source: "system", message: `Blueprint format invalid: ${validation.error}` },
               { source: "ai", message: `Re-prompting AI to fix blueprint (attempt ${planRetries}/${MAX_PLAN_RETRIES})...` },
