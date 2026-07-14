@@ -3,6 +3,7 @@ import { useApp } from "../context/AppContext.js";
 import { formatDuration } from "../utils/format.js";
 import { ToolPicker } from "./ToolPicker.js";
 import { validatePlanBlueprint } from "../utils/validation.js";
+import { buildPlanModePrompt, extractPlanBlueprint, READ_ONLY_PLAN_TOOLS, shouldDisplayPlanResult } from "../utils/plans.js";
 
 export function Composer() {
   const { state, dispatch } = useApp();
@@ -63,13 +64,15 @@ export function Composer() {
       const { runTurn } = await import("../api.js");
       let result = null;
       let planValidationError = null;
+      const planOnlyMode = Boolean(state.planMode);
+      const submittedPrompt = planOnlyMode ? buildPlanModePrompt(originalPrompt) : originalPrompt;
 
       while (true) {
         try {
           result = await runTurn({
-            prompt: originalPrompt,
-            planningMode: state.planMode ? "force_plan" : "auto",
-            selectedTools: state.selectedTools,
+            prompt: submittedPrompt,
+            planningMode: planOnlyMode ? "force_direct" : "auto",
+            selectedTools: planOnlyMode ? READ_ONLY_PLAN_TOOLS : state.selectedTools,
             backendPreference: state.preferredBackend || "opencode",
             sessionBudgetTokens: state.sessionBudgetTokens,
           });
@@ -91,11 +94,14 @@ export function Composer() {
         }
       }
 
-      const shouldShowPlan = shouldDisplayPlan(result, state.planMode);
+      const shouldShowPlan = shouldDisplayPlanResult(result, planOnlyMode);
+      const planBlueprint = shouldShowPlan ? extractPlanBlueprint(result, planOnlyMode) : null;
 
-      if (shouldShowPlan && result.blueprint && (result.blueprint.tasks || result.blueprint.nodes)) {
-        const validation = validatePlanBlueprint(result.blueprint);
+      if (shouldShowPlan && planBlueprint && (planBlueprint.tasks || planBlueprint.nodes)) {
+        const validation = validatePlanBlueprint(planBlueprint);
         planValidationError = validation.valid ? null : validation.error;
+      } else if (shouldShowPlan) {
+        planValidationError = "No valid plan JSON was returned.";
       }
 
       const turnTokens = Number(result.total_usage?.total_tokens || 0);
@@ -126,37 +132,44 @@ export function Composer() {
         payload: { id: thinkingId, updates: { content: formatThinkingFromResult(result), pending: false } },
       });
 
-      if (shouldShowPlan && result.blueprint && planValidationError === null) {
-        dispatch({ type: "SET_PLAN_BLUEPRINT", payload: result.blueprint });
+      if (shouldShowPlan && planBlueprint && planValidationError === null) {
+        dispatch({ type: "SET_PLAN_BLUEPRINT", payload: planBlueprint });
         dispatch({
           type: "APPEND_TRANSCRIPT",
           payload: {
             id: `plan-${Date.now()}`,
             role: "plan",
             content: "",
-            blueprint: result.blueprint,
-            mode: state.planMode ? "forced" : "auto",
+            blueprint: planBlueprint,
+            mode: planOnlyMode ? "forced" : "auto",
           },
         });
-      } else if (shouldShowPlan && result.blueprint && planValidationError) {
+      } else if (shouldShowPlan && planValidationError) {
+        dispatch({ type: "SET_PLAN_BLUEPRINT", payload: null });
         dispatch({
           type: "APPEND_TRANSCRIPT",
           payload: {
             id: `plan-error-${Date.now()}`,
             role: "error",
-            content: `The runtime returned a plan blueprint, but the UI could not render it yet.\n\nLast error: ${planValidationError}`,
+            content: `Plan mode expected a valid multi-node flowchart JSON response, but the UI could not render it.\n\nLast error: ${planValidationError}`,
           },
         });
       }
 
-      dispatch({
-        type: "APPEND_TRANSCRIPT",
-        payload: {
-          id: `assistant-${Date.now()}`,
-          role: result?.error_message ? "error" : "assistant",
-          content: selectVisibleAssistantResponse(result),
-        },
-      });
+      const visibleAssistantResponse = planOnlyMode && shouldShowPlan && planValidationError === null
+        ? `Generated an execution plan for: ${originalPrompt}`
+        : selectVisibleAssistantResponse(result);
+
+      if (visibleAssistantResponse) {
+        dispatch({
+          type: "APPEND_TRANSCRIPT",
+          payload: {
+            id: `assistant-${Date.now()}`,
+            role: result?.error_message ? "error" : "assistant",
+            content: visibleAssistantResponse,
+          },
+        });
+      }
 
       dispatch({ type: "SET_RATE_LIMIT_INFO", payload: null });
       if (budgetState?.blocked) {
@@ -243,17 +256,6 @@ export function Composer() {
       )
     )
   );
-}
-
-function shouldDisplayPlan(result, planModeEnabled) {
-  if (planModeEnabled) return true;
-  const traces = Array.isArray(result?.stage_traces) ? result.stage_traces : [];
-  const checkpointCreation = traces.find((trace) => trace && trace.stage === "checkpoint_creation");
-  if (checkpointCreation?.payload && typeof checkpointCreation.payload.should_plan === "boolean") {
-    return checkpointCreation.payload.should_plan;
-  }
-  const taskCount = Array.isArray(result?.blueprint?.tasks) ? result.blueprint.tasks.length : 0;
-  return taskCount > 1;
 }
 
 function updateThinking(thinkingId, dispatch, logs) {
