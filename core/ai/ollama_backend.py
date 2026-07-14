@@ -47,6 +47,12 @@ class OllamaAICore:
     def set_model(self, model: str) -> None:
         self.model = model.strip()
 
+    def reset_session(self) -> None:
+        return None
+
+    def abort(self) -> bool:
+        return False
+
     def status(self) -> AIBackendStatus:
         try:
             models = self.list_models()

@@ -129,6 +129,20 @@ class OpenCodeRoutingTest(unittest.TestCase):
         self.assertEqual(response.backend, "codex")
         self.assertEqual(router.last_backend_used, "codex")
 
+    def test_routing_core_prefers_ollama_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            router = RoutingAICore(
+                workspace_path=tempdir,
+                opencode_ai=_FakeOpenCodeCore(),
+                ollama_ai=_FakeOllamaCore(),
+            )
+            router.set_backend_preference("ollama", opencode_enabled=False, ollama_enabled=True)
+            response = router.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
+
+        self.assertEqual(response.content, "Ollama")
+        self.assertEqual(response.backend, "ollama")
+        self.assertEqual(router.last_backend_used, "ollama")
+
     def test_routing_core_rejects_invalid_backend_preference(self) -> None:
         router = RoutingAICore(workspace_path=".", opencode_ai=_FakeOpenCodeCore())
 
@@ -145,6 +159,17 @@ class OpenCodeRoutingTest(unittest.TestCase):
                 ),
             )
             router.set_backend_preference("codex", opencode_enabled=False, codex_enabled=False)
+            with self.assertRaises(RuntimeError):
+                router.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
+
+    def test_routing_core_requires_ollama_access(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            router = RoutingAICore(
+                workspace_path=tempdir,
+                opencode_ai=_FakeOpenCodeCore(),
+                ollama_ai=_FakeOllamaCore(),
+            )
+            router.set_backend_preference("ollama", opencode_enabled=False, ollama_enabled=False)
             with self.assertRaises(RuntimeError):
                 router.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
 
@@ -513,6 +538,32 @@ class _FakeOpenCodeCore:
 
     def chat(self, **kwargs) -> AIResponse:
         return AIResponse(content="OpenCode", finish_reason="stop", usage={"total_tokens": 1}, backend="opencode")
+
+
+class _FakeOllamaCore:
+    def __init__(self) -> None:
+        self.model = "qwen2.5:3b"
+        self.last_backend_reason = "Ollama handled the turn."
+
+    def register_tool(self, tool: BaseTool) -> None:
+        return None
+
+    def status(self):
+        from core.ai.models import AIBackendStatus
+
+        return AIBackendStatus(name="ollama", available=True, enabled=True, model=self.model, detail="Configured")
+
+    def set_model(self, model: str) -> None:
+        self.model = model
+
+    def reset_session(self) -> None:
+        return None
+
+    def abort(self) -> bool:
+        return False
+
+    def chat(self, **kwargs) -> AIResponse:
+        return AIResponse(content="Ollama", finish_reason="stop", usage={"total_tokens": 1}, backend="ollama")
 
 
 def _fake_message(message_id: str, *, structured_output: dict[str, Any] | None, usage: dict[str, int], text: str | None = None):
