@@ -380,14 +380,17 @@ class DevenvWebAppTest(unittest.TestCase):
 
             session_payload = app.update_session_access("codex", True)
             backend_payload = app.update_backend_access("opencode", True)
+            ollama_backend_payload = app.update_backend_access("ollama", True)
             codex_backend_payload = app.update_backend_access("codex", True)
             health = app.build_health_payload()
 
         self.assertTrue(session_payload["session_access"]["codex"])
         self.assertTrue(backend_payload["backend_access"]["opencode"])
+        self.assertTrue(ollama_backend_payload["backend_access"]["ollama"])
         self.assertTrue(codex_backend_payload["backend_access"]["codex"])
         self.assertTrue(health["access_policy"]["session_access"]["codex"])
         self.assertTrue(health["access_policy"]["backend_access"]["opencode"])
+        self.assertTrue(health["access_policy"]["backend_access"]["ollama"])
         self.assertTrue(health["access_policy"]["backend_access"]["codex"])
 
     def test_health_payload_exposes_model_catalog_by_backend(self) -> None:
@@ -456,6 +459,48 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(captured["backend_preference"], "codex")
         self.assertFalse(captured["opencode_enabled"])
         self.assertTrue(captured["codex_enabled"])
+
+    def test_run_turn_forwards_ollama_backend_access_and_preference(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.update_backend_access("ollama", True)
+            captured: dict[str, object] = {}
+
+            def fake_execute_turn(
+                prompt,
+                max_consecutive_tools=5,
+                planning_mode=PlanningMode.AUTO,
+                continue_plan=False,
+                local_only=False,
+                selected_tools=None,
+                backend_preference="opencode",
+                opencode_enabled=False,
+                ollama_enabled=False,
+                codex_enabled=False,
+            ):
+                captured.update(
+                    {
+                        "prompt": prompt,
+                        "backend_preference": backend_preference,
+                        "opencode_enabled": opencode_enabled,
+                        "ollama_enabled": ollama_enabled,
+                        "codex_enabled": codex_enabled,
+                    }
+                )
+                return type("Result", (), {"to_dict": lambda self: {"final_response": "ok"}})()
+
+            app.kernel.execute_turn = fake_execute_turn
+            result = app.run_turn("hello", backend_preference="ollama")
+
+        self.assertEqual(result["final_response"], "ok")
+        self.assertEqual(captured["backend_preference"], "ollama")
+        self.assertFalse(captured["opencode_enabled"])
+        self.assertTrue(captured["ollama_enabled"])
+        self.assertFalse(captured["codex_enabled"])
 
     def test_reset_thread_clears_kernel_conversation_and_ai_session(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

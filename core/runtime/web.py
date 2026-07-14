@@ -43,7 +43,7 @@ DEFAULT_OLLAMA_MODELS = ("qwen2.5:3b",)
 class AccessPolicy:
     def __init__(self) -> None:
         self.session_access: dict[str, bool] = {"codex": False, "opencode": False}
-        self.backend_access: dict[str, bool] = {"opencode": False, "codex": False}
+        self.backend_access: dict[str, bool] = {"opencode": False, "ollama": False, "codex": False}
 
     def set_session_access(self, provider: str, allowed: bool) -> dict[str, object]:
         self.session_access[provider] = allowed
@@ -375,6 +375,8 @@ class DevenvWebApp:
             kwargs["backend_preference"] = backend_preference
         if "opencode_enabled" in parameters:
             kwargs["opencode_enabled"] = self.access_policy.can_use_backend("opencode")
+        if "ollama_enabled" in parameters:
+            kwargs["ollama_enabled"] = self.access_policy.can_use_backend("ollama")
         if "codex_enabled" in parameters:
             kwargs["codex_enabled"] = self.access_policy.can_use_backend("codex")
         if "session_budget_tokens" in parameters:
@@ -454,8 +456,8 @@ class DevenvWebApp:
         return snapshot
 
     def update_backend_access(self, backend: str, allowed: bool) -> dict[str, object]:
-        if backend not in {"opencode", "codex"}:
-            raise ValueError("backend must be one of: opencode, codex")
+        if backend not in {"opencode", "ollama", "codex"}:
+            raise ValueError("backend must be one of: opencode, ollama, codex")
         return self.access_policy.set_backend_access(backend, allowed)
 
     def update_performance_mode(self, performance_mode: str) -> dict[str, object]:

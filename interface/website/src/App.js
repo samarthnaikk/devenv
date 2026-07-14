@@ -416,7 +416,7 @@ function applyHealthPayload(dispatch, payload) {
       selectedModelsByBackend: payload.selected_models_by_backend || {},
     },
   });
-  dispatch({ type: "SET_ACCESS_POLICY", payload: payload.access_policy || { session_access: {}, backend_access: {} } });
+  dispatch({ type: "SET_ACCESS_POLICY", payload: payload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, codex: false } } });
   dispatch({ type: "SET_BACKENDS", payload: payload.ai_backends || {} });
   dispatch({ type: "SET_ACTIVE_BACKEND", payload: payload.active_backend || "opencode" });
   dispatch({ type: "SET_PREFERRED_BACKEND", payload: payload.preferred_backend || "opencode" });

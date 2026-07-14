@@ -108,7 +108,7 @@ Return ONLY the JSON object. No explanations, no markdown.`
               prompt: currentPrompt,
               planningMode: state.planMode ? "force_plan" : "auto",
               selectedTools: state.planMode ? READ_ONLY_TOOLS : state.selectedTools,
-              backendPreference: "opencode",
+              backendPreference: state.preferredBackend || "opencode",
               sessionBudgetTokens: state.sessionBudgetTokens,
             });
             break;

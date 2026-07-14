@@ -9,6 +9,8 @@ export function AccessCard() {
   const codexAllowed = Boolean(state.accessPolicy.session_access?.codex);
   const opencodeSessionAllowed = Boolean(state.accessPolicy.session_access?.opencode);
   const opencodeBackendAllowed = Boolean(state.accessPolicy.backend_access?.opencode);
+  const ollamaBackendAllowed = Boolean(state.accessPolicy.backend_access?.ollama);
+  const codexBackendAllowed = Boolean(state.accessPolicy.backend_access?.codex);
   const activeBackendLabel = formatBackendLabel(state.activeBackend);
 
   const updateSessionAccess = async (provider, allowed) => {
@@ -40,7 +42,7 @@ export function AccessCard() {
       dispatch({ type: "SET_ACCESS_POLICY", payload });
       persistAccess(payload);
       await refreshHealth(dispatch);
-      showToast(dispatch, `OpenCode backend ${allowed ? "enabled" : "disabled"}`);
+      showToast(dispatch, `${formatBackendLabel(backend)} backend ${allowed ? "enabled" : "disabled"}`);
     } finally {
       dispatch({ type: "SET_ACCESS_UPDATING", payload: false });
     }
@@ -98,26 +100,9 @@ export function AccessCard() {
       ),
       renderProviderRow("codex", "Codex", codexAllowed, "session", state, updateSessionAccess),
       renderProviderRow("opencode", "OpenCode", opencodeSessionAllowed, "session", state, updateSessionAccess),
-      React.createElement(
-        "div",
-        { className: "p-3 flex justify-between items-center" },
-        React.createElement(
-          "div",
-          { className: "flex flex-col" },
-          React.createElement("span", { className: "font-body-md text-body-md" }, "Backend"),
-          React.createElement("span", { className: "text-[10px] text-outline uppercase font-bold" }, escapeHtml(activeBackendLabel))
-        ),
-        React.createElement(
-          "button",
-          {
-            type: "button",
-            className: `px-3 py-1 rounded font-label-caps text-[10px] transition-colors ${opencodeBackendAllowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"}`,
-            onClick: () => updateBackendAccess("opencode", !opencodeBackendAllowed),
-            disabled: state.accessUpdating,
-          },
-          opencodeBackendAllowed ? "Revoke" : "Grant"
-        )
-      )
+      renderBackendRow("opencode", opencodeBackendAllowed, activeBackendLabel, state, updateBackendAccess),
+      renderBackendRow("ollama", ollamaBackendAllowed, activeBackendLabel, state, updateBackendAccess),
+      renderBackendRow("codex", codexBackendAllowed, activeBackendLabel, state, updateBackendAccess)
     ),
     React.createElement(
       "div",
@@ -193,6 +178,35 @@ function renderProviderRow(provider, label, allowed, type, state, updateSessionA
   );
 }
 
+function renderBackendRow(backend, allowed, activeBackendLabel, state, updateBackendAccess) {
+  const label = formatBackendLabel(backend);
+  const isActive = activeBackendLabel === label;
+  return React.createElement(
+    "div",
+    { className: "p-3 border-b border-outline-variant/30 flex justify-between items-center" },
+    React.createElement(
+      "div",
+      { className: "flex flex-col" },
+      React.createElement("span", { className: "font-body-md text-body-md" }, label),
+      React.createElement(
+        "span",
+        { className: "text-[10px] text-outline uppercase font-bold" },
+        isActive ? "Active" : allowed ? "Enabled" : "Disabled"
+      )
+    ),
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        className: `px-3 py-1 rounded font-label-caps text-[10px] transition-colors ${allowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"}`,
+        onClick: () => updateBackendAccess(backend, !allowed),
+        disabled: state.accessUpdating,
+      },
+      allowed ? "Revoke" : "Grant"
+    )
+  );
+}
+
 async function refreshHealth(dispatch, options = {}) {
   try {
     const { fetchHealth } = await import("../api.js");
@@ -206,7 +220,7 @@ async function refreshHealth(dispatch, options = {}) {
         availableModels: healthPayload.available_models || [],
       },
     });
-    dispatch({ type: "SET_ACCESS_POLICY", payload: healthPayload.access_policy || { session_access: {}, backend_access: {} } });
+      dispatch({ type: "SET_ACCESS_POLICY", payload: healthPayload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, codex: false } } });
     dispatch({ type: "SET_BACKENDS", payload: healthPayload.ai_backends || {} });
     dispatch({ type: "SET_ACTIVE_BACKEND", payload: healthPayload.active_backend || "opencode" });
     dispatch({ type: "SET_PERFORMANCE_MODE", payload: healthPayload.performance_mode || "medium" });
