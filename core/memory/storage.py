@@ -625,8 +625,14 @@ def _extract_agent_response(raw_interaction: str) -> str | None:
 
 
 def _normalize_fts_query(query: str) -> str:
-    tokens = [token.strip() for token in json.dumps(query).strip('"').replace("\\n", " ").split() if token.strip()]
-    cleaned_tokens = [replaced for token in tokens if (replaced := "".join(ch for ch in token if ch.isalnum() or ch in {"_", "-", "."}))]
+    tokens = [token.strip().lower() for token in json.dumps(query).strip('"').replace("\\n", " ").split() if token.strip()]
+    cleaned_tokens = [
+        replaced
+        for token in tokens
+        if (replaced := "".join(ch for ch in token if ch.isalnum() or ch in {"_", "-", "."}))
+        and len(replaced) > 2
+        and replaced not in {"the", "and", "for", "with", "what", "was", "were", "about", "again"}
+    ]
     if not cleaned_tokens:
         return ""
     return " ".join(f'"{token}"' for token in cleaned_tokens[:8])

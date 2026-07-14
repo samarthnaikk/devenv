@@ -56,7 +56,6 @@ class MemoryEngine(MemoryEngineInterface):
             extractor=extractor,
         )
         self._last_trace = RetrievalTrace()
-        self._rehydrate_vector_index()
 
     def add_episodic_log(
         self,
@@ -99,7 +98,7 @@ class MemoryEngine(MemoryEngineInterface):
         )
         self.store.upsert_node(node)
         self.store.replace_node_edges(payload.node_id, list(payload.edges))
-        self.vector_index.upsert(payload.node_id, payload.summary, self.embedder.embed(payload.summary))
+        self._sync_node_to_vector_index(payload.node_id, payload.summary)
         return payload.node_id
 
     def run_consolidation(self, since: float | None = None) -> ConsolidationResult:
@@ -111,7 +110,7 @@ class MemoryEngine(MemoryEngineInterface):
             return False
 
         if strategy == "prune":
-            self.vector_index.delete(node_id)
+            self._delete_node_from_vector_index(node_id)
             return self.store.delete_node(node_id)
 
         if strategy == "rewrite":
@@ -126,7 +125,7 @@ class MemoryEngine(MemoryEngineInterface):
                 access_count=existing.access_count,
             )
             self.store.upsert_node(rewritten)
-            self.vector_index.upsert(node_id, rewritten.summary, self.embedder.embed(rewritten.summary))
+            self._sync_node_to_vector_index(node_id, rewritten.summary)
             return True
 
         raise ValueError(f"Unsupported forget strategy: {strategy}")
@@ -136,12 +135,6 @@ class MemoryEngine(MemoryEngineInterface):
 
     def record_working_memory(self, messages: list[dict[str, Any]], active_state: dict[str, Any]) -> None:
         self.working_memory.record(messages=messages, active_state=active_state)
-
-    def _rehydrate_vector_index(self) -> None:
-        if self.vector_index.has_persisted_state():
-            return
-        for node in self.store.list_nodes():
-            self.vector_index.upsert(node.node_id, node.summary, self.embedder.embed(node.summary))
 
     def _index_episodic_log(self, *, log: EpisodicLog, interaction: LogInteraction) -> None:
         summary = " | ".join(piece for piece in (interaction.user.strip(), interaction.agent.strip()) if piece).strip()
@@ -160,7 +153,7 @@ class MemoryEngine(MemoryEngineInterface):
             access_count=0,
         )
         self.store.upsert_node(node)
-        self.vector_index.upsert(node.node_id, summary, self.embedder.embed(summary))
+        self._sync_node_to_vector_index(node.node_id, summary)
 
     def _ensure_workspace_node(self, metadata: dict[str, Any], timestamp: float) -> str | None:
         workspace_path = str(metadata.get("workspace_path", "")).strip()
@@ -181,8 +174,20 @@ class MemoryEngine(MemoryEngineInterface):
                 access_count=0,
             )
             self.store.upsert_node(node)
-            self.vector_index.upsert(node.node_id, node.summary, self.embedder.embed(node.summary))
+            self._sync_node_to_vector_index(node.node_id, node.summary)
         return node_id
+
+    def _sync_node_to_vector_index(self, node_id: str, summary: str) -> None:
+        self.vector_index.upsert(node_id, summary, self.embedder.embed(summary))
+        if hasattr(self.store, "set_state"):
+            self.store.set_state("last_vector_sync_node_id", node_id)
+            self.store.set_state("last_vector_sync_at", str(time.time()))
+
+    def _delete_node_from_vector_index(self, node_id: str) -> None:
+        self.vector_index.delete(node_id)
+        if hasattr(self.store, "set_state"):
+            self.store.set_state("last_vector_delete_node_id", node_id)
+            self.store.set_state("last_vector_sync_at", str(time.time()))
 
 
 def _coerce_payload(node_data: dict[str, Any]) -> NodeUpsertPayload:

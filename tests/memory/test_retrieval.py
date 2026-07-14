@@ -190,7 +190,7 @@ class RetrievalFlowTest(unittest.TestCase):
         self.assertIn("Do you remember the calendar project we were building?", query)
         self.assertIn("Yes, it used a Python backend and React frontend.", query)
 
-    def test_rehydrates_vector_index_from_stored_nodes_on_new_session(self) -> None:
+    def test_reopened_engine_can_recall_from_persisted_storage_without_rehydration(self) -> None:
         self.engine.add_episodic_log(
             "The calendar project used a React frontend and Python backend.",
             "Stored for future recall.",
@@ -274,7 +274,7 @@ class RetrievalFlowTest(unittest.TestCase):
         self.assertTrue(result.trace.expanded_candidates)
         self.assertTrue(all(candidate.relationship == "seed" for candidate in result.trace.expanded_candidates))
 
-    def test_skips_rehydration_when_vector_index_is_already_persisted(self) -> None:
+    def test_engine_init_does_not_rehydrate_vector_index(self) -> None:
         @dataclass
         class CountingEmbedder:
             dimension: int = 8
@@ -283,10 +283,6 @@ class RetrievalFlowTest(unittest.TestCase):
             def embed(self, text: str) -> list[float]:
                 self.calls += 1
                 return [0.0] * self.dimension
-
-        class PersistedVectorIndex(InMemoryVectorIndex):
-            def has_persisted_state(self) -> bool:
-                return True
 
         self.engine.add_episodic_log(
             "The calendar project used a React frontend and Python backend.",
@@ -299,7 +295,7 @@ class RetrievalFlowTest(unittest.TestCase):
             db_path=f"{self.tempdir.name}/memory.db",
             vector_dir=f"{self.tempdir.name}/vectors",
             embedder=embedder,
-            vector_index=PersistedVectorIndex(),
+            vector_index=InMemoryVectorIndex(),
         )
         self.assertEqual(embedder.calls, 0)
 

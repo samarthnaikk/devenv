@@ -91,6 +91,19 @@ class MemoryEngineCoreTest(unittest.TestCase):
         text_chunk, _vector = self.engine.vector_index.records["proj_rxgpt"]
         self.assertEqual(text_chunk, "Updated summary with Django auth details.")
 
+    def test_vector_sync_state_is_recorded_on_node_updates(self) -> None:
+        self.engine.update_associative_tree(
+            {
+                "node_id": "proj_rxgpt",
+                "label": "Project: RxGPT",
+                "category": "project",
+                "summary": "React and Django product workspace.",
+            }
+        )
+
+        self.assertEqual(self.engine.store.get_state("last_vector_sync_node_id"), "proj_rxgpt")
+        self.assertIsNotNone(self.engine.store.get_state("last_vector_sync_at"))
+
 
 if __name__ == "__main__":
     unittest.main()
