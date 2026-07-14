@@ -58,6 +58,8 @@ class EditFileTool(BaseTool):
             if mode == "patch":
                 if not isinstance(search_block, str) or not isinstance(replace_block, str):
                     raise ValueError("patch mode requires string search_block and replace_block arguments")
+                if not search_block:
+                    raise ValueError("patch mode requires a non-empty search_block")
                 before = file_path.read_text(encoding="utf-8")
                 if search_block not in before:
                     raise ValueError(f"search_block not found in file: {file_path}")

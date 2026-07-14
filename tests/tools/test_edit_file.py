@@ -46,3 +46,14 @@ class EditFileToolTest(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertIn("search_block not found", result.output)
+
+    def test_patch_mode_rejects_empty_search_block(self) -> None:
+        result = self.tool.execute(
+            path=str(self.target),
+            mode="patch",
+            search_block="",
+            replace_block="noop",
+        )
+
+        self.assertFalse(result.success)
+        self.assertIn("non-empty search_block", result.output)

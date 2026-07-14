@@ -846,7 +846,11 @@ class DevenvKernel:
         planning_conversation: list[dict[str, Any]] = []
         should_plan = self._should_plan(user_prompt, planning_mode)
         if should_plan:
-            if local_only:
+            prefer_local_planning = local_only or (
+                getattr(self.ai, "preferred_backend", "") == "ollama"
+                and self._text_requires_mutation_tools(user_prompt.lower())
+            )
+            if prefer_local_planning:
                 planning_response, planning_conversation = self._run_local_only_planning_phase(
                     user_prompt=user_prompt,
                     memory_context=memory_context,
@@ -1125,7 +1129,7 @@ class DevenvKernel:
                 value = step.arguments.get(key)
                 if isinstance(value, str) and value.strip():
                     paths.append(value)
-        path_hint = checkpoint.target_path_hint or (paths[-1] if paths else None)
+        path_hint = (paths[-1] if paths else None) or checkpoint.target_path_hint
         if not path_hint:
             return None
         candidate = Path(path_hint)
@@ -1133,11 +1137,15 @@ class DevenvKernel:
             candidate = Path(self.workspace_path) / candidate
         details = f"Artifact check for {candidate}: "
         if checkpoint.verification_mode == "frontend":
-            root = candidate if candidate.is_dir() else candidate.parent
-            required = [root / "index.html", root / "styles.css", root / "script.js"]
-            missing = [path.name for path in required if not path.exists()]
-            success = not missing
-            details += "ok" if success else f"missing {', '.join(missing)}"
+            if candidate.is_file() or candidate.suffix.lower() in {".html", ".css", ".js"}:
+                success = candidate.exists()
+                details += "ok" if success else "missing"
+            else:
+                root = candidate if candidate.is_dir() else candidate.parent
+                required = [root / "index.html", root / "styles.css", root / "script.js"]
+                missing = [path.name for path in required if not path.exists()]
+                success = not missing
+                details += "ok" if success else f"missing {', '.join(missing)}"
         else:
             success = candidate.exists() or candidate.parent.exists()
             details += "ok" if success else "missing"
@@ -2154,6 +2162,17 @@ class DevenvKernel:
                     ),
                 },
             ]
+            workspace_hints = self._workspace_file_hints_from_steps(steps, user_prompt=user_prompt, task_description=task.description)
+            if workspace_hints:
+                step_conversation.append(
+                    {
+                        "role": "system",
+                        "content": (
+                            "Known workspace files from recent inspection: "
+                            f"{', '.join(workspace_hints)}. Prefer these real paths over placeholder paths."
+                        ),
+                    }
+                )
             tool_iterations = 0
             checkpoint_requires_mutation = self._checkpoint_requires_mutation(user_prompt, task.description) and any(
                 tool_name in scoped_tool_names for tool_name in (*WRITE_EXECUTION_TOOLS, *DELETE_EXECUTION_TOOLS)
@@ -2217,6 +2236,40 @@ class DevenvKernel:
                         system_logs.append(
                             f"Checkpoint {index + 1}: deferred {len(ai_response.tool_calls) - 1} extra tool call(s) to preserve single-step execution"
                         )
+                    normalized_arguments = self.sandbox.normalize_arguments(self._repair_tool_arguments(tool_call))
+                    if (
+                        self._checkpoint_is_context_only(user_prompt, task.description)
+                        and steps
+                        and steps[-1].success
+                        and steps[-1].tool_name == tool_call.tool_name == "list_directory"
+                        and steps[-1].arguments == normalized_arguments
+                    ):
+                        final_response = _summarize_directory_listing(
+                            str(normalized_arguments.get("path") or self.workspace_path),
+                            steps[-1].output,
+                        )
+                        trace_log = _summarize_execution_note(final_response)
+                        working_blueprint = _mark_checkpoint_completed(working_blueprint, index, trace_log)
+                        self.active_blueprint = working_blueprint
+                        ai_logs.append(f"Checkpoint completed after redundant inspection was detected: {task.description}")
+                        system_logs.append(f"Checkpoint {index + 1} completed after duplicate list_directory call")
+                        break
+                    if (
+                        checkpoint_requires_mutation
+                        and steps
+                        and steps[-1].success
+                        and steps[-1].tool_name == tool_call.tool_name == "write_file"
+                    ):
+                        previous_path = str(steps[-1].arguments.get("path") or "")
+                        next_path = str(normalized_arguments.get("path") or "")
+                        if previous_path and previous_path == next_path:
+                            final_response = f"Updated `{next_path}` in the workspace."
+                            trace_log = _summarize_execution_note(final_response)
+                            working_blueprint = _mark_checkpoint_completed(working_blueprint, index, trace_log)
+                            self.active_blueprint = working_blueprint
+                            ai_logs.append(f"Checkpoint completed after redundant write was detected: {task.description}")
+                            system_logs.append(f"Checkpoint {index + 1} completed after duplicate write_file call")
+                            break
                     ai_logs.append(f"Tool requested: {tool_call.tool_name}")
                     step_conversation.append(_assistant_tool_call_message(ai_response, [tool_call]))
                     step = self._execute_tool_call(tool_call)
@@ -2263,6 +2316,49 @@ class DevenvKernel:
             self.state = AgentState.EXECUTING
             system_logs.append("Execution paused after one checkpoint")
         return final_response, plan_complete
+
+    def _workspace_file_hints_from_steps(
+        self,
+        steps: list[ToolExecutionStep],
+        *,
+        user_prompt: str,
+        task_description: str,
+    ) -> list[str]:
+        for step in reversed(steps):
+            if not step.success or step.tool_name != "list_directory":
+                continue
+            payload = _extract_tool_payload_json(step.output)
+            entries = payload.get("entries") if isinstance(payload, dict) else None
+            if not isinstance(entries, list):
+                continue
+            paths: list[str] = []
+            for entry in entries:
+                if not isinstance(entry, dict) or entry.get("is_dir"):
+                    continue
+                relative_path = entry.get("relative_path")
+                if isinstance(relative_path, str) and relative_path.strip():
+                    paths.append(relative_path.strip())
+            if not paths:
+                continue
+            scored: list[tuple[int, str]] = []
+            lowered = f"{user_prompt} {task_description}".lower()
+            for path in paths:
+                score = 0
+                lowered_path = path.lower()
+                if "theme" in lowered or "ui" in lowered:
+                    if lowered_path.endswith("styles.css"):
+                        score += 10
+                    if lowered_path.endswith("index.html"):
+                        score += 8
+                    if lowered_path.endswith("script.js"):
+                        score += 6
+                if lowered_path.endswith(("styles.css", "index.html", "script.js", "main.py")):
+                    score += 4
+                scored.append((score, path))
+            scored.sort(key=lambda item: (-item[0], item[1]))
+            ordered = [path for _score, path in scored]
+            return list(dict.fromkeys(ordered[:6]))
+        return []
 
     def _run_verification_phase(
         self,
@@ -2432,6 +2528,8 @@ class DevenvKernel:
         return (
             f"Original request:\n{user_prompt}\n\n"
             f"Current checkpoint ({checkpoint_index}/{total_checkpoints}):\n- [ ] {task_description}\n\n"
+            f"Workspace root: {self.workspace_path}\n"
+            "Use real workspace paths discovered from tools. Do not invent /workspace or external paths.\n"
             "Complete only this checkpoint, then stop."
         )
 
@@ -2439,12 +2537,18 @@ class DevenvKernel:
         creation_markers = ("create", "make", "add", "build", "generate")
         frontend_markers = ("html", "css", "js", "javascript", "frontend", "ui")
         non_backend_markers = ("dont connect with backend", "don't connect with backend", "no need to connect to backend")
-        file_markers = ("folder", "file", "calendar")
-        return (
+        file_markers = ("folder", "file")
+        scaffold_match = (
             any(marker in text for marker in creation_markers)
             and any(marker in text for marker in frontend_markers)
             and any(marker in text for marker in file_markers)
         ) or any(marker in text for marker in non_backend_markers)
+        if scaffold_match:
+            return True
+        edit_markers = ("update", "modify", "change", "theme", "restyle", "light mode", "light theme", "dark mode", "dark theme")
+        if any(marker in text for marker in edit_markers):
+            return False
+        return False
 
     def _requires_planning(self, user_prompt: str) -> bool:
         text = user_prompt.lower()
@@ -2457,6 +2561,7 @@ class DevenvKernel:
             "create",
             "make",
             "add",
+            "apply",
             "build",
             "generate",
             "write",
@@ -2536,7 +2641,20 @@ class DevenvKernel:
         start_index = _next_incomplete_task_index(blueprint)
         if start_index is None:
             return []
-        return [start_index]
+        indexes = [start_index]
+        if self._checkpoint_is_context_only(blueprint.original_objective or "", blueprint.tasks[start_index].description):
+            for index in range(start_index + 1, len(blueprint.tasks)):
+                task = blueprint.tasks[index]
+                if task.is_completed:
+                    continue
+                indexes.append(index)
+                if self._checkpoint_requires_mutation(blueprint.original_objective or "", task.description):
+                    break
+        return indexes
+
+    def _checkpoint_is_context_only(self, user_prompt: str, task_description: str) -> bool:
+        lowered = task_description.lower()
+        return lowered.startswith(("inspect ", "gather ", "identify ", "review ", "read ", "list ", "analyze ", "explore "))
 
     def _build_checkpoint_context(self, blueprint: ExecutionBlueprint, task_index: int) -> str:
         completed = [task.description for task in blueprint.tasks[:task_index] if task.is_completed]
@@ -2554,6 +2672,7 @@ class DevenvKernel:
             "create",
             "make",
             "add",
+            "apply",
             "build",
             "generate",
             "write",
@@ -2719,7 +2838,7 @@ class DevenvKernel:
         if selected_scope:
             return sorted(selected_scope)
 
-        if getattr(self.ai, "preferred_backend", "") == "ollama":
+        if getattr(self.ai, "preferred_backend", "") == "ollama" and not execution_phase:
             return []
 
         available = set(self.tools)
@@ -2752,7 +2871,7 @@ class DevenvKernel:
         else:
             scope.update((READ_ONLY_EXECUTION_TOOLS - {"search_text"}) & available)
 
-        if self._should_offer_web_search(lowered):
+        if self._should_offer_web_search_for_phase(lowered, execution_phase=execution_phase):
             if not execution_phase and self._should_prefer_web_only(lowered):
                 web_only_scope = WEB_EXECUTION_TOOLS & available
                 if web_only_scope:
@@ -2766,6 +2885,7 @@ class DevenvKernel:
             scope.update(MEMORY_EXECUTION_TOOLS & available)
 
         if execution_phase and self._text_requires_mutation_tools(lowered):
+            scope.discard("search_text")
             scope.update((WRITE_EXECUTION_TOOLS | DELETE_EXECUTION_TOOLS) & available)
 
         if execution_phase and self._is_scaffold_request(lowered):
@@ -2873,13 +2993,12 @@ class DevenvKernel:
             marker in lowered_prompt
             for marker in (
                 "latest",
-                "current",
                 "today",
                 "recent",
                 "browse",
                 "google",
                 "look up",
-                "search",
+                "search for",
                 "search the web",
                 "web search",
                 "news",
@@ -2888,6 +3007,29 @@ class DevenvKernel:
                 "president",
                 "prime minister",
                 "ceo",
+            )
+        )
+
+    def _should_offer_web_search_for_phase(self, lowered_prompt: str, *, execution_phase: bool) -> bool:
+        if not execution_phase:
+            return self._should_offer_web_search(lowered_prompt)
+        if not self._text_requires_mutation_tools(lowered_prompt):
+            return self._should_offer_web_search(lowered_prompt)
+        return any(
+            marker in lowered_prompt
+            for marker in (
+                "browse",
+                "google",
+                "look up",
+                "search for",
+                "search the web",
+                "web search",
+                "latest",
+                "today",
+                "recent",
+                "news",
+                "docs",
+                "documentation",
             )
         )
 
@@ -3302,14 +3444,15 @@ class DevenvKernel:
 
     def _execute_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
         logger.info("Intercepted tool call: tool=%s arguments=%s", tool_call.tool_name, tool_call.arguments)
-        unsafe_argument = self.sandbox.find_unsafe_argument(tool_call.arguments)
+        normalized_arguments = self.sandbox.normalize_arguments(self._repair_tool_arguments(tool_call))
+        unsafe_argument = self.sandbox.find_unsafe_argument(normalized_arguments)
         if unsafe_argument is not None:
             _key, value = unsafe_argument
             logger.warning("Sandbox violation detected: tool=%s path=%s", tool_call.tool_name, value)
             return ToolExecutionStep(
                 step_id=tool_call.call_id,
                 tool_name=tool_call.tool_name,
-                arguments=tool_call.arguments,
+                arguments=normalized_arguments,
                 output=self.sandbox.violation_message(value),
                 success=False,
                 is_sandboxed_violation=True,
@@ -3329,7 +3472,6 @@ class DevenvKernel:
                 data={},
             )
 
-        normalized_arguments = self.sandbox.normalize_arguments(self._repair_tool_arguments(tool_call))
         scaffold_validation_error = self._validate_scaffold_tool_call(tool_call.tool_name, normalized_arguments)
         if scaffold_validation_error is not None:
             logger.warning("Rejected scaffold tool call: tool=%s error=%s", tool_call.tool_name, scaffold_validation_error)
@@ -3356,7 +3498,10 @@ class DevenvKernel:
         )
 
     def _repair_tool_arguments(self, tool_call: ToolCallRequest) -> dict[str, Any]:
-        arguments = dict(tool_call.arguments)
+        arguments = {
+            (key[:-1] if isinstance(key, str) and key.endswith(":") else key): value
+            for key, value in dict(tool_call.arguments).items()
+        }
         if "max_depth" in arguments and isinstance(arguments["max_depth"], str) and arguments["max_depth"].isdigit():
             arguments["max_depth"] = int(arguments["max_depth"])
 
@@ -3366,6 +3511,19 @@ class DevenvKernel:
                 repaired_path = self._repair_directory_path(path_value)
                 if repaired_path is not None:
                     arguments["path"] = repaired_path
+        if tool_call.tool_name in {"read_file", "edit_file", "write_file", "remove_file"}:
+            path_value = arguments.get("path")
+            if isinstance(path_value, str):
+                repaired_path = self._repair_workspace_file_path(path_value)
+                if repaired_path is not None:
+                    arguments["path"] = repaired_path
+        if tool_call.tool_name == "write_file" and "mode" not in arguments:
+            path_value = arguments.get("path")
+            if isinstance(path_value, str):
+                target = Path(path_value)
+                if not target.is_absolute():
+                    target = (Path(self.workspace_path) / target).resolve()
+                arguments["mode"] = "overwrite" if target.exists() else "fresh"
         if tool_call.tool_name in WRITE_EXECUTION_TOOLS | DELETE_EXECUTION_TOOLS | frozenset({"edit_file"}):
             path_value = arguments.get("path")
             if isinstance(path_value, str):
@@ -3450,9 +3608,25 @@ class DevenvKernel:
         if candidate.exists():
             return str(candidate.resolve())
 
+        requested_text = str(requested_path).strip().lower()
+        if candidate.is_absolute() and requested_text.startswith("/workspace/"):
+            logger.info("Repaired placeholder workspace directory path: requested=%s repaired=%s", requested_path, self.workspace_path)
+            return str(Path(self.workspace_path).resolve())
+
         requested_name = candidate.name.lower()
+        requested_tokens = {
+            token
+            for token in re.split(r"[^a-z0-9]+", requested_name)
+            if token and token not in {"app", "workspace", "project", "src"}
+        }
         try:
-            directories = [entry for entry in Path(self.workspace_path).iterdir() if entry.is_dir()]
+            directories: list[Path] = []
+            ignored_dirs = {".git", "__pycache__", "vectors", "node_modules", "build"}
+            for entry in Path(self.workspace_path).rglob("*"):
+                if any(part in ignored_dirs for part in entry.parts):
+                    continue
+                if entry.is_dir():
+                    directories.append(entry)
         except OSError:
             return None
 
@@ -3464,6 +3638,61 @@ class DevenvKernel:
                 if entry.name.lower() == matched_name:
                     logger.info("Repaired missing directory path: requested=%s repaired=%s", requested_path, entry)
                     return str(entry.resolve())
+
+        token_matches = [
+            entry
+            for entry in directories
+            if requested_tokens
+            and requested_tokens.intersection(
+                {
+                    token
+                    for token in re.split(r"[^a-z0-9]+", entry.name.lower())
+                    if token and token not in {"app", "workspace", "project", "src"}
+                }
+            )
+        ]
+        if len(token_matches) == 1:
+            logger.info("Repaired missing directory path by token overlap: requested=%s repaired=%s", requested_path, token_matches[0])
+            return str(token_matches[0].resolve())
+
+        return None
+
+    def _repair_workspace_file_path(self, requested_path: str) -> str | None:
+        candidate = Path(requested_path).expanduser()
+        if not candidate.is_absolute():
+            candidate = Path(self.workspace_path) / candidate
+
+        if candidate.exists():
+            return str(candidate.resolve())
+
+        requested_name = candidate.name.lower()
+        requested_suffix = candidate.suffix.lower()
+        if not requested_name and not requested_suffix:
+            return None
+
+        matches_by_name: list[Path] = []
+        matches_by_suffix: list[Path] = []
+        ignored_dirs = {".git", "__pycache__", "vectors", "node_modules", "build"}
+        try:
+            for entry in Path(self.workspace_path).rglob("*"):
+                if any(part in ignored_dirs for part in entry.parts):
+                    continue
+                if not entry.is_file():
+                    continue
+                lowered_name = entry.name.lower()
+                if lowered_name == requested_name:
+                    matches_by_name.append(entry)
+                if requested_suffix and entry.suffix.lower() == requested_suffix:
+                    matches_by_suffix.append(entry)
+        except OSError:
+            return None
+
+        if len(matches_by_name) == 1:
+            logger.info("Repaired missing file path by basename: requested=%s repaired=%s", requested_path, matches_by_name[0])
+            return str(matches_by_name[0].resolve())
+        if requested_suffix and len(matches_by_suffix) == 1:
+            logger.info("Repaired missing file path by unique suffix: requested=%s repaired=%s", requested_path, matches_by_suffix[0])
+            return str(matches_by_suffix[0].resolve())
 
         return None
 

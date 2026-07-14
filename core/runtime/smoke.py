@@ -23,6 +23,8 @@ def main() -> int:
     parser.add_argument("--planning-mode", default=PlanningMode.AUTO.value, choices=tuple(mode.value for mode in PlanningMode))
     parser.add_argument("--backend-preference", default="opencode")
     parser.add_argument("--enable-opencode-backend", action="store_true")
+    parser.add_argument("--enable-ollama-backend", action="store_true")
+    parser.add_argument("--enable-codex-backend", action="store_true")
     parser.add_argument("--allow-codex-context", action="store_true")
     parser.add_argument("--allow-opencode-context", action="store_true")
     parser.add_argument("--selected-tool", action="append", default=[])
@@ -62,6 +64,8 @@ def main() -> int:
         selected_tools=args.selected_tool,
         backend_preference=args.backend_preference,
         opencode_enabled=args.enable_opencode_backend,
+        ollama_enabled=args.enable_ollama_backend,
+        codex_enabled=args.enable_codex_backend,
     )
     kernel.close()
     print(json.dumps(

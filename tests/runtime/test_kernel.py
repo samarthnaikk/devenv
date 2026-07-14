@@ -28,6 +28,7 @@ from core.runtime.kernel import (
 from core.runtime.local_model import FallbackLocalModel, SentenceTransformerLocalModel, load_local_small_model
 from core.runtime.local_router import LocalRouteDecision
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode, RuntimeTurnResult
+from core.tools.edit_file import EditFileTool
 from core.tools.inspect_symbols import InspectSymbolsTool
 from core.tools.list_directory import ListDirectoryTool
 from core.tools.locate_files import LocateFilesTool
@@ -268,6 +269,251 @@ class DevenvKernelTest(unittest.TestCase):
             scope = kernel._resolve_direct_tool_scope("Explain the repo")
 
         self.assertEqual(scope, [])
+
+    def test_ollama_preference_still_allows_execution_phase_tool_scope(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        ai.preferred_backend = "ollama"
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(EditFileTool())
+            kernel.register_tool(WriteFileTool())
+
+            scope = kernel._resolve_execution_tool_scope(
+                "Add a light theme to this calendar app",
+                "Update the styles and markup for a lighter visual design.",
+            )
+
+        self.assertIn("read_file", scope)
+        self.assertIn("list_directory", scope)
+        self.assertIn("edit_file", scope)
+
+    def test_repair_tool_arguments_maps_missing_file_to_unique_workspace_suffix_match(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            frontend_dir = Path(tempdir) / "frontend"
+            frontend_dir.mkdir(parents=True)
+            (frontend_dir / "script.js").write_text("console.log('ok');\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+
+            repaired = kernel._repair_tool_arguments(
+                ToolCallRequest(
+                    call_id="call_1",
+                    tool_name="read_file",
+                    arguments={"path": "./src/main.js"},
+                )
+            )
+
+        self.assertTrue(repaired["path"].endswith("frontend/script.js"))
+
+    def test_repair_tool_arguments_normalizes_trailing_colon_keys_and_sets_write_mode(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            target = Path(tempdir) / "styles.css"
+            target.write_text("body {}\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+
+            repaired = kernel._repair_tool_arguments(
+                ToolCallRequest(
+                    call_id="call_1",
+                    tool_name="write_file",
+                    arguments={
+                        "path": str(target),
+                        "content": "body { color: black; }\n",
+                        "replace_block:": "noop",
+                    },
+                )
+            )
+
+        self.assertEqual(repaired["mode"], "overwrite")
+        self.assertIn("replace_block", repaired)
+        self.assertNotIn("replace_block:", repaired)
+
+    def test_execution_scope_for_local_edit_prompt_does_not_add_web_search_from_current_wording(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        ai.preferred_backend = "ollama"
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(EditFileTool())
+            kernel.register_tool(WriteFileTool())
+            kernel.register_tool(WebSearchTool())
+
+            scope = kernel._resolve_execution_tool_scope(
+                "Add a light theme to this calendar app and update the UI accordingly",
+                "Identify the current framework or technology used in the calendar app (e.g., React, Vue, Angular).",
+            )
+
+        self.assertIn("read_file", scope)
+        self.assertIn("edit_file", scope)
+        self.assertNotIn("web_search", scope)
+
+    def test_execution_scope_for_mutation_checkpoint_does_not_add_web_search_without_explicit_browse_intent(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        ai.preferred_backend = "ollama"
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(EditFileTool())
+            kernel.register_tool(WriteFileTool())
+            kernel.register_tool(WebSearchTool())
+
+            scope = kernel._resolve_execution_tool_scope(
+                "Add a light theme to this calendar app and update the UI accordingly",
+                "Identify resources or examples of light themes that can be applied to a calendar app UI.",
+            )
+
+        self.assertIn("read_file", scope)
+        self.assertIn("edit_file", scope)
+        self.assertNotIn("web_search", scope)
+
+    def test_execution_scope_does_not_treat_research_word_as_web_search_intent(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        ai.preferred_backend = "ollama"
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(EditFileTool())
+            kernel.register_tool(WriteFileTool())
+            kernel.register_tool(WebSearchTool())
+
+            scope = kernel._resolve_execution_tool_scope(
+                "Add a light theme to this calendar app and update the UI accordingly",
+                "Research how to implement a light theme in a calendar application.",
+            )
+
+        self.assertIn("read_file", scope)
+        self.assertIn("edit_file", scope)
+        self.assertNotIn("web_search", scope)
+
+    def test_execution_scope_for_mutation_prompt_drops_search_text_to_avoid_looping(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        ai.preferred_backend = "ollama"
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(SearchTextTool())
+            kernel.register_tool(EditFileTool())
+            kernel.register_tool(WriteFileTool())
+
+            scope = kernel._resolve_execution_tool_scope(
+                "Add a light theme to this calendar app and update the UI accordingly",
+                "Research how to implement a light theme in a calendar application.",
+            )
+
+        self.assertIn("read_file", scope)
+        self.assertIn("edit_file", scope)
+        self.assertNotIn("search_text", scope)
+
+    def test_ollama_mutation_prompt_uses_local_planning_blueprint_shape(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        ai.preferred_backend = "ollama"
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            blueprint, _conversation, trace = kernel._checkpoint_creation_stage(
+                user_prompt="Add a light theme to this calendar app and update the UI accordingly",
+                memory_context="",
+                continue_plan=False,
+                local_only=False,
+                planning_mode=PlanningMode.AUTO,
+                steps=[],
+                total_usage={},
+                ai_logs=[],
+                system_logs=[],
+                max_consecutive_tools=5,
+            )
+
+        self.assertEqual(trace.summary, "Created ordered checkpoint blueprint")
+        self.assertTrue(blueprint.tasks)
+        self.assertIn("Inspect the relevant workspace files", blueprint.tasks[0].description)
+        self.assertEqual(ai.chat_calls, [])
+
+    def test_edit_prompt_is_not_treated_as_scaffold_request(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+
+            result = kernel._is_scaffold_request("add a light theme to this calendar app and update the ui accordingly")
+
+        self.assertFalse(result)
+
+    def test_themed_creation_prompt_is_still_treated_as_scaffold_request(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+
+            result = kernel._is_scaffold_request("create a dark theme frontend folder in calendar with html css and js")
+
+        self.assertTrue(result)
+
+    def test_repair_directory_path_recovers_nested_workspace_project(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            nested = Path(tempdir) / "sample-test" / "calendar"
+            nested.mkdir(parents=True)
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+
+            repaired = kernel._repair_directory_path("/tmp/calendar_app")
+
+        self.assertEqual(repaired, str(nested.resolve()))
+
+    def test_execute_tool_call_repairs_directory_path_before_sandbox_check(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            nested = Path(tempdir) / "sample-test" / "calendar"
+            nested.mkdir(parents=True)
+            kernel = DevenvKernel(str(nested), memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+
+            step = kernel._execute_tool_call(
+                ToolCallRequest(
+                    call_id="call_1",
+                    tool_name="list_directory",
+                    arguments={"path": "/workspace/MyProject", "mode": "recursive"},
+                )
+            )
+
+        self.assertTrue(step.success)
+        self.assertFalse(step.is_sandboxed_violation)
+        self.assertEqual(step.arguments["path"], str(nested.resolve()))
+
+    def test_execution_checkpoint_indexes_auto_advance_from_inspect_to_apply(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            blueprint = kernel._parse_markdown_to_blueprint(
+                "\n".join(
+                    [
+                        "- [ ] Inspect the relevant workspace files for the requested change.",
+                        "- [ ] Apply the requested update inside the matching file or folder.",
+                        "- [ ] Verify the result in the workspace.",
+                    ]
+                ),
+                original_objective="add light theme and update the UI",
+            )
+
+            indexes = kernel._execution_checkpoint_indexes(blueprint)
+
+        self.assertEqual(indexes, [0, 1])
 
     def test_default_memory_paths_are_scoped_under_project_root(self) -> None:
         memory = FakeMemory()

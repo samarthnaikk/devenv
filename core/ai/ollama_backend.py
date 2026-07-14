@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -154,13 +155,27 @@ class OllamaAICore:
         compiled: list[dict[str, str]] = []
         system_text = self.system_instructions or DEFAULT_SYSTEM_INSTRUCTIONS
         if tool_names:
+            tool_payload = [
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.input_schema(),
+                }
+                for tool_name in tool_names
+                for tool in [self._tools[tool_name]]
+            ]
             system_text = "\n\n".join(
                 [
                     system_text,
+                    "Available tools:",
+                    json.dumps(tool_payload, separators=(",", ":"), sort_keys=True),
                     "If tool use is required, respond with exactly one JSON object and no prose.",
                     'For tool use return {"type":"tool_call","tool_name":"<tool>","arguments":{...}}.',
                     'For direct answers return {"type":"final","content":"<response>"}.',
                     f"Allowed tools: {', '.join(tool_names)}.",
+                    "Use only one tool call at a time and only from the listed tools.",
+                    "Do not say the tools are unavailable when the needed file inspection or file editing tools are listed above.",
+                    "For workspace code changes, inspect files with list_directory/read_file first, then use edit_file or write_file to make the change.",
                 ]
             )
         compiled.append({"role": "system", "content": system_text})
@@ -256,10 +271,7 @@ def _parse_structured_ollama_response(
     content: str,
     allowed_tools: list[str],
 ) -> AIResponse | None:
-    try:
-        payload = json.loads(content)
-    except json.JSONDecodeError:
-        return None
+    payload = _load_relaxed_json_object(content)
     if not isinstance(payload, dict):
         return None
     response_type = str(payload.get("type") or "final").strip().lower()
@@ -284,6 +296,32 @@ def _parse_structured_ollama_response(
         backend="ollama",
         metadata={"transport": "http_stream"},
     )
+
+
+def _load_relaxed_json_object(content: str) -> dict[str, Any] | None:
+    candidate = str(content or "").strip()
+    if not candidate:
+        return None
+    try:
+        payload = json.loads(candidate)
+        return _normalize_relaxed_json_object(payload)
+    except json.JSONDecodeError:
+        repaired = re.sub(r'"([A-Za-z0-9_]+):"\s*:', r'"\1":', candidate)
+        try:
+            payload = json.loads(repaired)
+        except json.JSONDecodeError:
+            return None
+        return _normalize_relaxed_json_object(payload)
+
+
+def _normalize_relaxed_json_object(payload: Any) -> dict[str, Any] | None:
+    if not isinstance(payload, dict):
+        return None
+    normalized: dict[str, Any] = {}
+    for key, value in payload.items():
+        cleaned_key = key[:-1] if isinstance(key, str) and key.endswith(":") else key
+        normalized[str(cleaned_key)] = value
+    return normalized
 
 
 def _ollama_usage(payload: dict[str, Any]) -> dict[str, int]:
