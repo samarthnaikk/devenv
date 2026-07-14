@@ -1551,7 +1551,9 @@ class DevenvKernel:
         relevant_paths = self._select_local_relevant_paths(user_prompt, listing_step.output)
         if _is_repo_overview_question(user_prompt):
             relevant_paths = self._ensure_repo_summary_paths(relevant_paths, listing_step.output)
-        if _is_architecture_question(user_prompt):
+        if _is_backend_connector_question(user_prompt):
+            relevant_paths = self._ensure_backend_connector_paths(relevant_paths, listing_step.output)
+        elif _is_architecture_question(user_prompt):
             relevant_paths = self._ensure_architecture_summary_paths(relevant_paths, listing_step.output)
         if not relevant_paths:
             return _summarize_directory_listing(candidate_path, listing_step.output)
@@ -1567,6 +1569,21 @@ class DevenvKernel:
             self._mark_local_backend_response()
             return _summarize_directory_listing(candidate_path, listing_step.output)
         ai_logs.append("Local-only answer assembled from workspace files")
+        if _is_backend_connector_question(user_prompt):
+            joined = "\n- ".join(summary_sections)
+            self._mark_local_backend_response()
+            return (
+                "## Backend Connector Fit\n"
+                "Yes. Devenv already has a backend-router pattern, so Claude can be added as another reasoning backend the same way Codex and Ollama are wired in.\n"
+                "The main touchpoints are `core/ai/routing.py`, `core/runtime/web.py`, and the backend adapters under `core/ai/`.\n"
+                "- "
+                + joined
+                + "\n\n"
+                "## What To Add\n"
+                "- Create a `core/ai/claude_backend.py` adapter that matches the existing `chat`, `status`, `set_model`, and `reset_session` expectations.\n"
+                "- Register that backend inside `RoutingAICore` so backend preference and model selection can switch to Claude.\n"
+                "- Extend `core/runtime/web.py` and the website backend picker so Claude appears as another backend option with access control and model metadata."
+            )
         if _is_architecture_question(user_prompt) and not _is_repo_overview_question(user_prompt):
             joined = "\n- ".join(summary_sections)
             self._mark_local_backend_response()
@@ -1674,6 +1691,8 @@ class DevenvKernel:
             "core/runtime/kernel.py": 24,
             "core/runtime/web.py": 22,
             "core/ai/routing.py": 20,
+            "core/ai/codex_backend.py": 19,
+            "core/ai/ollama_backend.py": 18,
             "core/runtime/context_builder.py": 18,
             "core/ai/opencode_client.py": 17,
             "core/memory/engine.py": 14,
@@ -1701,6 +1720,57 @@ class DevenvKernel:
             if not isinstance(relative_path, str) or not relative_path.strip():
                 continue
             score = architecture_targets.get(relative_path, 0)
+            lowered = relative_path.lower()
+            if any(marker in lowered for marker in ("tests/", "sample-test/", "build/", "docs/screenshots/", "devenv.egg-info/", "devenv1a.egg-info/")):
+                score -= 10
+            if score > 0:
+                supplemental.append((score, relative_path))
+
+        preferred_paths: list[str] = []
+        for path, score in sorted(scored_paths.items(), key=lambda item: (-item[1], item[0])):
+            if score > 0 and path not in preferred_paths:
+                preferred_paths.append(path)
+        supplemental.sort(key=lambda item: (-item[0], item[1]))
+        for _score, path in supplemental:
+            if path not in preferred_paths:
+                preferred_paths.append(path)
+            if len(preferred_paths) >= 3:
+                break
+        return preferred_paths[:3]
+
+    def _ensure_backend_connector_paths(self, relevant_paths: list[str], listing_output: str) -> list[str]:
+        payload = _extract_tool_payload_json(listing_output)
+        entries = payload.get("entries") if isinstance(payload, dict) else None
+        connector_targets = {
+            "core/ai/routing.py": 28,
+            "core/runtime/web.py": 24,
+            "core/ai/codex_backend.py": 22,
+            "core/ai/ollama_backend.py": 21,
+            "core/ai/opencode_client.py": 18,
+            "core/runtime/kernel.py": 16,
+            "README.md": 8,
+        }
+        scored_paths: dict[str, int] = {}
+        for path in relevant_paths:
+            if not isinstance(path, str) or not path.strip():
+                continue
+            score = connector_targets.get(path, 0)
+            lowered = path.lower()
+            if any(marker in lowered for marker in ("tests/", "sample-test/", "build/", "docs/screenshots/", "devenv.egg-info/", "devenv1a.egg-info/")):
+                score -= 10
+            scored_paths[path] = max(score, scored_paths.get(path, 0))
+        if not isinstance(entries, list):
+            ordered = sorted(scored_paths.items(), key=lambda item: (-item[1], item[0]))
+            return [path for path, _score in ordered if _score > 0][:3] or relevant_paths[:3]
+
+        supplemental: list[tuple[int, str]] = []
+        for entry in entries:
+            if not isinstance(entry, dict) or entry.get("is_dir"):
+                continue
+            relative_path = entry.get("relative_path")
+            if not isinstance(relative_path, str) or not relative_path.strip():
+                continue
+            score = connector_targets.get(relative_path, 0)
             lowered = relative_path.lower()
             if any(marker in lowered for marker in ("tests/", "sample-test/", "build/", "docs/screenshots/", "devenv.egg-info/", "devenv1a.egg-info/")):
                 score -= 10
@@ -3027,6 +3097,8 @@ class DevenvKernel:
             "routing.py",
             "web.py",
             "workspace.py",
+            "codex_backend.py",
+            "ollama_backend.py",
             "opencode_client.py",
         }
         scored: list[tuple[int, str]] = []
@@ -3066,6 +3138,8 @@ class DevenvKernel:
                         "core/runtime/kernel.py",
                         "core/runtime/web.py",
                         "core/ai/routing.py",
+                        "core/ai/codex_backend.py",
+                        "core/ai/ollama_backend.py",
                         "core/ai/opencode_client.py",
                         "core/runtime/context_builder.py",
                         "core/memory/engine.py",
@@ -3078,6 +3152,10 @@ class DevenvKernel:
                     score += 7
                 if architecture_prompt and lowered == "core/ai/routing.py":
                     score += 6
+                if architecture_prompt and lowered == "core/ai/codex_backend.py":
+                    score += 6
+                if architecture_prompt and lowered == "core/ai/ollama_backend.py":
+                    score += 5
                 if architecture_prompt and lowered == "core/ai/opencode_client.py":
                     score += 2
                 if architecture_prompt and any(
@@ -3189,6 +3267,8 @@ class DevenvKernel:
 
     def _can_answer_from_structure(self, user_prompt: str) -> bool:
         lowered = user_prompt.lower()
+        if _is_backend_connector_question(user_prompt):
+            return True
         structure_queries = (
             "what is in",
             "show me",
@@ -5479,6 +5559,8 @@ def _lexical_line_score(summary: str, user_prompt: str, terms: list[str]) -> int
 
 def _is_architecture_question(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
+    if _is_backend_connector_question(user_prompt):
+        return True
     return any(
         marker in lowered
         for marker in (
@@ -5492,6 +5574,24 @@ def _is_architecture_question(user_prompt: str) -> bool:
             "how does the codebase work",
             "how does this repo work",
             "how does this repository work",
+        )
+    )
+
+
+def _is_backend_connector_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    if "claude code" in lowered and "integrat" in lowered:
+        return True
+    return any(
+        marker in lowered
+        for marker in (
+            "another connector like codex or opencode",
+            "options as backend",
+            "option as backend",
+            "another backend",
+            "backend option",
+            "thinking part",
+            "like codex or opencode",
         )
     )
 
@@ -5645,6 +5745,8 @@ def _should_trust_memory_answer_for_prompt(user_prompt: str) -> bool:
 
 def _prefers_deeper_workspace_scan(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
+    if _is_backend_connector_question(user_prompt):
+        return True
     if _is_repo_summary_question(user_prompt):
         return True
     return any(
@@ -5857,7 +5959,9 @@ def _summarize_symbol_outline(file_name: str, payload: dict[str, Any] | list[Any
     special_summaries = {
         "kernel.py": "`kernel.py` is the main orchestrator: it handles memory retrieval, routing, planning/checkpoint flow, tool execution, and verification for each turn.",
         "web.py": "`web.py` runs the local web backend: it serves the app, exposes health/files/turn endpoints, and sanitizes noisy replay output before users see it.",
-        "routing.py": "`routing.py` owns AI backend routing: it keeps Devenv in charge of tools while sending bounded prompts and structured replies through OpenCode.",
+        "routing.py": "`routing.py` owns AI backend routing: it switches between OpenCode, Ollama, and Codex while keeping Devenv in charge of tools and backend preference.",
+        "codex_backend.py": "`codex_backend.py` adapts the Codex backend into Devenv's shared chat/status contract so it can be selected like the other reasoning engines.",
+        "ollama_backend.py": "`ollama_backend.py` adapts local Ollama models into the same backend contract, including status, model selection, and bounded chat calls.",
         "opencode_client.py": "`opencode_client.py` is the transport layer for OpenCode server health checks, session management, message submission, and recovery.",
         "context_builder.py": "`context_builder.py` assembles the context packet from memory, workspace evidence, and prior session history before a model turn.",
         "engine.py": "`engine.py` is the memory engine: it stores episodic and associative memory and retrieves project context for later turns.",

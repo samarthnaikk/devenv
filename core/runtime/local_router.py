@@ -75,7 +75,26 @@ class LocalIntentRouter:
                     "summarize the codebase",
                 )
             )
-            use_local = (knowledge_hits >= 2 and mutation_hits == 0) or (repo_summary_hint and mutation_hits == 0)
+            backend_connector_hint = (
+                ("claude code" in lowered and "integrat" in lowered)
+                or any(
+                    phrase in lowered
+                    for phrase in (
+                        "another connector like codex or opencode",
+                        "options as backend",
+                        "option as backend",
+                        "another backend",
+                        "backend option",
+                        "thinking part",
+                        "like codex or opencode",
+                    )
+                )
+            )
+            use_local = (
+                (knowledge_hits >= 2 and mutation_hits == 0)
+                or (repo_summary_hint and mutation_hits == 0)
+                or backend_connector_hint
+            )
             return LocalRouteDecision(use_local, float(knowledge_hits - mutation_hits), float(knowledge_hits), float(mutation_hits), "heuristic")
 
         try:
@@ -112,7 +131,22 @@ class LocalIntentRouter:
                 for token in ("create", "make", "add", "fix", "edit", "update", "modify", "remove", "implement", "write")
                 if token in lowered
             )
-            use_local = knowledge_hits >= 2 and mutation_hits == 0
+            backend_connector_hint = (
+                ("claude code" in lowered and "integrat" in lowered)
+                or any(
+                    phrase in lowered
+                    for phrase in (
+                        "another connector like codex or opencode",
+                        "options as backend",
+                        "option as backend",
+                        "another backend",
+                        "backend option",
+                        "thinking part",
+                        "like codex or opencode",
+                    )
+                )
+            )
+            use_local = (knowledge_hits >= 2 and mutation_hits == 0) or backend_connector_hint
             return LocalRouteDecision(use_local, float(knowledge_hits - mutation_hits), float(knowledge_hits), float(mutation_hits), "heuristic fallback")
 
 

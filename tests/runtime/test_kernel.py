@@ -1378,6 +1378,60 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("## Project Overview", result.final_response or "")
         self.assertIn("README.md", result.final_response or "")
 
+    def test_backend_connector_prompt_routes_to_local_architecture_answer(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            ai_dir = Path(tempdir) / "core" / "ai"
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            ai_dir.mkdir(parents=True)
+            runtime_dir.mkdir(parents=True)
+            (ai_dir / "routing.py").write_text("class RoutingAICore:\n    pass\n", encoding="utf-8")
+            (ai_dir / "codex_backend.py").write_text("class CodexAICore:\n    pass\n", encoding="utf-8")
+            (ai_dir / "ollama_backend.py").write_text("class OllamaAICore:\n    pass\n", encoding="utf-8")
+            (runtime_dir / "web.py").write_text("class DevenvWebApp:\n    pass\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("can we integrate claude code in this")
+
+        self.assertEqual(ai.chat_calls, [])
+        self.assertIn("## Backend Connector Fit", result.final_response or "")
+        self.assertIn("routing.py", result.final_response or "")
+        self.assertIn("claude_backend.py", result.final_response or "")
+
+    def test_backend_connector_follow_up_prompt_stays_local_and_actionable(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            ai_dir = Path(tempdir) / "core" / "ai"
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            ai_dir.mkdir(parents=True)
+            runtime_dir.mkdir(parents=True)
+            (ai_dir / "routing.py").write_text("class RoutingAICore:\n    pass\n", encoding="utf-8")
+            (ai_dir / "codex_backend.py").write_text("class CodexAICore:\n    pass\n", encoding="utf-8")
+            (ai_dir / "ollama_backend.py").write_text("class OllamaAICore:\n    pass\n", encoding="utf-8")
+            (runtime_dir / "web.py").write_text("class DevenvWebApp:\n    pass\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn(
+                "no like how codex and opencode are options as backend (like the thinking part) not their UI or website, like that I want for claude also"
+            )
+
+        self.assertEqual(ai.chat_calls, [])
+        self.assertIn("## Backend Connector Fit", result.final_response or "")
+        self.assertIn("routing.py", result.final_response or "")
+        self.assertIn("Codex", result.final_response or "")
+        self.assertIn("Ollama", result.final_response or "")
+        self.assertTrue(any(path.endswith("core/runtime/web.py") for path in result.metadata.get("files_touched", [])))
+
     def test_tell_me_about_repo_prompt_uses_current_workspace_summary_not_prior_memory(self) -> None:
         memory = FakeMemory()
         memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
