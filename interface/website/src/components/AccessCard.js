@@ -77,7 +77,7 @@ export function AccessCard() {
   const handlePlanToggle = (event) => {
     const enabled = Boolean(event.target.checked);
     dispatch({ type: "SET_PLAN_MODE", payload: enabled });
-    showToast(dispatch, enabled ? "Plan mode enabled — no file edits allowed" : "Plan mode disabled");
+    showToast(dispatch, enabled ? "Plan mode enabled — Devenv will always break work into checkpoints" : "Plan mode disabled");
   };
 
   return React.createElement(
@@ -147,7 +147,7 @@ export function AccessCard() {
           "div",
           { className: "flex flex-col" },
           React.createElement("span", { className: "font-body-md text-body-md" }, "Plan mode"),
-          React.createElement("span", { className: "text-[10px] text-on-surface-variant" }, "Only plan \u2014 no file edits")
+          React.createElement("span", { className: "text-[10px] text-on-surface-variant" }, "Always use checkpoint planning")
         )
       )
     )

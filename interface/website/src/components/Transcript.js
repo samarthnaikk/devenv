@@ -75,7 +75,7 @@ export function Transcript() {
         case "thinking":
           return React.createElement(ThinkingMessage, { key: item.id, message: item });
         case "plan":
-          return React.createElement(PlanFlowchart, { key: item.id, blueprint: item.blueprint });
+          return React.createElement(PlanFlowchart, { key: item.id, blueprint: item.blueprint, mode: item.mode || "auto" });
         case "error":
           return React.createElement(ErrorMessage, { key: item.id, message: item });
         default:

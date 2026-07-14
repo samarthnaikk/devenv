@@ -148,7 +148,7 @@ function convertEdges(edges) {
   }));
 }
 
-export function PlanFlowchart({ blueprint }) {
+export function PlanFlowchart({ blueprint, mode = "auto" }) {
   const normalized = React.useMemo(() => normalizeBlueprint(blueprint), [blueprint]);
   const validation = React.useMemo(() => validatePlanBlueprint({
     nodes: normalized.nodes,
@@ -202,6 +202,11 @@ export function PlanFlowchart({ blueprint }) {
         "span",
         { className: `px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] ${blueprint.verification_passed ? "text-primary" : allDone ? "text-primary" : "text-on-surface-variant"}` },
         blueprint.verification_passed ? "Verified" : allDone ? "Done" : "In progress"
+      ),
+      React.createElement(
+        "span",
+        { className: "px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
+        mode === "forced" ? "Plan mode" : "Auto-planned"
       ),
       React.createElement(
         "span",

@@ -61,94 +61,41 @@ export function Composer() {
 
     try {
       const { runTurn } = await import("../api.js");
-      const READ_ONLY_TOOLS = ["list_directory", "read_file", "glob", "grep", "inspect_symbols", "search_symbols"];
-      const MAX_PLAN_RETRIES = 3;
-
       let result = null;
-      let planRetries = 0;
-      let currentPrompt = state.planMode
-        ? `The user asked: "${originalPrompt}"
-
-Your task is to produce a JSON execution plan. You MUST return ONLY valid JSON — no markdown fences, no explanatory text around it, no code blocks.
-
-Required JSON structure:
-{
-  "tasks": [
-    {
-      "task_id": "a-short-kebab-id",
-      "description": "Clear actionable description of what this step does",
-      "level": 0
-    }
-  ],
-  "edges": [
-    { "from": "id-of-source-task", "to": "id-of-target-task" }
-  ]
-}
-
-Rules:
-- Every task MUST have all three fields: "task_id" (string), "description" (non-empty string), "level" (integer >= 0).
-- "task_id" values must be unique — use short kebab-case like "research-api", "implement-core", "write-tests".
-- "level" is the depth in the plan graph: 0 for root/initial tasks, 1 for their children, 2 for grandchildren, etc.
-- For a flat list of sequential steps, give all tasks level 0 and connect them with edges from first to second to third...
-- "edges" is REQUIRED when there are multiple tasks. Each edge has "from" and "to" referencing existing task_ids.
-- DO NOT wrap the JSON in \`\`\` fences or code blocks. Return raw JSON only.
-- DO NOT include extra fields like "status", "label", "id" (use "task_id" instead).
-
-Example of a correct plan for "build a login page":
-{"tasks":[{"task_id":"design-ui","description":"Design the login page UI mockup","level":0},{"task_id":"implement-frontend","description":"Build the login form component with validation","level":0},{"task_id":"add-backend","description":"Add login API endpoint with session handling","level":1},{"task_id":"write-tests","description":"Write unit and integration tests for login flow","level":1}],"edges":[{"from":"design-ui","to":"implement-frontend"},{"from":"implement-frontend","to":"add-backend"},{"from":"add-backend","to":"write-tests"}]}
-
-Return ONLY the JSON object. No explanations, no markdown.`
-        : originalPrompt;
       let planValidationError = null;
 
       while (true) {
-        while (true) {
-          try {
-            result = await runTurn({
-              prompt: currentPrompt,
-              planningMode: state.planMode ? "force_plan" : "auto",
-              selectedTools: state.planMode ? READ_ONLY_TOOLS : state.selectedTools,
-              backendPreference: state.preferredBackend || "opencode",
-              sessionBudgetTokens: state.sessionBudgetTokens,
-            });
-            break;
-          } catch (error) {
-            const parsedRateLimit = parseRateLimitError(error.message);
-            if (!parsedRateLimit) throw error;
-            dispatch({ type: "SET_RATE_LIMIT_INFO", payload: parsedRateLimit });
+        try {
+          result = await runTurn({
+            prompt: originalPrompt,
+            planningMode: state.planMode ? "force_plan" : "auto",
+            selectedTools: state.selectedTools,
+            backendPreference: state.preferredBackend || "opencode",
+            sessionBudgetTokens: state.sessionBudgetTokens,
+          });
+          break;
+        } catch (error) {
+          const parsedRateLimit = parseRateLimitError(error.message);
+          if (!parsedRateLimit) throw error;
+          dispatch({ type: "SET_RATE_LIMIT_INFO", payload: parsedRateLimit });
+          updateThinking(thinkingId, dispatch, [
+            { source: "system", message: "Rate limit reached" },
+            { source: "ai", message: `Retrying in ${formatDuration(parsedRateLimit.retryMs)}` },
+          ]);
+          await waitForCooldown(parsedRateLimit.resetAt, (remainingMs) => {
             updateThinking(thinkingId, dispatch, [
               { source: "system", message: "Rate limit reached" },
-              { source: "ai", message: `Retrying in ${formatDuration(parsedRateLimit.retryMs)}` },
+              { source: "ai", message: `Retrying in ${formatDuration(remainingMs)}` },
             ]);
-            await waitForCooldown(parsedRateLimit.resetAt, (remainingMs) => {
-              updateThinking(thinkingId, dispatch, [
-                { source: "system", message: "Rate limit reached" },
-                { source: "ai", message: `Retrying in ${formatDuration(remainingMs)}` },
-              ]);
-            });
-          }
+          });
         }
+      }
 
-        if (state.planMode && result.blueprint && (result.blueprint.tasks || result.blueprint.nodes)) {
-          const validation = validatePlanBlueprint(result.blueprint);
-          if (!validation.valid && planRetries < MAX_PLAN_RETRIES) {
-            planRetries++;
-            planValidationError = validation.error;
-            currentPrompt = `The format was invalid. Fix the JSON and return it again following the format specification provided earlier.
+      const shouldShowPlan = shouldDisplayPlan(result, state.planMode);
 
-Previous error: ${validation.error}
-
-Return ONLY the raw JSON object. No markdown fences, no explanations.`;
-            updateThinking(thinkingId, dispatch, [
-              { source: "system", message: `Blueprint format invalid: ${validation.error}` },
-              { source: "ai", message: `Re-prompting AI to fix blueprint (attempt ${planRetries}/${MAX_PLAN_RETRIES})...` },
-            ]);
-            continue;
-          }
-          planValidationError = validation.valid ? null : validation.error;
-        }
-
-        break;
+      if (shouldShowPlan && result.blueprint && (result.blueprint.tasks || result.blueprint.nodes)) {
+        const validation = validatePlanBlueprint(result.blueprint);
+        planValidationError = validation.valid ? null : validation.error;
       }
 
       const turnTokens = Number(result.total_usage?.total_tokens || 0);
@@ -179,20 +126,25 @@ Return ONLY the raw JSON object. No markdown fences, no explanations.`;
         payload: { id: thinkingId, updates: { content: formatThinkingFromResult(result), pending: false } },
       });
 
-      if (state.planMode && result.blueprint && planValidationError === null) {
+      if (shouldShowPlan && result.blueprint && planValidationError === null) {
         dispatch({ type: "SET_PLAN_BLUEPRINT", payload: result.blueprint });
         dispatch({
           type: "APPEND_TRANSCRIPT",
-          payload: { id: `plan-${Date.now()}`, role: "plan", content: "", blueprint: result.blueprint },
+          payload: {
+            id: `plan-${Date.now()}`,
+            role: "plan",
+            content: "",
+            blueprint: result.blueprint,
+            mode: state.planMode ? "forced" : "auto",
+          },
         });
-      } else if (state.planMode && planValidationError) {
-        dispatch({ type: "SET_PLAN_BLUEPRINT", payload: null });
+      } else if (shouldShowPlan && result.blueprint && planValidationError) {
         dispatch({
           type: "APPEND_TRANSCRIPT",
           payload: {
             id: `plan-error-${Date.now()}`,
             role: "error",
-            content: `Failed to generate a valid execution plan after ${MAX_PLAN_RETRIES} attempts.\n\nLast error: ${planValidationError}\n\nThe AI needs to include 'level' (integer depth) for each task and an 'edges' array in the blueprint.`,
+            content: `The runtime returned a plan blueprint, but the UI could not render it yet.\n\nLast error: ${planValidationError}`,
           },
         });
       }
@@ -291,6 +243,17 @@ Return ONLY the raw JSON object. No markdown fences, no explanations.`;
       )
     )
   );
+}
+
+function shouldDisplayPlan(result, planModeEnabled) {
+  if (planModeEnabled) return true;
+  const traces = Array.isArray(result?.stage_traces) ? result.stage_traces : [];
+  const checkpointCreation = traces.find((trace) => trace && trace.stage === "checkpoint_creation");
+  if (checkpointCreation?.payload && typeof checkpointCreation.payload.should_plan === "boolean") {
+    return checkpointCreation.payload.should_plan;
+  }
+  const taskCount = Array.isArray(result?.blueprint?.tasks) ? result.blueprint.tasks.length : 0;
+  return taskCount > 1;
 }
 
 function updateThinking(thinkingId, dispatch, logs) {

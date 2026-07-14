@@ -6,8 +6,13 @@ export function validatePlanBlueprint(data) {
   if (Array.isArray(data.tasks)) {
     for (let i = 0; i < data.tasks.length; i++) {
       const t = data.tasks[i];
-      if (t && typeof t === "object" && !t.task_id && !t.id) {
-        t.task_id = `task-${i}`;
+      if (t && typeof t === "object") {
+        if (!t.task_id && !t.id) {
+          t.task_id = `task-${i}`;
+        }
+        if (typeof t.level !== "number" || t.level < 0 || !Number.isInteger(t.level)) {
+          t.level = inferTaskLevel(t, i);
+        }
       }
     }
     if (data.tasks.length > 1 && (!Array.isArray(data.edges) || data.edges.length === 0)) {
@@ -159,7 +164,7 @@ function normalizeTasksToFlowchart(blueprint) {
   const nodes = tasks.map((t, i) => ({
     id: t.task_id || t.id || `task-${i}`,
     label: t.description || t.label || `Task ${i + 1}`,
-    level: t.level,
+    level: typeof t.level === "number" && Number.isInteger(t.level) ? t.level : inferTaskLevel(t, i),
     desc: t.desc || t.description || "",
     status: t.is_completed ? "done" : i === activePointer ? "active" : "pending",
   }));
@@ -175,4 +180,14 @@ function normalizeTasksToFlowchart(blueprint) {
     .filter(Boolean);
 
   return { nodes, edges };
+}
+
+function inferTaskLevel(task, index) {
+  if (task && Array.isArray(task.child_checkpoint_ids) && task.child_checkpoint_ids.length > 0) {
+    return 0;
+  }
+  if (task && task.repair_origin_checkpoint_id != null) {
+    return 1;
+  }
+  return 0;
 }
