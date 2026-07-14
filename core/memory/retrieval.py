@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import replace
 
@@ -12,6 +13,16 @@ from .working_memory import WorkingMemoryManager
 PARENT_RELATIONSHIP_FACTOR = 0.92
 SIBLING_RELATIONSHIP_FACTOR = 0.84
 EDGE_RELATIONSHIP_FACTOR = 0.8
+MIN_CONTEXT_DRIFT_JACCARD = 0.12
+REFERENTIAL_CONTEXT_MARKERS = {
+    "again",
+    "earlier",
+    "it",
+    "that",
+    "them",
+    "those",
+    "this",
+}
 
 
 class RetrievalService:
@@ -164,6 +175,8 @@ class RetrievalService:
 
         if not recent_context:
             return current_prompt
+        if _should_strip_recent_context(current_prompt, recent_context):
+            return current_prompt
 
         return "\n".join([current_prompt, *recent_context])
 
@@ -178,3 +191,35 @@ def _normalize(values: list[float]) -> list[float]:
         return [1.0 for _ in values]
 
     return [(value - minimum) / (maximum - minimum) for value in values]
+
+
+def _should_strip_recent_context(current_prompt: str, recent_context: list[str]) -> bool:
+    prompt_tokens = _context_tokens(current_prompt)
+    if len(prompt_tokens) < 4:
+        return False
+    if prompt_tokens & REFERENTIAL_CONTEXT_MARKERS:
+        return False
+
+    context_tokens: set[str] = set()
+    for line in recent_context:
+        context_tokens.update(_context_tokens(line))
+    if not context_tokens:
+        return False
+    return _jaccard_overlap(prompt_tokens, context_tokens) < MIN_CONTEXT_DRIFT_JACCARD
+
+
+def _context_tokens(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9_]+", text.lower())
+        if len(token) > 2 and token not in {"the", "and", "for", "with", "from", "into", "about"}
+    }
+
+
+def _jaccard_overlap(left: set[str], right: set[str]) -> float:
+    if not left or not right:
+        return 0.0
+    union = left | right
+    if not union:
+        return 0.0
+    return len(left & right) / len(union)

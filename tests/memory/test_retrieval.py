@@ -128,6 +128,33 @@ class RetrievalFlowTest(unittest.TestCase):
         self.assertIn("calendar project", result.markdown_context.lower())
         self.assertIn("python backend", result.markdown_context.lower())
 
+    def test_compose_query_strips_unrelated_recent_context_on_topic_shift(self) -> None:
+        self.engine.record_working_memory(
+            messages=[
+                {"role": "user", "content": "Let's plan the travel itinerary for Kyoto and Osaka next month."},
+                {"role": "assistant", "content": "We should compare train routes and hotel areas."},
+            ],
+            active_state={"workspace_path": self.tempdir.name},
+        )
+
+        query = self.engine.retrieval_service._compose_query("How do I fix the django authentication middleware bug?")
+
+        self.assertEqual(query, "How do I fix the django authentication middleware bug?")
+
+    def test_compose_query_keeps_recent_context_for_referential_follow_up(self) -> None:
+        self.engine.record_working_memory(
+            messages=[
+                {"role": "user", "content": "Do you remember the calendar project we were building?"},
+                {"role": "assistant", "content": "Yes, it used a Python backend and React frontend."},
+            ],
+            active_state={"workspace_path": self.tempdir.name},
+        )
+
+        query = self.engine.retrieval_service._compose_query("Can you explain it again?")
+
+        self.assertIn("Do you remember the calendar project we were building?", query)
+        self.assertIn("Yes, it used a Python backend and React frontend.", query)
+
     def test_rehydrates_vector_index_from_stored_nodes_on_new_session(self) -> None:
         self.engine.add_episodic_log(
             "The calendar project used a React frontend and Python backend.",
