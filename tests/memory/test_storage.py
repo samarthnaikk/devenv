@@ -75,6 +75,33 @@ class SQLiteMemoryStoreTest(unittest.TestCase):
         self.assertEqual(self.store.list_logs_since(0.0), [log])
         self.assertEqual(self.store.get_state("last_consolidated_at"), "10.0")
 
+    def test_fts_search_helpers_return_indexed_nodes_and_logs(self) -> None:
+        if not getattr(self.store, "_fts_enabled", False):
+            self.skipTest("SQLite FTS5 is not available in this environment")
+
+        node = MemoryNode(
+            node_id="auth_node",
+            parent_id=None,
+            label="Django Auth Setup",
+            category="component",
+            summary="Session cookies and middleware for django authentication.",
+            created_at=1.0,
+            last_accessed=1.0,
+            access_count=0,
+        )
+        log = EpisodicLog(
+            log_id="log-auth",
+            timestamp=11.0,
+            associated_node_id=None,
+            raw_interaction='{"user": "Need django auth help", "agent": "Check the middleware chain."}',
+        )
+
+        self.store.upsert_node(node)
+        self.store.insert_log(log)
+
+        self.assertEqual(self.store.search_nodes_fts("django auth middleware", limit=2)[0].node_id, "auth_node")
+        self.assertEqual(self.store.search_logs_fts("django auth help", limit=2)[0].log_id, "log-auth")
+
 
 if __name__ == "__main__":
     unittest.main()

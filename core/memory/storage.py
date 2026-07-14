@@ -55,10 +55,22 @@ SCHEMA_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS idx_node_edges_target_id ON node_edges(target_node_id)",
 )
 
+FTS_SCHEMA_STATEMENTS = (
+    """
+    CREATE VIRTUAL TABLE IF NOT EXISTS memory_nodes_fts
+    USING fts5(node_id, label, category, summary)
+    """,
+    """
+    CREATE VIRTUAL TABLE IF NOT EXISTS episodic_logs_fts
+    USING fts5(log_id, raw_interaction)
+    """,
+)
+
 
 class SQLiteMemoryStore:
     def __init__(self, db_path: str) -> None:
         self.db_path = Path(db_path)
+        self._fts_enabled = False
         if self.db_path.parent != Path("."):
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
@@ -85,6 +97,12 @@ class SQLiteMemoryStore:
         with self.transaction() as connection:
             for statement in SCHEMA_STATEMENTS:
                 connection.execute(statement)
+            try:
+                for statement in FTS_SCHEMA_STATEMENTS:
+                    connection.execute(statement)
+                self._fts_enabled = True
+            except sqlite3.OperationalError:
+                self._fts_enabled = False
             columns = {str(row["name"]) for row in connection.execute("PRAGMA table_info(episodic_logs)").fetchall()}
             if "external_context_query" not in columns:
                 connection.execute("ALTER TABLE episodic_logs ADD COLUMN external_context_query TEXT")
@@ -93,6 +111,8 @@ class SQLiteMemoryStore:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_episodic_logs_external_context_query ON episodic_logs(external_context_query)"
             )
+            if self._fts_enabled:
+                self._rebuild_fts(connection)
 
     def upsert_node(self, node: MemoryNode) -> None:
         with self.transaction() as connection:
@@ -121,6 +141,7 @@ class SQLiteMemoryStore:
                     node.access_count,
                 ),
             )
+            self._upsert_node_fts(connection, node)
 
     def get_node(self, node_id: str) -> MemoryNode | None:
         with self.transaction() as connection:
@@ -175,6 +196,7 @@ class SQLiteMemoryStore:
     def delete_node(self, node_id: str) -> bool:
         with self.transaction() as connection:
             cursor = connection.execute("DELETE FROM memory_nodes WHERE node_id = ?", (node_id,))
+            self._delete_node_fts(connection, node_id)
         return cursor.rowcount > 0
 
     def insert_log(self, log: EpisodicLog) -> None:
@@ -188,6 +210,7 @@ class SQLiteMemoryStore:
                 """,
                 (log.log_id, log.timestamp, log.associated_node_id, log.raw_interaction, external_context_query, agent_response),
             )
+            self._upsert_log_fts(connection, log)
 
     def list_logs_since(self, since: float) -> list[EpisodicLog]:
         with self.transaction() as connection:
@@ -222,6 +245,25 @@ class SQLiteMemoryStore:
                 LIMIT ?
                 """,
                 (*where_params, *score_params, limit),
+            ).fetchall()
+        return [EpisodicLog(**dict(row)) for row in rows]
+
+    def search_logs_fts(self, query: str, limit: int = 5) -> list[EpisodicLog]:
+        cleaned_query = _normalize_fts_query(query)
+        if not cleaned_query or not self._fts_enabled:
+            return []
+
+        with self.transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT el.log_id, el.timestamp, el.associated_node_id, el.raw_interaction
+                FROM episodic_logs_fts fts
+                JOIN episodic_logs el ON el.log_id = fts.log_id
+                WHERE episodic_logs_fts MATCH ?
+                ORDER BY bm25(episodic_logs_fts)
+                LIMIT ?
+                """,
+                (cleaned_query, limit),
             ).fetchall()
         return [EpisodicLog(**dict(row)) for row in rows]
 
@@ -377,6 +419,25 @@ class SQLiteMemoryStore:
             ).fetchall()
         return [_row_to_node(row) for row in rows]
 
+    def search_nodes_fts(self, query: str, limit: int = 5) -> list[MemoryNode]:
+        cleaned_query = _normalize_fts_query(query)
+        if not cleaned_query or not self._fts_enabled:
+            return []
+
+        with self.transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT mn.node_id, mn.parent_id, mn.label, mn.category, mn.summary, mn.created_at, mn.last_accessed, mn.access_count
+                FROM memory_nodes_fts fts
+                JOIN memory_nodes mn ON mn.node_id = fts.node_id
+                WHERE memory_nodes_fts MATCH ?
+                ORDER BY bm25(memory_nodes_fts)
+                LIMIT ?
+                """,
+                (cleaned_query, limit),
+            ).fetchall()
+        return [_row_to_node(row) for row in rows]
+
     def get_state(self, key: str) -> str | None:
         with self.transaction() as connection:
             row = connection.execute("SELECT value FROM engine_state WHERE key = ?", (key,)).fetchone()
@@ -457,6 +518,67 @@ class SQLiteMemoryStore:
             ).fetchall()
         return [_row_to_node(row) for row in rows]
 
+    def _rebuild_fts(self, connection: sqlite3.Connection) -> None:
+        connection.execute("DELETE FROM memory_nodes_fts")
+        connection.execute("DELETE FROM episodic_logs_fts")
+        node_rows = connection.execute(
+            """
+            SELECT node_id, label, category, summary
+            FROM memory_nodes
+            """
+        ).fetchall()
+        for row in node_rows:
+            connection.execute(
+                """
+                INSERT INTO memory_nodes_fts (node_id, label, category, summary)
+                VALUES (?, ?, ?, ?)
+                """,
+                (str(row["node_id"]), str(row["label"]), str(row["category"]), str(row["summary"])),
+            )
+        log_rows = connection.execute(
+            """
+            SELECT log_id, raw_interaction
+            FROM episodic_logs
+            """
+        ).fetchall()
+        for row in log_rows:
+            connection.execute(
+                """
+                INSERT INTO episodic_logs_fts (log_id, raw_interaction)
+                VALUES (?, ?)
+                """,
+                (str(row["log_id"]), str(row["raw_interaction"])),
+            )
+
+    def _upsert_node_fts(self, connection: sqlite3.Connection, node: MemoryNode) -> None:
+        if not self._fts_enabled:
+            return
+        connection.execute("DELETE FROM memory_nodes_fts WHERE node_id = ?", (node.node_id,))
+        connection.execute(
+            """
+            INSERT INTO memory_nodes_fts (node_id, label, category, summary)
+            VALUES (?, ?, ?, ?)
+            """,
+            (node.node_id, node.label, node.category, node.summary),
+        )
+
+    def _delete_node_fts(self, connection: sqlite3.Connection, node_id: str) -> None:
+        if not self._fts_enabled:
+            return
+        connection.execute("DELETE FROM memory_nodes_fts WHERE node_id = ?", (node_id,))
+
+    def _upsert_log_fts(self, connection: sqlite3.Connection, log: EpisodicLog) -> None:
+        if not self._fts_enabled:
+            return
+        connection.execute("DELETE FROM episodic_logs_fts WHERE log_id = ?", (log.log_id,))
+        connection.execute(
+            """
+            INSERT INTO episodic_logs_fts (log_id, raw_interaction)
+            VALUES (?, ?)
+            """,
+            (log.log_id, log.raw_interaction),
+        )
+
 
 def _row_to_node(row: sqlite3.Row) -> MemoryNode:
     return MemoryNode(
@@ -500,3 +622,11 @@ def _extract_agent_response(raw_interaction: str) -> str | None:
         return None
     cleaned = agent.strip()
     return cleaned or None
+
+
+def _normalize_fts_query(query: str) -> str:
+    tokens = [token.strip() for token in json.dumps(query).strip('"').replace("\\n", " ").split() if token.strip()]
+    cleaned_tokens = [replaced for token in tokens if (replaced := "".join(ch for ch in token if ch.isalnum() or ch in {"_", "-", "."}))]
+    if not cleaned_tokens:
+        return ""
+    return " ".join(f'"{token}"' for token in cleaned_tokens[:8])
