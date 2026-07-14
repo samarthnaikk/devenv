@@ -14,6 +14,7 @@ PARENT_RELATIONSHIP_FACTOR = 0.92
 SIBLING_RELATIONSHIP_FACTOR = 0.84
 EDGE_RELATIONSHIP_FACTOR = 0.8
 MIN_CONTEXT_DRIFT_JACCARD = 0.12
+RRF_K = 60
 REFERENTIAL_CONTEXT_MARKERS = {
     "again",
     "earlier",
@@ -42,8 +43,11 @@ class RetrievalService:
         self.similarity_threshold = similarity_threshold
 
     def retrieve(self, current_prompt: str, top_k: int) -> RetrievalResult:
-        query_vector = self.embedder.embed(self._compose_query(current_prompt))
-        matches = self.vector_index.query(query_vector, top_k=max(top_k, 5), min_similarity=self.similarity_threshold)
+        query_text = self._compose_query(current_prompt)
+        query_vector = self.embedder.embed(query_text)
+        vector_matches = self.vector_index.query(query_vector, top_k=max(top_k, 5), min_similarity=self.similarity_threshold)
+        lexical_matches = self._lexical_seed_matches(query_text, top_k=max(top_k, 5))
+        matches = self._fuse_seed_matches(vector_matches, lexical_matches, top_k=max(top_k, 5))
         if not matches:
             markdown = self._compile_markdown([], include_working_memory=True)
             trace = RetrievalTrace(markdown_context=markdown)
@@ -120,6 +124,49 @@ class RetrievalService:
         existing = expanded.get(candidate.node.node_id)
         if existing is None or candidate.similarity > existing.similarity:
             expanded[candidate.node.node_id] = candidate
+
+    def _lexical_seed_matches(self, query_text: str, top_k: int) -> list[VectorMatch]:
+        if not hasattr(self.store, "search_nodes_fts"):
+            return []
+        matches: list[VectorMatch] = []
+        for rank, node in enumerate(self.store.search_nodes_fts(query_text, limit=top_k), start=1):
+            matches.append(
+                VectorMatch(
+                    node_id=node.node_id,
+                    similarity=1.0 / (RRF_K + rank),
+                    text_chunk=node.summary,
+                )
+            )
+        return matches
+
+    def _fuse_seed_matches(
+        self,
+        vector_matches: list[VectorMatch],
+        lexical_matches: list[VectorMatch],
+        top_k: int,
+    ) -> list[VectorMatch]:
+        if not vector_matches and not lexical_matches:
+            return []
+
+        fused_scores: dict[str, float] = {}
+        text_chunks: dict[str, str] = {}
+
+        for rank, match in enumerate(vector_matches, start=1):
+            fused_scores[match.node_id] = fused_scores.get(match.node_id, 0.0) + (1.0 / (RRF_K + rank))
+            text_chunks.setdefault(match.node_id, match.text_chunk)
+        for rank, match in enumerate(lexical_matches, start=1):
+            fused_scores[match.node_id] = fused_scores.get(match.node_id, 0.0) + (1.0 / (RRF_K + rank))
+            text_chunks.setdefault(match.node_id, match.text_chunk)
+
+        ordered = sorted(fused_scores.items(), key=lambda item: item[1], reverse=True)
+        return [
+            VectorMatch(
+                node_id=node_id,
+                similarity=score,
+                text_chunk=text_chunks.get(node_id, ""),
+            )
+            for node_id, score in ordered[:top_k]
+        ]
 
     def _score_candidates(self, candidates: list[RetrievalCandidate]) -> list[RetrievalCandidate]:
         similarity_values = [candidate.similarity for candidate in candidates]

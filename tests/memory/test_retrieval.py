@@ -174,6 +174,35 @@ class RetrievalFlowTest(unittest.TestCase):
         self.assertIn("calendar project", result.markdown_context.lower())
         self.assertIn("python backend", result.markdown_context.lower())
 
+    def test_hybrid_retrieval_can_return_fts_seed_when_vector_lookup_misses(self) -> None:
+        if not getattr(self.engine.store, "_fts_enabled", False):
+            self.skipTest("SQLite FTS5 is not available in this environment")
+
+        class NoMatchVectorIndex(InMemoryVectorIndex):
+            def query(self, vector: list[float], top_k: int, min_similarity: float):
+                return []
+
+        tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tempdir.cleanup)
+        engine = MemoryEngine(
+            db_path=f"{tempdir.name}/memory.db",
+            vector_dir=f"{tempdir.name}/vectors",
+            embedder=HashingEmbedder(dimension=8),
+            vector_index=NoMatchVectorIndex(),
+        )
+        engine.update_associative_tree(
+            {
+                "node_id": "path_server_py",
+                "label": "server.py entrypoint",
+                "category": "file",
+                "summary": "The server.py entrypoint bootstraps the Flask backend runtime.",
+            }
+        )
+
+        result = engine.retrieve_context("server.py entrypoint", top_k=3)
+
+        self.assertIn("server.py entrypoint", result.markdown_context.lower())
+
     def test_skips_rehydration_when_vector_index_is_already_persisted(self) -> None:
         @dataclass
         class CountingEmbedder:
