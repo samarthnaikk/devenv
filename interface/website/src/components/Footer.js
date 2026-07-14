@@ -8,6 +8,12 @@ export function Footer() {
   const recentUsage = state.usageWindow.reduce((sum, entry) => sum + entry.totalTokens, 0);
   const remaining = Math.max(limit - recentUsage, 0);
   const remainingLabel = `${remaining}/${limit}`;
+  const preferredBackend = state.preferredBackend || state.activeBackend;
+  const preferredStatus = state.backends?.[preferredBackend] || null;
+  const backendReadyLabel = preferredStatus && preferredStatus.available === false
+    ? `${formatBackendLabel(preferredBackend)} offline`
+    : `${formatBackendLabel(state.activeBackend)} ready`;
+  const modelLabel = state.healthMeta.selectedModelsByBackend?.[preferredBackend] || state.healthMeta.model || "";
 
   return React.createElement(
     "footer",
@@ -19,8 +25,8 @@ export function Footer() {
       React.createElement(
         "div",
         { className: "flex flex-col" },
-        React.createElement("span", { className: "font-label-caps text-[10px] text-on-surface" }, state.isRunning ? "Running" : `${formatBackendLabel(state.activeBackend)} ready`),
-        React.createElement("span", { className: "font-code-sm text-[9px] text-on-surface-variant" }, state.healthMeta.model || "")
+        React.createElement("span", { className: "font-label-caps text-[10px] text-on-surface" }, state.isRunning ? "Running" : backendReadyLabel),
+        React.createElement("span", { className: "font-code-sm text-[9px] text-on-surface-variant" }, modelLabel)
       )
     ),
     React.createElement("span", { className: "font-code-sm text-[10px] text-on-surface-variant" }, remainingLabel)

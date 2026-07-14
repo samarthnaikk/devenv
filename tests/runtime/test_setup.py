@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core.runtime.models import RunConfig
-from core.runtime.setup import _check_codex_backend, inspect_setup
+from core.runtime.setup import _check_codex_backend, _check_ollama_backend, inspect_setup
 
 
 class SetupInspectionTest(unittest.TestCase):
@@ -40,6 +40,7 @@ class SetupInspectionTest(unittest.TestCase):
     @patch("core.runtime.setup._find_missing_dependencies", return_value=[])
     @patch("core.runtime.setup._check_opencode", return_value=(True, "OpenCode CLI available: 1.0.0."))
     @patch("core.runtime.setup._check_opencode_server", return_value=("ready", "OpenCode server reachable at http://127.0.0.1:4096 (1.0.0)."))
+    @patch("core.runtime.setup._check_ollama_backend", return_value=("ready", "Ollama reachable at http://127.0.0.1:11434 with models: qwen2.5:3b."))
     @patch("core.runtime.setup._check_codex_backend", return_value=("ready", "Codex backend configured for model gpt-5-codex."))
     @patch("core.runtime.setup._check_sentence_transformer_cache", return_value=("ready", "cache ready"))
     @patch("core.runtime.setup._check_web_search_prerequisites", return_value=("ready", "web ready"))
@@ -50,6 +51,7 @@ class SetupInspectionTest(unittest.TestCase):
         _mock_web,
         _mock_cache,
         _mock_codex,
+        _mock_ollama,
         _mock_server,
         _mock_opencode,
         _mock_deps,
@@ -59,11 +61,13 @@ class SetupInspectionTest(unittest.TestCase):
 
         self.assertEqual(result.optional_checks[0].name, "opencode_server")
         self.assertEqual(result.optional_checks[0].status, "ready")
-        self.assertEqual(result.optional_checks[2].name, "codex_backend")
+        self.assertEqual(result.optional_checks[2].name, "ollama_backend")
         self.assertEqual(result.optional_checks[2].status, "ready")
-        self.assertEqual(result.optional_checks[3].detail, "cache ready")
-        self.assertEqual(result.optional_checks[4].detail, "web ready")
-        self.assertEqual(result.optional_checks[5].status, "pending")
+        self.assertEqual(result.optional_checks[3].name, "codex_backend")
+        self.assertEqual(result.optional_checks[3].status, "ready")
+        self.assertEqual(result.optional_checks[4].detail, "cache ready")
+        self.assertEqual(result.optional_checks[5].detail, "web ready")
+        self.assertEqual(result.optional_checks[6].status, "pending")
 
     @patch("core.runtime.setup.importlib.util.find_spec", return_value=None)
     def test_codex_check_distinguishes_missing_sdk_after_credentials(self, _mock_find_spec) -> None:
@@ -79,6 +83,13 @@ class SetupInspectionTest(unittest.TestCase):
 
         self.assertEqual(status, "failed")
         self.assertIn("agents sdk", detail.lower())
+
+    @patch("core.runtime.setup.urllib.request.urlopen", side_effect=OSError("connection refused"))
+    def test_ollama_check_reports_pending_when_backend_is_not_running(self, _mock_urlopen) -> None:
+        status, detail = _check_ollama_backend()
+
+        self.assertEqual(status, "pending")
+        self.assertIn("Ollama is not running", detail)
 
 
 if __name__ == "__main__":
