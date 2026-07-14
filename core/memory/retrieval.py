@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 import time
 from dataclasses import replace
@@ -18,6 +19,7 @@ RRF_K = 60
 MAX_SIBLING_CANDIDATES = 3
 MAX_RELATED_CANDIDATES = 3
 HIGH_CONFIDENCE_VECTOR_MATCH = 0.88
+RECENCY_HALF_LIFE_SECONDS = 60.0 * 60.0 * 24.0 * 7.0
 REFERENTIAL_CONTEXT_MARKERS = {
     "again",
     "earlier",
@@ -242,8 +244,10 @@ class RetrievalService:
         return "\n".join(lines)
 
     def _recency_raw(self, node: MemoryNode) -> float:
-        elapsed = max(time.time() - node.last_accessed, 1.0)
-        return 1.0 / elapsed
+        elapsed = max(time.time() - node.last_accessed, 0.0)
+        if RECENCY_HALF_LIFE_SECONDS <= 0:
+            return 1.0
+        return math.exp((-math.log(2.0) * elapsed) / RECENCY_HALF_LIFE_SECONDS)
 
     def _compose_query(self, current_prompt: str) -> str:
         snapshot = self.working_memory.snapshot()

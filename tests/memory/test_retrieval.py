@@ -131,6 +131,15 @@ class RetrievalFlowTest(unittest.TestCase):
             self.assertGreaterEqual(candidate.recency_score, 0.0)
             self.assertLessEqual(candidate.recency_score, 1.0)
 
+    def test_recency_decay_prefers_more_recent_nodes(self) -> None:
+        old_node = self.engine.store.get_node("proj_rxgpt")
+        recent_node = self.engine.store.get_node("cmp_django_auth")
+
+        old_score = self.engine.retrieval_service._recency_raw(old_node)
+        recent_score = self.engine.retrieval_service._recency_raw(recent_node)
+
+        self.assertLess(old_score, recent_score)
+
     def test_vague_follow_up_uses_recent_working_memory_context(self) -> None:
         self.engine.add_episodic_log(
             "We were building a calendar project with a Python backend and React frontend.",
