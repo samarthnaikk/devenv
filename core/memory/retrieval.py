@@ -15,6 +15,8 @@ SIBLING_RELATIONSHIP_FACTOR = 0.84
 EDGE_RELATIONSHIP_FACTOR = 0.8
 MIN_CONTEXT_DRIFT_JACCARD = 0.12
 RRF_K = 60
+MAX_SIBLING_CANDIDATES = 3
+MAX_RELATED_CANDIDATES = 3
 REFERENTIAL_CONTEXT_MARKERS = {
     "again",
     "earlier",
@@ -86,9 +88,8 @@ class RetrievalService:
                 expanded,
                 RetrievalCandidate(node=node, source_node_id=node.node_id, relationship="seed", similarity=match.similarity),
             )
-            for parent in self.store.get_parent_chain(node.node_id):
-                if parent.node_id == node.node_id:
-                    continue
+            parent = self.store.get_node(node.parent_id) if node.parent_id else None
+            if parent is not None:
                 self._merge_candidate(
                     expanded,
                     RetrievalCandidate(
@@ -98,7 +99,10 @@ class RetrievalService:
                         similarity=match.similarity * PARENT_RELATIONSHIP_FACTOR,
                     ),
                 )
-            for sibling in self.store.get_sibling_nodes(node.node_id, node.parent_id):
+            for sibling in self._top_structural_neighbors(
+                self.store.get_sibling_nodes(node.node_id, node.parent_id),
+                limit=MAX_SIBLING_CANDIDATES,
+            ):
                 self._merge_candidate(
                     expanded,
                     RetrievalCandidate(
@@ -108,7 +112,10 @@ class RetrievalService:
                         similarity=match.similarity * SIBLING_RELATIONSHIP_FACTOR,
                     ),
                 )
-            for related in self.store.get_related_nodes(node.node_id):
+            for related in self._top_structural_neighbors(
+                self.store.get_related_nodes(node.node_id),
+                limit=MAX_RELATED_CANDIDATES,
+            ):
                 self._merge_candidate(
                     expanded,
                     RetrievalCandidate(
@@ -124,6 +131,14 @@ class RetrievalService:
         existing = expanded.get(candidate.node.node_id)
         if existing is None or candidate.similarity > existing.similarity:
             expanded[candidate.node.node_id] = candidate
+
+    def _top_structural_neighbors(self, nodes: list[MemoryNode], *, limit: int) -> list[MemoryNode]:
+        ranked = sorted(
+            nodes,
+            key=lambda node: (node.access_count, node.last_accessed, node.created_at),
+            reverse=True,
+        )
+        return ranked[:limit]
 
     def _lexical_seed_matches(self, query_text: str, top_k: int) -> list[VectorMatch]:
         if not hasattr(self.store, "search_nodes_fts"):

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
-from core.memory.models import NodeEdge
+from core.memory.models import NodeEdge, VectorMatch
 from core.memory.vector_index import InMemoryVectorIndex
 
 
@@ -73,6 +73,32 @@ class RetrievalFlowTest(unittest.TestCase):
             candidate.node.node_id: candidate.relationship for candidate in result.trace.expanded_candidates
         }
         self.assertIn(candidate_relationships["pref_react_functional"], {"seed", "related"})
+
+    def test_graph_expansion_stays_at_depth_one_for_parent_context(self) -> None:
+        self.engine.update_associative_tree(
+            {
+                "node_id": "org_root",
+                "label": "Org Root",
+                "category": "workspace",
+                "summary": "Top-level organization memory.",
+            }
+        )
+        self.engine.update_associative_tree(
+            {
+                "node_id": "proj_rxgpt",
+                "parent_id": "org_root",
+                "label": "Project: RxGPT",
+                "category": "project",
+                "summary": "RxGPT uses React, Tailwind, and Django.",
+            }
+        )
+
+        candidates = self.engine.retrieval_service._expand_candidates(
+            [VectorMatch(node_id="cmp_django_auth", similarity=0.95, text_chunk="Django authentication uses custom middleware.")]
+        )
+        relationships = {candidate.node.node_id: candidate.relationship for candidate in candidates}
+        self.assertEqual(relationships["proj_rxgpt"], "parent")
+        self.assertNotIn("org_root", relationships)
 
     def test_empty_index_returns_working_memory_only(self) -> None:
         tempdir = tempfile.TemporaryDirectory()
