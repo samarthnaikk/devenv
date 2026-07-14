@@ -517,7 +517,6 @@ class RoutingAICore:
         temperature: float = 0.2,
         tool_names: Iterable[str] | None = None,
     ) -> AIResponse:
-        del temperature
         if self.preferred_backend == "codex":
             if self.codex_ai is None:
                 self.last_backend_fallback = "Codex backend is not configured."
@@ -530,7 +529,7 @@ class RoutingAICore:
             response = self.codex_ai.chat(
                 messages=messages,
                 memory_context=memory_context,
-                temperature=0.2,
+                temperature=temperature,
                 tool_names=tool_names,
             )
             self.last_backend_used = "codex"
@@ -547,7 +546,7 @@ class RoutingAICore:
             response = self.ollama_ai.chat(
                 messages=messages,
                 memory_context=memory_context,
-                temperature=0.2,
+                temperature=temperature,
                 tool_names=tool_names,
             )
             self.last_backend_used = "ollama"
@@ -561,7 +560,7 @@ class RoutingAICore:
         response = self.opencode_ai.chat(
             messages=messages,
             memory_context=memory_context,
-            temperature=0.2,
+            temperature=temperature,
             tool_names=tool_names,
         )
         self.last_backend_used = "opencode"

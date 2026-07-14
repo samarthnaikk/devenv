@@ -16,6 +16,36 @@ DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 DEFAULT_OLLAMA_MODEL = "qwen2.5:3b"
 DEFAULT_OLLAMA_KEEP_ALIVE = "2m"
 DEFAULT_OLLAMA_NUM_CTX = 4096
+PLAN_BLUEPRINT_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "tasks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "description": {"type": "string"},
+                    "level": {"type": "integer", "minimum": 0},
+                },
+                "required": ["task_id", "description", "level"],
+            },
+        },
+        "edges": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "from": {"type": "string"},
+                    "to": {"type": "string"},
+                },
+                "required": ["from", "to"],
+            },
+        },
+    },
+    "required": ["tasks", "edges"],
+}
 
 
 class OllamaAICore:
@@ -106,6 +136,10 @@ class OllamaAICore:
         tool_names: Iterable[str] | None = None,
     ) -> AIResponse:
         resolved_tool_names = [name for name in (tool_names or ()) if name in self._tools]
+        planner_json_mode = any(
+            "PLANNER_OUTPUT_MODE: blueprint_json" in str(message.get("content") or "")
+            for message in messages
+        )
         payload = {
             "model": self.model,
             "stream": True,
@@ -121,7 +155,9 @@ class OllamaAICore:
                 tool_names=resolved_tool_names,
             ),
         }
-        if resolved_tool_names:
+        if planner_json_mode:
+            payload["format"] = PLAN_BLUEPRINT_JSON_SCHEMA
+        elif resolved_tool_names:
             payload["format"] = "json"
         streamed = self._stream_chat(payload)
         self.last_backend_used = "ollama"

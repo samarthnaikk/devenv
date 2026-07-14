@@ -51,6 +51,7 @@ READ_ONLY_PLAN_TOOLS = (
 )
 PLAN_MEMORY_CHAR_LIMIT = 1200
 PLAN_BLUEPRINT_REPAIR_LIMIT = 2
+PLAN_TEMPERATURE = 0.0
 PLAN_SYSTEM_RULE = """You are Devenv's planning engine.
 
 PLANNER_OUTPUT_MODE: blueprint_json
@@ -509,6 +510,7 @@ class DevenvWebApp:
             ai_response = self.kernel.ai.chat(
                 messages=list(conversation),
                 memory_context=planning_memory,
+                temperature=PLAN_TEMPERATURE,
                 tool_names=list(allowed_tools),
             )
             _merge_usage_counts(total_usage, ai_response.usage)

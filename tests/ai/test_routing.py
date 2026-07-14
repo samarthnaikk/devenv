@@ -143,6 +143,19 @@ class OpenCodeRoutingTest(unittest.TestCase):
         self.assertEqual(response.backend, "ollama")
         self.assertEqual(router.last_backend_used, "ollama")
 
+    def test_routing_core_preserves_temperature_for_selected_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            ollama = _FakeOllamaCore()
+            router = RoutingAICore(
+                workspace_path=tempdir,
+                opencode_ai=_FakeOpenCodeCore(),
+                ollama_ai=ollama,
+            )
+            router.set_backend_preference("ollama", opencode_enabled=False, ollama_enabled=True)
+            router.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[], temperature=0.0)
+
+        self.assertEqual(ollama.last_temperature, 0.0)
+
     def test_routing_core_rejects_invalid_backend_preference(self) -> None:
         router = RoutingAICore(workspace_path=".", opencode_ai=_FakeOpenCodeCore())
 
@@ -544,6 +557,7 @@ class _FakeOllamaCore:
     def __init__(self) -> None:
         self.model = "qwen2.5:3b"
         self.last_backend_reason = "Ollama handled the turn."
+        self.last_temperature = None
 
     def register_tool(self, tool: BaseTool) -> None:
         return None
@@ -563,6 +577,7 @@ class _FakeOllamaCore:
         return False
 
     def chat(self, **kwargs) -> AIResponse:
+        self.last_temperature = kwargs.get("temperature")
         return AIResponse(content="Ollama", finish_reason="stop", usage={"total_tokens": 1}, backend="ollama")
 
 
