@@ -224,6 +224,7 @@ class DevenvKernel:
         selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
         backend_preference: str = "opencode",
         opencode_enabled: bool = False,
+        ollama_enabled: bool = False,
         codex_enabled: bool = False,
         session_budget_tokens: int | None = None,
         no_memory: bool = False,
@@ -251,6 +252,7 @@ class DevenvKernel:
             self.ai.set_backend_preference(
                 backend_preference,
                 opencode_enabled=opencode_enabled,
+                ollama_enabled=ollama_enabled,
                 codex_enabled=codex_enabled,
             )
         if session_budget_tokens is not None and self.session_usage_totals.get("total_tokens", 0) >= session_budget_tokens:
@@ -2642,6 +2644,9 @@ class DevenvKernel:
         selected_scope = self._resolve_selected_tools(selected_tools)
         if selected_scope:
             return sorted(selected_scope)
+
+        if getattr(self.ai, "preferred_backend", "") == "ollama":
+            return []
 
         available = set(self.tools)
         if not available:

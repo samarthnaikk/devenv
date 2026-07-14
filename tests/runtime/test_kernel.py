@@ -256,6 +256,19 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("list_directory", kernel.tools)
         self.assertEqual(ai.registered_tools, ["read_file", "list_directory"])
 
+    def test_ollama_preference_disables_default_automatic_tool_scope(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        ai.preferred_backend = "ollama"
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+
+            scope = kernel._resolve_direct_tool_scope("Explain the repo")
+
+        self.assertEqual(scope, [])
+
     def test_default_memory_paths_are_scoped_under_project_root(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])
