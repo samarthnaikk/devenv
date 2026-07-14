@@ -1,8 +1,8 @@
-import React from "https://esm.sh/react@18";
+import React from "https://esm.sh/react@18.2.0";
 import ReactFlow, {
   Handle, Position, Background,
   MarkerType, useNodesState, useEdgesState,
-} from "https://esm.sh/reactflow@11";
+} from "https://esm.sh/reactflow@11?deps=react@18.2.0,react-dom@18.2.0";
 import { validatePlanBlueprint, normalizeBlueprint } from "../utils/validation.js";
 import { escapeHtml } from "../utils/format.js";
 

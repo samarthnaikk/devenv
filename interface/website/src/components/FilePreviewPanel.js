@@ -1,4 +1,4 @@
-import React from "https://esm.sh/react@18";
+import React from "https://esm.sh/react@18.2.0";
 import { renderFilePreview } from "../lib/file_preview.js";
 import { FileTree } from "./FileTree.js";
 

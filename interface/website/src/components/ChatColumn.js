@@ -1,4 +1,4 @@
-import React from "https://esm.sh/react@18";
+import React from "https://esm.sh/react@18.2.0";
 import { Transcript } from "./Transcript.js";
 import { Composer } from "./Composer.js";
 

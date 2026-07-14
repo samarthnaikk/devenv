@@ -1,4 +1,4 @@
-import React from "https://esm.sh/react@18";
+import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
 import { UserMessage } from "./UserMessage.js";
 import { ThinkingMessage } from "./ThinkingMessage.js";

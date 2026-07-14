@@ -1,4 +1,4 @@
-import React from "https://esm.sh/react@18";
+import React from "https://esm.sh/react@18.2.0";
 import { loadTheme, loadPersistedAccess } from "../utils/storage.js";
 
 const READ_ONLY_TOOLS = ["list_directory", "read_file", "glob", "grep", "inspect_symbols", "search_symbols"];
