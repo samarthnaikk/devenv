@@ -35,9 +35,11 @@ class ManageMemoryToolTest(unittest.TestCase):
 
         self.assertTrue(result.success)
         self.assertEqual(self.memory.store.get_node("proj_calendar").summary, "Updated calendar memory.")
+        self.assertIn("sync_state", result.data)
 
     def test_prune_mode_deletes_node(self) -> None:
         result = self.tool.execute(node_id="proj_calendar", mode="prune")
 
         self.assertTrue(result.success)
         self.assertIsNone(self.memory.store.get_node("proj_calendar"))
+        self.assertIn("sync_state", result.data)

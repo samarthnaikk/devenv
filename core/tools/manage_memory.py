@@ -55,7 +55,12 @@ class ManageMemoryTool(BaseTool):
                 return ToolResult(
                     success=deleted,
                     output=f"manage_memory prune completed for {node_id}",
-                    data={"node_id": node_id, "mode": mode, "deleted": deleted},
+                    data={
+                        "node_id": node_id,
+                        "mode": mode,
+                        "deleted": deleted,
+                        "sync_state": _memory_sync_state(self.memory),
+                    },
                 )
 
             if not isinstance(text, str) or not text.strip():
@@ -74,8 +79,24 @@ class ManageMemoryTool(BaseTool):
             return ToolResult(
                 success=True,
                 output=f"manage_memory updated node {updated_id}",
-                data={"node_id": updated_id, "mode": mode, "summary": text.strip()},
+                data={
+                    "node_id": updated_id,
+                    "mode": mode,
+                    "summary": text.strip(),
+                    "sync_state": _memory_sync_state(self.memory),
+                },
             )
         except (AttributeError, OSError, ValueError, RuntimeError) as exc:
             logger.error("manage_memory failed: node_id=%s mode=%s error=%s", node_id, mode, exc)
             return ToolResult(success=False, output=str(exc), data={})
+
+
+def _memory_sync_state(memory: Any) -> dict[str, Any]:
+    store = getattr(memory, "store", None)
+    if store is None or not hasattr(store, "get_state"):
+        return {}
+    return {
+        "last_vector_sync_node_id": store.get_state("last_vector_sync_node_id"),
+        "last_vector_delete_node_id": store.get_state("last_vector_delete_node_id"),
+        "last_vector_sync_at": store.get_state("last_vector_sync_at"),
+    }

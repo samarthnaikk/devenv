@@ -46,11 +46,12 @@ print(result.markdown_context)
 
 `retrieve_context()` performs:
 
-1. Prompt embedding.
-2. Vector lookup against associative summaries.
-3. Parent-chain, sibling, and related-edge expansion.
-4. Normalized scoring with similarity, frequency, and recency.
-5. Markdown context compilation plus an auditable retrieval trace.
+1. A cheap query-composition pass that can drop unrelated working-memory history when the topic drifts.
+2. Prompt embedding plus lexical FTS lookup against stored nodes.
+3. Hybrid seed fusion using reciprocal rank fusion (RRF).
+4. Immediate-neighbor-only expansion for parents, siblings, and related edges unless a high-confidence seed short-circuits expansion.
+5. Normalized scoring with similarity, frequency, and exponential recency decay.
+6. Markdown context compilation plus an auditable retrieval trace.
 
 The latest retrieval trace is available through `get_context_trace()`.
 

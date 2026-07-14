@@ -58,7 +58,7 @@ class InspectTraceTool(BaseTool):
                 return ToolResult(
                     success=True,
                     output="inspect_trace returned the last retrieval trace",
-                    data={"mode": mode, "trace": payload},
+                    data={"mode": mode, "trace": payload, "sync_state": _memory_sync_state(self.memory)},
                 )
 
             if not isinstance(node_id, str) or not node_id.strip():
@@ -81,8 +81,21 @@ class InspectTraceTool(BaseTool):
                     "node": asdict(node),
                     "edges": edges,
                     "vector_present": vector_present,
+                    "sync_state": _memory_sync_state(self.memory),
                 },
             )
         except (AttributeError, RuntimeError, ValueError) as exc:
             logger.error("inspect_trace failed: mode=%s node_id=%s error=%s", mode, node_id, exc)
             return ToolResult(success=False, output=str(exc), data={})
+
+
+def _memory_sync_state(memory: Any) -> dict[str, Any]:
+    store = getattr(memory, "store", None)
+    if store is None or not hasattr(store, "get_state"):
+        return {}
+    return {
+        "last_vector_sync_node_id": store.get_state("last_vector_sync_node_id"),
+        "last_vector_delete_node_id": store.get_state("last_vector_delete_node_id"),
+        "last_vector_sync_at": store.get_state("last_vector_sync_at"),
+        "fts_enabled": bool(getattr(store, "_fts_enabled", False)),
+    }

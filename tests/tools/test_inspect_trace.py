@@ -40,6 +40,7 @@ class InspectTraceToolTest(unittest.TestCase):
 
         self.assertTrue(result.success)
         self.assertIn("markdown_context", result.data["trace"])
+        self.assertIn("sync_state", result.data)
 
     def test_node_history_mode_returns_node_details(self) -> None:
         result = self.tool.execute(mode="node_history", node_id="proj_calendar")
@@ -47,3 +48,4 @@ class InspectTraceToolTest(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.data["node"]["node_id"], "proj_calendar")
         self.assertTrue(result.data["vector_present"])
+        self.assertIn("sync_state", result.data)
