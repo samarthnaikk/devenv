@@ -5297,6 +5297,37 @@ def _should_try_direct_memory_answer(user_prompt: str) -> bool:
     if any(
         phrase in lowered
         for phrase in (
+            "how does retrieval work",
+            "how does the retrieval work",
+            "how does memory retrieval work",
+            "how does the memory retrieval work",
+            "how does retrieval of memory work",
+            "how does this retrieval work",
+            "how does this memory work",
+            "how does the memory work",
+            "how does this repo work",
+            "how does the repo work",
+            "how does this repository work",
+            "how does the repository work",
+            "how does this codebase work",
+            "how does the codebase work",
+            "how does the system work",
+            "how does this system work",
+            "how does the backend work",
+            "how does this backend work",
+            "can you explain how the retrieval works",
+            "can you explain how retrieval works",
+            "can you explain how the memory retrieval works",
+            "can you explain how this repo works",
+            "can you explain how the repo works",
+            "can you explain how the codebase works",
+        )
+    ):
+        return False
+
+    if any(
+        phrase in lowered
+        for phrase in (
             "what architecture",
             "which architecture",
             "list the concrete files",
@@ -5803,6 +5834,17 @@ def _is_architecture_question(user_prompt: str) -> bool:
             "how does the codebase work",
             "how does this repo work",
             "how does this repository work",
+            "how does retrieval work",
+            "how does the retrieval work",
+            "how does memory retrieval work",
+            "how does the memory retrieval work",
+            "how does retrieval of memory work",
+            "how does this retrieval work",
+            "how does this memory work",
+            "how does the memory work",
+            "can you explain how the retrieval works",
+            "can you explain how retrieval works",
+            "can you explain how the memory retrieval works",
         )
     )
 
@@ -5860,6 +5902,17 @@ def _should_skip_exact_logged_fast_path(user_prompt: str) -> bool:
     return any(
         marker in lowered
         for marker in (
+            "how does retrieval work",
+            "how does the retrieval work",
+            "how does memory retrieval work",
+            "how does the memory retrieval work",
+            "how does retrieval of memory work",
+            "how does this retrieval work",
+            "how does this memory work",
+            "how does the memory work",
+            "can you explain how the retrieval works",
+            "can you explain how retrieval works",
+            "can you explain how the memory retrieval works",
             "what can be said confidently",
             "what remains unclear",
             "what was the backend",
@@ -5932,6 +5985,23 @@ def _is_repo_overview_question(user_prompt: str) -> bool:
 def _should_trust_memory_answer_for_prompt(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     if _is_repo_summary_question(user_prompt):
+        return False
+    if any(
+        phrase in lowered
+        for phrase in (
+            "how does retrieval work",
+            "how does the retrieval work",
+            "how does memory retrieval work",
+            "how does the memory retrieval work",
+            "how does retrieval of memory work",
+            "how does this retrieval work",
+            "how does this memory work",
+            "how does the memory work",
+            "can you explain how the retrieval works",
+            "can you explain how retrieval works",
+            "can you explain how the memory retrieval works",
+        )
+    ):
         return False
     if any(
         phrase in lowered

@@ -7,6 +7,7 @@ import inspect
 import re
 import sysconfig
 import time
+from collections import Counter
 from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -49,9 +50,10 @@ READ_ONLY_PLAN_TOOLS = (
     "search_text",
     "track_symbol",
 )
-PLAN_MEMORY_CHAR_LIMIT = 1200
+PLAN_MEMORY_CHAR_LIMIT = 2400
 PLAN_BLUEPRINT_REPAIR_LIMIT = 2
 PLAN_TEMPERATURE = 0.0
+PLAN_DETAIL_REFINEMENT_LIMIT = 1
 PLAN_SYSTEM_RULE = """You are Devenv's planning engine.
 
 PLANNER_OUTPUT_MODE: blueprint_json
@@ -76,13 +78,16 @@ Return exactly one JSON object with this structure:
 
 Rules:
 - Return raw JSON only. No markdown fences. No prose before or after the JSON.
+- For codebase-specific requests, use the provided repository context and inspect read-only tools before finalizing when the current repository structure is not yet specific enough.
+- Prefer repository-aware steps that name concrete subsystems, files, or integration points when the prompt is about this codebase.
 - Use multiple tasks when the work can be broken down.
 - Use multiple levels when later tasks depend on earlier tasks.
 - Every task must have a unique string task_id.
 - Every task must have a non-empty description.
 - Every task must have an integer level >= 0.
 - Include edges whenever there is more than one task.
-- Prefer 3-8 tasks for non-trivial implementation requests.
+- Prefer 5-9 tasks for non-trivial implementation requests.
+- Include discovery, implementation, verification, and documentation/follow-up tasks when they are relevant.
 """
 
 
@@ -496,15 +501,20 @@ class DevenvWebApp:
         planning_memory = _trim_plan_memory_context(memory_context)
         if planning_memory:
             system_logs.append(f"Planning memory chars sent: {len(planning_memory)}")
+        repo_grounding = self._build_plan_repo_grounding(prompt)
+        if repo_grounding:
+            system_logs.append("Attached repository grounding to planning conversation")
         allowed_tools = self._resolve_plan_tools(selected_tools)
         metadata["selected_tools"] = list(allowed_tools)
         system_logs.append(f"Planning tool scope size: {len(allowed_tools)}")
         conversation = [
             {"role": "system", "content": PLAN_SYSTEM_RULE},
+            *([{"role": "system", "content": repo_grounding}] if repo_grounding else []),
             {"role": "user", "content": prompt},
         ]
         max_tools = max_consecutive_tools or self.config.max_consecutive_tools
         repair_attempts = 0
+        detail_refinement_attempts = 0
 
         while True:
             ai_response = self.kernel.ai.chat(
@@ -590,6 +600,20 @@ class DevenvWebApp:
             content = ai_response.content or ""
             blueprint = _parse_plan_blueprint(content)
             if blueprint is not None:
+                if (
+                    detail_refinement_attempts < PLAN_DETAIL_REFINEMENT_LIMIT
+                    and _plan_blueprint_needs_refinement(prompt, blueprint, steps)
+                ):
+                    detail_refinement_attempts += 1
+                    ai_logs.append("Planner blueprint was valid but too generic; requesting a more detailed repo-aware graph")
+                    conversation.append({"role": "assistant", "content": content})
+                    conversation.append(
+                        {
+                            "role": "user",
+                            "content": _plan_detail_refinement_prompt(prompt),
+                        }
+                    )
+                    continue
                 return _build_plan_result(
                     final_response=content,
                     blueprint=blueprint,
@@ -642,6 +666,96 @@ class DevenvWebApp:
             if tool_name in self.kernel.tools and tool_name not in resolved:
                 resolved.append(tool_name)
         return tuple(resolved)
+
+    def _build_plan_repo_grounding(self, prompt: str) -> str:
+        facts: list[str] = []
+        context_builder = getattr(self, "context_builder", None)
+        if context_builder is not None:
+            workspace_facts = getattr(context_builder, "_workspace_facts", None)
+            if callable(workspace_facts):
+                try:
+                    facts.extend(workspace_facts(prompt)[:6])
+                except Exception as exc:
+                    logger.warning("Plan workspace grounding failed: error=%s", exc)
+            memory_facts = getattr(context_builder, "_memory_facts", None)
+            if callable(memory_facts):
+                try:
+                    facts.extend(memory_facts(prompt)[:4])
+                except Exception as exc:
+                    logger.warning("Plan memory grounding failed: error=%s", exc)
+        facts.extend(self._plan_repo_file_hints(prompt))
+        unique_facts: list[str] = []
+        for fact in facts:
+            cleaned = str(fact or "").strip()
+            if cleaned and cleaned not in unique_facts:
+                unique_facts.append(cleaned)
+        if not unique_facts:
+            return ""
+        return "\n".join(
+            [
+                "Repository grounding:",
+                *[f"- {fact}" for fact in unique_facts[:8]],
+                "Use this grounding to produce codebase-specific tasks instead of generic project steps.",
+            ]
+        )
+
+    def _plan_repo_file_hints(self, prompt: str) -> list[str]:
+        workspace_root = Path(self.config.workspace_path).expanduser().resolve()
+        candidate_paths = self._plan_candidate_files(workspace_root)
+        prompt_terms = _plan_prompt_terms(prompt)
+        if not prompt_terms:
+            return []
+
+        aliases = _plan_prompt_aliases(prompt_terms)
+        scored: list[tuple[int, str, str]] = []
+        for path in candidate_paths:
+            relative_path = str(path.relative_to(workspace_root))
+            score, reason = _score_plan_candidate_file(
+                path,
+                relative_path=relative_path,
+                prompt_terms=prompt_terms,
+                aliases=aliases,
+            )
+            if score > 0:
+                scored.append((score, relative_path, reason))
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        hints = [f"Relevant file: {relative_path} ({reason})." for _score, relative_path, reason in scored[:6]]
+        return hints
+
+    def _plan_candidate_files(self, workspace_root: Path) -> list[Path]:
+        preferred_files = (
+            "README.md",
+            "core/runtime/web.py",
+            "core/runtime/kernel.py",
+            "core/runtime/tooling.py",
+            "core/runtime/setup.py",
+            "core/runtime/context_builder.py",
+            "tests/runtime/test_web.py",
+            "tests/runtime/test_kernel.py",
+            "tests/runtime/test_setup.py",
+        )
+        candidates: list[Path] = []
+        seen: set[Path] = set()
+        for relative_path in preferred_files:
+            path = workspace_root / relative_path
+            if path.is_file() and path not in seen:
+                candidates.append(path)
+                seen.add(path)
+
+        root_directories = ("core", "tests", "interface")
+        allowed_suffixes = {".py", ".md", ".js", ".jsx", ".ts", ".tsx", ".json"}
+        for root_name in root_directories:
+            root = workspace_root / root_name
+            if not root.is_dir():
+                continue
+            for path in root.rglob("*"):
+                if len(candidates) >= 220:
+                    break
+                if not path.is_file() or path.suffix.lower() not in allowed_suffixes or path in seen:
+                    continue
+                candidates.append(path)
+                seen.add(path)
+        return candidates
 
     def run_tool(
         self, tool_name: str, arguments: dict[str, object]
@@ -1391,6 +1505,202 @@ def _build_plan_result(
             "total_tokens": int(total_usage.get("total_tokens", 0) or 0),
         },
     }
+
+
+def _plan_blueprint_needs_refinement(
+    user_prompt: str,
+    blueprint: dict[str, object],
+    steps: list[object],
+) -> bool:
+    tasks = blueprint.get("tasks")
+    if not isinstance(tasks, list) or not tasks:
+        return False
+    lowered_prompt = str(user_prompt or "").lower()
+    repo_specific_request = any(
+        marker in lowered_prompt
+        for marker in ("codebase", "repo", "repository", "workspace", "this project", "this codebase")
+    )
+    if not repo_specific_request:
+        return False
+    if len(tasks) < 4:
+        return True
+    if not steps and all(_task_description_is_generic(task) for task in tasks[: min(4, len(tasks))]):
+        return True
+    repo_anchored_count = sum(1 for task in tasks if _task_description_has_repo_anchor(task))
+    if repo_anchored_count < min(2, len(tasks)):
+        return True
+    generic_count = sum(1 for task in tasks if _task_description_is_generic(task))
+    if generic_count >= max(2, len(tasks) // 2):
+        return True
+    return False
+
+
+def _task_description_is_generic(task: object) -> bool:
+    if not isinstance(task, dict):
+        return True
+    description = str(task.get("description") or "").strip().lower()
+    if not description:
+        return True
+    generic_markers = (
+        "inspect the workspace",
+        "search for relevant libraries",
+        "choose a suitable",
+        "create a new file",
+        "integrate the chosen library",
+        "test the integration",
+    )
+    specific_markers = (
+        "core/",
+        "interface/",
+        "tests/",
+        "runtime",
+        "tool",
+        "kernel",
+        "web.py",
+        "routing.py",
+        "setup.py",
+        "smoke.py",
+    )
+    if any(marker in description for marker in specific_markers):
+        return False
+    return any(marker in description for marker in generic_markers)
+
+
+def _task_description_has_repo_anchor(task: object) -> bool:
+    if not isinstance(task, dict):
+        return False
+    description = str(task.get("description") or "").strip().lower()
+    if not description:
+        return False
+    anchor_markers = (
+        "/",
+        ".py",
+        ".md",
+        ".js",
+        ".ts",
+        "core/",
+        "tests/",
+        "interface/",
+        "runtime",
+        "setup",
+        "tooling",
+        "kernel",
+        "context_builder",
+        "readiness",
+    )
+    return any(marker in description for marker in anchor_markers)
+
+
+def _plan_detail_refinement_prompt(user_prompt: str) -> str:
+    return (
+        "The previous blueprint is valid JSON but too generic for this repository-specific request. "
+        f"Refine it for: {user_prompt}\n\n"
+        "Requirements:\n"
+        "- Return raw JSON only.\n"
+        "- Produce at least 5 tasks unless the work is truly trivial.\n"
+        "- Make the tasks repository-aware by naming concrete subsystems, files, or integration layers when possible.\n"
+        "- Include discovery, implementation, verification, and follow-up/documentation steps where relevant.\n"
+        "- If the repository context is still too vague, inspect read-only tools before returning the refined blueprint.\n"
+    )
+
+
+def _plan_prompt_terms(prompt: str) -> tuple[str, ...]:
+    terms = re.findall(r"[a-z0-9_./-]+", str(prompt or "").lower())
+    stop_words = {
+        "a",
+        "an",
+        "and",
+        "the",
+        "to",
+        "of",
+        "on",
+        "for",
+        "in",
+        "this",
+        "that",
+        "how",
+        "do",
+        "we",
+        "add",
+        "plan",
+        "about",
+        "codebase",
+        "repo",
+        "repository",
+        "project",
+        "current",
+    }
+    filtered = [term for term in terms if len(term) >= 3 and term not in stop_words]
+    ordered = list(dict.fromkeys(filtered))
+    return tuple(ordered[:12])
+
+
+def _plan_prompt_aliases(prompt_terms: tuple[str, ...]) -> tuple[str, ...]:
+    aliases = Counter(prompt_terms)
+    joined = " ".join(prompt_terms)
+    if "pdf" in aliases or "generate_pdf" in aliases or "pdf" in joined:
+        aliases.update(("generate_pdf", "latex", "pdflatex", "tool_readiness", "inspect_setup", "build_runtime_tools"))
+    if "plan" in joined or "planner" in aliases or "planning" in aliases:
+        aliases.update(("run_plan", "blueprint", "planning", "planner"))
+    if "memory" in aliases or "retrieval" in aliases or "retrieve" in aliases:
+        aliases.update(("retrieve_context", "markdown_context", "context_builder", "memory"))
+    if "tool" in aliases or "tools" in aliases:
+        aliases.update(("build_runtime_tools", "tooling", "tool_readiness"))
+    return tuple(aliases.keys())
+
+
+def _score_plan_candidate_file(
+    path: Path,
+    *,
+    relative_path: str,
+    prompt_terms: tuple[str, ...],
+    aliases: tuple[str, ...],
+) -> tuple[int, str]:
+    score = 0
+    reasons: list[str] = []
+    lowered_path = relative_path.lower()
+    path_hits = [term for term in prompt_terms if term in lowered_path]
+    alias_path_hits = [alias for alias in aliases if alias in lowered_path]
+    if path_hits:
+        score += 6 + len(path_hits)
+        reasons.append(f"path matches {', '.join(path_hits[:3])}")
+    if alias_path_hits:
+        score += 5 + len(alias_path_hits)
+        reasons.append(f"path hints {', '.join(alias_path_hits[:3])}")
+
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        content = ""
+    lowered_content = content[:24000].lower()
+    content_hits = [term for term in prompt_terms if term in lowered_content]
+    alias_hits = [alias for alias in aliases if alias in lowered_content]
+    if content_hits:
+        score += 3 + min(len(content_hits), 4)
+        reasons.append(f"content mentions {', '.join(content_hits[:3])}")
+    if alias_hits:
+        score += 2 + min(len(alias_hits), 4)
+        reasons.append(f"content references {', '.join(alias_hits[:3])}")
+
+    preferred_bonus = {
+        "readme.md": 2,
+        "core/runtime/web.py": 5,
+        "core/runtime/tooling.py": 4,
+        "core/runtime/setup.py": 4,
+        "core/runtime/kernel.py": 3,
+        "core/runtime/context_builder.py": 3,
+        "tests/runtime/test_web.py": 4,
+        "tests/runtime/test_setup.py": 3,
+        "tests/runtime/test_kernel.py": 2,
+    }.get(lowered_path, 0)
+    if preferred_bonus:
+        score += preferred_bonus
+        reasons.append("known integration point")
+
+    if score <= 0:
+        return 0, ""
+    reason = "; ".join(reasons[:3]) if reasons else "workspace match"
+    return score, reason
 
 
 if __name__ == "__main__":

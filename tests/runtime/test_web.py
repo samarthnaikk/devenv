@@ -118,6 +118,34 @@ class FakeAI:
             self.model = model
 
 
+class CapturingFakeAI(FakeAI):
+    def __init__(self) -> None:
+        super().__init__()
+        self.chat_calls: list[dict[str, Any]] = []
+
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        memory_context: str | None = None,
+        temperature: float = 0.2,
+        tool_names=None,
+    ) -> AIResponse:
+        self.chat_calls.append(
+            {
+                "messages": messages,
+                "memory_context": memory_context,
+                "temperature": temperature,
+                "tool_names": list(tool_names or []),
+            }
+        )
+        return super().chat(
+            messages=messages,
+            memory_context=memory_context,
+            temperature=temperature,
+            tool_names=tool_names,
+        )
+
+
 class DevenvWebAppTest(unittest.TestCase):
     def test_health_payload_reuses_cached_setup_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -845,6 +873,190 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertIsNone(result["error_message"])
         self.assertEqual(len(result["blueprint"]["tasks"]), 3)
         self.assertEqual(result["blueprint"]["tasks"][0]["description"], "Inspect the codebase")
+
+    def test_run_plan_attaches_repo_grounding_and_zero_temperature(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            Path(tempdir, "README.md").write_text("PDF generation support lives near runtime tools.", encoding="utf-8")
+            Path(tempdir, "core/runtime").mkdir(parents=True)
+            Path(tempdir, "core/runtime/web.py").write_text("def run_plan():\n    return 'generate_pdf'\n", encoding="utf-8")
+            Path(tempdir, "core/runtime/tooling.py").write_text("def build_runtime_tools():\n    return ['generate_pdf']\n", encoding="utf-8")
+            ai = CapturingFakeAI()
+            ai.responses = [
+                AIResponse(
+                    content=json.dumps(
+                        {
+                            "tasks": [
+                                {"task_id": "inspect-runtime", "description": "Inspect runtime tools", "level": 0},
+                                {"task_id": "wire-pdf", "description": "Wire PDF support", "level": 1},
+                            ],
+                            "edges": [{"from": "inspect-runtime", "to": "wire-pdf"}],
+                        }
+                    ),
+                    finish_reason="stop",
+                    usage={"total_tokens": 6},
+                    backend="ollama",
+                ),
+                AIResponse(
+                    content=json.dumps(
+                        {
+                            "tasks": [
+                                {"task_id": "inspect-runtime", "description": "Inspect core/runtime/web.py and planning entrypoints", "level": 0},
+                                {"task_id": "review-tooling", "description": "Review runtime tool registration and setup/readiness hooks", "level": 1},
+                                {"task_id": "add-pdf-tool", "description": "Add the PDF generation tool implementation and register it", "level": 2},
+                                {"task_id": "wire-contract", "description": "Wire the runtime/web contract and health metadata for the new PDF tool", "level": 3},
+                                {"task_id": "test-runtime", "description": "Add runtime tests covering planning and execution for the PDF tool", "level": 4},
+                            ],
+                            "edges": [
+                                {"from": "inspect-runtime", "to": "review-tooling"},
+                                {"from": "review-tooling", "to": "add-pdf-tool"},
+                                {"from": "add-pdf-tool", "to": "wire-contract"},
+                                {"from": "wire-contract", "to": "test-runtime"},
+                            ],
+                        }
+                    ),
+                    finish_reason="stop",
+                    usage={"total_tokens": 7},
+                    backend="ollama",
+                ),
+            ]
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=ai,
+            )
+            app.update_backend_access("ollama", True)
+
+            result = app.run_plan("plan on how to add pdf generation tool to this codebase")
+
+        self.assertIsNone(result["error_message"])
+        self.assertEqual(ai.chat_calls[0]["temperature"], 0.0)
+        system_messages = [message["content"] for message in ai.chat_calls[0]["messages"] if message.get("role") == "system"]
+        self.assertTrue(any("Repository grounding:" in content for content in system_messages))
+        combined = "\n".join(system_messages)
+        self.assertIn("core/runtime/web.py", combined)
+        self.assertIn("core/runtime/tooling.py", combined)
+
+    def test_run_plan_refines_generic_repo_plan_before_returning(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            Path(tempdir, "README.md").write_text("Runtime planning touches core/runtime/web.py and tests.", encoding="utf-8")
+            ai = CapturingFakeAI()
+            ai.responses = [
+                AIResponse(
+                    content=json.dumps(
+                        {
+                            "tasks": [
+                                {"task_id": "t1", "description": "Inspect the workspace for existing PDF generation tools", "level": 0},
+                                {"task_id": "t2", "description": "Create a new file for the PDF generation tool if no existing one is found", "level": 1},
+                            ],
+                            "edges": [{"from": "t1", "to": "t2"}],
+                        }
+                    ),
+                    finish_reason="stop",
+                    usage={"total_tokens": 2},
+                    backend="ollama",
+                ),
+                AIResponse(
+                    content=json.dumps(
+                        {
+                            "tasks": [
+                                {"task_id": "inspect-runtime", "description": "Inspect core/runtime/web.py and tool registration for existing PDF hooks", "level": 0},
+                                {"task_id": "review-tooling", "description": "Review core/runtime/tooling.py and core/tools for the new generate_pdf integration point", "level": 1},
+                                {"task_id": "add-tool", "description": "Add the PDF generation tool implementation and register it with the runtime", "level": 2},
+                                {"task_id": "wire-ui", "description": "Wire setup/readiness and any UI-facing runtime metadata for the new tool", "level": 3},
+                                {"task_id": "test-flow", "description": "Add or update runtime tests covering PDF tool planning and execution flow", "level": 4},
+                            ],
+                            "edges": [
+                                {"from": "inspect-runtime", "to": "review-tooling"},
+                                {"from": "review-tooling", "to": "add-tool"},
+                                {"from": "add-tool", "to": "wire-ui"},
+                                {"from": "wire-ui", "to": "test-flow"},
+                            ],
+                        }
+                    ),
+                    finish_reason="stop",
+                    usage={"total_tokens": 5},
+                    backend="ollama",
+                ),
+            ]
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=ai,
+            )
+            app.update_backend_access("ollama", True)
+
+            result = app.run_plan("plan on how to add pdf generation tool to this codebase")
+
+        self.assertIsNone(result["error_message"])
+        self.assertEqual(len(result["blueprint"]["tasks"]), 5)
+        self.assertEqual(len(ai.chat_calls), 2)
+
+    def test_run_plan_refines_even_when_task_count_is_high_but_repo_anchors_are_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            Path(tempdir, "README.md").write_text("PDF support is wired through runtime tooling and setup readiness.", encoding="utf-8")
+            Path(tempdir, "core/runtime").mkdir(parents=True)
+            Path(tempdir, "core/runtime/web.py").write_text("generate_pdf = False\n", encoding="utf-8")
+            Path(tempdir, "core/runtime/tooling.py").write_text("def build_runtime_tools():\n    return []\n", encoding="utf-8")
+            Path(tempdir, "core/runtime/setup.py").write_text("def inspect_setup():\n    return 'latex_pdf_toolchain'\n", encoding="utf-8")
+            ai = CapturingFakeAI()
+            ai.responses = [
+                AIResponse(
+                    content=json.dumps(
+                        {
+                            "tasks": [
+                                {"task_id": "t1", "description": "Inspect the workspace for PDF support", "level": 0},
+                                {"task_id": "t2", "description": "Search for relevant libraries", "level": 1},
+                                {"task_id": "t3", "description": "Create a new file for the integration", "level": 2},
+                                {"task_id": "t4", "description": "Integrate the chosen library", "level": 3},
+                                {"task_id": "t5", "description": "Test the integration", "level": 4},
+                            ],
+                            "edges": [
+                                {"from": "t1", "to": "t2"},
+                                {"from": "t2", "to": "t3"},
+                                {"from": "t3", "to": "t4"},
+                                {"from": "t4", "to": "t5"},
+                            ],
+                        }
+                    ),
+                    finish_reason="stop",
+                    usage={"total_tokens": 4},
+                    backend="ollama",
+                ),
+                AIResponse(
+                    content=json.dumps(
+                        {
+                            "tasks": [
+                                {"task_id": "inspect-web", "description": "Inspect core/runtime/web.py for existing generate_pdf planning and readiness hooks", "level": 0},
+                                {"task_id": "review-tooling", "description": "Review core/runtime/tooling.py to decide how the generate_pdf tool should be registered", "level": 1},
+                                {"task_id": "review-setup", "description": "Check core/runtime/setup.py for latex_pdf_toolchain readiness and optional dependency reporting", "level": 2},
+                                {"task_id": "implement-tool", "description": "Add the PDF tool implementation and wire its runtime contract into the identified integration points", "level": 3},
+                                {"task_id": "test-runtime", "description": "Add tests covering planner output and runtime readiness for the new PDF path", "level": 4},
+                            ],
+                            "edges": [
+                                {"from": "inspect-web", "to": "review-tooling"},
+                                {"from": "review-tooling", "to": "review-setup"},
+                                {"from": "review-setup", "to": "implement-tool"},
+                                {"from": "implement-tool", "to": "test-runtime"},
+                            ],
+                        }
+                    ),
+                    finish_reason="stop",
+                    usage={"total_tokens": 6},
+                    backend="ollama",
+                ),
+            ]
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=ai,
+            )
+            app.update_backend_access("ollama", True)
+
+            result = app.run_plan("plan on how to add pdf generation tool to this codebase")
+
+        self.assertIsNone(result["error_message"])
+        self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "inspect-web")
+        self.assertEqual(len(ai.chat_calls), 2)
 
     def test_run_turn_sanitizes_replay_json_error_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

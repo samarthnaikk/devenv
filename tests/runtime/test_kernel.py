@@ -22,6 +22,7 @@ from core.runtime.kernel import (
     _compose_external_memory_query,
     _memory_context_sections,
     _sanitize_logged_answer,
+    _should_try_direct_memory_answer,
     _summarize_local_text_file,
     _summarize_directory_listing,
 )
@@ -221,6 +222,11 @@ class TransportErrorAI(FakeAI):
 
 
 class DevenvKernelTest(unittest.TestCase):
+    def test_direct_memory_answer_skips_repo_explanation_questions(self) -> None:
+        self.assertFalse(_should_try_direct_memory_answer("how does retrieval work?"))
+        self.assertFalse(_should_try_direct_memory_answer("can you explain how the retrieval works?"))
+        self.assertFalse(_should_try_direct_memory_answer("how does this repo work?"))
+
     def test_sentence_transformer_local_model_falls_back_when_embedding_model_is_unavailable(self) -> None:
         model = SentenceTransformerLocalModel()
         with mock.patch("core.runtime.local_model._embedding_model", side_effect=OSError("offline")):
@@ -1270,6 +1276,44 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("main orchestrator", result.final_response or "")
         self.assertNotIn("RVIDA backend is not a widely known", result.final_response or "")
+        self.assertEqual(result.steps[0].tool_name, "list_directory")
+
+    def test_local_only_retrieval_question_prefers_workspace_over_recalled_chat_text(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context=(
+                "## Retrieved Memory\n"
+                "- The retrieval-memory aspect of this repository involves tracing through code paths related to memory retrieval and documenting each file's role.\n"
+            )
+        )
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text(
+                "def execute_turn(prompt):\n"
+                "    return prompt\n\n"
+                "def _retrieve_memory_context(prompt):\n"
+                "    return prompt\n",
+                encoding="utf-8",
+            )
+            (runtime_dir / "context_builder.py").write_text(
+                "class ContextBuilderService:\n"
+                "    def build_runtime_memory_context(self, prompt):\n"
+                "        return prompt\n",
+                encoding="utf-8",
+            )
+            (Path(tempdir) / "README.md").write_text("# Demo repo\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("how does retrieval of memory work?", local_only=True)
+
+        self.assertIn("I inspected the backend entry points locally.", result.final_response or "")
+        self.assertNotIn("documenting each file's role", result.final_response or "")
         self.assertEqual(result.steps[0].tool_name, "list_directory")
 
     def test_local_only_repo_summary_prefers_workspace_over_recalled_summary_text(self) -> None:
