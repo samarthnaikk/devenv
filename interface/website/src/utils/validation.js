@@ -5,7 +5,15 @@ export function validatePlanBlueprint(data) {
 
   if (Array.isArray(data.tasks)) {
     for (let i = 0; i < data.tasks.length; i++) {
-      const t = data.tasks[i];
+      let t = data.tasks[i];
+      if (typeof t === "string" && t.trim()) {
+        t = {
+          task_id: `task-${i + 1}`,
+          description: t.trim(),
+          level: i,
+        };
+        data.tasks[i] = t;
+      }
       if (t && typeof t === "object") {
         if (typeof t.task_id === "number") {
           t.task_id = String(t.task_id);
@@ -14,7 +22,10 @@ export function validatePlanBlueprint(data) {
           t.id = String(t.id);
         }
         if (!t.task_id && !t.id) {
-          t.task_id = `task-${i}`;
+          t.task_id = `task-${i + 1}`;
+        }
+        if ((!t.description || !String(t.description).trim()) && (t.label || t.title || t.name)) {
+          t.description = String(t.label || t.title || t.name).trim();
         }
         if (typeof t.level !== "number" || t.level < 0 || !Number.isInteger(t.level)) {
           t.level = inferTaskLevel(t, i);
@@ -24,7 +35,7 @@ export function validatePlanBlueprint(data) {
     if (data.tasks.length > 1 && (!Array.isArray(data.edges) || data.edges.length === 0)) {
       data.edges = [];
       for (let i = 0; i < data.tasks.length - 1; i++) {
-        data.edges.push({ from: data.tasks[i].task_id || `task-${i}`, to: data.tasks[i + 1].task_id || `task-${i + 1}` });
+        data.edges.push({ from: data.tasks[i].task_id || `task-${i + 1}`, to: data.tasks[i + 1].task_id || `task-${i + 2}` });
       }
     }
   }

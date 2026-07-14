@@ -134,5 +134,5 @@ function extractBalancedJsonObject(text) {
 
 function isPlanBlueprint(value) {
   if (!value || typeof value !== "object") return false;
-  return Array.isArray(value.tasks) || Array.isArray(value.nodes);
+  return Array.isArray(value.tasks) || Array.isArray(value.nodes) || Array.isArray(value.steps) || Array.isArray(value.items) || Array.isArray(value.plan);
 }

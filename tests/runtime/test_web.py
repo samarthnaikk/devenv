@@ -783,11 +783,68 @@ class DevenvWebAppTest(unittest.TestCase):
             result = app.run_plan("plan pdf generation support")
 
         self.assertIsNone(result["error_message"])
-        self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "1")
-        self.assertEqual(result["blueprint"]["edges"][0]["from"], "1")
-        self.assertTrue(
-            any("requesting repair" in log.lower() for log in result["ai_logs"])
+        self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "task-1")
+        self.assertEqual(result["blueprint"]["tasks"][0]["description"], "Here is a plan:")
+        self.assertEqual(result["blueprint"]["edges"][0]["from"], "task-1")
+
+    def test_run_plan_coerces_string_steps_json_into_blueprint(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            ai = FakeAI()
+            ai.responses = [
+                AIResponse(
+                    content=json.dumps(
+                        {
+                            "steps": [
+                                "Inspect the runtime tool registry",
+                                "Add a generate_pdf tool contract",
+                                "Wire the tool into the web runtime",
+                            ]
+                        }
+                    ),
+                    finish_reason="stop",
+                    usage={"total_tokens": 4},
+                    backend="ollama",
+                ),
+            ]
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=ai,
+            )
+            app.update_backend_access("ollama", True)
+
+            result = app.run_plan("plan PDF tool integration")
+
+        self.assertIsNone(result["error_message"])
+        self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "task-1")
+        self.assertEqual(
+            result["blueprint"]["tasks"][1]["description"],
+            "Add a generate_pdf tool contract",
         )
+
+    def test_run_plan_coerces_plain_text_list_into_blueprint(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            ai = FakeAI()
+            ai.responses = [
+                AIResponse(
+                    content="1. Inspect the codebase\n2. Add the PDF tool\n3. Test the integration",
+                    finish_reason="stop",
+                    usage={"total_tokens": 4},
+                    backend="ollama",
+                ),
+            ]
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=ai,
+            )
+            app.update_backend_access("ollama", True)
+
+            result = app.run_plan("plan PDF tool integration")
+
+        self.assertIsNone(result["error_message"])
+        self.assertEqual(len(result["blueprint"]["tasks"]), 3)
+        self.assertEqual(result["blueprint"]["tasks"][0]["description"], "Inspect the codebase")
 
     def test_run_turn_sanitizes_replay_json_error_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

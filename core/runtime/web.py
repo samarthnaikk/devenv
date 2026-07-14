@@ -1195,7 +1195,7 @@ def _parse_plan_blueprint(content: str | None) -> dict[str, object] | None:
         blueprint = _coerce_plan_blueprint(parsed)
         if blueprint is not None:
             return blueprint
-    return None
+    return _coerce_text_plan_blueprint(raw)
 
 
 def _plan_json_candidates(raw: str) -> list[str]:
@@ -1246,14 +1246,44 @@ def _coerce_plan_blueprint(value: object) -> dict[str, object] | None:
         if nested is not None:
             return nested
     tasks = value.get("tasks")
+    if not isinstance(tasks, list):
+        for alias in ("steps", "plan", "items"):
+            aliased = value.get(alias)
+            if isinstance(aliased, list):
+                tasks = aliased
+                break
+    if not isinstance(tasks, list):
+        nodes = value.get("nodes")
+        if isinstance(nodes, list):
+            tasks = [
+                {
+                    "task_id": node.get("id"),
+                    "description": node.get("label") or node.get("description"),
+                    "level": node.get("level", 0),
+                }
+                for node in nodes
+                if isinstance(node, dict)
+            ]
     if not isinstance(tasks, list) or not tasks:
         return None
     normalized_tasks = []
     for index, task in enumerate(tasks):
+        if isinstance(task, str):
+            task = {
+                "task_id": f"task-{index + 1}",
+                "description": task,
+                "level": index,
+            }
         if not isinstance(task, dict):
             return None
-        task_id = str(task.get("task_id", task.get("id", f"task-{index + 1}"))).strip()
-        description = str(task.get("description", task.get("label", ""))).strip()
+        task_id = str(task.get("task_id") or task.get("id") or f"task-{index + 1}").strip()
+        description = str(
+            task.get("description")
+            or task.get("label")
+            or task.get("title")
+            or task.get("name")
+            or ""
+        ).strip()
         if not task_id or not description:
             return None
         raw_level = task.get("level", 0)
@@ -1292,6 +1322,38 @@ def _coerce_plan_blueprint(value: object) -> dict[str, object] | None:
                 }
             )
     return {"tasks": normalized_tasks, "edges": normalized_edges}
+
+
+def _coerce_text_plan_blueprint(text: str) -> dict[str, object] | None:
+    lines = [
+        _strip_plan_prefix(line.strip())
+        for line in str(text or "").splitlines()
+        if line.strip()
+    ]
+    task_lines = [line for line in lines if line]
+    if not task_lines:
+        return None
+    if len(task_lines) == 1 and len(task_lines[0].split()) < 4:
+        return None
+    tasks = []
+    for index, line in enumerate(task_lines):
+        tasks.append(
+            {
+                "task_id": f"task-{index + 1}",
+                "description": line,
+                "level": index,
+            }
+        )
+    edges = []
+    for index in range(len(tasks) - 1):
+        edges.append({"from": tasks[index]["task_id"], "to": tasks[index + 1]["task_id"]})
+    return {"tasks": tasks, "edges": edges}
+
+
+def _strip_plan_prefix(line: str) -> str:
+    cleaned = re.sub(r"^\s*(?:[-*+]\s+|\d+[\).\-\:]\s+)", "", line).strip()
+    cleaned = re.sub(r"^\s*(?:step|task)\s+\d+\s*[:\-]\s*", "", cleaned, flags=re.IGNORECASE).strip()
+    return cleaned
 
 
 def _build_plan_result(
