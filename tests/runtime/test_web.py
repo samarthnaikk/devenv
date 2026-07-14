@@ -74,6 +74,17 @@ class FakeAI:
                     }
                 },
             ),
+            "ollama": AIBackendStatus(
+                name="ollama",
+                available=True,
+                enabled=True,
+                model="qwen2.5:3b",
+                detail="Ollama reachable",
+                metadata={
+                    "models": ["qwen2.5:3b", "codellama:7b"],
+                    "base_url": "http://127.0.0.1:11434",
+                },
+            ),
             "codex": AIBackendStatus(
                 name="codex",
                 available=True,
@@ -101,6 +112,10 @@ class FakeAI:
 
     def reset_session(self) -> None:
         self.reset_session_calls += 1
+
+    def set_backend_model(self, backend: str, model: str) -> None:
+        if backend == "ollama":
+            self.model = model
 
 
 class DevenvWebAppTest(unittest.TestCase):
@@ -374,6 +389,34 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertTrue(health["access_policy"]["session_access"]["codex"])
         self.assertTrue(health["access_policy"]["backend_access"]["opencode"])
         self.assertTrue(health["access_policy"]["backend_access"]["codex"])
+
+    def test_health_payload_exposes_model_catalog_by_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            health = app.build_health_payload()
+
+        self.assertIn("available_models_by_backend", health)
+        self.assertIn("ollama", health["available_models_by_backend"])
+        self.assertIn("qwen2.5:3b", health["available_models_by_backend"]["ollama"])
+        self.assertEqual(health["selected_models_by_backend"]["ollama"], "qwen2.5:3b")
+
+    def test_set_model_can_target_specific_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            ai = FakeAI()
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=ai,
+            )
+
+            payload = app.set_model("qwen2.5:3b", "ollama")
+
+        self.assertEqual(payload["ai_model"], "qwen2.5:3b")
+        self.assertEqual(payload["selected_models_by_backend"]["ollama"], "qwen2.5:3b")
 
     def test_run_turn_forwards_codex_backend_access_and_preference(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

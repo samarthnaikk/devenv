@@ -37,6 +37,7 @@ DEFAULT_WEB_MODELS = (
     "opencode/claude-haiku-4-5",
     "opencode/north-mini-code-free",
 )
+DEFAULT_OLLAMA_MODELS = ("qwen2.5:3b",)
 
 
 class AccessPolicy:
@@ -135,10 +136,13 @@ class DevenvWebApp:
         model = getattr(self.kernel.ai, "model", "unknown")
         ai_statuses = getattr(self.kernel.ai, "status", lambda: {})()
         active_backend = getattr(self.kernel.ai, "last_backend_used", "opencode")
+        preferred_backend = getattr(self.kernel.ai, "preferred_backend", "opencode")
         active_provider_label = {
             "opencode": "OpenCode CLI",
+            "ollama": "Ollama",
             "codex": "Codex via OpenAI",
         }.get(active_backend, getattr(self.kernel.ai, "provider_label", "OpenCode CLI"))
+        model_catalog = self._model_catalog(ai_statuses=ai_statuses, active_backend=active_backend, current_model=model)
         setup = self._cached_setup_readiness()
         privacy = PrivacyModeState(
             no_memory=self.privacy_mode["no_memory"],
@@ -164,7 +168,9 @@ class DevenvWebApp:
             "status": "ok",
             "ai_provider": active_provider_label,
             "ai_model": model,
-            "available_models": self._available_models(current_model=model),
+            "available_models": list(model_catalog.get(active_backend, [])),
+            "available_models_by_backend": model_catalog,
+            "selected_models_by_backend": self._selected_models_by_backend(ai_statuses, fallback_model=model, preferred_backend=preferred_backend),
             "context_builder_enabled": True,
             "context_sources": [
                 source.to_dict() for source in self.context_builder.list_sources()
@@ -176,9 +182,7 @@ class DevenvWebApp:
             "opencode_server": opencode_server,
             "codex_backend": codex_backend,
             "active_backend": active_backend,
-            "preferred_backend": getattr(
-                self.kernel.ai, "preferred_backend", "opencode"
-            ),
+            "preferred_backend": preferred_backend,
             "indexing": self.context_builder.indexing_status(),
             "setup": setup.to_dict(),
             "performance_mode": self.performance_mode,
@@ -232,6 +236,54 @@ class DevenvWebApp:
             if model_name and model_name not in ordered:
                 ordered.append(model_name)
         return ordered
+
+    def _model_catalog(
+        self,
+        *,
+        ai_statuses: dict[str, object],
+        active_backend: str,
+        current_model: str,
+    ) -> dict[str, list[str]]:
+        catalog: dict[str, list[str]] = {
+            "opencode": self._available_models(current_model=current_model if active_backend == "opencode" else getattr(getattr(self.kernel.ai, "opencode_ai", None), "model", "")),
+            "ollama": list(DEFAULT_OLLAMA_MODELS),
+            "codex": [],
+        }
+        if isinstance(ai_statuses, dict):
+            for backend, status in ai_statuses.items():
+                metadata = dict(getattr(status, "metadata", {}) or {})
+                model_name = str(getattr(status, "model", "") or "").strip()
+                if backend == "ollama":
+                    models = [str(item).strip() for item in metadata.get("models", []) if str(item).strip()]
+                    ordered: list[str] = []
+                    for candidate in [model_name, *models, *DEFAULT_OLLAMA_MODELS]:
+                        if candidate and candidate not in ordered:
+                            ordered.append(candidate)
+                    catalog["ollama"] = ordered
+                elif backend == "codex":
+                    catalog["codex"] = [model_name] if model_name else []
+        return catalog
+
+    def _selected_models_by_backend(
+        self,
+        ai_statuses: dict[str, object],
+        *,
+        fallback_model: str,
+        preferred_backend: str,
+    ) -> dict[str, str]:
+        selected = {
+            "opencode": str(getattr(getattr(self.kernel.ai, "opencode_ai", None), "model", "") or ""),
+            "ollama": str(getattr(getattr(self.kernel.ai, "ollama_ai", None), "model", "") or ""),
+            "codex": str(getattr(getattr(self.kernel.ai, "codex_ai", None), "model", "") or ""),
+        }
+        if isinstance(ai_statuses, dict):
+            for backend, status in ai_statuses.items():
+                model_name = str(getattr(status, "model", "") or "").strip()
+                if model_name:
+                    selected[backend] = model_name
+        if preferred_backend in selected and not selected[preferred_backend]:
+            selected[preferred_backend] = fallback_model
+        return selected
 
     def build_files_payload(self, relative_path: str = "") -> dict[str, object]:
         return {
@@ -366,18 +418,27 @@ class DevenvWebApp:
             "data": result.data,
         }
 
-    def set_model(self, model: str) -> dict[str, object]:
+    def set_model(self, model: str, backend: str | None = None) -> dict[str, object]:
         cleaned = model.strip()
         if not cleaned:
             raise ValueError("Missing required field: model")
-        if hasattr(self.kernel.ai, "set_model"):
+        cleaned_backend = str(backend or getattr(self.kernel.ai, "preferred_backend", "") or "").strip().lower() or None
+        if cleaned_backend and hasattr(self.kernel.ai, "set_backend_model"):
+            self.kernel.ai.set_backend_model(cleaned_backend, cleaned)
+        elif hasattr(self.kernel.ai, "set_model"):
             self.kernel.ai.set_model(cleaned)
         else:
             self.kernel.ai.model = cleaned
+        statuses = getattr(self.kernel.ai, "status", lambda: {})()
+        active_backend = getattr(self.kernel.ai, "last_backend_used", cleaned_backend or "opencode")
+        preferred_backend = getattr(self.kernel.ai, "preferred_backend", cleaned_backend or "opencode")
+        model_catalog = self._model_catalog(ai_statuses=statuses, active_backend=active_backend, current_model=cleaned)
         return {
             "ai_provider": getattr(self.kernel.ai, "provider_label", "OpenCode CLI"),
             "ai_model": cleaned,
-            "available_models": self._available_models(current_model=cleaned),
+            "available_models": list(model_catalog.get(cleaned_backend or preferred_backend or active_backend, [])),
+            "available_models_by_backend": model_catalog,
+            "selected_models_by_backend": self._selected_models_by_backend(statuses, fallback_model=cleaned, preferred_backend=preferred_backend),
         }
 
     def update_session_access(self, provider: str, allowed: bool) -> dict[str, object]:
@@ -544,13 +605,19 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/model":
             model = payload.get("model")
+            backend = payload.get("backend")
             if not isinstance(model, str):
                 self._write_json(
                     HTTPStatus.BAD_REQUEST, {"error": "Missing required field: model"}
                 )
                 return
+            if backend is not None and not isinstance(backend, str):
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST, {"error": "backend must be a string when provided"}
+                )
+                return
             try:
-                result = self.app.set_model(model)
+                result = self.app.set_model(model, backend)
             except ValueError as exc:
                 self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
                 return
