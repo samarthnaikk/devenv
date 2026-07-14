@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from core.ai.models import AIResponse, ToolCallRequest
+from core.ai.models import AIExecutedToolStep, AIResponse, ToolCallRequest
 from core.runtime.models import CheckpointTask, ExecutionBlueprint
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode, RunConfig
 from core.runtime.setup import inspect_setup
@@ -901,7 +901,7 @@ class DevenvWebAppTest(unittest.TestCase):
                         {
                             "tasks": [
                                 {"task_id": "inspect-runtime", "description": "Inspect core/runtime/web.py and planning entrypoints", "level": 0},
-                                {"task_id": "review-tooling", "description": "Review runtime tool registration and setup/readiness hooks", "level": 1},
+                                {"task_id": "review-tooling", "description": "Review core/runtime/tooling.py and core/runtime/setup.py for registration and readiness hooks", "level": 1},
                                 {"task_id": "add-pdf-tool", "description": "Add the PDF generation tool implementation and register it", "level": 2},
                                 {"task_id": "wire-contract", "description": "Wire the runtime/web contract and health metadata for the new PDF tool", "level": 3},
                                 {"task_id": "test-runtime", "description": "Add runtime tests covering planning and execution for the PDF tool", "level": 4},
@@ -1031,6 +1031,83 @@ class DevenvWebAppTest(unittest.TestCase):
                                 {"task_id": "review-setup", "description": "Check core/runtime/setup.py for latex_pdf_toolchain readiness and optional dependency reporting", "level": 2},
                                 {"task_id": "implement-tool", "description": "Add the PDF tool implementation and wire its runtime contract into the identified integration points", "level": 3},
                                 {"task_id": "test-runtime", "description": "Add tests covering planner output and runtime readiness for the new PDF path", "level": 4},
+                            ],
+                            "edges": [
+                                {"from": "inspect-web", "to": "review-tooling"},
+                                {"from": "review-tooling", "to": "review-setup"},
+                                {"from": "review-setup", "to": "implement-tool"},
+                                {"from": "implement-tool", "to": "test-runtime"},
+                            ],
+                        }
+                    ),
+                    finish_reason="stop",
+                    usage={"total_tokens": 6},
+                    backend="ollama",
+                ),
+            ]
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=ai,
+            )
+            app.update_backend_access("ollama", True)
+
+            result = app.run_plan("plan on how to add pdf generation tool to this codebase")
+
+        self.assertIsNone(result["error_message"])
+        self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "inspect-web")
+        self.assertEqual(len(ai.chat_calls), 2)
+
+    def test_run_plan_refines_tool_assisted_generic_blueprint_before_returning(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            Path(tempdir, "README.md").write_text("PDF support is wired through runtime tooling and setup readiness.", encoding="utf-8")
+            ai = CapturingFakeAI()
+            ai.responses = [
+                AIResponse(
+                    content=json.dumps(
+                        {
+                            "tasks": [
+                                {"task_id": "t1-ep9596de99", "description": "Inspect for existing PDF generation tools in the workspace", "level": 0},
+                                {"task_id": "t2-ls-root", "description": "List directories at root level to find potential places for a new pdf_generator.py file", "level": 1},
+                                {"task_id": "t3-inspect-codebase", "description": "Inspect the codebase for existing PDF generation tools or relevant files", "level": 2},
+                                {"task_id": "t4-find-existing-tools", "description": "Identify if a pdf_generator.py file already exists in the workspace", "level": 3},
+                                {"task_id": "t5-create-new-tool", "description": "Create a new pdf_generator.py file for PDF generation tool implementation", "level": 4},
+                                {"task_id": "t6-integrate-pdf-generator", "description": "Integrate the newly created pdf_generator.py into existing workflows or add necessary dependencies", "level": 5},
+                                {"task_id": "t7-test-pdf-generation", "description": "Test the PDF generation tool to ensure it works as expected", "level": 6},
+                            ],
+                            "edges": [
+                                {"from": "t1-ep9596de99", "to": "t2-ls-root"},
+                                {"from": "t2-ls-root", "to": "t3-inspect-codebase"},
+                                {"from": "t3-inspect-codebase", "to": "t4-find-existing-tools"},
+                                {"from": "t4-find-existing-tools", "to": "t5-create-new-tool"},
+                                {"from": "t5-create-new-tool", "to": "t6-integrate-pdf-generator"},
+                                {"from": "t6-integrate-pdf-generator", "to": "t7-test-pdf-generation"},
+                            ],
+                        }
+                    ),
+                    executed_steps=(
+                        AIExecutedToolStep(
+                            step_id="step-1",
+                            tool_name="list_directory",
+                            arguments={"path": ".", "mode": "recursive", "max_depth": 2},
+                            output="listed",
+                            success=True,
+                            data={},
+                        ),
+                    ),
+                    finish_reason="stop",
+                    usage={"total_tokens": 5},
+                    backend="ollama",
+                ),
+                AIResponse(
+                    content=json.dumps(
+                        {
+                            "tasks": [
+                                {"task_id": "inspect-web", "description": "Inspect core/runtime/web.py for planning and generate_pdf readiness hooks", "level": 0},
+                                {"task_id": "review-tooling", "description": "Review core/runtime/tooling.py for the runtime registration path", "level": 1},
+                                {"task_id": "review-setup", "description": "Check core/runtime/setup.py for latex_pdf_toolchain readiness reporting", "level": 2},
+                                {"task_id": "implement-tool", "description": "Add the PDF tool and wire its runtime contract into the discovered integration points", "level": 3},
+                                {"task_id": "test-runtime", "description": "Add runtime tests that validate planner output and PDF readiness", "level": 4},
                             ],
                             "edges": [
                                 {"from": "inspect-web", "to": "review-tooling"},

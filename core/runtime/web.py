@@ -53,7 +53,7 @@ READ_ONLY_PLAN_TOOLS = (
 PLAN_MEMORY_CHAR_LIMIT = 2400
 PLAN_BLUEPRINT_REPAIR_LIMIT = 2
 PLAN_TEMPERATURE = 0.0
-PLAN_DETAIL_REFINEMENT_LIMIT = 1
+PLAN_DETAIL_REFINEMENT_LIMIT = 3
 PLAN_SYSTEM_RULE = """You are Devenv's planning engine.
 
 PLANNER_OUTPUT_MODE: blueprint_json
@@ -80,6 +80,8 @@ Rules:
 - Return raw JSON only. No markdown fences. No prose before or after the JSON.
 - For codebase-specific requests, use the provided repository context and inspect read-only tools before finalizing when the current repository structure is not yet specific enough.
 - Prefer repository-aware steps that name concrete subsystems, files, or integration points when the prompt is about this codebase.
+- Do not invent filenames or integration points unless they are grounded by the repository context or inspection results.
+- For repository-specific requests, at least 2 tasks should name existing files or concrete integration surfaces from the repository context when available.
 - Use multiple tasks when the work can be broken down.
 - Use multiple levels when later tasks depend on earlier tasks.
 - Every task must have a unique string task_id.
@@ -543,6 +545,20 @@ class DevenvWebApp:
                 if ai_response.content:
                     blueprint = _parse_plan_blueprint(ai_response.content)
                     if blueprint is not None:
+                        if (
+                            detail_refinement_attempts < PLAN_DETAIL_REFINEMENT_LIMIT
+                            and _plan_blueprint_needs_refinement(prompt, blueprint, steps)
+                        ):
+                            detail_refinement_attempts += 1
+                            ai_logs.append("Planner blueprint from tool-assisted turn was valid but too generic; requesting a more detailed repo-aware graph")
+                            conversation.append({"role": "assistant", "content": ai_response.content})
+                            conversation.append(
+                                {
+                                    "role": "user",
+                                    "content": _plan_detail_refinement_prompt(prompt),
+                                }
+                            )
+                            continue
                         return _build_plan_result(
                             final_response=ai_response.content,
                             blueprint=blueprint,
@@ -683,6 +699,7 @@ class DevenvWebApp:
                     facts.extend(memory_facts(prompt)[:4])
                 except Exception as exc:
                     logger.warning("Plan memory grounding failed: error=%s", exc)
+        facts.extend(self._plan_specialized_repo_hints(prompt))
         facts.extend(self._plan_repo_file_hints(prompt))
         unique_facts: list[str] = []
         for fact in facts:
@@ -720,6 +737,57 @@ class DevenvWebApp:
                 scored.append((score, relative_path, reason))
         scored.sort(key=lambda item: (-item[0], item[1]))
         hints = [f"Relevant file: {relative_path} ({reason})." for _score, relative_path, reason in scored[:6]]
+        return hints
+
+    def _plan_specialized_repo_hints(self, prompt: str) -> list[str]:
+        lowered = str(prompt or "").lower()
+        hints: list[str] = []
+        if "pdf" in lowered:
+            workspace_root = Path(self.config.workspace_path).expanduser().resolve()
+            pdf_targets = (
+                (
+                    "core/runtime/web.py",
+                    "This file already exposes a reserved `generate_pdf` tool readiness contract in the health payload.",
+                ),
+                (
+                    "core/runtime/setup.py",
+                    "This file already checks `latex_pdf_toolchain`, so PDF setup/readiness likely belongs here.",
+                ),
+                (
+                    "core/runtime/tooling.py",
+                    "This file owns `build_runtime_tools`, which is the runtime registration path for new tools.",
+                ),
+                (
+                    "tests/runtime/test_web.py",
+                    "This file covers plan-mode/runtime web behavior and is a likely place for planner regression tests.",
+                ),
+                (
+                    "tests/runtime/test_setup.py",
+                    "This file already covers setup/readiness checks, including LaTeX-related PDF readiness.",
+                ),
+            )
+            for relative_path, summary in pdf_targets:
+                if (workspace_root / relative_path).is_file():
+                    hints.append(f"Known integration point: `{relative_path}`. {summary}")
+        if "retrieval" in lowered or "memory" in lowered:
+            workspace_root = Path(self.config.workspace_path).expanduser().resolve()
+            retrieval_targets = (
+                (
+                    "core/runtime/kernel.py",
+                    "This file orchestrates `_retrieve_memory_context` and the direct-memory/local-knowledge routing decisions.",
+                ),
+                (
+                    "core/runtime/context_builder.py",
+                    "This file builds workspace facts, memory facts, and external session context.",
+                ),
+                (
+                    "core/runtime/workspace.py",
+                    "This file provides the bounded workspace browser used by local inspection flows.",
+                ),
+            )
+            for relative_path, summary in retrieval_targets:
+                if (workspace_root / relative_path).is_file():
+                    hints.append(f"Known integration point: `{relative_path}`. {summary}")
         return hints
 
     def _plan_candidate_files(self, workspace_root: Path) -> list[Path]:
@@ -1529,6 +1597,9 @@ def _plan_blueprint_needs_refinement(
     repo_anchored_count = sum(1 for task in tasks if _task_description_has_repo_anchor(task))
     if repo_anchored_count < min(2, len(tasks)):
         return True
+    unique_repo_anchors = set().union(*(_task_repo_anchor_keys(task) for task in tasks))
+    if len(unique_repo_anchors) < 2:
+        return True
     generic_count = sum(1 for task in tasks if _task_description_is_generic(task))
     if generic_count >= max(2, len(tasks) // 2):
         return True
@@ -1542,12 +1613,26 @@ def _task_description_is_generic(task: object) -> bool:
     if not description:
         return True
     generic_markers = (
+        "inspect for existing",
         "inspect the workspace",
+        "inspect the codebase for existing",
+        "identify if",
+        "list directories at root level",
+        "find potential places",
+        "search for a file named",
+        "search for an existing",
+        "check if any existing",
         "search for relevant libraries",
         "choose a suitable",
         "create a new file",
+        "create a new ",
         "integrate the chosen library",
+        "integrate the newly",
+        "implement basic",
+        "existing workflows",
         "test the integration",
+        "test the pdf",
+        "test the new",
     )
     specific_markers = (
         "core/",
@@ -1574,21 +1659,46 @@ def _task_description_has_repo_anchor(task: object) -> bool:
         return False
     anchor_markers = (
         "/",
-        ".py",
-        ".md",
-        ".js",
-        ".ts",
         "core/",
         "tests/",
         "interface/",
+        "sample-test/",
         "runtime",
-        "setup",
+        "setup.py",
         "tooling",
-        "kernel",
+        "tooling.py",
+        "kernel.py",
+        "web.py",
+        "context_builder.py",
+        "routing.py",
+        "readme.md",
         "context_builder",
         "readiness",
     )
     return any(marker in description for marker in anchor_markers)
+
+
+def _task_repo_anchor_keys(task: object) -> set[str]:
+    if not isinstance(task, dict):
+        return set()
+    description = str(task.get("description") or "").strip().lower()
+    if not description:
+        return set()
+    known_anchors = (
+        "core/runtime/web.py",
+        "core/runtime/tooling.py",
+        "core/runtime/setup.py",
+        "core/runtime/kernel.py",
+        "core/runtime/context_builder.py",
+        "core/runtime/workspace.py",
+        "core/ai/routing.py",
+        "core/ai/ollama_backend.py",
+        "tests/runtime/test_web.py",
+        "tests/runtime/test_setup.py",
+        "tests/runtime/test_kernel.py",
+        "readme.md",
+    )
+    return {anchor for anchor in known_anchors if anchor in description}
 
 
 def _plan_detail_refinement_prompt(user_prompt: str) -> str:
@@ -1599,6 +1709,8 @@ def _plan_detail_refinement_prompt(user_prompt: str) -> str:
         "- Return raw JSON only.\n"
         "- Produce at least 5 tasks unless the work is truly trivial.\n"
         "- Make the tasks repository-aware by naming concrete subsystems, files, or integration layers when possible.\n"
+        "- Do not invent filenames such as new modules unless the repository context or tool output already justifies them.\n"
+        "- Name at least 2 existing repository files or concrete integration surfaces from the provided grounding.\n"
         "- Include discovery, implementation, verification, and follow-up/documentation steps where relevant.\n"
         "- If the repository context is still too vague, inspect read-only tools before returning the refined blueprint.\n"
     )
