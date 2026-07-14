@@ -48,7 +48,24 @@ export OPENAI_BASE_URL=https://api.openai.com/v1   # optional
 export DEVENV_CODEX_TIMEOUT_SECONDS=60             # optional
 ```
 
-At runtime, users can choose `opencode` or `codex` as the backend per session and override it per turn. OpenCode remains the default for backward compatibility.
+At runtime, users can choose `opencode`, `ollama`, or `codex` as the backend per session and override it per turn. OpenCode remains the default for backward compatibility, while Ollama is the recommended local option for lightweight on-device inference.
+
+### Ollama backend
+
+Devenv can also route turns through a local Ollama instance. The current integration is designed for low-memory local models such as `qwen2.5:3b` and assumes Ollama is already installed on the machine.
+
+Default behavior:
+
+- connects to `http://127.0.0.1:11434`
+- discovers installed local models from `GET /api/tags`
+- sends chat turns through `POST /api/chat`
+- uses streaming HTTP responses internally so the Python backend does not wait for one large buffered reply
+- applies bounded runtime options:
+  - `num_ctx=4096`
+  - `num_thread=half of os.cpu_count()`
+  - `keep_alive=2m`
+
+If Ollama is not running, the web health payload, setup checks, footer state, and settings panel all report that explicitly so the user can start it before selecting the backend.
 
 Launch the local web experience:
 
@@ -377,14 +394,16 @@ That result is what the web UI and terminal renderer display back to the user.
 
 ### Runtime architecture
 
-Devenv keeps control of planning, memory retrieval, verification, transcript persistence, and tool execution. Users can choose between two backends:
+Devenv keeps control of planning, memory retrieval, verification, transcript persistence, and tool execution. Users can choose between three backends:
 
 - OpenCode: server-backed session transport with default model `openrouter/anthropic/claude-sonnet-4`
+- Ollama: local HTTP transport with discovered installed models such as `qwen2.5:3b`
 - Codex: official OpenAI MCP integration against Devenv's local MCP HTTP server
 
 Behavioral rules:
 
 - Devenv talks to OpenCode through a Python HTTP client instead of scraping `opencode run` output
+- Devenv talks to Ollama through the local HTTP API and applies bounded runtime options for context size, thread count, and keep-alive
 - Codex uses the official OpenAI MCP path and the Devenv MCP HTTP server rather than a CLI subprocess
 - OpenCode sessions are reused across a Devenv conversation and reset when a new thread starts
 - runtime tool execution uses an in-process transport by default to avoid extra MCP subprocess overhead; set `DEVENV_TOOL_TRANSPORT=mcp` if you explicitly want the stdio MCP hop
