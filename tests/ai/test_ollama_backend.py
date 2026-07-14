@@ -98,6 +98,37 @@ class OllamaBackendTest(unittest.TestCase):
         self.assertEqual(response.finish_reason, "tool_calls")
         self.assertEqual(response.tool_calls[0].tool_name, "read_file")
 
+    def test_chat_preserves_raw_blueprint_json_response(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            core = OllamaAICore(workspace_path=tempdir, model="qwen2.5:3b")
+            core.register_tool(FakeTool())
+            blueprint = {
+                "tasks": [
+                    {"task_id": "inspect-runtime", "description": "Inspect runtime planning flow", "level": 0},
+                    {"task_id": "patch-parser", "description": "Patch Ollama JSON parsing", "level": 1},
+                ],
+                "edges": [{"from": "inspect-runtime", "to": "patch-parser"}],
+            }
+            stream = json.dumps(
+                {
+                    "message": {
+                        "content": json.dumps(blueprint)
+                    },
+                    "done": True,
+                }
+            )
+            with patch("core.ai.ollama_backend.request.urlopen", return_value=_FakeHTTPResponse(stream)):
+                response = core.chat(
+                    messages=[
+                        {"role": "system", "content": "PLANNER_OUTPUT_MODE: blueprint_json"},
+                        {"role": "user", "content": "Plan the work"},
+                    ],
+                    tool_names=["read_file"],
+                )
+
+        self.assertEqual(response.finish_reason, "stop")
+        self.assertEqual(json.loads(response.content), blueprint)
+
     def test_compile_messages_includes_tool_schema_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             core = OllamaAICore(workspace_path=tempdir, model="qwen2.5:3b")
@@ -113,6 +144,25 @@ class OllamaBackendTest(unittest.TestCase):
         self.assertIn('"name":"read_file"', compiled[0]["content"])
         self.assertIn('"properties":{"path"', compiled[0]["content"])
         self.assertIn("Do not say the tools are unavailable", compiled[0]["content"])
+
+    def test_compile_messages_uses_raw_json_instruction_for_planner_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            core = OllamaAICore(workspace_path=tempdir, model="qwen2.5:3b")
+            core.register_tool(FakeTool())
+
+            compiled = core._compile_messages(
+                messages=[
+                    {"role": "system", "content": "PLANNER_OUTPUT_MODE: blueprint_json"},
+                    {"role": "user", "content": "Plan the work"},
+                ],
+                memory_context=None,
+                tool_names=["read_file"],
+            )
+
+        self.assertIn(
+            "return the blueprint JSON object itself with tasks and edges",
+            compiled[0]["content"],
+        )
 
     def test_status_reports_not_running_detail(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

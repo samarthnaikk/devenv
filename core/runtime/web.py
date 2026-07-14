@@ -53,6 +53,8 @@ PLAN_MEMORY_CHAR_LIMIT = 1200
 PLAN_BLUEPRINT_REPAIR_LIMIT = 2
 PLAN_SYSTEM_RULE = """You are Devenv's planning engine.
 
+PLANNER_OUTPUT_MODE: blueprint_json
+
 Your job is to inspect the workspace if needed using read-only tools, then return only a multi-node execution graph as raw JSON.
 
 Never modify files. Never ask to apply changes. Never call mutation tools.

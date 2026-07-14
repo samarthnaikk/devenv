@@ -155,6 +155,10 @@ class OllamaAICore:
         compiled: list[dict[str, str]] = []
         system_text = self.system_instructions or DEFAULT_SYSTEM_INSTRUCTIONS
         if tool_names:
+            planner_json_mode = any(
+                "PLANNER_OUTPUT_MODE: blueprint_json" in str(message.get("content") or "")
+                for message in messages
+            )
             tool_payload = [
                 {
                     "name": tool.name,
@@ -171,7 +175,11 @@ class OllamaAICore:
                     json.dumps(tool_payload, separators=(",", ":"), sort_keys=True),
                     "If tool use is required, respond with exactly one JSON object and no prose.",
                     'For tool use return {"type":"tool_call","tool_name":"<tool>","arguments":{...}}.',
-                    'For direct answers return {"type":"final","content":"<response>"}.',
+                    (
+                        "For direct answers in planner mode, return the blueprint JSON object itself with tasks and edges."
+                        if planner_json_mode
+                        else 'For direct answers return {"type":"final","content":"<response>"}.'
+                    ),
                     f"Allowed tools: {', '.join(tool_names)}.",
                     "Use only one tool call at a time and only from the listed tools.",
                     "Do not say the tools are unavailable when the needed file inspection or file editing tools are listed above.",
@@ -284,6 +292,14 @@ def _parse_structured_ollama_response(
             content="",
             tool_calls=(ToolCallRequest(call_id="ollama_tool_call", tool_name=tool_name, arguments=arguments),),
             finish_reason="tool_calls",
+            usage={},
+            backend="ollama",
+            metadata={"transport": "http_stream"},
+        )
+    if "tasks" in payload or "nodes" in payload:
+        return AIResponse(
+            content=content,
+            finish_reason="stop",
             usage={},
             backend="ollama",
             metadata={"transport": "http_stream"},
