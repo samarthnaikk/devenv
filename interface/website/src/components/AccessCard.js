@@ -218,13 +218,16 @@ async function refreshHealth(dispatch, options = {}) {
         provider: healthPayload.ai_provider || "",
         model: healthPayload.ai_model || "",
         availableModels: healthPayload.available_models || [],
+        availableModelsByBackend: healthPayload.available_models_by_backend || {},
+        selectedModelsByBackend: healthPayload.selected_models_by_backend || {},
       },
     });
-      dispatch({ type: "SET_ACCESS_POLICY", payload: healthPayload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, codex: false } } });
+    dispatch({ type: "SET_ACCESS_POLICY", payload: healthPayload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, codex: false } } });
     dispatch({ type: "SET_BACKENDS", payload: healthPayload.ai_backends || {} });
     dispatch({ type: "SET_ACTIVE_BACKEND", payload: healthPayload.active_backend || "opencode" });
+    dispatch({ type: "SET_PREFERRED_BACKEND", payload: healthPayload.preferred_backend || "opencode" });
     dispatch({ type: "SET_PERFORMANCE_MODE", payload: healthPayload.performance_mode || "medium" });
-    dispatch({ type: "SET_PRIVACY_MODE", payload: healthPayload.privacy || state.privacyMode });
+    dispatch({ type: "SET_PRIVACY_MODE", payload: healthPayload.privacy || { no_memory: false, incognito: false } });
   } catch (err) {
     if (!options.silent) {
       showToast(dispatch, "Health check failed");
