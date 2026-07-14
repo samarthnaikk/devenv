@@ -1,6 +1,7 @@
 from .codex_backend import CodexAICore, CodexRunResult
 from .engine import AICore
 from .models import AIBackendStatus, AIBackendTurnResult, AIExecutedToolStep, AIResponse, ToolCallRequest
+from .ollama_backend import OllamaAICore
 from .opencode_client import (
     OpenCodeClient,
     OpenCodeClientError,
@@ -23,6 +24,7 @@ __all__ = [
     "AIResponse",
     "CodexAICore",
     "CodexRunResult",
+    "OllamaAICore",
     "OpenCodeAICore",
     "OpenCodeClient",
     "OpenCodeClientError",
