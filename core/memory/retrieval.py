@@ -17,6 +17,7 @@ MIN_CONTEXT_DRIFT_JACCARD = 0.12
 RRF_K = 60
 MAX_SIBLING_CANDIDATES = 3
 MAX_RELATED_CANDIDATES = 3
+HIGH_CONFIDENCE_VECTOR_MATCH = 0.88
 REFERENTIAL_CONTEXT_MARKERS = {
     "again",
     "earlier",
@@ -55,7 +56,7 @@ class RetrievalService:
             trace = RetrievalTrace(markdown_context=markdown)
             return RetrievalResult(markdown_context=markdown, selected_nodes=(), trace=trace)
 
-        candidates = self._expand_candidates(matches)
+        candidates = self._seed_candidates(matches) if self._should_short_circuit_expansion(vector_matches) else self._expand_candidates(matches)
         scored = self._score_candidates(candidates)
         selected = tuple(
             RetrievalSelectedNode(
@@ -132,6 +133,22 @@ class RetrievalService:
         if existing is None or candidate.similarity > existing.similarity:
             expanded[candidate.node.node_id] = candidate
 
+    def _seed_candidates(self, matches: list[VectorMatch]) -> list[RetrievalCandidate]:
+        seeds: list[RetrievalCandidate] = []
+        for match in matches:
+            node = self.store.get_node(match.node_id)
+            if node is None:
+                continue
+            seeds.append(
+                RetrievalCandidate(
+                    node=node,
+                    source_node_id=node.node_id,
+                    relationship="seed",
+                    similarity=match.similarity,
+                )
+            )
+        return seeds
+
     def _top_structural_neighbors(self, nodes: list[MemoryNode], *, limit: int) -> list[MemoryNode]:
         ranked = sorted(
             nodes,
@@ -139,6 +156,9 @@ class RetrievalService:
             reverse=True,
         )
         return ranked[:limit]
+
+    def _should_short_circuit_expansion(self, vector_matches: list[VectorMatch]) -> bool:
+        return bool(vector_matches and vector_matches[0].similarity >= HIGH_CONFIDENCE_VECTOR_MATCH)
 
     def _lexical_seed_matches(self, query_text: str, top_k: int) -> list[VectorMatch]:
         if not hasattr(self.store, "search_nodes_fts"):

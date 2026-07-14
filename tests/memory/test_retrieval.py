@@ -229,6 +229,42 @@ class RetrievalFlowTest(unittest.TestCase):
 
         self.assertIn("server.py entrypoint", result.markdown_context.lower())
 
+    def test_high_confidence_seed_short_circuits_graph_expansion(self) -> None:
+        class HighConfidenceVectorIndex(InMemoryVectorIndex):
+            def query(self, vector: list[float], top_k: int, min_similarity: float):
+                return [VectorMatch(node_id="cmp_django_auth", similarity=0.95, text_chunk="Django authentication uses middleware.")]
+
+        tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tempdir.cleanup)
+        engine = MemoryEngine(
+            db_path=f"{tempdir.name}/memory.db",
+            vector_dir=f"{tempdir.name}/vectors",
+            embedder=HashingEmbedder(dimension=8),
+            vector_index=HighConfidenceVectorIndex(),
+        )
+        engine.update_associative_tree(
+            {
+                "node_id": "proj_rxgpt",
+                "label": "Project: RxGPT",
+                "category": "project",
+                "summary": "RxGPT uses React, Tailwind, and Django.",
+            }
+        )
+        engine.update_associative_tree(
+            {
+                "node_id": "cmp_django_auth",
+                "parent_id": "proj_rxgpt",
+                "label": "Django Auth Setup",
+                "category": "component",
+                "summary": "Django authentication uses custom middleware and session cookies.",
+            }
+        )
+
+        result = engine.retrieve_context("How do I fix django auth?", top_k=5)
+
+        self.assertTrue(result.trace.expanded_candidates)
+        self.assertTrue(all(candidate.relationship == "seed" for candidate in result.trace.expanded_candidates))
+
     def test_skips_rehydration_when_vector_index_is_already_persisted(self) -> None:
         @dataclass
         class CountingEmbedder:
