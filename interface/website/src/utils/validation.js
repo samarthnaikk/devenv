@@ -7,6 +7,12 @@ export function validatePlanBlueprint(data) {
     for (let i = 0; i < data.tasks.length; i++) {
       const t = data.tasks[i];
       if (t && typeof t === "object") {
+        if (typeof t.task_id === "number") {
+          t.task_id = String(t.task_id);
+        }
+        if (typeof t.id === "number") {
+          t.id = String(t.id);
+        }
         if (!t.task_id && !t.id) {
           t.task_id = `task-${i}`;
         }
@@ -162,7 +168,7 @@ function normalizeTasksToFlowchart(blueprint) {
   const activePointer = blueprint.active_task_pointer ?? 0;
 
   const nodes = tasks.map((t, i) => ({
-    id: t.task_id || t.id || `task-${i}`,
+    id: String(t.task_id || t.id || `task-${i}`),
     label: t.description || t.label || `Task ${i + 1}`,
     level: typeof t.level === "number" && Number.isInteger(t.level) ? t.level : inferTaskLevel(t, i),
     desc: t.desc || t.description || "",
