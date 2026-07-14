@@ -9,7 +9,7 @@ const initialState = {
   transcript: [],
   isRunning: false,
   bootError: "",
-  healthMeta: { provider: "", model: "", availableModels: [] },
+  healthMeta: { provider: "", model: "", availableModels: [], availableModelsByBackend: {}, selectedModelsByBackend: {} },
   usageWindow: [],
   rateLimitInfo: null,
   clock: Date.now(),

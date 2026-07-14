@@ -2,11 +2,11 @@ export async function fetchHealth() {
   return request("/api/health");
 }
 
-export async function updateModel(model) {
+export async function updateModel(model, backend = null) {
   return request("/api/model", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model }),
+    body: JSON.stringify({ model, backend }),
   });
 }
 

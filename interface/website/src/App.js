@@ -412,11 +412,14 @@ function applyHealthPayload(dispatch, payload) {
       provider: payload.ai_provider || "",
       model: payload.ai_model || "",
       availableModels: payload.available_models || [],
+      availableModelsByBackend: payload.available_models_by_backend || {},
+      selectedModelsByBackend: payload.selected_models_by_backend || {},
     },
   });
   dispatch({ type: "SET_ACCESS_POLICY", payload: payload.access_policy || { session_access: {}, backend_access: {} } });
   dispatch({ type: "SET_BACKENDS", payload: payload.ai_backends || {} });
   dispatch({ type: "SET_ACTIVE_BACKEND", payload: payload.active_backend || "opencode" });
+  dispatch({ type: "SET_PREFERRED_BACKEND", payload: payload.preferred_backend || "opencode" });
   dispatch({ type: "SET_PERFORMANCE_MODE", payload: payload.performance_mode || "medium" });
   dispatch({ type: "SET_PRIVACY_MODE", payload: payload.privacy || { no_memory: false, incognito: false } });
 }
