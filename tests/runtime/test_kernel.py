@@ -1328,6 +1328,7 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("README.md", result.final_response or "")
         self.assertNotIn("env.py", result.final_response or "")
         self.assertEqual(ai.chat_calls, [])
+        self.assertIn("## Project Overview", result.final_response or "")
 
     def test_repo_overview_prompt_prefers_repo_summary_shape_over_backend_only_shape(self) -> None:
         memory = FakeMemory()
@@ -1351,7 +1352,31 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("README.md", result.final_response or "")
         self.assertIn("kernel.py", result.final_response or "")
+        self.assertIn("## Project Overview", result.final_response or "")
         self.assertNotIn("I inspected the backend entry points locally.", result.final_response or "")
+
+    def test_project_about_prompt_routes_to_local_repo_overview(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            runtime_dir.mkdir(parents=True)
+            ai_dir = Path(tempdir) / "core" / "ai"
+            ai_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text("def execute_turn():\n    pass\n", encoding="utf-8")
+            (ai_dir / "routing.py").write_text("class RoutingAICore:\n    pass\n", encoding="utf-8")
+            (Path(tempdir) / "README.md").write_text("# Demo project\nThis project helps inspect local code.\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn("what is this project about")
+
+        self.assertEqual(ai.chat_calls, [])
+        self.assertIn("## Project Overview", result.final_response or "")
+        self.assertIn("README.md", result.final_response or "")
 
     def test_tell_me_about_repo_prompt_uses_current_workspace_summary_not_prior_memory(self) -> None:
         memory = FakeMemory()

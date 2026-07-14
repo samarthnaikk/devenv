@@ -1571,6 +1571,10 @@ class DevenvKernel:
             joined = "\n- ".join(summary_sections)
             self._mark_local_backend_response()
             return "I inspected the backend entry points locally. The main pieces are:\n- " + joined
+        if _is_repo_overview_question(user_prompt):
+            joined = "\n- ".join(summary_sections)
+            self._mark_local_backend_response()
+            return "## Project Overview\n- " + joined
         self._mark_local_backend_response()
         return "\n\n".join(summary_sections)
 
@@ -5546,6 +5550,12 @@ def _is_repo_summary_question(user_prompt: str) -> bool:
     return any(
         phrase in lowered
         for phrase in (
+            "what is this project about",
+            "what is the project about",
+            "tell me about this project",
+            "tell me about the project",
+            "explain this project",
+            "explain the project",
             "summarize this repo",
             "summarize the repo",
             "summarize this repository",

@@ -57,6 +57,12 @@ class LocalIntentRouter:
             repo_summary_hint = any(
                 phrase in lowered
                 for phrase in (
+                    "what is this project about",
+                    "what is the project about",
+                    "tell me about this project",
+                    "tell me about the project",
+                    "explain this project",
+                    "explain the project",
                     "summarize this repo",
                     "summarize the repo",
                     "summarize this repository",
