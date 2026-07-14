@@ -3477,6 +3477,9 @@ class DevenvKernel:
             "external_context_session_count": 0,
             "external_context_session_ids": [],
         }
+        if _should_skip_retrieval_for_prompt(user_prompt):
+            metadata["external_context_reason"] = "Skipped memory retrieval for a low-context prompt."
+            return "", metadata
         if self._should_skip_current_workspace_memory_lookup(user_prompt):
             metadata["external_context_reason"] = "Skipped memory retrieval for a current-workspace inspection prompt."
             return "", metadata
@@ -5064,7 +5067,7 @@ def _is_underspecified_troubleshooting_prompt(user_prompt: str) -> bool:
 
 
 def _should_skip_external_session_context(user_prompt: str) -> bool:
-    return _should_skip_current_workspace_memory_lookup(user_prompt)
+    return _should_skip_retrieval_for_prompt(user_prompt) or _should_skip_current_workspace_memory_lookup(user_prompt)
 
 
 def _should_skip_current_workspace_memory_lookup(user_prompt: str) -> bool:
@@ -5111,6 +5114,71 @@ def _should_skip_current_workspace_memory_lookup(user_prompt: str) -> bool:
             "how does this system work",
         )
     )
+
+
+def _should_skip_retrieval_for_prompt(user_prompt: str) -> bool:
+    lowered = user_prompt.lower().strip()
+    if not lowered:
+        return True
+    if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt) or _is_session_history_question(user_prompt):
+        return False
+    if _is_structural_acknowledgement_prompt(lowered):
+        return True
+    if _is_shell_like_prompt(lowered):
+        return True
+    tokens = re.findall(r"[a-z0-9_./-]+", lowered)
+    if len(tokens) < 3 and not any(char in lowered for char in "?.!"):
+        return True
+    return False
+
+
+def _is_structural_acknowledgement_prompt(lowered_prompt: str) -> bool:
+    normalized = re.sub(r"\s+", " ", lowered_prompt).strip(" .!?\t\r\n")
+    return normalized in {
+        "ok",
+        "okay",
+        "kk",
+        "cool",
+        "nice",
+        "great",
+        "thanks",
+        "thank you",
+        "thx",
+        "got it",
+        "understood",
+        "sounds good",
+        "yep",
+        "yes",
+        "no",
+    }
+
+
+def _is_shell_like_prompt(lowered_prompt: str) -> bool:
+    command_prefixes = (
+        "cd ",
+        "ls",
+        "pwd",
+        "cat ",
+        "rm ",
+        "mv ",
+        "cp ",
+        "mkdir ",
+        "touch ",
+        "git ",
+        "npm ",
+        "pnpm ",
+        "yarn ",
+        "bun ",
+        "python ",
+        "python3 ",
+        "./",
+        "../",
+    )
+    if lowered_prompt in {"ls", "pwd", "clear"}:
+        return True
+    if any(lowered_prompt.startswith(prefix) for prefix in command_prefixes):
+        return True
+    return bool(re.match(r"^[a-z0-9_./-]+\s+(-{1,2}[a-z0-9][a-z0-9-]*\s*)+$", lowered_prompt))
 
 
 def _is_opencode_access_denied_error(error: RuntimeError) -> bool:

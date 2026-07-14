@@ -583,6 +583,52 @@ class DevenvKernelTest(unittest.TestCase):
         )
         self.assertIn("README.md", result.final_response or "")
 
+    def test_retrieve_memory_context_skips_low_context_acknowledgement_prompt(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: (_ for _ in ()).throw(AssertionError("retrieve_context should be skipped"))
+        ai = FakeAI([])
+
+        class CountingBuilder:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def build_runtime_memory_context(self, task: str):
+                self.calls += 1
+                return "", (), {}
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            builder = CountingBuilder()
+            kernel.context_builder = builder
+            memory_context, metadata = kernel._retrieve_memory_context("thanks")
+
+        self.assertEqual(memory_context, "")
+        self.assertEqual(builder.calls, 0)
+        self.assertEqual(metadata["external_context_reason"], "Skipped memory retrieval for a low-context prompt.")
+
+    def test_retrieve_memory_context_skips_shell_like_prompt(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: (_ for _ in ()).throw(AssertionError("retrieve_context should be skipped"))
+        ai = FakeAI([])
+
+        class CountingBuilder:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def build_runtime_memory_context(self, task: str):
+                self.calls += 1
+                return "", (), {}
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            builder = CountingBuilder()
+            kernel.context_builder = builder
+            memory_context, metadata = kernel._retrieve_memory_context("npm run dev")
+
+        self.assertEqual(memory_context, "")
+        self.assertEqual(builder.calls, 0)
+        self.assertEqual(metadata["external_context_reason"], "Skipped memory retrieval for a low-context prompt.")
+
     def test_local_only_cleanup_schema_prompt_prefers_cleanup_session_over_validator_session(self) -> None:
         memory = EmptyMemory()
         ai = ExplodingAI([])
