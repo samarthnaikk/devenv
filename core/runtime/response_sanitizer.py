@@ -191,7 +191,21 @@ def normalize_response_text(content: str) -> str:
     cleaned_text = "\n".join(cleaned_lines).strip()
     cleaned_text = re.sub(r"\n{3,}", "\n\n", cleaned_text)
     cleaned_text = re.sub(r"^(Yes\.\s*){2,}", "Yes. ", cleaned_text, flags=re.IGNORECASE)
-    return cleaned_text.strip()
+    return _prettify_markdown_layout(cleaned_text.strip())
+
+
+def _prettify_markdown_layout(text: str) -> str:
+    formatted = str(text or "").strip()
+    if not formatted:
+        return ""
+
+    formatted = re.sub(r"(?<!\n)(\s+)(#{1,3}\s+)", r"\n\n\2", formatted)
+    formatted = re.sub(r"(?<!\n)(\s+)(>\s+)", r"\n\n\2", formatted)
+    formatted = re.sub(r"(?<!\n)(\s+)(-\s+)", r"\n\2", formatted)
+    formatted = re.sub(r"(?<!\n)(\s+)(\d+\.\s+)", r"\n\2", formatted)
+    formatted = re.sub(r"([^\n])\n(#{1,3}\s+)", r"\1\n\n\2", formatted)
+    formatted = re.sub(r"\n{3,}", "\n\n", formatted)
+    return formatted.strip()
 
 
 def sanitize_response_text(content: object) -> str | None:
