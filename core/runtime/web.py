@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sysconfig
 import inspect
+import re
+import sysconfig
 import time
 from functools import partial
 from http import HTTPStatus
@@ -12,6 +13,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from core.ai.models import AIExecutedToolStep, AIResponse, ToolCallRequest
 from core.logging_utils import configure_logging
 
 from .context_builder import ContextBuilderService
@@ -38,6 +40,47 @@ DEFAULT_WEB_MODELS = (
     "opencode/north-mini-code-free",
 )
 DEFAULT_OLLAMA_MODELS = ("qwen2.5:3b",)
+READ_ONLY_PLAN_TOOLS = (
+    "list_directory",
+    "locate_files",
+    "read_file",
+    "peek_lines",
+    "inspect_symbols",
+    "search_text",
+    "track_symbol",
+)
+PLAN_MEMORY_CHAR_LIMIT = 1200
+PLAN_BLUEPRINT_REPAIR_LIMIT = 2
+PLAN_SYSTEM_RULE = """You are Devenv's planning engine.
+
+Your job is to inspect the workspace if needed using read-only tools, then return only a multi-node execution graph as raw JSON.
+
+Never modify files. Never ask to apply changes. Never call mutation tools.
+
+Return exactly one JSON object with this structure:
+{
+  "tasks": [
+    {
+      "task_id": "short-kebab-id",
+      "description": "Concrete implementation step",
+      "level": 0
+    }
+  ],
+  "edges": [
+    { "from": "task-a", "to": "task-b" }
+  ]
+}
+
+Rules:
+- Return raw JSON only. No markdown fences. No prose before or after the JSON.
+- Use multiple tasks when the work can be broken down.
+- Use multiple levels when later tasks depend on earlier tasks.
+- Every task must have a unique string task_id.
+- Every task must have a non-empty description.
+- Every task must have an integer level >= 0.
+- Include edges whenever there is more than one task.
+- Prefer 3-8 tasks for non-trivial implementation requests.
+"""
 
 
 class AccessPolicy:
@@ -406,6 +449,196 @@ class DevenvWebApp:
         }
         return result
 
+    def run_plan(
+        self,
+        prompt: str,
+        *,
+        max_consecutive_tools: int | None = None,
+        selected_tools: list[str] | None = None,
+        backend_preference: str = "opencode",
+        local_only: bool = False,
+    ) -> dict[str, object]:
+        turn_started_at = time.perf_counter()
+        steps = []
+        total_usage: dict[str, int] = {}
+        ai_logs = [f"Queued plan prompt: {prompt}"]
+        system_logs = [f"Workspace: {self.config.workspace_path}", "Plan-only mode active"]
+        metadata: dict[str, object] = {
+            "backend_preference": backend_preference,
+            "backend_used": "local",
+            "selected_tools": [],
+            "plan_mode": "explicit",
+        }
+        if hasattr(self.kernel.ai, "set_backend_preference"):
+            self.kernel.ai.set_backend_preference(
+                backend_preference,
+                opencode_enabled=self.access_policy.can_use_backend("opencode"),
+                ollama_enabled=self.access_policy.can_use_backend("ollama"),
+                codex_enabled=self.access_policy.can_use_backend("codex"),
+            )
+        try:
+            memory_context, retrieval_metadata = self.kernel._retrieve_memory_context(
+                prompt, local_only=local_only
+            )
+        except Exception as exc:
+            logger.warning("Plan mode memory retrieval failed: error=%s", exc)
+            memory_context = ""
+            retrieval_metadata = {
+                "external_context_state": "new_context",
+                "external_context_reason": "Planning continued without memory context.",
+                "external_context_session_count": 0,
+                "external_context_session_ids": [],
+            }
+        metadata.update(retrieval_metadata)
+        planning_memory = _trim_plan_memory_context(memory_context)
+        if planning_memory:
+            system_logs.append(f"Planning memory chars sent: {len(planning_memory)}")
+        allowed_tools = self._resolve_plan_tools(selected_tools)
+        metadata["selected_tools"] = list(allowed_tools)
+        system_logs.append(f"Planning tool scope size: {len(allowed_tools)}")
+        conversation = [
+            {"role": "system", "content": PLAN_SYSTEM_RULE},
+            {"role": "user", "content": prompt},
+        ]
+        max_tools = max_consecutive_tools or self.config.max_consecutive_tools
+        repair_attempts = 0
+
+        while True:
+            ai_response = self.kernel.ai.chat(
+                messages=list(conversation),
+                memory_context=planning_memory,
+                tool_names=list(allowed_tools),
+            )
+            _merge_usage_counts(total_usage, ai_response.usage)
+            metadata["backend_used"] = ai_response.backend or getattr(
+                self.kernel.ai, "last_backend_used", "opencode"
+            )
+            ai_logs.append(
+                f"Plan response: finish_reason={ai_response.finish_reason}, tool_calls={len(ai_response.tool_calls)}, total_tokens={ai_response.usage.get('total_tokens', 0)}"
+            )
+            if ai_response.executed_steps:
+                converted_steps = [
+                    _runtime_step_from_ai_step(step)
+                    for step in ai_response.executed_steps
+                ]
+                for step in converted_steps:
+                    steps.append(step)
+                    system_logs.append(
+                        f"Tool step {len(steps)}: {step.tool_name} success={step.success}"
+                    )
+                if ai_response.content:
+                    blueprint = _parse_plan_blueprint(ai_response.content)
+                    if blueprint is not None:
+                        return _build_plan_result(
+                            final_response=ai_response.content,
+                            blueprint=blueprint,
+                            steps=steps,
+                            total_usage=total_usage,
+                            ai_logs=ai_logs,
+                            system_logs=system_logs,
+                            metadata=metadata,
+                            elapsed_ms=int(
+                                (time.perf_counter() - turn_started_at) * 1000
+                            ),
+                        )
+            if ai_response.tool_calls:
+                tool_call = ai_response.tool_calls[0]
+                if tool_call.tool_name not in allowed_tools:
+                    ai_logs.append(
+                        f"Blocked non-read-only planning tool: {tool_call.tool_name}"
+                    )
+                    system_logs.append(
+                        f"Blocked planning tool call: {tool_call.tool_name}"
+                    )
+                    conversation.append(
+                        _assistant_tool_call_message(ai_response, [tool_call])
+                    )
+                    conversation.append(
+                        _tool_message(
+                            tool_call.call_id,
+                            tool_call.tool_name,
+                            "Plan mode is read-only. Use only the listed inspection tools and then return raw plan JSON.",
+                        )
+                    )
+                    continue
+                if len(steps) >= max_tools:
+                    raise RuntimeError(
+                        "Planning tool limit reached before a valid blueprint could be produced."
+                    )
+                step = self.kernel._execute_tool_call(tool_call)
+                steps.append(step)
+                ai_logs.append(f"Planning tool requested: {tool_call.tool_name}")
+                system_logs.append(
+                    f"Tool step {len(steps)}: {tool_call.tool_name} success={step.success}"
+                )
+                conversation.append(
+                    _assistant_tool_call_message(ai_response, [tool_call])
+                )
+                conversation.append(
+                    _tool_message(
+                        tool_call.call_id,
+                        tool_call.tool_name,
+                        _format_tool_output(step.output, step.data),
+                    )
+                )
+                continue
+
+            content = ai_response.content or ""
+            blueprint = _parse_plan_blueprint(content)
+            if blueprint is not None:
+                return _build_plan_result(
+                    final_response=content,
+                    blueprint=blueprint,
+                    steps=steps,
+                    total_usage=total_usage,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs,
+                    metadata=metadata,
+                    elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                )
+            if repair_attempts >= PLAN_BLUEPRINT_REPAIR_LIMIT:
+                return _build_plan_result(
+                    final_response=content,
+                    blueprint=None,
+                    steps=steps,
+                    total_usage=total_usage,
+                    ai_logs=ai_logs,
+                    system_logs=system_logs
+                    + ["Planner failed to return a valid JSON blueprint."],
+                    metadata=metadata,
+                    error_message="Planner did not return a valid multi-node JSON blueprint.",
+                    elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                )
+            repair_attempts += 1
+            ai_logs.append(
+                "Planner returned invalid JSON blueprint; requesting repair"
+            )
+            conversation.append({"role": "assistant", "content": content})
+            conversation.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "The previous response was not a valid planning blueprint. "
+                        "Return only raw JSON with a 'tasks' array of objects containing "
+                        "'task_id', 'description', and integer 'level', plus an 'edges' array when there are multiple tasks."
+                    ),
+                }
+            )
+
+    def _resolve_plan_tools(
+        self, selected_tools: list[str] | None
+    ) -> tuple[str, ...]:
+        requested = [
+            tool_name
+            for tool_name in (selected_tools or READ_ONLY_PLAN_TOOLS)
+            if isinstance(tool_name, str) and tool_name in READ_ONLY_PLAN_TOOLS
+        ]
+        resolved = []
+        for tool_name in requested:
+            if tool_name in self.kernel.tools and tool_name not in resolved:
+                resolved.append(tool_name)
+        return tuple(resolved)
+
     def run_tool(
         self, tool_name: str, arguments: dict[str, object]
     ) -> dict[str, object]:
@@ -678,7 +911,7 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/thread/reset":
             self._write_json(HTTPStatus.OK, self.app.reset_thread())
             return
-        if parsed.path != "/api/turn":
+        if parsed.path not in {"/api/turn", "/api/plan"}:
             self.send_error(HTTPStatus.NOT_FOUND)
             return
 
@@ -752,16 +985,25 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             return
 
         try:
-            result = self.app.run_turn(
-                prompt=prompt,
-                max_consecutive_tools=max_consecutive_tools,
-                planning_mode=planning_mode,
-                continue_plan=continue_plan,
-                local_only=local_only,
-                selected_tools=selected_tools,
-                backend_preference=backend_preference,
-                session_budget_tokens=session_budget_tokens,
-            )
+            if parsed.path == "/api/plan":
+                result = self.app.run_plan(
+                    prompt=prompt,
+                    max_consecutive_tools=max_consecutive_tools,
+                    selected_tools=selected_tools,
+                    backend_preference=backend_preference,
+                    local_only=local_only,
+                )
+            else:
+                result = self.app.run_turn(
+                    prompt=prompt,
+                    max_consecutive_tools=max_consecutive_tools,
+                    planning_mode=planning_mode,
+                    continue_plan=continue_plan,
+                    local_only=local_only,
+                    selected_tools=selected_tools,
+                    backend_preference=backend_preference,
+                    session_budget_tokens=session_budget_tokens,
+                )
         except (RuntimeError, PermissionError) as exc:
             self._write_json(HTTPStatus.BAD_GATEWAY, {"error": str(exc)})
             return
@@ -873,6 +1115,216 @@ def _is_valid_static_root(path: Path) -> bool:
         and (path / "index.html").is_file()
         and (path / "styles.css").is_file()
     )
+
+
+def _merge_usage_counts(target: dict[str, int], usage: dict[str, int] | None) -> None:
+    for key, value in dict(usage or {}).items():
+        if isinstance(value, int):
+            target[key] = target.get(key, 0) + value
+
+
+def _assistant_tool_call_message(
+    ai_response: AIResponse,
+    tool_calls: list[ToolCallRequest] | None = None,
+) -> dict[str, object]:
+    selected_tool_calls = tool_calls or list(ai_response.tool_calls)
+    return {
+        "role": "assistant",
+        "content": ai_response.content,
+        "tool_calls": [
+            {
+                "id": tool_call.call_id,
+                "type": "function",
+                "function": {
+                    "name": tool_call.tool_name,
+                    "arguments": json.dumps(tool_call.arguments, sort_keys=True),
+                },
+            }
+            for tool_call in selected_tool_calls
+        ],
+    }
+
+
+def _tool_message(call_id: str, tool_name: str, output: str) -> dict[str, str]:
+    return {
+        "role": "tool",
+        "tool_call_id": call_id,
+        "name": tool_name,
+        "content": output,
+    }
+
+
+def _format_tool_output(output: str, data: dict[str, object]) -> str:
+    if not data:
+        return output
+    return f"{output}\n{json.dumps(data, sort_keys=True)}"
+
+
+def _runtime_step_from_ai_step(step: AIExecutedToolStep):
+    from .models import ToolExecutionStep
+
+    return ToolExecutionStep(
+        step_id=step.step_id,
+        tool_name=step.tool_name,
+        arguments=dict(step.arguments),
+        output=step.output,
+        success=step.success,
+        is_sandboxed_violation=False,
+        data=dict(step.data),
+    )
+
+
+def _trim_plan_memory_context(memory_context: str) -> str:
+    stripped = str(memory_context or "").strip()
+    if not stripped:
+        return ""
+    return stripped[:PLAN_MEMORY_CHAR_LIMIT]
+
+
+def _parse_plan_blueprint(content: str | None) -> dict[str, object] | None:
+    raw = str(content or "").strip()
+    if not raw:
+        return None
+    for candidate in _plan_json_candidates(raw):
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        blueprint = _coerce_plan_blueprint(parsed)
+        if blueprint is not None:
+            return blueprint
+    return None
+
+
+def _plan_json_candidates(raw: str) -> list[str]:
+    candidates = [raw]
+    fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw, re.IGNORECASE)
+    if fence_match and fence_match.group(1).strip():
+        candidates.append(fence_match.group(1).strip())
+    balanced = _extract_balanced_json_object(raw)
+    if balanced:
+        candidates.append(balanced)
+    return list(dict.fromkeys(item for item in candidates if item))
+
+
+def _extract_balanced_json_object(text: str) -> str:
+    start = text.find("{")
+    if start < 0:
+        return ""
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return ""
+
+
+def _coerce_plan_blueprint(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    if isinstance(value.get("content"), str):
+        nested = _parse_plan_blueprint(value["content"])
+        if nested is not None:
+            return nested
+    tasks = value.get("tasks")
+    if not isinstance(tasks, list) or not tasks:
+        return None
+    normalized_tasks = []
+    for index, task in enumerate(tasks):
+        if not isinstance(task, dict):
+            return None
+        task_id = str(task.get("task_id", task.get("id", f"task-{index + 1}"))).strip()
+        description = str(task.get("description", task.get("label", ""))).strip()
+        if not task_id or not description:
+            return None
+        raw_level = task.get("level", 0)
+        try:
+            level = int(raw_level)
+        except (TypeError, ValueError):
+            level = 0
+        if level < 0:
+            level = 0
+        normalized_tasks.append(
+            {
+                "task_id": task_id,
+                "description": description,
+                "level": level,
+            }
+        )
+    task_ids = {task["task_id"] for task in normalized_tasks}
+    if len(task_ids) != len(normalized_tasks):
+        return None
+    normalized_edges = []
+    raw_edges = value.get("edges")
+    if isinstance(raw_edges, list):
+        for edge in raw_edges:
+            if not isinstance(edge, dict):
+                continue
+            source = str(edge.get("from", edge.get("source", ""))).strip()
+            target = str(edge.get("to", edge.get("target", ""))).strip()
+            if source in task_ids and target in task_ids:
+                normalized_edges.append({"from": source, "to": target})
+    if len(normalized_tasks) > 1 and not normalized_edges:
+        for index in range(len(normalized_tasks) - 1):
+            normalized_edges.append(
+                {
+                    "from": normalized_tasks[index]["task_id"],
+                    "to": normalized_tasks[index + 1]["task_id"],
+                }
+            )
+    return {"tasks": normalized_tasks, "edges": normalized_edges}
+
+
+def _build_plan_result(
+    *,
+    final_response: str | None,
+    blueprint: dict[str, object] | None,
+    steps: list[object],
+    total_usage: dict[str, int],
+    ai_logs: list[str],
+    system_logs: list[str],
+    metadata: dict[str, object],
+    elapsed_ms: int,
+    error_message: str | None = None,
+) -> dict[str, object]:
+    return {
+        "final_response": final_response,
+        "steps": [step.to_dict() for step in steps],
+        "total_usage": dict(total_usage),
+        "ai_logs": list(ai_logs),
+        "system_logs": list(system_logs),
+        "stage_traces": [],
+        "verification_results": [],
+        "metadata": dict(metadata),
+        "state": "PLANNING",
+        "blueprint": blueprint,
+        "error_message": error_message,
+        "elapsed_ms": elapsed_ms,
+        "backend_used": metadata.get("backend_used", "opencode"),
+        "budget_state": None,
+        "usage_sample": {
+            "prompt_tokens": int(total_usage.get("prompt_tokens", 0) or 0),
+            "completion_tokens": int(total_usage.get("completion_tokens", 0) or 0),
+            "total_tokens": int(total_usage.get("total_tokens", 0) or 0),
+        },
+    }
 
 
 if __name__ == "__main__":

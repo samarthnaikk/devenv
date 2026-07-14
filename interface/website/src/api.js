@@ -64,6 +64,26 @@ export async function runTurn({
   });
 }
 
+export async function runPlan({
+  prompt,
+  localOnly = false,
+  selectedTools = [],
+  backendPreference = "opencode",
+  maxConsecutiveTools = null,
+}) {
+  return request("/api/plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt,
+      local_only: localOnly,
+      selected_tools: selectedTools,
+      backend_preference: backendPreference,
+      max_consecutive_tools: maxConsecutiveTools,
+    }),
+  });
+}
+
 export async function resetThread() {
   return request("/api/thread/reset", {
     method: "POST",

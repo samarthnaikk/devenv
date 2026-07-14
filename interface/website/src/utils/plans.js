@@ -1,11 +1,11 @@
 export const READ_ONLY_PLAN_TOOLS = [
   "list_directory",
+  "locate_files",
   "read_file",
-  "glob",
-  "grep",
   "inspect_symbols",
-  "search_symbols",
+  "search_text",
   "peek_lines",
+  "track_symbol",
 ];
 
 export function buildPlanModePrompt(userPrompt) {

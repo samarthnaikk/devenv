@@ -3,7 +3,7 @@ import { useApp } from "../context/AppContext.js";
 import { formatDuration } from "../utils/format.js";
 import { ToolPicker } from "./ToolPicker.js";
 import { validatePlanBlueprint } from "../utils/validation.js";
-import { buildPlanModePrompt, extractPlanBlueprint, READ_ONLY_PLAN_TOOLS, shouldDisplayPlanResult } from "../utils/plans.js";
+import { extractPlanBlueprint, READ_ONLY_PLAN_TOOLS, shouldDisplayPlanResult } from "../utils/plans.js";
 
 export function Composer() {
   const { state, dispatch } = useApp();
@@ -61,21 +61,26 @@ export function Composer() {
     });
 
     try {
-      const { runTurn } = await import("../api.js");
+      const { runPlan, runTurn } = await import("../api.js");
       let result = null;
       let planValidationError = null;
       const planOnlyMode = Boolean(state.planMode);
-      const submittedPrompt = planOnlyMode ? buildPlanModePrompt(originalPrompt) : originalPrompt;
 
       while (true) {
         try {
-          result = await runTurn({
-            prompt: submittedPrompt,
-            planningMode: planOnlyMode ? "force_direct" : "auto",
-            selectedTools: planOnlyMode ? READ_ONLY_PLAN_TOOLS : state.selectedTools,
-            backendPreference: state.preferredBackend || "opencode",
-            sessionBudgetTokens: state.sessionBudgetTokens,
-          });
+          result = planOnlyMode
+            ? await runPlan({
+                prompt: originalPrompt,
+                selectedTools: READ_ONLY_PLAN_TOOLS,
+                backendPreference: state.preferredBackend || "opencode",
+              })
+            : await runTurn({
+                prompt: originalPrompt,
+                planningMode: "auto",
+                selectedTools: state.selectedTools,
+                backendPreference: state.preferredBackend || "opencode",
+                sessionBudgetTokens: state.sessionBudgetTokens,
+              });
           break;
         } catch (error) {
           const parsedRateLimit = parseRateLimitError(error.message);

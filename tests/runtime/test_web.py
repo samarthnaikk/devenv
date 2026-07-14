@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from core.ai.models import AIResponse
+from core.ai.models import AIResponse, ToolCallRequest
 from core.runtime.models import CheckpointTask, ExecutionBlueprint
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode, RunConfig
 from core.runtime.setup import inspect_setup
@@ -664,6 +664,130 @@ class DevenvWebAppTest(unittest.TestCase):
 
         self.assertEqual(result["error_message"], "Execution tool limit reached before the checkpoint completed.")
         self.assertEqual(result["blueprint"]["tasks"][0]["description"], "Build frontend")
+
+    def test_run_plan_returns_valid_blueprint_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            ai = FakeAI()
+            ai.responses = [
+                AIResponse(
+                    content=json.dumps(
+                        {
+                            "tasks": [
+                                {"task_id": "inspect-runtime", "description": "Inspect the runtime web entrypoints", "level": 0},
+                                {"task_id": "add-tool", "description": "Add a PDF generation runtime tool contract", "level": 1},
+                            ],
+                            "edges": [{"from": "inspect-runtime", "to": "add-tool"}],
+                        }
+                    ),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 4, "completion_tokens": 6, "total_tokens": 10},
+                    backend="ollama",
+                )
+            ]
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=ai,
+            )
+            app.update_backend_access("ollama", True)
+
+            result = app.run_plan(
+                "plan on how to add pdf generation tool to this codebase",
+                backend_preference="ollama",
+            )
+
+        self.assertEqual(result["backend_used"], "ollama")
+        self.assertIsNone(result["error_message"])
+        self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "inspect-runtime")
+        self.assertEqual(result["usage_sample"]["total_tokens"], 10)
+
+    def test_run_plan_blocks_mutation_tools_and_recovers_with_valid_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            ai = FakeAI()
+            ai.responses = [
+                AIResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCallRequest(
+                            call_id="call-1",
+                            tool_name="write_file",
+                            arguments={"path": "sample-test/styles.css", "content": "bad", "mode": "overwrite"},
+                        ),
+                    ),
+                    finish_reason="tool_calls",
+                    usage={"total_tokens": 3},
+                    backend="ollama",
+                ),
+                AIResponse(
+                    content=json.dumps(
+                        {
+                            "tasks": [
+                                {"task_id": "inspect-ui", "description": "Inspect the plan rendering path", "level": 0},
+                                {"task_id": "patch-schema", "description": "Patch the planner JSON schema handling", "level": 1},
+                            ],
+                            "edges": [{"from": "inspect-ui", "to": "patch-schema"}],
+                        }
+                    ),
+                    finish_reason="stop",
+                    usage={"total_tokens": 5},
+                    backend="ollama",
+                ),
+            ]
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=ai,
+            )
+            app.update_backend_access("ollama", True)
+
+            result = app.run_plan("plan how to fix planner JSON")
+
+        self.assertIsNone(result["error_message"])
+        self.assertEqual(result["blueprint"]["tasks"][1]["task_id"], "patch-schema")
+        self.assertEqual(result["steps"], [])
+        self.assertTrue(
+            any("Blocked planning tool call: write_file" in log for log in result["system_logs"])
+        )
+
+    def test_run_plan_repairs_invalid_json_response(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            ai = FakeAI()
+            ai.responses = [
+                AIResponse(
+                    content="Here is a plan:\n1. inspect\n2. patch",
+                    finish_reason="stop",
+                    usage={"total_tokens": 2},
+                    backend="ollama",
+                ),
+                AIResponse(
+                    content=json.dumps(
+                        {
+                            "tasks": [
+                                {"task_id": 1, "description": "Inspect the tool entrypoints", "level": 0},
+                                {"task_id": 2, "description": "Implement PDF generation support", "level": 1},
+                            ]
+                        }
+                    ),
+                    finish_reason="stop",
+                    usage={"total_tokens": 4},
+                    backend="ollama",
+                ),
+            ]
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=ai,
+            )
+            app.update_backend_access("ollama", True)
+
+            result = app.run_plan("plan pdf generation support")
+
+        self.assertIsNone(result["error_message"])
+        self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "1")
+        self.assertEqual(result["blueprint"]["edges"][0]["from"], "1")
+        self.assertTrue(
+            any("requesting repair" in log.lower() for log in result["ai_logs"])
+        )
 
     def test_run_turn_sanitizes_replay_json_error_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
