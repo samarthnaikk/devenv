@@ -1119,6 +1119,18 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(scope, ["web_search"])
 
+    def test_direct_tool_scope_offers_knowledge_search_for_reference_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.register_tool(WebSearchTool())
+            from core.tools.knowledge_search import KnowledgeSearchTool
+
+            kernel.register_tool(KnowledgeSearchTool())
+
+            scope = kernel._resolve_direct_tool_scope("find similar github repos and stackoverflow references for a calendar feature")
+
+        self.assertEqual(scope, ["knowledge_search"])
+
     def test_direct_tool_scope_uses_compact_code_inspection_set_for_backend_question(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))

@@ -52,6 +52,7 @@ DELETE_EXECUTION_TOOLS = frozenset({"remove_file"})
 SHELL_EXECUTION_TOOLS = frozenset({"run_shell", "run_diagnostics", "audit_changes"})
 MEMORY_EXECUTION_TOOLS = frozenset({"manage_memory", "inspect_trace"})
 WEB_EXECUTION_TOOLS = frozenset({"web_search"})
+KNOWLEDGE_EXECUTION_TOOLS = frozenset({"knowledge_search"})
 PLANNING_MEMORY_CHAR_LIMIT = 900
 EXECUTION_MEMORY_CHAR_LIMIT = 1400
 SCAFFOLD_EXECUTION_TOOLS = frozenset({"list_directory", "write_file", "edit_file"})
@@ -96,6 +97,7 @@ DIRECT_SYSTEM_RULE = (
     "If you need a tool, emit a real function call and never print JSON tool snippets in plain text. "
     "Do not create a checklist or execution plan unless the user is asking you to make changes. "
     "Use web_search for current or time-sensitive facts, or when the user explicitly asks to search, browse, google, or look something up. "
+    "Use knowledge_search when the user wants external references, similar projects, GitHub repos, forum threads, videos, or broader research resources for a topic. "
     "If web_search is the relevant selected tool, perform the search before answering. "
     "If a search request is ambiguous, ask one concise follow-up question instead of guessing. "
     "Keep the final answer brief unless the user asks for detail."
@@ -2881,6 +2883,9 @@ class DevenvKernel:
                     return sorted(web_only_scope)
             scope.update(WEB_EXECUTION_TOOLS & available)
 
+        if self._should_offer_knowledge_search(lowered):
+            scope.update(KNOWLEDGE_EXECUTION_TOOLS & available)
+
         if self._should_offer_shell_tools(lowered):
             scope.update(SHELL_EXECUTION_TOOLS & available)
 
@@ -3043,6 +3048,30 @@ class DevenvKernel:
             )
         )
 
+    def _should_offer_knowledge_search(self, lowered_prompt: str) -> bool:
+        return any(
+            marker in lowered_prompt
+            for marker in (
+                "github",
+                "repo examples",
+                "repository examples",
+                "similar repos",
+                "similar projects",
+                "reference repos",
+                "reference projects",
+                "reference implementations",
+                "stackoverflow",
+                "reddit",
+                "quora",
+                "youtube",
+                "forum threads",
+                "resources",
+                "references",
+                "inspiration",
+                "examples online",
+            )
+        )
+
     def _should_offer_shell_tools(self, lowered_prompt: str) -> bool:
         return any(
             marker in lowered_prompt
@@ -3127,6 +3156,8 @@ class DevenvKernel:
         ]
         if "web_search" in resolved:
             lines.append("If the request is to search, browse, or look something up, call web_search before answering.")
+        if "knowledge_search" in resolved:
+            lines.append("If the request asks for external references, similar repos, GitHub examples, videos, or forum threads, call knowledge_search before answering.")
         return [{"role": "system", "content": " ".join(lines)}]
 
     def _build_local_plan_markdown(self, user_prompt: str) -> str:
