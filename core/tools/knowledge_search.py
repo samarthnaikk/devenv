@@ -239,5 +239,5 @@ def _expand_requested_sources(query: str, sources: list[str]) -> list[str]:
         marker in lowered
         for marker in ("reference", "references", "repo", "repos", "repository", "github", "youtube", "reddit", "stackoverflow", "example", "examples", "tutorial")
     ):
-        return ["github", "documentation", "stackoverflow", "reddit", "youtube", "general"]
+        return ["github", "youtube", "documentation", "general"]
     return cleaned_sources or list(DEFAULT_SOURCES)

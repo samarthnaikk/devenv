@@ -96,7 +96,7 @@ class KnowledgeSearchToolTest(unittest.TestCase):
 
         result = _expand_requested_sources("find github repo references for a chat app", ["general"])
 
-        self.assertEqual(result, ["github", "documentation", "stackoverflow", "reddit", "youtube", "general"])
+        self.assertEqual(result, ["github", "youtube", "documentation", "general"])
 
     @patch("urllib.request.urlopen", side_effect=_fake_urlopen)
     def test_duplicate_query_reuses_cache(self, mock_urlopen) -> None:

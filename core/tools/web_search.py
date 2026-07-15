@@ -119,8 +119,6 @@ def search_web(query: str, *, provider: str = "duckduckgo", result_count: int = 
 
     endpoints = (
         f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}",
-        f"https://duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}",
-        f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote_plus(query)}",
         f"https://www.bing.com/search?format=rss&q={urllib.parse.quote_plus(query)}",
         f"https://www.bing.com/search?q={urllib.parse.quote_plus(query)}",
     )
