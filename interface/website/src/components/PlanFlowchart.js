@@ -205,7 +205,7 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
   if (!validation.valid) {
     return React.createElement(
       "div",
-      { className: "flex flex-col gap-2 max-w-3xl" },
+      { className: "flex flex-col gap-2 w-full max-w-[88rem]" },
       React.createElement(
         "div",
         { className: "flex items-center gap-2 mb-1" },
@@ -235,7 +235,7 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
 
   return React.createElement(
     "div",
-    { className: "flex flex-col gap-2 max-w-3xl" },
+    { className: "flex flex-col gap-2 w-full max-w-[88rem]" },
     React.createElement(
       "div",
       { className: "flex items-center gap-2 mb-1" },
@@ -261,11 +261,11 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
         `${normalized.nodes.length} steps`
       )
     ),
-    React.createElement(
-      "div",
-      { style: { height: "300px", border: "1px solid #3c4947", borderRadius: "8px", background: "#0a0c0e" } },
       React.createElement(
-        ReactFlow,
+        "div",
+        { style: { height: "380px", border: "1px solid #3c4947", borderRadius: "8px", background: "#0a0c0e" } },
+        React.createElement(
+          ReactFlow,
         {
           nodes,
           edges,
@@ -273,7 +273,7 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
           onEdgesChange,
           nodeTypes,
           fitView: true,
-          fitViewOptions: { padding: 0.2 },
+          fitViewOptions: { padding: 0.28, minZoom: 0.4 },
           panOnDrag: true,
           panOnScroll: true,
           zoomOnScroll: true,
