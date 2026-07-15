@@ -84,6 +84,20 @@ class KnowledgeSearchToolTest(unittest.TestCase):
 
         self.assertEqual(result, "calendar app feature")
 
+    def test_query_normalization_expands_chatapp(self) -> None:
+        from core.tools.knowledge_search import _normalize_knowledge_query
+
+        result = _normalize_knowledge_query("add chatapp references to this codebase")
+
+        self.assertEqual(result, "chat app")
+
+    def test_general_only_reference_requests_expand_to_richer_sources(self) -> None:
+        from core.tools.knowledge_search import _expand_requested_sources
+
+        result = _expand_requested_sources("find github repo references for a chat app", ["general"])
+
+        self.assertEqual(result, ["github", "documentation", "stackoverflow", "reddit", "youtube", "general"])
+
 
 if __name__ == "__main__":
     unittest.main()
