@@ -1,10 +1,10 @@
 import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
 import { UserMessage } from "./UserMessage.js";
-import { ThinkingMessage } from "./ThinkingMessage.js";
+import { ThinkingMessage } from "./ThinkingMessage.js?v=trace2";
 import { AssistantMessage } from "./AssistantMessage.js";
 import { ErrorMessage } from "./ErrorMessage.js";
-import { PlanFlowchart } from "./PlanFlowchart.js";
+import { PlanFlowchart } from "./PlanFlowchart.js?v=flow4";
 
 const SUGGESTIONS = [
   "Do you remember anything about the old retrieval logic for this project?",
