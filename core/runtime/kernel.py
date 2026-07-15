@@ -171,14 +171,20 @@ class DevenvKernel:
 
     def reset_conversation(self) -> str:
         self.ephemeral_history = []
-        self.active_blueprint = None
-        self.active_plan_prompt = None
+        self.reset_active_plan()
         self.state = AgentState.PLANNING
         self.session_usage_totals = {}
         self.session_id = str(uuid.uuid4())
         if hasattr(self.ai, "reset_session"):
             self.ai.reset_session()
         return self.session_id
+
+    def reset_active_plan(self) -> bool:
+        had_active_plan = self.active_blueprint is not None or bool(self.active_plan_prompt)
+        self.active_blueprint = None
+        self.active_plan_prompt = None
+        self.state = AgentState.PLANNING
+        return had_active_plan
 
     @property
     def ai(self) -> OpenCodeAICore | Any:

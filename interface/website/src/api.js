@@ -92,6 +92,14 @@ export async function resetThread() {
   });
 }
 
+export async function resetPlanState() {
+  return request("/api/plan/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+}
+
 export async function updateSessionAccess(provider, allowed) {
   return request("/api/session-access", {
     method: "POST",

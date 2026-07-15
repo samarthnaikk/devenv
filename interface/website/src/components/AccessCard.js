@@ -74,10 +74,22 @@ export function AccessCard() {
     }
   };
 
-  const handlePlanToggle = (event) => {
+  const handlePlanToggle = async (event) => {
     const enabled = Boolean(event.target.checked);
+    try {
+      const { resetPlanState } = await import("../api.js");
+      await resetPlanState();
+    } catch {
+      showToast(dispatch, "Failed to sync plan mode with runtime");
+      return;
+    }
     dispatch({ type: "SET_PLAN_MODE", payload: enabled });
-    showToast(dispatch, enabled ? "Plan mode enabled — Devenv will generate a plan only" : "Plan mode disabled");
+    showToast(
+      dispatch,
+      enabled
+        ? "Plan mode enabled — runtime plan state was reset"
+        : "Plan mode disabled — runtime plan state was reset"
+    );
   };
 
   return React.createElement(

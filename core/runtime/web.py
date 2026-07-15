@@ -903,6 +903,13 @@ class DevenvWebApp:
             "usage": dict(self.kernel.session_usage_totals),
         }
 
+    def reset_plan_state(self) -> dict[str, object]:
+        cleared = self.kernel.reset_active_plan()
+        return {
+            "cleared": bool(cleared),
+            "state": self.kernel.state.name,
+        }
+
     def _require_provider_access(self, provider_name: str) -> None:
         if not self.access_policy.can_access_provider(provider_name):
             raise PermissionError(
@@ -1096,6 +1103,9 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/thread/reset":
             self._write_json(HTTPStatus.OK, self.app.reset_thread())
+            return
+        if parsed.path == "/api/plan/reset":
+            self._write_json(HTTPStatus.OK, self.app.reset_plan_state())
             return
         if parsed.path not in {"/api/turn", "/api/plan"}:
             self.send_error(HTTPStatus.NOT_FOUND)

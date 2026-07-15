@@ -325,6 +325,23 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(captured["prompt"], "search this")
         self.assertEqual(captured["selected_tools"], ["web_search", "read_file"])
 
+    def test_reset_plan_state_clears_active_kernel_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.kernel.active_plan_prompt = "Build a planner"
+            app.kernel.active_blueprint = object()
+
+            result = app.reset_plan_state()
+
+        self.assertTrue(result["cleared"])
+        self.assertEqual(result["state"], "PLANNING")
+        self.assertIsNone(app.kernel.active_plan_prompt)
+        self.assertIsNone(app.kernel.active_blueprint)
+
     def test_set_model_updates_health_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             app = DevenvWebApp(
