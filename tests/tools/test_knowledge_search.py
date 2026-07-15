@@ -29,9 +29,15 @@ class _FakeResponse:
 
 def _fake_urlopen(request, timeout=10):  # noqa: ARG001
     url = getattr(request, "full_url", str(request))
+    if "github.com/search?" in url:
+        return _FakeResponse(
+            """
+            <html><body>
+              {"csrf_tokens":{"/example/repo-one/star":{"post":"abc"},"/example/repo-two/unstar":{"post":"xyz"}}}
+            </body></html>
+            """
+        )
     query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("q", [""])[0]
-    if "site:github.com" in query:
-        return _FakeResponse('<a class="result__a" href="https://github.com/example/repo">Example Repo</a>')
     if "documentation" in query or " docs" in query:
         return _FakeResponse('<a class="result__a" href="https://docs.example.com/guide">Docs Guide</a>')
     if "site:stackoverflow.com" in query:
@@ -59,7 +65,7 @@ class KnowledgeSearchToolTest(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.data["status"], "ok")
         resources = {group["source"]: group["results"] for group in result.data["resources"]}
-        self.assertEqual(resources["github"][0]["url"], "https://github.com/example/repo")
+        self.assertEqual(resources["github"][0]["url"], "https://github.com/example/repo-one")
         self.assertEqual(resources["documentation"][0]["title"], "Docs Guide")
         self.assertEqual(resources["stackoverflow"][0]["title"], "StackOverflow Thread")
 
@@ -70,6 +76,13 @@ class KnowledgeSearchToolTest(unittest.TestCase):
         self.assertTrue(result.success)
         resources = result.data["resources"]
         self.assertEqual([group["source"] for group in resources], ["github", "youtube"])
+
+    def test_query_normalization_removes_source_words(self) -> None:
+        from core.tools.knowledge_search import _normalize_knowledge_query
+
+        result = _normalize_knowledge_query("find similar github repos reddit threads and youtube videos for calendar app feature")
+
+        self.assertEqual(result, "calendar app feature")
 
 
 if __name__ == "__main__":

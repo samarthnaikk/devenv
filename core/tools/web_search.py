@@ -121,6 +121,8 @@ def search_web(query: str, *, provider: str = "duckduckgo", result_count: int = 
         f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}",
         f"https://duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}",
         f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote_plus(query)}",
+        f"https://www.bing.com/search?format=rss&q={urllib.parse.quote_plus(query)}",
+        f"https://www.bing.com/search?q={urllib.parse.quote_plus(query)}",
     )
     failure_messages: list[str] = []
     for url in endpoints:
@@ -129,12 +131,38 @@ def search_web(query: str, *, provider: str = "duckduckgo", result_count: int = 
             failure_messages.append(fetched.output)
             continue
         raw_html = str(fetched.data.get("content") or "")
-        results = _parse_duckduckgo_results(raw_html, limit=result_count)
+        results = (
+            _parse_bing_rss_results(raw_html, limit=result_count)
+            if "bing.com/search?format=rss" in url
+            else _parse_bing_results(raw_html, limit=result_count)
+            if "bing.com/search" in url
+            else _parse_duckduckgo_results(raw_html, limit=result_count)
+        )
         if results:
             return results, "ok", "ok"
     if failure_messages:
         return [], str(fetched.data.get("status") if "fetched" in locals() else "network_error"), failure_messages[-1]
     return [], "no_results", f"The web search did not return any results for '{query}'."
+
+
+def _parse_bing_rss_results(raw_xml: str, *, limit: int) -> list[dict[str, str]]:
+    matches = re.findall(
+        r"<item>\s*<title>(?P<title>.*?)</title>\s*<link>(?P<url>.*?)</link>",
+        raw_xml,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    results: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
+    for title_text, url in matches:
+        clean_url = html.unescape(url).strip()
+        clean_title = _strip_html(title_text)
+        if not clean_url or not clean_title or clean_url in seen_urls:
+            continue
+        results.append({"title": clean_title, "url": clean_url})
+        seen_urls.add(clean_url)
+        if len(results) >= limit:
+            break
+    return results
 
 
 def _is_http_url(url: str) -> bool:
@@ -146,8 +174,13 @@ def _fetch_text(url: str) -> ToolResult:
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "devenv-ai/0.1 web_search",
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
             "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
         },
     )
     try:
@@ -187,6 +220,26 @@ def _parse_duckduckgo_results(raw_html: str, *, limit: int) -> list[dict[str, st
             seen_urls.add(clean_url)
             if len(results) >= limit:
                 return results
+    return results
+
+
+def _parse_bing_results(raw_html: str, *, limit: int) -> list[dict[str, str]]:
+    matches = re.findall(
+        r'<li[^>]*class="[^"]*b_algo[^"]*"[^>]*>.*?<h2><a[^>]*href="(?P<url>[^"]+)"[^>]*>(?P<title>.*?)</a></h2>',
+        raw_html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    results: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
+    for url, title_html in matches:
+        clean_url = html.unescape(url).strip()
+        clean_title = _strip_html(title_html)
+        if not clean_url or not clean_title or clean_url in seen_urls:
+            continue
+        results.append({"title": clean_title, "url": clean_url})
+        seen_urls.add(clean_url)
+        if len(results) >= limit:
+            break
     return results
 
 

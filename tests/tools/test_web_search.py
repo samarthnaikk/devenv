@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 from core.tools.web_search import WebSearchTool
@@ -92,6 +93,49 @@ class WebSearchToolTest(unittest.TestCase):
 
         self.assertTrue(result.success)
         self.assertEqual(result.data["results"][0]["title"], "Lite Result")
+
+    @patch(
+        "urllib.request.urlopen",
+        side_effect=[
+            urllib.error.URLError("blocked"),
+            urllib.error.URLError("blocked"),
+            urllib.error.URLError("blocked"),
+            _FakeResponse(
+                """
+                <rss><channel>
+                  <item><title>Bing RSS Result</title><link>https://example.com/rss</link></item>
+                </channel></rss>
+                """
+            ),
+        ],
+    )
+    def test_search_falls_back_to_bing_rss_results(self, _mock_urlopen) -> None:
+        result = WebSearchTool().execute(mode="search", query="rss fallback", result_count=1)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["results"][0]["title"], "Bing RSS Result")
+
+    @patch(
+        "urllib.request.urlopen",
+        side_effect=[
+            urllib.error.URLError("blocked"),
+            urllib.error.URLError("blocked"),
+            urllib.error.URLError("blocked"),
+            _FakeResponse("<rss><channel></channel></rss>"),
+            _FakeResponse(
+                """
+                <html><body>
+                  <li class="b_algo"><h2><a href="https://example.com/bing">Bing Result</a></h2></li>
+                </body></html>
+                """
+            ),
+        ],
+    )
+    def test_search_falls_back_to_bing_markup(self, _mock_urlopen) -> None:
+        result = WebSearchTool().execute(mode="search", query="bing fallback", result_count=1)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["results"][0]["title"], "Bing Result")
 
     @patch(
         "urllib.request.urlopen",

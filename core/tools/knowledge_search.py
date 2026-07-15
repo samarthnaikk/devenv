@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import html
+import re
+import urllib.parse
+
 from .base import BaseTool, ToolResult
-from .web_search import search_web
+from .web_search import _fetch_text, search_web
 
 DEFAULT_SOURCES: tuple[str, ...] = (
     "github",
@@ -78,13 +82,20 @@ class KnowledgeSearchTool(BaseTool):
             return ToolResult(success=False, output="result_count must be an integer between 1 and 5", data={"status": "invalid_input", "resources": []})
 
         query_text = query.strip()
+        normalized_query = _normalize_knowledge_query(query_text)
         resources: list[dict[str, object]] = []
         errors: list[str] = []
         seen_urls: set[str] = set()
         for source in sources:
             source_results: list[dict[str, str]] = []
+            if source == "github":
+                source_results.extend(_search_github_repositories(normalized_query, limit=result_count))
+                if source_results:
+                    resources.append({"source": source, "results": source_results[:result_count]})
+                    seen_urls.update(item["url"] for item in source_results[:result_count])
+                    continue
             for query_template in SOURCE_QUERIES[source]:
-                search_query = query_template.format(query=query_text)
+                search_query = query_template.format(query=normalized_query)
                 results, status, detail = search_web(search_query, result_count=result_count)
                 if status != "ok":
                     errors.append(f"{source}: {detail}")
@@ -113,3 +124,44 @@ class KnowledgeSearchTool(BaseTool):
             output=output,
             data={"status": status, "query": query_text, "resources": resources, "errors": errors},
         )
+
+
+def _normalize_knowledge_query(query: str) -> str:
+    cleaned = re.sub(
+        r"\b(github|git hub|reddit|stackoverflow|stack overflow|quora|youtube|repo|repos|repositories|references|resources|examples|videos|threads|forums|similar|find|show|give|need|looking|look|for|and)\b",
+        " ",
+        str(query or ""),
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,.-")
+    return cleaned or query.strip()
+
+
+def _search_github_repositories(query: str, *, limit: int) -> list[dict[str, str]]:
+    search_url = f"https://github.com/search?q={urllib.parse.quote_plus(query)}&type=repositories"
+    fetched = _fetch_text(search_url)
+    if not fetched.success:
+        return []
+    raw_html = str(fetched.data.get("content") or "")
+    matches = re.findall(
+        r'"/(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/(?:star|unstar)"',
+        raw_html,
+        flags=re.IGNORECASE,
+    )
+    results: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for repo_name in matches:
+        cleaned_repo = html.unescape(repo_name).strip("/")
+        if not cleaned_repo or cleaned_repo in seen:
+            continue
+        seen.add(cleaned_repo)
+        results.append(
+            {
+                "title": cleaned_repo,
+                "url": f"https://github.com/{cleaned_repo}",
+                "query": search_url,
+            }
+        )
+        if len(results) >= limit:
+            break
+    return results
