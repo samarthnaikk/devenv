@@ -88,14 +88,15 @@ class KnowledgeSearchTool(BaseTool):
         seen_urls: set[str] = set()
         for source in sources:
             source_results: list[dict[str, str]] = []
+            attempted_queries: list[str] = []
             if source == "github":
                 source_results.extend(_search_github_repositories(normalized_query, limit=result_count))
                 if source_results:
-                    resources.append({"source": source, "results": source_results[:result_count]})
+                    resources.append({"source": source, "query": normalized_query, "attempted_queries": [normalized_query], "results": source_results[:result_count]})
                     seen_urls.update(item["url"] for item in source_results[:result_count])
                     continue
-            for query_template in SOURCE_QUERIES[source]:
-                search_query = query_template.format(query=normalized_query)
+            for search_query in _build_source_queries(query_text, normalized_query, source):
+                attempted_queries.append(search_query)
                 results, status, detail = search_web(search_query, result_count=result_count)
                 if status != "ok":
                     errors.append(f"{source}: {detail}")
@@ -110,7 +111,7 @@ class KnowledgeSearchTool(BaseTool):
                         break
                 if len(source_results) >= result_count:
                     break
-            resources.append({"source": source, "results": source_results})
+            resources.append({"source": source, "query": normalized_query, "attempted_queries": attempted_queries, "results": source_results})
 
         result_total = sum(len(group["results"]) for group in resources)
         status = "ok" if result_total > 0 else "no_results"
@@ -128,13 +129,58 @@ class KnowledgeSearchTool(BaseTool):
 
 def _normalize_knowledge_query(query: str) -> str:
     cleaned = re.sub(
-        r"\b(github|git hub|reddit|stackoverflow|stack overflow|quora|youtube|repo|repos|repositories|references|resources|examples|videos|threads|forums|similar|find|show|give|need|looking|look|for|and)\b",
+        r"\b(github|git hub|reddit|stackoverflow|stack overflow|quora|youtube|repo|repos|repositories|references|resources|examples|videos|threads|forums|similar|find|show|give|need|looking|look|for|and|please|could|would|want|wanna)\b",
         " ",
         str(query or ""),
         flags=re.IGNORECASE,
     )
+    cleaned = re.sub(r"\b(to|into|in)\s+(this|the)\s+(repo|repository|project|codebase|workspace)\b", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b(add|adding|integrate|integration|build|building|create|creating)\b", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = cleaned.replace("chatapp", "chat app")
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,.-")
     return cleaned or query.strip()
+
+
+def _build_source_queries(original_query: str, normalized_query: str, source: str) -> list[str]:
+    variants = _expand_query_variants(original_query, normalized_query)
+    built: list[str] = []
+    for variant in variants:
+        for query_template in SOURCE_QUERIES[source]:
+            built.append(query_template.format(query=variant))
+    return list(dict.fromkeys([item.strip() for item in built if item.strip()]))
+
+
+def _expand_query_variants(original_query: str, normalized_query: str) -> list[str]:
+    base = normalized_query.strip() or original_query.strip()
+    lowered = base.lower()
+    variants = [base]
+    if "chat app" in lowered or re.search(r"\bchat\b", lowered):
+        variants.extend(
+            [
+                "chat app",
+                "real time chat app",
+                "realtime messaging app",
+                "chat application architecture",
+            ]
+        )
+    if "pdf" in lowered:
+        variants.extend(["pdf generation", "export pdf", "pdf tool integration"])
+    if any(term in lowered for term in ("calendar", "scheduling", "events")):
+        variants.extend(["calendar app", "event scheduling ui", "calendar feature implementation"])
+    compact_original = re.sub(r"\b(codebase|repo|repository|workspace|project)\b", " ", original_query, flags=re.IGNORECASE)
+    compact_original = re.sub(r"\s+", " ", compact_original).strip(" ,.-")
+    if compact_original and compact_original.lower() != lowered:
+        variants.append(compact_original)
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for variant in variants:
+        normalized = re.sub(r"\s+", " ", variant).strip(" ,.-")
+        lowered_variant = normalized.lower()
+        if not normalized or lowered_variant in seen:
+            continue
+        seen.add(lowered_variant)
+        cleaned.append(normalized)
+    return cleaned[:6]
 
 
 def _search_github_repositories(query: str, *, limit: int) -> list[dict[str, str]]:
