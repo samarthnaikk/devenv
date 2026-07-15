@@ -32,6 +32,9 @@ class KnowledgeSearchTool(BaseTool):
     name = "knowledge_search"
     description = "Pull grouped outside references for a topic across GitHub, docs, forums, and general web sources."
 
+    def __init__(self) -> None:
+        self._cache: dict[tuple[str, tuple[str, ...], int], ToolResult] = {}
+
     def input_schema(self) -> dict[str, object]:
         return {
             "type": "object",
@@ -83,6 +86,10 @@ class KnowledgeSearchTool(BaseTool):
 
         query_text = query.strip()
         sources = _expand_requested_sources(query_text, sources)
+        cache_key = (query_text.lower(), tuple(sources), result_count)
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
         normalized_query = _normalize_knowledge_query(query_text)
         resources: list[dict[str, object]] = []
         errors: list[str] = []
@@ -121,11 +128,13 @@ class KnowledgeSearchTool(BaseTool):
             if result_total > 0
             else f"knowledge_search could not find resources for '{query_text}'"
         )
-        return ToolResult(
+        result = ToolResult(
             success=result_total > 0,
             output=output,
             data={"status": status, "query": query_text, "resources": resources, "errors": errors},
         )
+        self._cache[cache_key] = result
+        return result
 
 
 def _normalize_knowledge_query(query: str) -> str:

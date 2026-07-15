@@ -98,6 +98,17 @@ class KnowledgeSearchToolTest(unittest.TestCase):
 
         self.assertEqual(result, ["github", "documentation", "stackoverflow", "reddit", "youtube", "general"])
 
+    @patch("urllib.request.urlopen", side_effect=_fake_urlopen)
+    def test_duplicate_query_reuses_cache(self, mock_urlopen) -> None:
+        tool = KnowledgeSearchTool()
+
+        first = tool.execute(query="calendar app feature", sources=["github"], result_count=1)
+        second = tool.execute(query="calendar app feature", sources=["github"], result_count=1)
+
+        self.assertTrue(first.success)
+        self.assertTrue(second.success)
+        self.assertEqual(mock_urlopen.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
