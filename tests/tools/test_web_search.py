@@ -60,6 +60,41 @@ class WebSearchToolTest(unittest.TestCase):
 
     @patch(
         "urllib.request.urlopen",
+        return_value=_FakeResponse(
+            """
+            <html><body>
+              <a class="result-link" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2Fexample%2Frepo">Example Repo</a>
+            </body></html>
+            """
+        ),
+    )
+    def test_search_decodes_duckduckgo_redirect_results(self, _mock_urlopen) -> None:
+        result = WebSearchTool().execute(mode="search", query="example repo", result_count=1)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["results"][0]["url"], "https://github.com/example/repo")
+
+    @patch(
+        "urllib.request.urlopen",
+        side_effect=[
+            _FakeResponse("<html><body>No matches</body></html>"),
+            _FakeResponse(
+                """
+                <html><body>
+                  <a class="result-link" href="https://example.com/lite">Lite Result</a>
+                </body></html>
+                """
+            ),
+        ],
+    )
+    def test_search_falls_back_to_lite_results_when_primary_markup_is_empty(self, _mock_urlopen) -> None:
+        result = WebSearchTool().execute(mode="search", query="fallback test", result_count=1)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["results"][0]["title"], "Lite Result")
+
+    @patch(
+        "urllib.request.urlopen",
         return_value=_FakeResponse("<html><head><title>Example</title></head><body><h1>Hello</h1><p>World</p></body></html>"),
     )
     def test_read_url_returns_readable_content(self, _mock_urlopen) -> None:

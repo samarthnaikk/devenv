@@ -76,15 +76,13 @@ class WebSearchTool(BaseTool):
                 output=f"Unsupported web_search provider: {provider}",
                 data={"status": "unsupported_provider", "mode": "search", "provider": provider, "results": []},
             )
-        search_url = f"https://duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}"
-        fetched = _fetch_text(search_url)
-        if not fetched.success:
+        results, status, detail = search_web(query, provider=provider, result_count=result_count)
+        if status != "ok":
             return ToolResult(
                 success=False,
-                output=fetched.output,
-                data={"status": fetched.data.get("status"), "mode": "search", "provider": provider, "results": []},
+                output=detail,
+                data={"status": status, "mode": "search", "provider": provider, "query": query, "results": []},
             )
-        results = _parse_duckduckgo_results(str(fetched.data.get("content") or ""), limit=result_count)
         return ToolResult(
             success=True,
             output=f"web_search returned {len(results)} result(s) for '{query}'",
@@ -113,6 +111,30 @@ class WebSearchTool(BaseTool):
             output=f"web_search read {url}",
             data={"status": "ok", "mode": "read_url", "provider": provider, "url": url, "title": title, "content": content},
         )
+
+
+def search_web(query: str, *, provider: str = "duckduckgo", result_count: int = 5) -> tuple[list[dict[str, str]], str, str]:
+    if provider not in {"duckduckgo", "default"}:
+        return [], "unsupported_provider", f"Unsupported web_search provider: {provider}"
+
+    endpoints = (
+        f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}",
+        f"https://duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}",
+        f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote_plus(query)}",
+    )
+    failure_messages: list[str] = []
+    for url in endpoints:
+        fetched = _fetch_text(url)
+        if not fetched.success:
+            failure_messages.append(fetched.output)
+            continue
+        raw_html = str(fetched.data.get("content") or "")
+        results = _parse_duckduckgo_results(raw_html, limit=result_count)
+        if results:
+            return results, "ok", "ok"
+    if failure_messages:
+        return [], str(fetched.data.get("status") if "fetched" in locals() else "network_error"), failure_messages[-1]
+    return [], "no_results", f"The web search did not return any results for '{query}'."
 
 
 def _is_http_url(url: str) -> bool:
@@ -144,20 +166,40 @@ def _fetch_text(url: str) -> ToolResult:
 
 
 def _parse_duckduckgo_results(raw_html: str, *, limit: int) -> list[dict[str, str]]:
-    matches = re.findall(
-        r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="(?P<url>[^"]+)"[^>]*>(?P<title>.*?)</a>',
-        raw_html,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
     results: list[dict[str, str]] = []
-    for url, title_html in matches:
-        clean_url = html.unescape(url)
-        clean_title = _strip_html(title_html)
-        if clean_url and clean_title:
+    patterns = (
+        r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="(?P<url>[^"]+)"[^>]*>(?P<title>.*?)</a>',
+        r'<a[^>]*class="[^"]*result-link[^"]*"[^>]*href="(?P<url>[^"]+)"[^>]*>(?P<title>.*?)</a>',
+        r'<a[^>]*rel="nofollow"[^>]*href="(?P<url>[^"]+)"[^>]*>(?P<title>.*?)</a>',
+        r'<a[^>]*href="(?P<url>https?://[^"]+)"[^>]*>(?P<title>.*?)</a>',
+    )
+    seen_urls: set[str] = set()
+    for pattern in patterns:
+        matches = re.findall(pattern, raw_html, flags=re.IGNORECASE | re.DOTALL)
+        for url, title_html in matches:
+            clean_url = _normalize_search_result_url(url)
+            clean_title = _strip_html(title_html)
+            if not clean_url or not clean_title or clean_url in seen_urls:
+                continue
+            if clean_url.startswith("https://duckduckgo.com/") or clean_url.startswith("http://duckduckgo.com/"):
+                continue
             results.append({"title": clean_title, "url": clean_url})
-        if len(results) >= limit:
-            break
+            seen_urls.add(clean_url)
+            if len(results) >= limit:
+                return results
     return results
+
+
+def _normalize_search_result_url(url: str) -> str:
+    cleaned = html.unescape(url or "").strip()
+    if not cleaned:
+        return ""
+    parsed = urllib.parse.urlparse(cleaned)
+    if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+        query = urllib.parse.parse_qs(parsed.query)
+        target = query.get("uddg", [""])[0]
+        return urllib.parse.unquote(target).strip()
+    return cleaned
 
 
 def _extract_title(raw_html: str) -> str:
