@@ -1,6 +1,6 @@
 import React from "https://esm.sh/react@18.2.0";
 import ReactFlow, {
-  Handle, Position, Background,
+  Handle, Position, Background, Controls,
   MarkerType, useNodesState, useEdgesState,
 } from "https://esm.sh/reactflow@11?deps=react@18.2.0,react-dom@18.2.0";
 import { validatePlanBlueprint, normalizeBlueprint } from "../utils/validation.js";
@@ -227,15 +227,19 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
           nodeTypes,
           fitView: true,
           fitViewOptions: { padding: 0.2 },
-          panOnDrag: false,
-          zoomOnScroll: false,
+          panOnDrag: true,
+          panOnScroll: true,
+          zoomOnScroll: true,
+          zoomOnPinch: true,
+          zoomOnDoubleClick: false,
           nodesDraggable: false,
           nodesConnectable: false,
-          elementsSelectable: false,
-          minZoom: 0.5,
-          maxZoom: 2,
+          elementsSelectable: true,
+          minZoom: 0.35,
+          maxZoom: 2.5,
           proOptions: { hideAttribution: true },
         },
+        React.createElement(Controls, { showInteractive: false, position: "bottom-right" }),
         React.createElement(Background, { color: "#1e2023", gap: 20 })
       )
     )
