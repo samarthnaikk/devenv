@@ -144,8 +144,17 @@ def _normalize_knowledge_query(query: str) -> str:
 
 def _build_source_queries(original_query: str, normalized_query: str, source: str) -> list[str]:
     variants = _expand_query_variants(original_query, normalized_query)
+    max_variants = {
+        "github": 3,
+        "documentation": 2,
+        "stackoverflow": 2,
+        "reddit": 2,
+        "youtube": 2,
+        "quora": 1,
+        "general": 2,
+    }.get(source, 2)
     built: list[str] = []
-    for variant in variants:
+    for variant in variants[:max_variants]:
         for query_template in SOURCE_QUERIES[source]:
             built.append(query_template.format(query=variant))
     return list(dict.fromkeys([item.strip() for item in built if item.strip()]))

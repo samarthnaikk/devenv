@@ -184,7 +184,7 @@ def _fetch_text(url: str) -> ToolResult:
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with urllib.request.urlopen(request, timeout=5) as response:
             charset = response.headers.get_content_charset() or "utf-8"
             payload = response.read().decode(charset, errors="replace")
     except urllib.error.HTTPError as exc:
