@@ -1,26 +1,25 @@
 import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
-import { escapeHtml } from "../utils/format.js";
 
 const TOOL_META = {
-  audit_changes: { icon: "history", label: "Audit" },
-  edit_file: { icon: "edit_note", label: "Edit" },
-  generate_prompt: { icon: "auto_awesome", label: "Prompt" },
-  inspect_symbols: { icon: "account_tree", label: "Symbols" },
-  inspect_trace: { icon: "timeline", label: "Trace" },
-  knowledge_search: { icon: "hub", label: "Knowledge" },
-  list_directory: { icon: "folder", label: "Folders" },
-  locate_files: { icon: "find_in_page", label: "Files" },
-  manage_memory: { icon: "memory", label: "Memory" },
-  peek_lines: { icon: "subject", label: "Peek" },
-  read_file: { icon: "description", label: "Read" },
-  remove_file: { icon: "delete", label: "Delete" },
-  run_diagnostics: { icon: "health_and_safety", label: "Checks" },
-  run_shell: { icon: "terminal", label: "Shell" },
-  search_text: { icon: "search", label: "Search" },
-  track_symbol: { icon: "conversion_path", label: "Track" },
-  web_search: { icon: "language", label: "Web" },
-  write_file: { icon: "note_add", label: "Write" },
+  audit_changes: { icon: "history", label: "Audit", hint: "Review what changed" },
+  edit_file: { icon: "edit_note", label: "Edit", hint: "Patch existing files" },
+  generate_prompt: { icon: "auto_awesome", label: "Prompt", hint: "Prepare a strong prompt" },
+  inspect_symbols: { icon: "account_tree", label: "Symbols", hint: "Inspect code structure" },
+  inspect_trace: { icon: "timeline", label: "Trace", hint: "Look at memory traces" },
+  knowledge_search: { icon: "hub", label: "Knowledge", hint: "Pull repos and references" },
+  list_directory: { icon: "folder", label: "Folders", hint: "Browse directories" },
+  locate_files: { icon: "find_in_page", label: "Files", hint: "Find matching files" },
+  manage_memory: { icon: "memory", label: "Memory", hint: "Store or inspect memory" },
+  peek_lines: { icon: "subject", label: "Peek", hint: "Preview file lines" },
+  read_file: { icon: "description", label: "Read", hint: "Open a file" },
+  remove_file: { icon: "delete", label: "Delete", hint: "Remove a file" },
+  run_diagnostics: { icon: "health_and_safety", label: "Checks", hint: "Run diagnostics" },
+  run_shell: { icon: "terminal", label: "Shell", hint: "Run terminal commands" },
+  search_text: { icon: "search", label: "Search", hint: "Search code and text" },
+  track_symbol: { icon: "conversion_path", label: "Track", hint: "Follow symbol usage" },
+  web_search: { icon: "language", label: "Web", hint: "Search live sources" },
+  write_file: { icon: "note_add", label: "Write", hint: "Create a new file" },
 };
 
 export function ToolPicker() {
@@ -122,12 +121,16 @@ export function ToolPicker() {
                 React.createElement(
                   "span",
                   { className: "flex items-center gap-2 min-w-0" },
-                  React.createElement("span", { className: "material-symbols-outlined text-[18px] text-primary shrink-0" }, meta.icon),
+                  React.createElement(
+                    "span",
+                    { className: "w-9 h-9 rounded-xl bg-surface-container-highest border border-outline-variant flex items-center justify-center shrink-0" },
+                    React.createElement("span", { className: "material-symbols-outlined text-[18px] text-primary" }, meta.icon)
+                  ),
                   React.createElement(
                     "span",
                     { className: "flex flex-col min-w-0" },
                     React.createElement("span", { className: "font-body-md text-body-md text-on-surface truncate" }, meta.label),
-                    React.createElement("span", { className: "text-[10px] text-on-surface-variant font-code-sm truncate" }, escapeHtml(toolName))
+                    React.createElement("span", { className: "text-[11px] text-on-surface-variant truncate" }, meta.hint)
                   )
                 ),
                 selected.has(toolName)
@@ -151,5 +154,6 @@ function describeTool(toolName) {
   return {
     icon: meta.icon || "build",
     label: meta.label || fallbackLabel || "Tool",
+    hint: meta.hint || "General workspace action",
   };
 }
