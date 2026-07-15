@@ -8,6 +8,7 @@ const TOOL_META = {
   generate_prompt: { icon: "auto_awesome", label: "Prompt" },
   inspect_symbols: { icon: "account_tree", label: "Symbols" },
   inspect_trace: { icon: "timeline", label: "Trace" },
+  knowledge_search: { icon: "hub", label: "Knowledge" },
   list_directory: { icon: "folder", label: "Folders" },
   locate_files: { icon: "find_in_page", label: "Files" },
   manage_memory: { icon: "memory", label: "Memory" },
