@@ -1,7 +1,7 @@
 import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
 import { formatDuration } from "../utils/format.js";
-import { ToolPicker } from "./ToolPicker.js";
+import { ToolPicker } from "./ToolPicker.js?v=popup3";
 import { validatePlanBlueprint } from "../utils/validation.js";
 import { extractPlanBlueprint, READ_ONLY_PLAN_TOOLS, shouldDisplayPlanResult } from "../utils/plans.js";
 
