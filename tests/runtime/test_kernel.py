@@ -1107,6 +1107,18 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(scope, ["web_search"])
 
+    def test_direct_tool_scope_keeps_web_search_available_for_ollama_latest_web_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            ai = FakeAI([])
+            ai.preferred_backend = "ollama"
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(WebSearchTool())
+
+            scope = kernel._resolve_direct_tool_scope("what is elon musk's net worth, latest you can search online")
+
+        self.assertEqual(scope, ["web_search"])
+
     def test_direct_tool_scope_uses_compact_code_inspection_set_for_backend_question(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))

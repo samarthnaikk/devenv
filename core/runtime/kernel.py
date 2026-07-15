@@ -974,7 +974,7 @@ class DevenvKernel:
             system_logs.append(
                 f"Local route decision: use_local={route_decision.use_local_knowledge} confidence={route_decision.confidence:.3f}"
             )
-            if route_decision.use_local_knowledge:
+            if route_decision.use_local_knowledge and not _is_explicit_live_search_prompt(user_prompt):
                 local_response, handled_locally = self._run_local_knowledge_turn(
                     user_prompt=user_prompt,
                     memory_context=raw_memory_context,
@@ -2838,9 +2838,6 @@ class DevenvKernel:
         if selected_scope:
             return sorted(selected_scope)
 
-        if getattr(self.ai, "preferred_backend", "") == "ollama" and not execution_phase:
-            return []
-
         available = set(self.tools)
         if not available:
             return []
@@ -2993,17 +2990,23 @@ class DevenvKernel:
             marker in lowered_prompt
             for marker in (
                 "latest",
+                "current",
+                "online",
                 "today",
                 "recent",
                 "browse",
                 "google",
                 "look up",
+                "search online",
                 "search for",
                 "search the web",
                 "web search",
                 "news",
                 "docs",
                 "documentation",
+                "net worth",
+                "stock price",
+                "market cap",
                 "president",
                 "prime minister",
                 "ceo",
@@ -3023,6 +3026,7 @@ class DevenvKernel:
                 "look up",
                 "search for",
                 "search the web",
+                "search online",
                 "web search",
                 "latest",
                 "today",
@@ -3060,9 +3064,12 @@ class DevenvKernel:
                 "latest docs",
                 "current docs",
                 "search the web",
+                "search online",
                 "look up",
                 "browse",
                 "google",
+                "latest online",
+                "latest you can search",
                 "latest documentation",
             )
         )
@@ -5469,6 +5476,8 @@ def _should_skip_retrieval_for_prompt(user_prompt: str) -> bool:
     lowered = user_prompt.lower().strip()
     if not lowered:
         return True
+    if _is_explicit_live_search_prompt(user_prompt):
+        return True
     if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt) or _is_session_history_question(user_prompt):
         return False
     if _is_structural_acknowledgement_prompt(lowered):
@@ -6743,6 +6752,29 @@ def _should_enable_web_search(text: str) -> bool:
         "on the web",
     )
     return any(marker in lowered for marker in current_fact_markers)
+
+
+def _is_explicit_live_search_prompt(text: str) -> bool:
+    lowered = str(text or "").lower()
+    if not lowered.strip():
+        return False
+    if any(
+        marker in lowered
+        for marker in (
+            "latest you can search online",
+            "latest search on web",
+            "latest on the web",
+            "search online and tell",
+            "search the web and tell",
+            "look it up online",
+            "search online",
+            "search the web",
+            "browse the web",
+            "google it",
+        )
+    ):
+        return True
+    return _should_enable_web_search(lowered)
 
 
 def _consolidation_cooldown_seconds() -> float:
