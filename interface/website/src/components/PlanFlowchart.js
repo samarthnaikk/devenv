@@ -114,23 +114,56 @@ function BlueprintNode({ data }) {
 
 const nodeTypes = { blueprint: BlueprintNode };
 
-function layoutNodes(nodes) {
+function layoutNodes(nodes, edges) {
   const byLevel = {};
+  const incoming = new Map();
+  (Array.isArray(edges) ? edges : []).forEach((edge) => {
+    const target = edge.to || edge.target;
+    const source = edge.from || edge.source;
+    if (!target || !source) return;
+    const bucket = incoming.get(target) || [];
+    bucket.push(source);
+    incoming.set(target, bucket);
+  });
   nodes.forEach((n) => {
     const level = n.level != null ? n.level : 0;
     (byLevel[level] = byLevel[level] || []).push(n);
   });
-  const H_SPACING = 220, V_SPACING = 140;
+  const H_SPACING = 120;
+  const V_SPACING = 170;
   const result = [];
-  Object.keys(byLevel).sort((a, b) => Number(a) - Number(b)).forEach((level) => {
-    const group = byLevel[level];
-    const totalWidth = (group.length - 1) * H_SPACING;
-    group.forEach((n, i) => {
+  const sortedLevels = Object.keys(byLevel).sort((a, b) => Number(a) - Number(b));
+  const previousPositions = new Map();
+  sortedLevels.forEach((level) => {
+    const group = [...byLevel[level]].sort((left, right) => {
+      const leftParents = (incoming.get(left.id) || []).join(",");
+      const rightParents = (incoming.get(right.id) || []).join(",");
+      return leftParents.localeCompare(rightParents) || left.id.localeCompare(right.id);
+    });
+    const levelNumber = Number(level);
+    const measured = group.map((node) => ({
+      node,
+      width: estimateNodeWidth(node.label || ""),
+      parentCenter: getParentCenter(incoming.get(node.id) || [], previousPositions),
+    }));
+    let cursor = 0;
+    measured.forEach((entry, index) => {
+      const centeredX = entry.parentCenter != null ? entry.parentCenter - entry.width / 2 : cursor;
+      const desiredX = Math.max(centeredX, cursor);
+      entry.x = index === 0 ? centeredX : desiredX;
+      cursor = entry.x + entry.width + H_SPACING;
+    });
+    const minX = Math.min(...measured.map((entry) => entry.x));
+    const maxX = Math.max(...measured.map((entry) => entry.x + entry.width));
+    const offset = (minX + maxX) / 2;
+    measured.forEach((entry) => {
+      const x = entry.x - offset;
+      previousPositions.set(entry.node.id, { x, width: entry.width });
       result.push({
-        id: n.id,
+        id: entry.node.id,
         type: "blueprint",
-        position: { x: i * H_SPACING - totalWidth / 2, y: Number(level) * V_SPACING + 20 },
-        data: { label: n.label, level: n.level, desc: n.desc || "", status: n.status || "pending" },
+        position: { x, y: levelNumber * V_SPACING + 20 },
+        data: { label: entry.node.label, level: entry.node.level, desc: entry.node.desc || "", status: entry.node.status || "pending" },
       });
     });
   });
@@ -146,6 +179,20 @@ function convertEdges(edges) {
     markerEnd: { type: MarkerType.ArrowClosed, color: "#4fdbc8" },
     style: { stroke: "#3c4947", strokeWidth: 2 },
   }));
+}
+
+function estimateNodeWidth(label) {
+  const normalized = String(label || "").trim();
+  return Math.min(420, Math.max(250, 180 + normalized.length * 5.5));
+}
+
+function getParentCenter(parentIds, positions) {
+  const centers = parentIds
+    .map((parentId) => positions.get(parentId))
+    .filter(Boolean)
+    .map((entry) => entry.x + entry.width / 2);
+  if (!centers.length) return null;
+  return centers.reduce((sum, value) => sum + value, 0) / centers.length;
 }
 
 export function PlanFlowchart({ blueprint, mode = "auto" }) {
@@ -175,7 +222,7 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
   }
 
   const allDone = normalized.nodes.every((n) => n.status === "done");
-  const flowNodes = React.useMemo(() => layoutNodes(normalized.nodes), [normalized.nodes]);
+  const flowNodes = React.useMemo(() => layoutNodes(normalized.nodes, normalized.edges), [normalized.nodes, normalized.edges]);
   const flowEdges = React.useMemo(() => convertEdges(normalized.edges), [normalized.edges]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(flowNodes);
