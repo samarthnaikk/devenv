@@ -82,6 +82,7 @@ class KnowledgeSearchTool(BaseTool):
             return ToolResult(success=False, output="result_count must be an integer between 1 and 5", data={"status": "invalid_input", "resources": []})
 
         query_text = query.strip()
+        sources = _expand_requested_sources(query_text, sources)
         normalized_query = _normalize_knowledge_query(query_text)
         resources: list[dict[str, object]] = []
         errors: list[str] = []
@@ -211,3 +212,14 @@ def _search_github_repositories(query: str, *, limit: int) -> list[dict[str, str
         if len(results) >= limit:
             break
     return results
+
+
+def _expand_requested_sources(query: str, sources: list[str]) -> list[str]:
+    cleaned_sources = [source for source in sources if source in SOURCE_QUERIES]
+    lowered = query.lower()
+    if cleaned_sources == ["general"] and any(
+        marker in lowered
+        for marker in ("reference", "references", "repo", "repos", "repository", "github", "youtube", "reddit", "stackoverflow", "example", "examples", "tutorial")
+    ):
+        return ["github", "documentation", "stackoverflow", "reddit", "youtube", "general"]
+    return cleaned_sources or list(DEFAULT_SOURCES)
