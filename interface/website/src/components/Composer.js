@@ -49,6 +49,12 @@ export function Composer() {
           { source: "web_search", message: `query: ${originalPrompt}` },
           { source: "ai", message: "Checking live sources for the latest answer" },
         ]
+      : state.pendingRunMode === "knowledge"
+        ? [
+            { source: "tool_call", message: "tool: knowledge_search" },
+            { source: "knowledge_search", message: `query: ${originalPrompt}` },
+            { source: "ai", message: "Looking for repos, videos, docs, and threads" },
+          ]
       : [
           { source: "system", message: "Checking Devenv memory" },
           { source: "ai", message: "Looking for prior session matches" },
@@ -305,6 +311,8 @@ function sleep(ms) {
 function inferPendingRunMode(prompt) {
   const lowered = String(prompt || "").toLowerCase();
   const webMarkers = ["today", "latest", "current", "currently", "recent", "president", "prime minister", "ceo", "who is"];
+  const knowledgeMarkers = ["github", "repo", "reference", "references", "youtube", "reddit", "stackoverflow", "quora", "similar project", "find examples"];
+  if (knowledgeMarkers.some((marker) => lowered.includes(marker))) return "knowledge";
   return webMarkers.some((marker) => lowered.includes(marker)) ? "web" : "memory";
 }
 
@@ -318,6 +326,10 @@ function formatThinkingFromResult(result) {
   if (!toolSteps.length && Array.isArray(result.stage_traces) && result.stage_traces.length) {
     for (const trace of result.stage_traces.slice(0, 5)) {
       if (trace.summary) lines.push({ source: "ai", message: trace.summary });
+      const traceLogs = Array.isArray(trace.logs) ? trace.logs : [];
+      for (const log of traceLogs.slice(0, 2)) {
+        if (typeof log === "string" && log.trim()) lines.push({ source: "trace", message: log.trim() });
+      }
     }
   }
   for (const step of toolSteps.slice(0, 5)) {
@@ -325,7 +337,34 @@ function formatThinkingFromResult(result) {
       const args = step.arguments || {};
       const path = typeof args.path === "string" ? ` (${args.path})` : "";
       lines.push({ source: "tool_call", message: `tool: ${step.tool_name}${path}` });
+      if (step.tool_name === "web_search" && typeof step.data?.query === "string") {
+        lines.push({ source: "web_search", message: `query: ${step.data.query}` });
+        const results = Array.isArray(step.data?.results) ? step.data.results : [];
+        for (const item of results.slice(0, 5)) {
+          lines.push({ source: "web_search", message: `result: ${String(item.title || item.url || "Result")} - ${String(item.url || "").trim()}` });
+        }
+      }
+      if (step.tool_name === "knowledge_search") {
+        if (typeof step.data?.query === "string") {
+          lines.push({ source: "knowledge_search", message: `query: ${step.data.query}` });
+        }
+        const groups = Array.isArray(step.data?.resources) ? step.data.resources : [];
+        for (const group of groups.slice(0, 7)) {
+          if (!group || typeof group !== "object") continue;
+          const source = String(group.source || "general").trim() || "general";
+          const query = String(group.query || "").trim();
+          lines.push({ source: "knowledge_search", message: `source: ${JSON.stringify({ source, query })}` });
+          const results = Array.isArray(group.results) ? group.results : [];
+          for (const item of results.slice(0, 5)) {
+            lines.push({
+              source: "knowledge_search",
+              message: `result: ${JSON.stringify({ source, title: String(item.title || item.url || "Result"), url: String(item.url || ""), query: String(item.query || query || "") })}`,
+            });
+          }
+        }
+      }
     }
+    if (step.output) lines.push({ source: "trace", message: step.output.split("\n")[0] });
   }
   if (!lines.length) {
     lines.push({ source: "ai", message: result.final_response ? "Prepared the final answer" : "Checked Devenv context" });
@@ -371,9 +410,17 @@ const WEB_RUNNING_STATUS_FRAMES = [
   "Summarizing the result",
 ];
 
+const KNOWLEDGE_RUNNING_STATUS_FRAMES = [
+  "Searching GitHub and the web",
+  "Collecting repos and references",
+  "Grouping videos, docs, and threads",
+  "Preparing the research summary",
+];
+
 function renderRunningTicker(dispatch, state, pendingThinking) {
   const clock = Date.now();
   const content = String(pendingThinking.content || "");
+  const useKnowledge = state.pendingRunMode === "knowledge" || /knowledge_search|source:/i.test(content);
   const useGlobe = state.pendingRunMode === "web" || /query:|result:|searching the web/i.test(content);
   const steps = parseThinkingText(content);
   let frame;
@@ -382,13 +429,13 @@ function renderRunningTicker(dispatch, state, pendingThinking) {
     const index = Math.floor(clock / 1600) % recent.length;
     frame = recent[index];
   } else {
-    const frames = state.pendingRunMode === "web" ? WEB_RUNNING_STATUS_FRAMES : RUNNING_STATUS_FRAMES;
+    const frames = useKnowledge ? KNOWLEDGE_RUNNING_STATUS_FRAMES : state.pendingRunMode === "web" ? WEB_RUNNING_STATUS_FRAMES : RUNNING_STATUS_FRAMES;
     frame = frames[Math.floor(clock / 1200) % frames.length];
   }
   return React.createElement(
     "span",
     { className: "inline-flex items-center gap-2 px-4 py-2 bg-surface-container rounded-full border border-outline-variant" },
-    React.createElement("span", { className: `material-symbols-outlined text-primary text-[16px] animate-pulse` }, useGlobe ? "public" : "bolt"),
+    React.createElement("span", { className: `material-symbols-outlined text-primary text-[16px] animate-pulse` }, useKnowledge ? "hub" : useGlobe ? "public" : "bolt"),
     React.createElement("span", { className: "font-body-md text-body-md text-on-surface" }, frame),
     React.createElement(
       "span",
