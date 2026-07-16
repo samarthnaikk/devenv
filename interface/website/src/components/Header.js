@@ -1,19 +1,11 @@
 import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
-import { persistTheme } from "../utils/storage.js";
 
 export function Header() {
   const { state, dispatch } = useApp();
-  const hasTranscript = state.transcript.length > 0;
 
   const toggleSettings = () => {
     dispatch({ type: "SET_SHOW_SETTINGS", payload: !state.showSettings });
-  };
-
-  const toggleTheme = () => {
-    const next = state.theme === "dark" ? "light" : "dark";
-    dispatch({ type: "SET_THEME", payload: next });
-    persistTheme(next);
   };
 
   const newThread = async () => {
@@ -67,12 +59,6 @@ export function Header() {
     ),
     React.createElement(
       "div",
-      { className: "absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface-container-high border border-outline-variant" },
-      React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface-variant uppercase" }, hasTranscript ? "Memory thread" : "New memory lookup"),
-      React.createElement("div", { className: "h-1.5 w-1.5 rounded-full bg-primary glowing-pip" })
-    ),
-    React.createElement(
-      "div",
       { className: "flex items-center gap-3" },
       React.createElement(
         "button",
@@ -84,16 +70,6 @@ export function Header() {
           "aria-label": "Settings",
         },
         React.createElement("span", { className: "material-symbols-outlined text-[20px]" }, "settings")
-      ),
-      React.createElement(
-        "button",
-        {
-          type: "button",
-          className: "p-2 rounded-lg hover:bg-surface-variant transition-colors text-on-surface-variant",
-          onClick: toggleTheme,
-          "aria-label": "Toggle theme",
-        },
-        React.createElement("span", { className: "material-symbols-outlined text-[20px]" }, state.theme === "dark" ? "light_mode" : "dark_mode")
       ),
       React.createElement(
         "button",
