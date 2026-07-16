@@ -124,6 +124,17 @@ After installation, the package exposes these commands:
 
 ## Version History
 
+### v0.1.5
+
+This release tightened the product surface into a much more polished daily workflow across planning, search, and chat interaction.
+
+- Reworked plan-mode rendering and flowchart validation so plan responses are usable in the UI instead of failing on malformed node payloads.
+- Improved retrieval quality and planning behavior so the runtime uses repository context more effectively before answering.
+- Added stronger web and knowledge-search flows, including better reference collection and clearer live trace presentation.
+- Refined the tool picker, developer workspace rail, and runtime controls to make the web interface denser and easier to use.
+- Added working per-message copy and reply actions, plus reply-aware prompt context for follow-up questions.
+- Removed broken light-mode chrome and cleaned up several panels to better match the dark-first product direction.
+
 ### v0.1.3
 
 This release turned the runtime into a much more usable daily driver and added several of the operational controls that the current web experience depends on.
