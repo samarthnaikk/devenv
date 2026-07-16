@@ -14,7 +14,7 @@ class WebSearchTool(BaseTool):
     name = "web_search"
     description = "Search the web or read a specific URL with structured success and failure payloads."
 
-    supported_modes: tuple[str, ...] = ("search", "read_url")
+    supported_modes: tuple[str, ...] = ("search", "search_images", "read_url")
 
     def input_schema(self) -> dict[str, object]:
         return {
@@ -62,6 +62,16 @@ class WebSearchTool(BaseTool):
             except (TypeError, ValueError):
                 return ToolResult(success=False, output="result_count must be an integer between 1 and 10", data={"status": "invalid_input"})
             return self._search(query.strip(), provider=provider, result_count=normalized_count)
+        if mode == "search_images":
+            query = kwargs.get("query")
+            if not isinstance(query, str) or not query.strip():
+                return ToolResult(success=False, output="Missing required argument: query", data={"status": "invalid_input"})
+            result_count = kwargs.get("result_count", 5)
+            try:
+                normalized_count = max(1, min(int(result_count), 10))
+            except (TypeError, ValueError):
+                return ToolResult(success=False, output="result_count must be an integer between 1 and 10", data={"status": "invalid_input"})
+            return self._search_images(query.strip(), result_count=normalized_count)
         if mode == "read_url":
             url = kwargs.get("url")
             if not isinstance(url, str) or not url.strip():
@@ -110,6 +120,20 @@ class WebSearchTool(BaseTool):
             success=True,
             output=f"web_search read {url}",
             data={"status": "ok", "mode": "read_url", "provider": provider, "url": url, "title": title, "content": content},
+        )
+
+    def _search_images(self, query: str, *, result_count: int) -> ToolResult:
+        results = search_image_web(query, result_count=result_count)
+        if not results:
+            return ToolResult(
+                success=False,
+                output=f"The image search did not return any results for '{query}'.",
+                data={"status": "no_results", "mode": "search_images", "query": query, "results": []},
+            )
+        return ToolResult(
+            success=True,
+            output=f"web_search returned {len(results)} image result(s) for '{query}'",
+            data={"status": "ok", "mode": "search_images", "query": query, "results": results},
         )
 
 
@@ -235,6 +259,53 @@ def _parse_bing_results(raw_html: str, *, limit: int) -> list[dict[str, str]]:
         if not clean_url or not clean_title or clean_url in seen_urls:
             continue
         results.append({"title": clean_title, "url": clean_url})
+        seen_urls.add(clean_url)
+        if len(results) >= limit:
+            break
+    return results
+
+
+def search_image_web(query: str, *, result_count: int = 5) -> list[dict[str, str]]:
+    image_url = f"https://www.bing.com/images/search?q={urllib.parse.quote_plus(query)}"
+    fetched = _fetch_text(image_url)
+    if not fetched.success:
+        return []
+    raw_html = str(fetched.data.get("content") or "")
+    results = _parse_bing_image_results(raw_html, limit=result_count)
+    if results:
+        return results
+    return _parse_image_tags(raw_html, limit=result_count)
+
+
+def _parse_bing_image_results(raw_html: str, *, limit: int) -> list[dict[str, str]]:
+    matches = re.findall(
+        r'murl&quot;:&quot;(?P<url>https?://[^"&]+).*?t&quot;:&quot;(?P<title>[^"&]+)',
+        raw_html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    results: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
+    for url, title in matches:
+        clean_url = html.unescape(url).strip()
+        clean_title = html.unescape(title).strip()
+        if not clean_url or clean_url in seen_urls:
+            continue
+        results.append({"title": clean_title or "Image result", "url": clean_url})
+        seen_urls.add(clean_url)
+        if len(results) >= limit:
+            break
+    return results
+
+
+def _parse_image_tags(raw_html: str, *, limit: int) -> list[dict[str, str]]:
+    matches = re.findall(r'<img[^>]+src="(?P<url>https?://[^"]+)"[^>]*alt="(?P<title>[^"]*)"', raw_html, flags=re.IGNORECASE)
+    results: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
+    for url, title in matches:
+        clean_url = html.unescape(url).strip()
+        if not clean_url or clean_url in seen_urls:
+            continue
+        results.append({"title": _strip_html(title) or "Image result", "url": clean_url})
         seen_urls.add(clean_url)
         if len(results) >= limit:
             break

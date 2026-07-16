@@ -32,7 +32,7 @@ class WebSearchToolTest(unittest.TestCase):
         schema = WebSearchTool().input_schema()
 
         self.assertEqual(schema["required"], ["mode"])
-        self.assertEqual(schema["properties"]["mode"]["enum"], ["search", "read_url"])
+        self.assertEqual(schema["properties"]["mode"]["enum"], ["search", "search_images", "read_url"])
 
     def test_execute_requires_query_for_search_mode(self) -> None:
         result = WebSearchTool().execute(mode="search")
@@ -154,6 +154,22 @@ class WebSearchToolTest(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertEqual(result.data["status"], "invalid_url")
+
+    @patch(
+        "urllib.request.urlopen",
+        return_value=_FakeResponse(
+            """
+            <html><body>
+              murl&quot;:&quot;https://images.example.com/hero.png&quot;, &quot;t&quot;:&quot;Hero Shot&quot;
+            </body></html>
+            """
+        ),
+    )
+    def test_search_images_returns_normalized_results(self, _mock_urlopen) -> None:
+        result = WebSearchTool().execute(mode="search_images", query="chat ui", result_count=1)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["results"][0]["url"], "https://images.example.com/hero.png")
 
 
 if __name__ == "__main__":
