@@ -2,33 +2,35 @@ import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
 
 const TOOL_META = {
-  audit_changes: { icon: "history", label: "Audit", hint: "Review what changed" },
-  edit_file: { icon: "edit_note", label: "Edit", hint: "Patch existing files" },
   generate_pdf: { icon: "picture_as_pdf", label: "PDF", hint: "Generate polished PDFs" },
   generate_prompt: { icon: "auto_awesome", label: "Prompt", hint: "Prepare a strong prompt" },
   inspect_symbols: { icon: "account_tree", label: "Symbols", hint: "Inspect code structure" },
-  inspect_trace: { icon: "timeline", label: "Trace", hint: "Look at memory traces" },
   knowledge_search: { icon: "hub", label: "Knowledge", hint: "Pull repos and references" },
   list_directory: { icon: "folder", label: "Folders", hint: "Browse directories" },
   locate_files: { icon: "find_in_page", label: "Files", hint: "Find matching files" },
-  manage_memory: { icon: "memory", label: "Memory", hint: "Store or inspect memory" },
   peek_lines: { icon: "subject", label: "Peek", hint: "Preview file lines" },
   read_file: { icon: "description", label: "Read", hint: "Open a file" },
-  remove_file: { icon: "delete", label: "Delete", hint: "Remove a file" },
-  run_diagnostics: { icon: "health_and_safety", label: "Checks", hint: "Run diagnostics" },
-  run_shell: { icon: "terminal", label: "Shell", hint: "Run terminal commands" },
   search_text: { icon: "search", label: "Search", hint: "Search code and text" },
   track_symbol: { icon: "conversion_path", label: "Track", hint: "Follow symbol usage" },
   web_search: { icon: "language", label: "Web", hint: "Search live sources" },
-  write_file: { icon: "note_add", label: "Write", hint: "Create a new file" },
 };
+
+const USER_VISIBLE_TOOLS = new Set(Object.keys(TOOL_META));
 
 export function ToolPicker() {
   const { state, dispatch } = useApp();
-  const availableTools = Array.isArray(state.health?.tools) ? state.health.tools : [];
-  const selected = new Set(state.selectedTools);
+  const availableTools = (Array.isArray(state.health?.tools) ? state.health.tools : []).filter((toolName) => USER_VISIBLE_TOOLS.has(toolName));
+  const visibleSelectedTools = state.selectedTools.filter((toolName) => USER_VISIBLE_TOOLS.has(toolName));
+  const selected = new Set(visibleSelectedTools);
   const [droppingTools, setDroppingTools] = React.useState([]);
   const label = selected.size ? `${selected.size} selected` : "All tools";
+  const selectedToolsKey = state.selectedTools.join("|");
+  const visibleSelectedToolsKey = visibleSelectedTools.join("|");
+
+  React.useEffect(() => {
+    if (selectedToolsKey === visibleSelectedToolsKey) return;
+    dispatch({ type: "SET_SELECTED_TOOLS", payload: visibleSelectedTools });
+  }, [dispatch, selectedToolsKey, visibleSelectedTools, visibleSelectedToolsKey]);
 
   React.useEffect(() => {
     if (!droppingTools.length) return undefined;
@@ -48,7 +50,7 @@ export function ToolPicker() {
   };
 
   const toggleTool = (toolName) => {
-    const next = new Set(state.selectedTools);
+    const next = new Set(visibleSelectedTools);
     if (next.has(toolName)) {
       next.delete(toolName);
     } else {
