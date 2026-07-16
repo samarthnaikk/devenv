@@ -1,5 +1,5 @@
 import React from "https://esm.sh/react@18.2.0";
-import { loadTheme, loadPersistedAccess } from "../utils/storage.js";
+import { loadTheme, loadPersistedAccess, loadPreferredBackend, loadPreferredModels, loadSetupState } from "../utils/storage.js";
 
 const READ_ONLY_TOOLS = ["list_directory", "read_file", "glob", "grep", "inspect_symbols", "search_symbols"];
 
@@ -9,7 +9,7 @@ const initialState = {
   transcript: [],
   isRunning: false,
   bootError: "",
-  healthMeta: { provider: "", model: "", availableModels: [], availableModelsByBackend: {}, selectedModelsByBackend: {} },
+  healthMeta: { provider: "", model: "", availableModels: [], availableModelsByBackend: {}, selectedModelsByBackend: loadPreferredModels() },
   usageWindow: [],
   rateLimitInfo: null,
   clock: Date.now(),
@@ -24,7 +24,7 @@ const initialState = {
   persistedAccess: loadPersistedAccess(),
   backends: {},
   activeBackend: "opencode",
-  preferredBackend: "opencode",
+  preferredBackend: loadPreferredBackend(),
   selectedProvider: "codex",
   visibleSessionProviders: { codex: false, opencode: false },
   providerSessions: { codex: [], opencode: [] },
@@ -47,6 +47,7 @@ const initialState = {
   planMode: false,
   planBlueprint: null,
   showSettings: false,
+  setupComplete: loadSetupState(),
 };
 
 function appReducer(state, action) {
@@ -134,6 +135,8 @@ function appReducer(state, action) {
       return { ...state, planBlueprint: action.payload };
     case "SET_SHOW_SETTINGS":
       return { ...state, showSettings: action.payload };
+    case "SET_SETUP_COMPLETE":
+      return { ...state, setupComplete: action.payload };
     case "SET_RETRIEVAL_STATUS":
       return { ...state, retrievalStatus: action.payload };
     default:

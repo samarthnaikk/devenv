@@ -1,6 +1,7 @@
 import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, escapeAttribute, formatBackendLabel } from "../utils/format.js";
+import { persistPreferredBackend, persistPreferredModels } from "../utils/storage.js";
 
 export function SettingsDropdown() {
   const { state, dispatch } = useApp();
@@ -33,6 +34,7 @@ export function SettingsDropdown() {
           selectedModelsByBackend: result.selected_models_by_backend || state.healthMeta.selectedModelsByBackend,
         },
       });
+      persistPreferredModels(result.selected_models_by_backend || { ...state.healthMeta.selectedModelsByBackend, [preferredBackend]: model });
       const { showToast } = await import("./Header.js");
       showToast(dispatch, `${formatBackendLabel(preferredBackend)} model switched to ${model.split("/").pop()}`);
     } catch (err) {
@@ -42,7 +44,9 @@ export function SettingsDropdown() {
   };
 
   const handleBackendChange = (event) => {
-    dispatch({ type: "SET_PREFERRED_BACKEND", payload: event.target.value || "opencode" });
+    const next = event.target.value || "opencode";
+    dispatch({ type: "SET_PREFERRED_BACKEND", payload: next });
+    persistPreferredBackend(next);
   };
 
   const closeSettings = () => {

@@ -6,15 +6,16 @@ import { ChatColumn } from "./components/ChatColumn.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { Toast } from "./components/Toast.js";
 import { fetchHealth, updateSessionAccess as apiUpdateSessionAccess, updateBackendAccess as apiUpdateBackendAccess } from "./api.js";
-import { persistAccess } from "./utils/storage.js";
+import { persistAccess, persistPreferredModels, persistSetupState } from "./utils/storage.js";
 
 function AppInner() {
   const { state, dispatch } = useApp();
   const clockRef = React.useRef(null);
   const healthRef = React.useRef(false);
   const pollingRef = React.useRef(null);
-  const [setupDone, setSetupDone] = React.useState(false);
+  const [setupDone, setSetupDone] = React.useState(state.setupComplete);
   const setupStartedRef = React.useRef(false);
+  const restoreRef = React.useRef(false);
 
   React.useEffect(() => {
     clockRef.current = window.setInterval(() => {
@@ -47,6 +48,43 @@ function AppInner() {
         dispatch({ type: "SET_BOOT_ERROR", payload: error.message });
       });
   }, []);
+
+  React.useEffect(() => {
+    if (!state.health || restoreRef.current) return;
+    restoreRef.current = true;
+    const restore = async () => {
+      const persisted = state.persistedAccess || { session_access: {}, backend_access: {} };
+      try {
+        if (persisted.session_access?.codex && !state.accessPolicy.session_access?.codex) {
+          const payload = await apiUpdateSessionAccess("codex", true);
+          dispatch({ type: "SET_ACCESS_POLICY", payload });
+        }
+        if (persisted.session_access?.opencode && !state.accessPolicy.session_access?.opencode) {
+          const payload = await apiUpdateSessionAccess("opencode", true);
+          dispatch({ type: "SET_ACCESS_POLICY", payload });
+        }
+        for (const backend of ["opencode", "ollama", "codex"]) {
+          if (persisted.backend_access?.[backend] && !state.accessPolicy.backend_access?.[backend]) {
+            const payload = await apiUpdateBackendAccess(backend, true);
+            dispatch({ type: "SET_ACCESS_POLICY", payload });
+          }
+        }
+        const payload = await fetchHealth();
+        dispatch({ type: "SET_HEALTH", payload });
+        applyHealthPayload(dispatch, payload);
+        persistAccess(payload.access_policy || persisted);
+        persistPreferredModels(payload.selected_models_by_backend || {});
+        if (Object.values(payload.access_policy?.session_access || {}).some(Boolean)) {
+          dispatch({ type: "SET_SETUP_COMPLETE", payload: true });
+          setSetupDone(true);
+          persistSetupState(true);
+        }
+      } catch {
+        restoreRef.current = false;
+      }
+    };
+    restore();
+  }, [state.health]);
 
   React.useEffect(() => {
     const indexing = state.health?.indexing;
@@ -119,7 +157,11 @@ function AppInner() {
       dispatch,
       accessPolicy: state.accessPolicy,
       indexing,
-      onFinish: () => setSetupDone(true),
+      onFinish: () => {
+        setSetupDone(true);
+        dispatch({ type: "SET_SETUP_COMPLETE", payload: true });
+        persistSetupState(true);
+      },
     });
   }
 
