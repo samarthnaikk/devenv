@@ -22,10 +22,12 @@ function BlueprintNode({ data }) {
           border: `1px solid ${data.status === "active" ? "#4fdbc8" : "#3c4947"}`,
           borderRadius: "8px",
           padding: "12px 16px",
-          minWidth: "160px",
+          width: `${data.width || 320}px`,
+          maxWidth: `${data.width || 320}px`,
           position: "relative",
           color: "#e2e2e6",
           fontFamily: "Inter, sans-serif",
+          boxSizing: "border-box",
         },
       },
       React.createElement(Handle, { type: "target", position: Position.Top, style: { background: "#3c4947", width: 8, height: 8 } }),
@@ -45,7 +47,7 @@ function BlueprintNode({ data }) {
       ),
       React.createElement(
         "div",
-        { style: { fontSize: "13px", fontWeight: 500, lineHeight: 1.4, marginBottom: "4px" } },
+        { style: { fontSize: "13px", fontWeight: 500, lineHeight: 1.4, marginBottom: "4px", whiteSpace: "normal", wordBreak: "break-word" } },
         escapeHtml(data.label || "")
       ),
       React.createElement(
@@ -129,8 +131,9 @@ function layoutNodes(nodes, edges) {
     const level = n.level != null ? n.level : 0;
     (byLevel[level] = byLevel[level] || []).push(n);
   });
-  const H_SPACING = 120;
-  const V_SPACING = 170;
+  const H_SPACING = 48;
+  const V_SPACING = 180;
+  const MAX_ROW_WIDTH = 980;
   const result = [];
   const sortedLevels = Object.keys(byLevel).sort((a, b) => Number(a) - Number(b));
   const previousPositions = new Map();
@@ -147,11 +150,21 @@ function layoutNodes(nodes, edges) {
       parentCenter: getParentCenter(incoming.get(node.id) || [], previousPositions),
     }));
     let cursor = 0;
+    let row = 0;
+    let rowWidth = 0;
     measured.forEach((entry, index) => {
+      const projectedWidth = rowWidth === 0 ? entry.width : rowWidth + H_SPACING + entry.width;
+      if (projectedWidth > MAX_ROW_WIDTH && rowWidth > 0) {
+        row += 1;
+        rowWidth = 0;
+        cursor = 0;
+      }
       const centeredX = entry.parentCenter != null ? entry.parentCenter - entry.width / 2 : cursor;
       const desiredX = Math.max(centeredX, cursor);
       entry.x = index === 0 ? centeredX : desiredX;
+      entry.yOffset = row * 118;
       cursor = entry.x + entry.width + H_SPACING;
+      rowWidth = rowWidth === 0 ? entry.width : rowWidth + H_SPACING + entry.width;
     });
     const minX = Math.min(...measured.map((entry) => entry.x));
     const maxX = Math.max(...measured.map((entry) => entry.x + entry.width));
@@ -162,8 +175,8 @@ function layoutNodes(nodes, edges) {
       result.push({
         id: entry.node.id,
         type: "blueprint",
-        position: { x, y: levelNumber * V_SPACING + 20 },
-        data: { label: entry.node.label, level: entry.node.level, desc: entry.node.desc || "", status: entry.node.status || "pending" },
+        position: { x, y: levelNumber * V_SPACING + 20 + (entry.yOffset || 0) },
+        data: { label: entry.node.label, level: entry.node.level, desc: entry.node.desc || "", status: entry.node.status || "pending", width: entry.width },
       });
     });
   });
