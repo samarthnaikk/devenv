@@ -183,9 +183,14 @@ def _expand_query_variants(original_query: str, normalized_query: str) -> list[s
                 "chat app",
                 "real time chat app",
                 "realtime messaging app",
+                "side by side chat app ui",
+                "split screen chat interface",
+                "messaging app frontend",
                 "chat application architecture",
             ]
         )
+    if any(term in lowered for term in ("message", "messaging", "conversation", "dm")) and "chat" not in lowered:
+        variants.extend(["messaging app", "chat ui", "realtime chat app"])
     if "pdf" in lowered:
         variants.extend(["pdf generation", "export pdf", "pdf tool integration"])
     if any(term in lowered for term in ("calendar", "scheduling", "events")):
