@@ -981,6 +981,9 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             return
 
+        if parsed.path == "/favicon.ico":
+            self.path = "/favicon.svg"
+            return super().do_GET()
         if parsed.path == "/":
             self.path = "/index.html"
         return super().do_GET()
