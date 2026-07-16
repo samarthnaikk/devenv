@@ -46,6 +46,7 @@ const initialState = {
   toolPickerOpen: false,
   planMode: false,
   planBlueprint: null,
+  replyTarget: null,
   showSettings: false,
   sidebarCollapsed: false,
   setupComplete: loadSetupState(),
@@ -134,6 +135,8 @@ function appReducer(state, action) {
       return { ...state, planMode: action.payload, planBlueprint: action.payload ? state.planBlueprint : null };
     case "SET_PLAN_BLUEPRINT":
       return { ...state, planBlueprint: action.payload };
+    case "SET_REPLY_TARGET":
+      return { ...state, replyTarget: action.payload };
     case "SET_SHOW_SETTINGS":
       return { ...state, showSettings: action.payload };
     case "SET_SIDEBAR_COLLAPSED":

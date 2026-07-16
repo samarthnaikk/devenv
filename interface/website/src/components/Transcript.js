@@ -5,6 +5,7 @@ import { ThinkingMessage } from "./ThinkingMessage.js?v=trace2";
 import { AssistantMessage } from "./AssistantMessage.js";
 import { ErrorMessage } from "./ErrorMessage.js";
 import { PlanFlowchart } from "./PlanFlowchart.js?v=flow4";
+import { showToast } from "./Header.js";
 
 const SUGGESTIONS = [
   "Do you remember anything about the old retrieval logic for this project?",
@@ -13,7 +14,7 @@ const SUGGESTIONS = [
 ];
 
 export function Transcript() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const scrollRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -21,6 +22,43 @@ export function Transcript() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [state.transcript]);
+
+  const handleCopyMessage = React.useCallback(async (message) => {
+    const text = String(message?.content || "").trim();
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      showToast(dispatch, "Message copied");
+    } catch {
+      showToast(dispatch, "Copy failed");
+    }
+  }, [dispatch]);
+
+  const handleReplyMessage = React.useCallback((message) => {
+    if (!message) return;
+    dispatch({
+      type: "SET_REPLY_TARGET",
+      payload: {
+        id: message.id,
+        role: message.role,
+        author: message.role === "user" ? "You" : message.role === "error" ? "Error" : "Devenv",
+        excerpt: buildReplyExcerpt(message.content),
+      },
+    });
+    showToast(dispatch, "Reply attached");
+  }, [dispatch]);
 
   if (!state.health || state.bootError) return null;
 
@@ -71,16 +109,37 @@ export function Transcript() {
     state.transcript.map((item) => {
       switch (item.role) {
         case "user":
-          return React.createElement(UserMessage, { key: item.id, message: item });
+          return React.createElement(UserMessage, {
+            key: item.id,
+            message: item,
+            onCopy: () => handleCopyMessage(item),
+            onReply: () => handleReplyMessage(item),
+          });
         case "thinking":
           return React.createElement(ThinkingMessage, { key: item.id, message: item });
         case "plan":
           return React.createElement(PlanFlowchart, { key: item.id, blueprint: item.blueprint, mode: item.mode || "auto" });
         case "error":
-          return React.createElement(ErrorMessage, { key: item.id, message: item });
+          return React.createElement(ErrorMessage, {
+            key: item.id,
+            message: item,
+            onCopy: () => handleCopyMessage(item),
+            onReply: () => handleReplyMessage(item),
+          });
         default:
-          return React.createElement(AssistantMessage, { key: item.id, message: item });
+          return React.createElement(AssistantMessage, {
+            key: item.id,
+            message: item,
+            onCopy: () => handleCopyMessage(item),
+            onReply: () => handleReplyMessage(item),
+          });
       }
     })
   );
+}
+
+function buildReplyExcerpt(content) {
+  const normalized = String(content || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "Empty message";
+  return normalized.length > 140 ? `${normalized.slice(0, 137)}...` : normalized;
 }
