@@ -2278,6 +2278,24 @@ class DevenvKernel:
                             ai_logs.append(f"Checkpoint completed after redundant write was detected: {task.description}")
                             system_logs.append(f"Checkpoint {index + 1} completed after duplicate write_file call")
                             break
+                    reusable_step = _find_reusable_tool_step(steps, tool_call.tool_name, normalized_arguments)
+                    if reusable_step is not None:
+                        ai_logs.append(f"Reused prior tool result: {tool_call.tool_name}")
+                        step_conversation.append(_assistant_tool_call_message(ai_response, [tool_call]))
+                        steps.append(
+                            ToolExecutionStep(
+                                step_id=tool_call.call_id,
+                                tool_name=tool_call.tool_name,
+                                arguments=normalized_arguments,
+                                output=reusable_step.output,
+                                success=reusable_step.success,
+                                is_sandboxed_violation=False,
+                                data=dict(reusable_step.data or {}),
+                            )
+                        )
+                        system_logs.append(f"Tool step {len(steps)}: {tool_call.tool_name} success={reusable_step.success} reused=true")
+                        step_conversation.append(_tool_message(tool_call.call_id, tool_call.tool_name, reusable_step.output))
+                        continue
                     ai_logs.append(f"Tool requested: {tool_call.tool_name}")
                     step_conversation.append(_assistant_tool_call_message(ai_response, [tool_call]))
                     step = self._execute_tool_call(tool_call)
@@ -4075,6 +4093,32 @@ def _build_partial_failure_response(steps: list[ToolExecutionStep], error: Runti
         )
 
     return f"The AI response failed after tool execution: {error}"
+
+
+def _find_reusable_tool_step(
+    steps: list[ToolExecutionStep],
+    tool_name: str,
+    arguments: dict[str, Any],
+) -> ToolExecutionStep | None:
+    reusable_tools = {
+        "knowledge_search",
+        "web_search",
+        "list_directory",
+        "locate_files",
+        "read_file",
+        "peek_lines",
+        "inspect_symbols",
+        "search_text",
+        "track_symbol",
+    }
+    if tool_name not in reusable_tools:
+        return None
+    for step in reversed(steps):
+        if not step.success:
+            continue
+        if step.tool_name == tool_name and step.arguments == arguments:
+            return step
+    return None
 
 
 def _trim_memory_context(memory_context: str, char_limit: int) -> str:
