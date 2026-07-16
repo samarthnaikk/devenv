@@ -4,14 +4,7 @@ import { useApp } from "../context/AppContext.js";
 const TOOL_META = {
   generate_pdf: { icon: "picture_as_pdf", label: "PDF", hint: "Generate polished PDFs" },
   generate_prompt: { icon: "auto_awesome", label: "Prompt", hint: "Prepare a strong prompt" },
-  inspect_symbols: { icon: "account_tree", label: "Symbols", hint: "Inspect code structure" },
   knowledge_search: { icon: "hub", label: "Knowledge", hint: "Pull repos and references" },
-  list_directory: { icon: "folder", label: "Folders", hint: "Browse directories" },
-  locate_files: { icon: "find_in_page", label: "Files", hint: "Find matching files" },
-  peek_lines: { icon: "subject", label: "Peek", hint: "Preview file lines" },
-  read_file: { icon: "description", label: "Read", hint: "Open a file" },
-  search_text: { icon: "search", label: "Search", hint: "Search code and text" },
-  track_symbol: { icon: "conversion_path", label: "Track", hint: "Follow symbol usage" },
   web_search: { icon: "language", label: "Web", hint: "Search live sources" },
 };
 
@@ -109,7 +102,7 @@ export function ToolPicker() {
     state.toolPickerOpen
       ? React.createElement(
           "div",
-          { className: "tool-picker-panel absolute left-0 bottom-full mb-3 z-10 w-[52rem] max-w-[calc(100vw-2rem)] overflow-hidden" },
+          { className: "tool-picker-panel absolute left-0 bottom-full mb-3 z-10 w-[40rem] max-w-[calc(100vw-2rem)] overflow-hidden" },
           React.createElement("div", { className: "tool-picker-panel-glow", "aria-hidden": "true" }),
           React.createElement(
             "div",
