@@ -47,6 +47,7 @@ const initialState = {
   planMode: false,
   planBlueprint: null,
   showSettings: false,
+  sidebarCollapsed: false,
   setupComplete: loadSetupState(),
 };
 
@@ -135,6 +136,8 @@ function appReducer(state, action) {
       return { ...state, planBlueprint: action.payload };
     case "SET_SHOW_SETTINGS":
       return { ...state, showSettings: action.payload };
+    case "SET_SIDEBAR_COLLAPSED":
+      return { ...state, sidebarCollapsed: action.payload };
     case "SET_SETUP_COMPLETE":
       return { ...state, setupComplete: action.payload };
     case "SET_RETRIEVAL_STATUS":
