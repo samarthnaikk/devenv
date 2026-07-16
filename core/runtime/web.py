@@ -274,8 +274,8 @@ class DevenvWebApp:
             ),
             "generate_pdf": ToolReadiness(
                 name="generate_pdf",
-                ready=False,
-                detail="Tool contract reserved. LaTeX pipeline is not implemented yet.",
+                ready=True,
+                detail="LaTeX-backed PDF generation is available through the generate_pdf runtime tool.",
             ),
         }
 

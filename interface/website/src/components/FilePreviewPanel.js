@@ -67,6 +67,12 @@ export function FilePreviewPanel({
                 src: content,
                 alt: selectedPath || "Image preview",
               })
+            : previewKind === "pdf"
+              ? React.createElement("iframe", {
+                  className: "w-full min-h-[70vh] rounded-lg border border-outline-variant bg-white",
+                  src: content,
+                  title: selectedPath || "PDF preview",
+                })
             : previewKind === "binary"
               ? React.createElement(
                   "div",

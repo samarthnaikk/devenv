@@ -6,6 +6,7 @@ from core.memory.interface import MemoryEngineInterface
 from core.tools import (
     AuditChangesTool,
     EditFileTool,
+    GeneratePDFTool,
     GeneratePromptTool,
     InspectSymbolsTool,
     InspectTraceTool,
@@ -37,6 +38,7 @@ def build_runtime_tools(memory: MemoryEngineInterface, *, context_builder=None) 
         SearchTextTool(),
         web_search_tool,
         KnowledgeSearchTool(),
+        GeneratePDFTool(),
         GeneratePromptTool(context_builder=context_builder, web_search_tool=web_search_tool),
         TrackSymbolTool(),
         WriteFileTool(),

@@ -59,6 +59,13 @@ class WorkspaceBrowser:
                 "content_type": mime_type,
                 "content": f"data:{mime_type};base64,{payload}",
             }
+        if mime_type == "application/pdf" or target.suffix.lower() == ".pdf":
+            payload = base64.b64encode(target.read_bytes()).decode("ascii")
+            return {
+                "kind": "pdf",
+                "content_type": "application/pdf",
+                "content": f"data:application/pdf;base64,{payload}",
+            }
 
         try:
             return {
