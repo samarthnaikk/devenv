@@ -182,9 +182,9 @@ pre {
 
 .tool-picker-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(8.5rem, 8.5rem));
+  grid-template-columns: repeat(4, minmax(7.35rem, 7.35rem));
   gap: 7px;
-  max-height: min(12rem, calc(100vh - 14rem));
+  max-height: min(8rem, calc(100vh - 14rem));
   overflow-y: auto;
   padding-right: 2px;
   justify-content: start;
@@ -580,11 +580,11 @@ pre {
 
 @media (min-width: 721px) and (max-width: 1080px) {
   .tool-picker-panel {
-    width: min(100vw - 2rem, 30rem);
+    width: min(100vw - 2rem, 24rem);
   }
 
   .tool-picker-grid {
-    grid-template-columns: repeat(3, minmax(8rem, 8rem));
+    grid-template-columns: repeat(2, minmax(8rem, 8rem));
   }
 }
 

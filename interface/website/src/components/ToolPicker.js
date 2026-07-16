@@ -100,7 +100,7 @@ export function ToolPicker() {
     state.toolPickerOpen
       ? React.createElement(
           "div",
-          { className: "tool-picker-panel absolute left-0 bottom-full mb-3 z-10 w-[40rem] max-w-[calc(100vw-2rem)] overflow-hidden" },
+          { className: "tool-picker-panel absolute left-0 bottom-full mb-3 z-10 w-[33rem] max-w-[calc(100vw-2rem)] overflow-hidden" },
           React.createElement("div", { className: "tool-picker-panel-glow", "aria-hidden": "true" }),
           React.createElement(
             "div",
