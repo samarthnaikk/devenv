@@ -16,7 +16,6 @@ export function ToolPicker() {
   const visibleSelectedTools = state.selectedTools.filter((toolName) => USER_VISIBLE_TOOLS.has(toolName));
   const selected = new Set(visibleSelectedTools);
   const [droppingTools, setDroppingTools] = React.useState([]);
-  const label = selected.size ? `${selected.size} selected` : "All tools";
   const selectedToolsKey = state.selectedTools.join("|");
   const visibleSelectedToolsKey = visibleSelectedTools.join("|");
 
@@ -84,11 +83,10 @@ export function ToolPicker() {
           type: "button",
           className: "tool-picker-trigger flex items-center gap-2 px-3 py-1.5 bg-surface-container-highest rounded-lg border border-outline-variant hover:bg-surface-variant transition-colors",
           onClick: toggleToolPicker,
-          "aria-label": "Choose tools",
+          "aria-label": selected.size ? `Choose tools, ${selected.size} selected` : "Choose tools",
         },
         React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "TOOLS"),
-        React.createElement("span", { className: "text-outline" }, "/"),
-        React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface" }, label)
+        React.createElement("span", { className: "material-symbols-outlined text-[16px] text-on-surface-variant" }, state.toolPickerOpen ? "expand_less" : "expand_more")
       )
     ),
     selectedTools.length

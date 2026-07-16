@@ -182,11 +182,12 @@ pre {
 
 .tool-picker-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(8.5rem, 8.5rem));
   gap: 7px;
   max-height: min(12rem, calc(100vh - 14rem));
   overflow-y: auto;
   padding-right: 2px;
+  justify-content: start;
 }
 
 .tool-picker-panel-header {
@@ -565,7 +566,7 @@ pre {
 
 @media (max-width: 720px) {
   .tool-picker-panel {
-    width: min(100vw - 1.5rem, 24rem);
+    width: min(100vw - 1.5rem, 21rem);
   }
 
   .tool-picker-grid {
@@ -579,11 +580,11 @@ pre {
 
 @media (min-width: 721px) and (max-width: 1080px) {
   .tool-picker-panel {
-    width: min(100vw - 2rem, 34rem);
+    width: min(100vw - 2rem, 30rem);
   }
 
   .tool-picker-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(8rem, 8rem));
   }
 }
 
