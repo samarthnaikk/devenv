@@ -22,7 +22,7 @@ class GeneratePDFToolTest(unittest.TestCase):
     @patch("subprocess.run")
     def test_execute_writes_pdf_and_optional_tex(self, mock_run, _mock_which) -> None:
         def fake_run(command, cwd, capture_output, text, timeout, check):  # noqa: ARG001
-            pdf_path = Path(cwd) / "demo.pdf"
+            pdf_path = Path(cwd) / "demo-pdf.pdf"
             pdf_path.write_bytes(b"%PDF-1.4\n")
             return type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
@@ -51,7 +51,7 @@ class GeneratePDFToolTest(unittest.TestCase):
     @patch("subprocess.run")
     def test_execute_records_optional_image_references(self, mock_run, _mock_which, _mock_images) -> None:
         def fake_run(command, cwd, capture_output, text, timeout, check):  # noqa: ARG001
-            pdf_path = Path(cwd) / "demo.pdf"
+            pdf_path = Path(cwd) / "demo-pdf.pdf"
             pdf_path.write_bytes(b"%PDF-1.4\n")
             return type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 

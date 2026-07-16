@@ -114,8 +114,7 @@ class FakeAI:
         self.reset_session_calls += 1
 
     def set_backend_model(self, backend: str, model: str) -> None:
-        if backend == "ollama":
-            self.model = model
+        self.model = model
 
 
 class CapturingFakeAI(FakeAI):
@@ -249,6 +248,33 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(payload["kind"], "image")
         self.assertEqual(payload["content_type"], "image/png")
         self.assertTrue(str(payload["content"]).startswith("data:image/png;base64,"))
+
+    def test_file_payload_supports_pdf_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            Path(tempdir, "report.pdf").write_bytes(b"%PDF-1.4\n%preview\n")
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+
+            payload = app.build_file_payload("report.pdf")
+
+        self.assertEqual(payload["kind"], "pdf")
+        self.assertEqual(payload["content_type"], "application/pdf")
+        self.assertTrue(str(payload["content"]).startswith("data:application/pdf;base64,"))
+
+    def test_health_payload_marks_generate_pdf_as_ready(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+
+            health = app.build_health_payload()
+
+        self.assertTrue(health["tool_readiness"]["generate_pdf"]["ready"])
 
     def test_web_app_exposes_turn_and_error_contracts(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -718,10 +744,18 @@ class DevenvWebAppTest(unittest.TestCase):
                     content=json.dumps(
                         {
                             "tasks": [
-                                {"task_id": "inspect-runtime", "description": "Inspect the runtime web entrypoints", "level": 0},
-                                {"task_id": "add-tool", "description": "Add a PDF generation runtime tool contract", "level": 1},
+                                {"task_id": "inspect-web", "description": "Inspect core/runtime/web.py for planning hooks and generate_pdf readiness exposure", "level": 0},
+                                {"task_id": "review-tooling", "description": "Review core/runtime/tooling.py to confirm where generate_pdf should be registered", "level": 0},
+                                {"task_id": "design-tool", "description": "Define the generate_pdf tool contract and LaTeX-backed output shape in core/tools", "level": 1},
+                                {"task_id": "wire-runtime", "description": "Wire the generate_pdf tool through the runtime entrypoints and setup/readiness surfaces", "level": 2},
+                                {"task_id": "verify-runtime", "description": "Verify the integration with tests/runtime/test_web.py and related tool coverage", "level": 3},
                             ],
-                            "edges": [{"from": "inspect-runtime", "to": "add-tool"}],
+                            "edges": [
+                                {"from": "inspect-web", "to": "design-tool"},
+                                {"from": "review-tooling", "to": "design-tool"},
+                                {"from": "design-tool", "to": "wire-runtime"},
+                                {"from": "wire-runtime", "to": "verify-runtime"},
+                            ],
                         }
                     ),
                     finish_reason="stop",
@@ -743,7 +777,7 @@ class DevenvWebAppTest(unittest.TestCase):
 
         self.assertEqual(result["backend_used"], "ollama")
         self.assertIsNone(result["error_message"])
-        self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "inspect-runtime")
+        self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "inspect-web")
         self.assertEqual(result["usage_sample"]["total_tokens"], 10)
 
     def test_run_plan_blocks_mutation_tools_and_recovers_with_valid_json(self) -> None:

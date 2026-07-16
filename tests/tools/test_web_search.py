@@ -79,10 +79,11 @@ class WebSearchToolTest(unittest.TestCase):
         "urllib.request.urlopen",
         side_effect=[
             _FakeResponse("<html><body>No matches</body></html>"),
+            _FakeResponse("<rss><channel></channel></rss>"),
             _FakeResponse(
                 """
                 <html><body>
-                  <a class="result-link" href="https://example.com/lite">Lite Result</a>
+                  <li class="b_algo"><h2><a href="https://example.com/bing-lite">Lite Result</a></h2></li>
                 </body></html>
                 """
             ),
@@ -97,8 +98,6 @@ class WebSearchToolTest(unittest.TestCase):
     @patch(
         "urllib.request.urlopen",
         side_effect=[
-            urllib.error.URLError("blocked"),
-            urllib.error.URLError("blocked"),
             urllib.error.URLError("blocked"),
             _FakeResponse(
                 """
@@ -118,8 +117,6 @@ class WebSearchToolTest(unittest.TestCase):
     @patch(
         "urllib.request.urlopen",
         side_effect=[
-            urllib.error.URLError("blocked"),
-            urllib.error.URLError("blocked"),
             urllib.error.URLError("blocked"),
             _FakeResponse("<rss><channel></channel></rss>"),
             _FakeResponse(
