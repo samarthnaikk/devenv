@@ -35,6 +35,47 @@ include = ["core*"]
 [tool.setuptools.data-files]
 "share/devenv/interface/website" = [
     "interface/website/index.html",
-    "interface/website/main.js",
     "interface/website/styles.css",
+    "interface/website/favicon.svg",
+]
+"share/devenv/interface/website/src" = [
+    "interface/website/src/App.js",
+    "interface/website/src/api.js",
+    "interface/website/src/index.js",
+]
+"share/devenv/interface/website/src/components" = [
+    "interface/website/src/components/AccessCard.js",
+    "interface/website/src/components/AssistantMessage.js",
+    "interface/website/src/components/ChatColumn.js",
+    "interface/website/src/components/Composer.js",
+    "interface/website/src/components/ContextBuilderPanel.js",
+    "interface/website/src/components/ErrorMessage.js",
+    "interface/website/src/components/FilePreviewPanel.js",
+    "interface/website/src/components/FileTree.js",
+    "interface/website/src/components/Footer.js",
+    "interface/website/src/components/Header.js",
+    "interface/website/src/components/PlanFlowchart.js",
+    "interface/website/src/components/SessionsCard.js",
+    "interface/website/src/components/SettingsDropdown.js",
+    "interface/website/src/components/Sidebar.js",
+    "interface/website/src/components/StepsPanel.js",
+    "interface/website/src/components/ThinkingMessage.js",
+    "interface/website/src/components/Toast.js",
+    "interface/website/src/components/ToolPicker.js",
+    "interface/website/src/components/Transcript.js",
+    "interface/website/src/components/UsageCard.js",
+    "interface/website/src/components/UserMessage.js",
+]
+"share/devenv/interface/website/src/context" = [
+    "interface/website/src/context/AppContext.js",
+]
+"share/devenv/interface/website/src/lib" = [
+    "interface/website/src/lib/file_preview.js",
+    "interface/website/src/lib/markdown.js",
+]
+"share/devenv/interface/website/src/utils" = [
+    "interface/website/src/utils/format.js",
+    "interface/website/src/utils/plans.js",
+    "interface/website/src/utils/storage.js",
+    "interface/website/src/utils/validation.js",
 ]
