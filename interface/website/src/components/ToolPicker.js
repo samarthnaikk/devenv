@@ -104,7 +104,6 @@ export function ToolPicker() {
           React.createElement("div", { className: "tool-picker-selected-list" }, selectedToolChips)
         )
       : null,
-    ),
     state.toolPickerOpen
       ? React.createElement(
           "div",
