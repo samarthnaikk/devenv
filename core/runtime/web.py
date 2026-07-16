@@ -264,8 +264,8 @@ class DevenvWebApp:
         return {
             "web_search": ToolReadiness(
                 name="web_search",
-                ready=False,
-                detail="Tool contract reserved. Provider readiness is not implemented yet.",
+                ready=True,
+                detail="Structured web and image search are available through the web_search runtime tool.",
             ),
             "generate_prompt": ToolReadiness(
                 name="generate_prompt",

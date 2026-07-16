@@ -168,6 +168,40 @@ class WebSearchToolTest(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.data["results"][0]["url"], "https://images.example.com/hero.png")
 
+    @patch(
+        "urllib.request.urlopen",
+        return_value=_FakeResponse(
+            """
+            <html><body>
+              murl&quot;:&quot;https://video.example.com/thumb.png&quot;, &quot;t&quot;:&quot;YouTube Creator Cup&quot;
+              murl&quot;:&quot;https://images.example.com/architecture-diagram.png&quot;, &quot;t&quot;:&quot;Software architecture diagram&quot;
+            </body></html>
+            """
+        ),
+    )
+    def test_search_images_prefers_query_relevant_results(self, _mock_urlopen) -> None:
+        result = WebSearchTool().execute(mode="search_images", query="software architecture illustration", result_count=1)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["results"][0]["url"], "https://images.example.com/architecture-diagram.png")
+
+    @patch(
+        "urllib.request.urlopen",
+        return_value=_FakeResponse(
+            """
+            <html><body>
+              murl&quot;:&quot;https://video.example.com/thumb.png&quot;, &quot;t&quot;:&quot;YouTube Creator Cup&quot;
+              murl&quot;:&quot;https://news.example.com/crowd.jpg&quot;, &quot;t&quot;:&quot;Breaking local news&quot;
+            </body></html>
+            """
+        ),
+    )
+    def test_search_images_skips_multiple_irrelevant_candidates(self, _mock_urlopen) -> None:
+        result = WebSearchTool().execute(mode="search_images", query="software architecture illustration", result_count=2)
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.data["status"], "no_results")
+
 
 if __name__ == "__main__":
     unittest.main()

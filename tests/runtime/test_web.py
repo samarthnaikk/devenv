@@ -188,6 +188,7 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertIn("setup", health)
         self.assertIn("tool_readiness", health)
         self.assertIn("web_search", health["tool_readiness"])
+        self.assertTrue(health["tool_readiness"]["web_search"]["ready"])
         self.assertIn("mcp_server", health)
         self.assertIn("codex_backend", health)
         self.assertEqual(health["codex_backend"]["transport"], "responses_mcp")

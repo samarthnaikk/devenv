@@ -271,10 +271,10 @@ def search_image_web(query: str, *, result_count: int = 5) -> list[dict[str, str
     if not fetched.success:
         return []
     raw_html = str(fetched.data.get("content") or "")
-    results = _parse_bing_image_results(raw_html, limit=result_count)
-    if results:
-        return results
-    return _parse_image_tags(raw_html, limit=result_count)
+    results = _parse_bing_image_results(raw_html, limit=max(result_count * 3, result_count))
+    if not results:
+        results = _parse_image_tags(raw_html, limit=max(result_count * 3, result_count))
+    return _rank_image_results(results, query=query, limit=result_count)
 
 
 def _parse_bing_image_results(raw_html: str, *, limit: int) -> list[dict[str, str]]:
@@ -310,6 +310,51 @@ def _parse_image_tags(raw_html: str, *, limit: int) -> list[dict[str, str]]:
         if len(results) >= limit:
             break
     return results
+
+
+def _rank_image_results(results: list[dict[str, str]], *, query: str, limit: int) -> list[dict[str, str]]:
+    query_terms = _query_terms(query)
+    if not results:
+        return []
+    ranked = sorted(
+        results,
+        key=lambda item: _score_image_result(item, query_terms=query_terms),
+        reverse=True,
+    )
+    filtered: list[dict[str, str]] = []
+    for item in ranked:
+        score = _score_image_result(item, query_terms=query_terms)
+        if query_terms and score <= 0:
+            continue
+        filtered.append(item)
+        if len(filtered) >= limit:
+            break
+    if not filtered and len(ranked) == 1:
+        return ranked[:limit]
+    return filtered
+
+
+def _score_image_result(item: dict[str, str], *, query_terms: tuple[str, ...]) -> int:
+    title = str(item.get("title") or "").lower()
+    url = str(item.get("url") or "").lower()
+    haystack = f"{title} {url}"
+    score = 0
+    for term in query_terms:
+        if term in title:
+            score += 3
+        elif term in haystack:
+            score += 1
+    if any(domain in url for domain in ("youtube.com", "youtu.be", "vimeo.com", "dailymotion.com")):
+        score -= 3
+    if any(term in haystack for term in ("diagram", "wireframe", "architecture", "dashboard", "interface", "ui", "ux", "mockup", "illustration")):
+        score += 1
+    return score
+
+
+def _query_terms(query: str) -> tuple[str, ...]:
+    stop_words = {"the", "and", "for", "with", "from", "into", "that", "this", "your"}
+    parts = [part for part in re.findall(r"[a-z0-9]+", query.lower()) if len(part) >= 3 and part not in stop_words]
+    return tuple(dict.fromkeys(parts))
 
 
 def _normalize_search_result_url(url: str) -> str:
