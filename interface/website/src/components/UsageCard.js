@@ -1,6 +1,6 @@
 import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
-import { escapeHtml, escapeAttribute, formatDuration } from "../utils/format.js";
+import { escapeHtml, formatDuration } from "../utils/format.js";
 import { showToast } from "./Header.js";
 
 export function UsageCard() {
@@ -8,43 +8,11 @@ export function UsageCard() {
   const statusLabel = state.isRunning ? "Running" : "Idle";
   const statusColor = state.isRunning ? "bg-primary" : "bg-outline";
   const elapsed = state.isRunning ? formatDuration(Date.now() - state.runStartedAt) : formatDuration(state.latestElapsedMs || 0);
-  const budgetState = buildBudgetState(state);
 
   const applyBudget = () => {
     const nextValue = Number.parseInt(state.budgetInput, 10);
     dispatch({ type: "SET_BUDGET_TOKENS", payload: Number.isFinite(nextValue) && nextValue > 0 ? nextValue : null });
     showToast(dispatch, Number.isFinite(nextValue) && nextValue > 0 ? "Session budget updated" : "Session budget cleared");
-  };
-
-  const increaseBudget = (increment = 1000) => {
-    const current = state.sessionBudgetTokens || 0;
-    dispatch({ type: "SET_BUDGET_TOKENS", payload: current + increment });
-    dispatch({ type: "SET_BUDGET_INPUT", payload: String(current + increment) });
-    showToast(dispatch, `Budget increased to ${current + increment}`);
-  };
-
-  const generatePrompt = async () => {
-    const task = state.prompt.trim();
-    if (!task) {
-      showToast(dispatch, "Write a task first to generate a prompt");
-      return;
-    }
-    try {
-      const { callTool } = await import("../api.js");
-      const result = await callTool({ toolName: "generate_prompt", arguments: { task, allow_memory: "true", allow_web_search: "false", output_format: "strict" } });
-      const promptText = String(result.data?.prompt || result.output || "").trim();
-      dispatch({
-        type: "APPEND_TRANSCRIPT",
-        payload: { id: `prompt-tool-${Date.now()}`, role: result.success ? "assistant" : "error", content: result.success ? `## Generated Prompt\n\n\`\`\`text\n${promptText}\n\`\`\`` : `Prompt generation failed: ${result.output}` },
-      });
-      showToast(dispatch, result.success ? "Prompt generated" : "Prompt generation failed");
-    } catch (error) {
-      showToast(dispatch, "Prompt generation failed");
-      dispatch({
-        type: "APPEND_TRANSCRIPT",
-        payload: { id: `prompt-tool-error-${Date.now()}`, role: "error", content: `Prompt generation failed: ${error.message}` },
-      });
-    }
   };
 
   return React.createElement(
@@ -112,27 +80,6 @@ export function UsageCard() {
           "Apply"
         )
       )
-    ),
-    React.createElement(
-      "button",
-      {
-        type: "button",
-        className: "w-full py-4 border-2 border-dashed border-outline-variant rounded-xl flex items-center justify-center gap-2 text-on-surface-variant hover:border-primary hover:text-primary transition-all group",
-        onClick: generatePrompt,
-      },
-      React.createElement("span", { className: "material-symbols-outlined group-hover:scale-110 transition-transform text-[20px]" }, "auto_awesome"),
-      React.createElement("span", { className: "font-label-caps text-label-caps uppercase font-bold" }, "Generate Prompt")
     )
   );
-}
-
-function buildBudgetState(state) {
-  if (!state.sessionBudgetTokens) {
-    return { blocked: false, label: "Set a session token budget to avoid unexpected usage spikes." };
-  }
-  const remaining = Math.max(state.sessionBudgetTokens - state.sessionUsageTotal, 0);
-  if (remaining <= 0) {
-    return { blocked: true, label: `Budget reached at ${state.sessionUsageTotal}/${state.sessionBudgetTokens} tokens.` };
-  }
-  return { blocked: false, label: `${remaining} tokens remaining before the session budget stops new turns.` };
 }
