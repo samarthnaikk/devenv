@@ -2623,6 +2623,12 @@ class DevenvKernel:
         if planning_mode is PlanningMode.FORCE_DIRECT:
             return False
         selected_scope = self._resolve_selected_tools(selected_tools)
+        if not selected_scope:
+            selected_scope = {
+                tool_name.strip()
+                for tool_name in (selected_tools or ())
+                if isinstance(tool_name, str) and tool_name.strip()
+            }
         lowered = user_prompt.lower()
         if selected_scope == {"knowledge_search"} and any(
             marker in lowered for marker in ("reference", "references", "repo", "repos", "example", "examples", "video", "videos", "tutorial")
