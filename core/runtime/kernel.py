@@ -771,6 +771,8 @@ class DevenvKernel:
         else:
             self.state = AgentState.EXECUTING
 
+        final_response = _prefer_reference_results_over_empty_summary(final_response, steps, user_prompt)
+
         logger.info("Finishing runtime turn: final_response_present=%s total_steps=%s", final_response is not None, len(steps))
         self._finalize_turn(
             user_prompt,
@@ -4119,6 +4121,55 @@ def _find_reusable_tool_step(
         if step.tool_name == tool_name and step.arguments == arguments:
             return step
     return None
+
+
+def _prefer_reference_results_over_empty_summary(
+    final_response: str | None,
+    steps: list[ToolExecutionStep],
+    user_prompt: str,
+) -> str | None:
+    text = str(final_response or "").strip()
+    lowered = text.lower()
+    if text and not any(
+        marker in lowered
+        for marker in (
+            "did not yield any relevant results",
+            "could not find resources",
+            "could not find any relevant",
+            "might want to consider creating your own implementation",
+            "no relevant results",
+        )
+    ):
+        return final_response
+
+    knowledge_steps = [step for step in steps if step.success and step.tool_name == "knowledge_search"]
+    if not knowledge_steps:
+        return final_response
+    latest = knowledge_steps[-1]
+    resources = latest.data.get("resources") if isinstance(latest.data, dict) else None
+    if not isinstance(resources, list):
+        return final_response
+    lines = [f"Here are outside references for `{user_prompt.strip()}`:"]
+    appended = 0
+    for group in resources:
+        if not isinstance(group, dict):
+            continue
+        source = str(group.get("source") or "general").strip()
+        results = group.get("results")
+        if not isinstance(results, list) or not results:
+            continue
+        lines.append(f"")
+        lines.append(f"**{source.title()}**")
+        for item in results[:3]:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title") or item.get("url") or "Reference").strip()
+            url = str(item.get("url") or "").strip()
+            if not url:
+                continue
+            lines.append(f"- [{title}]({url})")
+            appended += 1
+    return "\n".join(lines) if appended else final_response
 
 
 def _trim_memory_context(memory_context: str, char_limit: int) -> str:

@@ -22,6 +22,7 @@ from core.runtime.kernel import (
     _compose_external_memory_query,
     _find_reusable_tool_step,
     _memory_context_sections,
+    _prefer_reference_results_over_empty_summary,
     _sanitize_logged_answer,
     _should_try_direct_memory_answer,
     _summarize_local_text_file,
@@ -238,6 +239,33 @@ class DevenvKernelTest(unittest.TestCase):
         reused = _find_reusable_tool_step([previous], "knowledge_search", {"query": "chat app", "sources": ["github"]})
 
         self.assertIs(reused, previous)
+
+    def test_reference_results_replace_empty_knowledge_summary(self) -> None:
+        step = ToolExecutionStep(
+            step_id="step-1",
+            tool_name="knowledge_search",
+            arguments={"query": "chat app"},
+            output="knowledge_search gathered 2 resource(s)",
+            success=True,
+            is_sandboxed_violation=False,
+            data={
+                "resources": [
+                    {
+                        "source": "github",
+                        "results": [{"title": "chat-app/example", "url": "https://github.com/chat-app/example"}],
+                    }
+                ]
+            },
+        )
+
+        response = _prefer_reference_results_over_empty_summary(
+            "The search did not yield any relevant results.",
+            [step],
+            "I want to add a chat app to this codebase",
+        )
+
+        self.assertIn("Here are outside references", response)
+        self.assertIn("https://github.com/chat-app/example", response)
 
     def test_direct_memory_answer_skips_repo_explanation_questions(self) -> None:
         self.assertFalse(_should_try_direct_memory_answer("how does retrieval work?"))
