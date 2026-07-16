@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 from .base import BaseTool, ToolResult
+from .web_search import search_image_web
 
 
 class GeneratePDFTool(BaseTool):
@@ -38,6 +39,10 @@ class GeneratePDFTool(BaseTool):
                     "type": "string",
                     "description": "Optional workspace-relative output path. Defaults to output/pdf/<slug>.pdf",
                 },
+                "image_query": {
+                    "type": "string",
+                    "description": "Optional image topic to look up for visual references.",
+                },
                 "keep_tex": {
                     "type": "boolean",
                     "description": "Whether to keep the generated .tex source alongside the PDF.",
@@ -59,6 +64,7 @@ class GeneratePDFTool(BaseTool):
         author = str(kwargs.get("author") or "").strip()
         keep_tex = bool(kwargs.get("keep_tex"))
         output_path = str(kwargs.get("output_path") or "").strip()
+        image_query = str(kwargs.get("image_query") or "").strip()
 
         latex_engine = shutil.which("pdflatex") or shutil.which("xelatex") or shutil.which("lualatex")
         if not latex_engine:
@@ -67,6 +73,15 @@ class GeneratePDFTool(BaseTool):
         safe_sections = _normalize_sections(sections)
         if not safe_sections:
             return ToolResult(success=False, output="sections did not contain any valid content", data={"status": "invalid_input"})
+        image_results = search_image_web(image_query, result_count=3) if image_query else []
+        if image_results:
+            safe_sections.append(
+                {
+                    "heading": "Suggested image references",
+                    "body": "Optional visual references discovered during generation:",
+                    "bullets": [f"{item['title']} - {item['url']}" for item in image_results],
+                }
+            )
 
         file_stem = _slugify(Path(output_path).stem or title)
         relative_pdf_path = output_path or f"output/pdf/{file_stem}.pdf"
@@ -114,6 +129,7 @@ class GeneratePDFTool(BaseTool):
             "tex_path": str(tex_target) if keep_tex else "",
             "title": title,
             "page_preview_ready": True,
+            "image_references": image_results,
         }
         return ToolResult(success=True, output=output, data=data)
 
