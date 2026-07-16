@@ -4,6 +4,8 @@ import { escapeHtml, formatBackendLabel } from "../utils/format.js";
 import { persistAccess } from "../utils/storage.js";
 import { showToast } from "./Header.js";
 
+const PERFORMANCE_STEPS = ["low", "medium", "high"];
+
 export function AccessCard() {
   const { state, dispatch } = useApp();
   const codexAllowed = Boolean(state.accessPolicy.session_access?.codex);
@@ -49,7 +51,8 @@ export function AccessCard() {
   };
 
   const handlePerformanceChange = async (event) => {
-    const value = event.target.value || "medium";
+    const index = Number.parseInt(event.target.value, 10);
+    const value = PERFORMANCE_STEPS[index] || "medium";
     try {
       const { updatePerformance } = await import("../api.js");
       const payload = await updatePerformance(value);
@@ -124,15 +127,32 @@ export function AccessCard() {
         { className: "flex flex-col gap-1.5" },
         React.createElement("label", { className: "font-label-caps text-label-caps text-on-surface-variant" }, "PERFORMANCE MODE"),
         React.createElement(
-          "select",
-          {
-            className: "bg-surface-container-highest border border-outline-variant rounded-lg font-body-md text-body-md p-2 outline-none focus:border-primary",
-            value: state.performanceMode,
+          "div",
+          { className: "rounded-xl border border-outline-variant bg-surface-container-highest px-3 py-3" },
+          React.createElement(
+            "div",
+            { className: "mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.16em] text-on-surface-variant" },
+            React.createElement("span", null, "Low"),
+            React.createElement("span", { className: "text-primary" }, escapeHtml((state.performanceMode || "medium").replace(/^./, (char) => char.toUpperCase()))),
+            React.createElement("span", null, "High")
+          ),
+          React.createElement("input", {
+            className: "h-2 w-full cursor-pointer appearance-none rounded-full bg-[linear-gradient(90deg,rgba(79,219,200,0.18),rgba(79,219,200,0.75))] outline-none accent-primary",
+            type: "range",
+            min: "0",
+            max: String(PERFORMANCE_STEPS.length - 1),
+            step: "1",
+            value: String(Math.max(0, PERFORMANCE_STEPS.indexOf(state.performanceMode))),
             onChange: handlePerformanceChange,
-          },
-          React.createElement("option", { value: "low" }, "Low"),
-          React.createElement("option", { value: "medium" }, "Med"),
-          React.createElement("option", { value: "high" }, "High")
+            "aria-label": "Performance mode",
+          }),
+          React.createElement(
+            "div",
+            { className: "mt-2 grid grid-cols-3 text-[10px] uppercase tracking-[0.14em] text-outline" },
+            React.createElement("span", { className: "text-left" }, "Quiet"),
+            React.createElement("span", { className: "text-center" }, "Balanced"),
+            React.createElement("span", { className: "text-right" }, "Fast")
+          )
         )
       ),
       React.createElement(
