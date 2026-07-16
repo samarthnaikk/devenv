@@ -183,6 +183,7 @@ function AppInner() {
 function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
   const codexGranted = Boolean(accessPolicy.session_access?.codex);
   const opencodeGranted = Boolean(accessPolicy.session_access?.opencode);
+  const anyGranted = codexGranted || opencodeGranted;
 
   const [phase, setPhase] = React.useState(() => {
     if (codexGranted && opencodeGranted) {
@@ -282,10 +283,10 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
     { className: "loading-shell" },
     React.createElement(
       "div",
-      { className: "startup-card", style: { maxWidth: "560px" } },
+      { className: "startup-card", style: { maxWidth: "760px" } },
       React.createElement(
         "div",
-        { className: "flex items-center justify-between mb-5" },
+        { className: "flex flex-col gap-4 mb-5" },
         React.createElement(
           "div",
           { className: "flex items-center gap-3" },
@@ -297,21 +298,35 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
           React.createElement(
             "div",
             null,
-            React.createElement("h1", { className: "font-headline-sm text-headline-sm text-on-surface", style: { margin: 0 } }, "Set up memory access"),
-            React.createElement("p", { className: "font-body-md text-body-md text-on-surface-variant", style: { margin: "2px 0 0" } }, "Grant access and chunk prior sessions")
+            React.createElement("h1", { className: "font-headline-sm text-headline-sm text-on-surface", style: { margin: 0 } }, "Set up remembered access"),
+            React.createElement("p", { className: "font-body-md text-body-md text-on-surface-variant", style: { margin: "2px 0 0" } }, "Grant provider access once, let Devenv restore it next time, and keep your session history ready.")
           )
+        ),
+        React.createElement(
+          "div",
+          { className: "grid md:grid-cols-3 gap-3" },
+          startupFact("Remembered", anyGranted ? "Your last access choices will be restored automatically." : "Once granted, access can be restored on the next launch."),
+          startupFact("Chunking", "Devenv indexes prior sessions in the background after access is granted."),
+          startupFact("Local-first", "You can still prefer Ollama and keep web lookups or PDFs scoped per task.")
         )
       ),
       React.createElement(
         "div",
-        { className: "grid grid-cols-2 gap-4" },
+        { className: "grid md:grid-cols-[0.95fr,1.05fr] gap-4" },
         React.createElement(
           "div",
           { className: "space-y-3" },
           React.createElement(
             "div",
             { className: "font-label-caps text-label-caps text-outline mb-2" },
-            "PROVIDERS"
+              "PROVIDERS"
+            ),
+          React.createElement(
+            "div",
+            { className: "bg-surface-container-low rounded-lg border border-outline-variant p-3 text-[12px] text-on-surface-variant" },
+            anyGranted
+              ? "A saved provider grant was already detected. You can finish setup immediately or grant the remaining provider."
+              : "Grant the providers you want Devenv to reuse for past-session grounding."
           ),
           setupRow("codex", "Codex", codexGranted, codexDone, isChunking && phase === "indexing_codex", handleGrant),
           setupRow("opencode", "OpenCode", opencodeGranted, opencodeDone, isChunking && phase === "indexing_opencode", handleGrant)
@@ -390,12 +405,12 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
               : React.createElement(
                   "div",
                   { className: "flex items-center justify-center h-full text-on-surface-variant font-body-md text-body-md" },
-                  "Grant a provider to begin"
+                  "Grant a provider to begin indexing and restore session memory."
                 )
           )
         )
       ),
-      phase === "all_done"
+      phase === "all_done" || anyGranted
         ? React.createElement(
             "button",
             {
@@ -403,11 +418,20 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
               className: "mt-5 w-full py-3 bg-primary text-on-primary rounded-xl font-label-caps text-label-caps font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2",
               onClick: onFinish,
             },
-            "Finish Setup",
+            anyGranted && phase !== "all_done" ? "Continue with saved access" : "Finish Setup",
             React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "arrow_forward")
           )
         : null
     )
+  );
+}
+
+function startupFact(label, body) {
+  return React.createElement(
+    "div",
+    { className: "rounded-lg border border-outline-variant bg-surface-container-low p-3" },
+    React.createElement("div", { className: "font-label-caps text-label-caps text-primary mb-1" }, label),
+    React.createElement("div", { className: "text-[12px] leading-5 text-on-surface-variant" }, body)
   );
 }
 

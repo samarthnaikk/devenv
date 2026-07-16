@@ -4,6 +4,7 @@ import { useApp } from "../context/AppContext.js";
 const TOOL_META = {
   audit_changes: { icon: "history", label: "Audit", hint: "Review what changed" },
   edit_file: { icon: "edit_note", label: "Edit", hint: "Patch existing files" },
+  generate_pdf: { icon: "picture_as_pdf", label: "PDF", hint: "Generate polished PDFs" },
   generate_prompt: { icon: "auto_awesome", label: "Prompt", hint: "Prepare a strong prompt" },
   inspect_symbols: { icon: "account_tree", label: "Symbols", hint: "Inspect code structure" },
   inspect_trace: { icon: "timeline", label: "Trace", hint: "Look at memory traces" },
