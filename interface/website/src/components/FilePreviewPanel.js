@@ -68,11 +68,25 @@ export function FilePreviewPanel({
                 alt: selectedPath || "Image preview",
               })
             : previewKind === "pdf"
-              ? React.createElement("iframe", {
-                  className: "w-full min-h-[70vh] rounded-lg border border-outline-variant bg-white",
-                  src: content,
-                  title: selectedPath || "PDF preview",
-                })
+              ? React.createElement(
+                  "div",
+                  { className: "pdf-preview-shell" },
+                  React.createElement(
+                    "div",
+                    { className: "pdf-preview-meta" },
+                    React.createElement("span", { className: "material-symbols-outlined text-[16px] text-primary" }, "picture_as_pdf"),
+                    React.createElement(
+                      "span",
+                      { className: "text-[12px] text-on-surface-variant" },
+                      "Inline PDF preview for generated documents"
+                    )
+                  ),
+                  React.createElement("iframe", {
+                    className: "pdf-preview-frame",
+                    src: content,
+                    title: selectedPath || "PDF preview",
+                  })
+                )
             : previewKind === "binary"
               ? React.createElement(
                   "div",

@@ -189,6 +189,9 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
     if (codexGranted && opencodeGranted) {
       return indexing?.active ? "indexing_opencode" : "all_done";
     }
+    if (opencodeGranted) {
+      return indexing?.active ? "indexing_opencode" : "opencode_done";
+    }
     if (codexGranted) {
       return indexing?.active ? "indexing_codex" : "codex_done";
     }
@@ -209,6 +212,9 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
     initRef.current = true;
     if (codexGranted && indexing?.active) {
       addLog("Access granted for Codex");
+      addLog(`Chunking started: ${indexing.total_sessions || "?"} sessions`);
+    } else if (opencodeGranted && indexing?.active) {
+      addLog("Access granted for OpenCode");
       addLog(`Chunking started: ${indexing.total_sessions || "?"} sessions`);
     }
   }, []);
@@ -276,7 +282,7 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
   const isChunking = phase === "indexing_codex" || phase === "indexing_opencode";
   const activeProvider = phase === "idle" ? "\u2014" : phase === "indexing_codex" || phase === "codex_done" ? "Codex" : "OpenCode";
   const codexDone = phase === "codex_done" || phase === "all_done";
-  const opencodeDone = phase === "all_done";
+  const opencodeDone = phase === "opencode_done" || phase === "all_done";
 
   return React.createElement(
     "div",
@@ -308,6 +314,37 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
           startupFact("Remembered", anyGranted ? "Your last access choices will be restored automatically." : "Once granted, access can be restored on the next launch."),
           startupFact("Chunking", "Devenv indexes prior sessions in the background after access is granted."),
           startupFact("Local-first", "You can still prefer Ollama and keep web lookups or PDFs scoped per task.")
+        ),
+        anyGranted
+          ? React.createElement(
+              "div",
+              { className: "startup-saved-banner" },
+              React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "bookmark_added"),
+              React.createElement(
+                "div",
+                { className: "flex flex-col gap-1 min-w-0" },
+                React.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, "Saved access found"),
+                React.createElement(
+                  "span",
+                  { className: "text-[12px] leading-5 text-on-surface-variant" },
+                  codexGranted && opencodeGranted
+                    ? "Codex and OpenCode are already authorized for session grounding."
+                    : codexGranted
+                      ? "Codex is already authorized for session grounding."
+                      : "OpenCode is already authorized for session grounding."
+                )
+              )
+            )
+          : null
+      ),
+      React.createElement(
+        "div",
+        { className: "startup-section-intro" },
+        React.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, "What happens here"),
+        React.createElement(
+          "p",
+          { className: "text-[12px] leading-5 text-on-surface-variant", style: { margin: "6px 0 0" } },
+          "Provider access unlocks prior-session retrieval. Once granted, Devenv can restore that access on the next launch and continue indexing in the background."
         )
       ),
       React.createElement(
@@ -418,7 +455,7 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
               className: "mt-5 w-full py-3 bg-primary text-on-primary rounded-xl font-label-caps text-label-caps font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2",
               onClick: onFinish,
             },
-            anyGranted && phase !== "all_done" ? "Continue with saved access" : "Finish Setup",
+            anyGranted && phase !== "all_done" ? "Continue with saved access" : "Finish setup and continue",
             React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "arrow_forward")
           )
         : null
