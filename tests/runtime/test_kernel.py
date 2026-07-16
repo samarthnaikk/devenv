@@ -20,6 +20,7 @@ from core.runtime.context_builder import ContextBuilderService
 from core.runtime.kernel import (
     _answer_from_retrieved_memory,
     _compose_external_memory_query,
+    _find_reusable_tool_step,
     _memory_context_sections,
     _sanitize_logged_answer,
     _should_try_direct_memory_answer,
@@ -41,6 +42,7 @@ from core.tools.search_text import SearchTextTool
 from core.tools.track_symbol import TrackSymbolTool
 from core.tools.web_search import WebSearchTool
 from core.tools.write_file import WriteFileTool
+from core.runtime.models import ToolExecutionStep
 
 
 @dataclass(frozen=True)
@@ -222,6 +224,21 @@ class TransportErrorAI(FakeAI):
 
 
 class DevenvKernelTest(unittest.TestCase):
+    def test_find_reusable_tool_step_matches_successful_read_only_call(self) -> None:
+        previous = ToolExecutionStep(
+            step_id="step-1",
+            tool_name="knowledge_search",
+            arguments={"query": "chat app", "sources": ["github"]},
+            output="knowledge_search gathered 2 resource(s)",
+            success=True,
+            is_sandboxed_violation=False,
+            data={"query": "chat app", "resources": []},
+        )
+
+        reused = _find_reusable_tool_step([previous], "knowledge_search", {"query": "chat app", "sources": ["github"]})
+
+        self.assertIs(reused, previous)
+
     def test_direct_memory_answer_skips_repo_explanation_questions(self) -> None:
         self.assertFalse(_should_try_direct_memory_answer("how does retrieval work?"))
         self.assertFalse(_should_try_direct_memory_answer("can you explain how the retrieval works?"))

@@ -109,6 +109,15 @@ class KnowledgeSearchToolTest(unittest.TestCase):
         self.assertTrue(second.success)
         self.assertEqual(mock_urlopen.call_count, 1)
 
+    @patch("urllib.request.urlopen", side_effect=_fake_urlopen)
+    def test_github_source_falls_back_to_web_repo_links(self, _mock_urlopen) -> None:
+        result = KnowledgeSearchTool().execute(query="side by side chat app", sources=["github"], result_count=2)
+
+        self.assertTrue(result.success)
+        github_group = result.data["resources"][0]
+        self.assertEqual(github_group["source"], "github")
+        self.assertTrue(any(str(item["url"]).startswith("https://github.com/") for item in github_group["results"]))
+
 
 if __name__ == "__main__":
     unittest.main()
