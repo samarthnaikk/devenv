@@ -348,7 +348,8 @@ function formatThinkingFromResult(result) {
         if (typeof step.data?.query === "string") {
           lines.push({ source: "knowledge_search", message: `query: ${step.data.query}` });
         }
-        const groups = Array.isArray(step.data?.resources) ? step.data.resources : [];
+        const groups = Array.isArray(step.data?.resources) ? step.data.resources : extractKnowledgeResources(step.output);
+        lines.push({ source: "trace", message: summarizeKnowledgeResources(groups) });
         for (const group of groups.slice(0, 7)) {
           if (!group || typeof group !== "object") continue;
           const source = String(group.source || "general").trim() || "general";
@@ -370,6 +371,34 @@ function formatThinkingFromResult(result) {
     lines.push({ source: "ai", message: result.final_response ? "Prepared the final answer" : "Checked Devenv context" });
   }
   return formatThinkingBlock(lines);
+}
+
+function extractKnowledgeResources(output) {
+  const payload = extractTrailingJsonObject(output);
+  return Array.isArray(payload?.resources) ? payload.resources : [];
+}
+
+function extractTrailingJsonObject(output) {
+  const text = String(output || "");
+  const start = text.lastIndexOf("\n{");
+  const candidate = start >= 0 ? text.slice(start + 1).trim() : text.trim();
+  if (!candidate.startsWith("{")) return null;
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    return null;
+  }
+}
+
+function summarizeKnowledgeResources(groups) {
+  const validGroups = Array.isArray(groups) ? groups.filter((group) => group && typeof group === "object") : [];
+  const resultCount = validGroups.reduce((total, group) => total + (Array.isArray(group.results) ? group.results.length : 0), 0);
+  const sources = validGroups
+    .filter((group) => Array.isArray(group.results) && group.results.length > 0)
+    .map((group) => String(group.source || "general"));
+  return resultCount
+    ? `Collected ${resultCount} reference result${resultCount === 1 ? "" : "s"} from ${sources.join(", ")}`
+    : "No reference results were found in the selected sources";
 }
 
 function selectVisibleAssistantResponse(result) {
