@@ -13,6 +13,7 @@ export function ThinkingMessage({ message }) {
   const searchCards = steps.filter((step) => step.kind === "web_search" || step.kind === "knowledge_search");
   const timelineSteps = steps.filter((step) => step.kind !== "web_search" && step.kind !== "knowledge_search");
   const lastStatus = timelineSteps.length ? timelineSteps[timelineSteps.length - 1].text : "";
+  const summary = summarizeSearchCards(searchCards);
   const elapsed = state.isRunning ? formatDuration(Date.now() - state.runStartedAt) : formatDuration(state.latestElapsedMs || 0);
 
   return React.createElement(
@@ -24,11 +25,11 @@ export function ThinkingMessage({ message }) {
       React.createElement(
         "div",
         { className: "flex justify-between items-center mb-4" },
-        React.createElement(
-          "div",
-          { className: "flex items-center gap-2" },
-          React.createElement("span", { className: "material-symbols-outlined text-primary text-[18px]" }, "terminal"),
-          React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface uppercase" }, headline)
+          React.createElement(
+            "div",
+            { className: "flex items-center gap-2" },
+            React.createElement("span", { className: "material-symbols-outlined text-primary text-[18px]" }, "terminal"),
+            React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface uppercase" }, headline)
         ),
         React.createElement(
           "div",
@@ -41,6 +42,22 @@ export function ThinkingMessage({ message }) {
           )
         )
       ),
+      summary
+        ? React.createElement(
+            "div",
+            { className: "mb-4 flex flex-wrap gap-2" },
+            summary.map((item, index) =>
+              React.createElement(
+                "div",
+                {
+                  key: `${item.label}-${index}`,
+                  className: "rounded-full border border-outline-variant bg-surface-container px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-on-surface-variant",
+                },
+                `${item.label}: ${item.value}`
+              )
+            )
+          )
+        : null,
       React.createElement(
         "div",
         { className: "space-y-1 font-code-sm text-code-sm text-on-surface-variant" },
@@ -79,26 +96,40 @@ function renderSearchCard(step, key) {
   const results = Array.isArray(step.results) ? step.results : [];
   return React.createElement(
     "div",
-    { key, className: "border border-outline-variant rounded-lg bg-terminal p-3" },
+    { key, className: "border border-outline-variant rounded-xl bg-terminal p-3" },
     React.createElement(
       "div",
-      { className: "flex items-center gap-2 mb-2" },
-      React.createElement("span", { className: "material-symbols-outlined text-primary text-[16px]" }, "public"),
-      React.createElement("strong", { className: "font-code-sm text-code-sm text-on-surface-variant" }, query || "Web search")
+      { className: "mb-2 flex items-start justify-between gap-3" },
+      React.createElement(
+        "div",
+        { className: "min-w-0" },
+        React.createElement(
+          "div",
+          { className: "mb-1 flex items-center gap-2" },
+          React.createElement("span", { className: "material-symbols-outlined text-primary text-[16px]" }, "public"),
+          React.createElement("strong", { className: "font-code-sm text-code-sm text-on-surface" }, "Web search")
+        ),
+        React.createElement("div", { className: "font-code-sm text-code-sm text-on-surface-variant break-words" }, query || "Web search")
+      ),
+      React.createElement(
+        "span",
+        { className: "shrink-0 rounded-full bg-surface-container-highest px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-on-surface-variant" },
+        `${results.length} result${results.length === 1 ? "" : "s"}`
+      )
     ),
     results.length
       ? React.createElement(
-          "ul",
-          { className: "font-code-sm text-code-sm text-on-surface-variant space-y-1" },
+          "div",
+          { className: "space-y-2" },
           results.map((item, ri) =>
             React.createElement(
-              "li",
-              { key: ri, className: "flex flex-col" },
-              React.createElement("span", null, item.title || item.url || "Result"),
+              "div",
+              { key: ri, className: "rounded-lg border border-outline-variant/70 bg-surface-container-low px-3 py-2" },
+              React.createElement("div", { className: "font-body-md text-body-md text-on-surface" }, item.title || item.url || "Result"),
               item.url
                 ? React.createElement(
                     "a",
-                    { className: "text-primary/60 hover:text-primary", href: item.url, target: "_blank", rel: "noreferrer" },
+                    { className: "mt-1 block break-all font-code-sm text-code-sm text-primary/70 hover:text-primary", href: item.url, target: "_blank", rel: "noreferrer" },
                     item.url
                   )
                 : null
@@ -107,6 +138,26 @@ function renderSearchCard(step, key) {
         )
       : React.createElement("div", { className: "font-code-sm text-code-sm text-on-surface-variant" }, "Search completed.")
   );
+}
+
+function summarizeSearchCards(cards) {
+  const validCards = Array.isArray(cards) ? cards : [];
+  if (!validCards.length) return [];
+  const resultCount = validCards.reduce((total, card) => total + (Array.isArray(card.results) ? card.results.length : 0), 0);
+  const sourceCount = new Set(
+    validCards
+      .map((card) => card.kind === "knowledge_search" ? String(card.source || "general").toLowerCase() : "web")
+      .filter(Boolean)
+  ).size;
+  const query = validCards.find((card) => String(card.query || "").trim())?.query || "";
+  const summary = [
+    { label: "Results", value: String(resultCount) },
+    { label: "Sources", value: String(sourceCount) },
+  ];
+  if (query) {
+    summary.unshift({ label: "Focus", value: query.length > 52 ? `${query.slice(0, 49)}...` : query });
+  }
+  return summary;
 }
 
 function renderKnowledgeCard(step, key) {
@@ -130,6 +181,7 @@ function KnowledgeSearchCard({ step }) {
       React.createElement(
         "div",
         { className: "flex items-center gap-3 min-w-0" },
+        React.createElement("span", { className: "material-symbols-outlined text-primary text-[16px]" }, "public"),
         React.createElement("span", { className: "material-symbols-outlined text-primary text-[18px]" }, sourceMeta.icon),
         React.createElement(
           "div",
