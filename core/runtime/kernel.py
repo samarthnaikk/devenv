@@ -4150,7 +4150,8 @@ def _prefer_reference_results_over_empty_summary(
 ) -> str | None:
     text = str(final_response or "").strip()
     lowered = text.lower()
-    if text and not any(
+    has_useful_markdown_links = text.count("](") >= 2
+    should_replace = any(
         marker in lowered
         for marker in (
             "did not yield any relevant results",
@@ -4159,7 +4160,8 @@ def _prefer_reference_results_over_empty_summary(
             "might want to consider creating your own implementation",
             "no relevant results",
         )
-    ):
+    )
+    if text and not should_replace and has_useful_markdown_links:
         return final_response
 
     knowledge_steps = [step for step in steps if step.success and step.tool_name == "knowledge_search"]
