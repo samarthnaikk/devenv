@@ -99,6 +99,10 @@ class KnowledgeSearchTool(BaseTool):
             attempted_queries: list[str] = []
             if source == "github":
                 source_results.extend(_search_github_repositories(normalized_query, limit=result_count))
+                if len(source_results) < result_count:
+                    source_results.extend(
+                        _search_github_repository_links_via_web(query_text, normalized_query, limit=result_count, seen_urls=seen_urls | {item["url"] for item in source_results})
+                    )
                 if source_results:
                     resources.append({"source": source, "query": normalized_query, "attempted_queries": [normalized_query], "results": source_results[:result_count]})
                     seen_urls.update(item["url"] for item in source_results[:result_count])
@@ -230,6 +234,58 @@ def _search_github_repositories(query: str, *, limit: int) -> list[dict[str, str
         if len(results) >= limit:
             break
     return results
+
+
+def _search_github_repository_links_via_web(
+    original_query: str,
+    normalized_query: str,
+    *,
+    limit: int,
+    seen_urls: set[str],
+) -> list[dict[str, str]]:
+    repo_queries = [
+        f"github {normalized_query}",
+        f"github real time chat app" if "chat" in normalized_query.lower() else "",
+        f"site:github.com {original_query}",
+    ]
+    results: list[dict[str, str]] = []
+    seen_repo_urls = set(seen_urls)
+    for search_query in [query for query in repo_queries if query]:
+        web_results, status, _detail = search_web(search_query, result_count=limit)
+        if status != "ok":
+            continue
+        for item in web_results:
+            repo_url = _extract_github_repo_url(str(item.get("url") or ""))
+            if not repo_url or repo_url in seen_repo_urls:
+                continue
+            seen_repo_urls.add(repo_url)
+            results.append(
+                {
+                    "title": _repo_title_from_url(repo_url, fallback=str(item.get("title") or "").strip()),
+                    "url": repo_url,
+                    "query": search_query,
+                }
+            )
+            if len(results) >= limit:
+                return results
+    return results
+
+
+def _extract_github_repo_url(url: str) -> str:
+    match = re.match(r"^https?://github\.com/([^/\s]+/[^/\s?#]+)", url.strip(), flags=re.IGNORECASE)
+    if not match:
+        return ""
+    repo = match.group(1).strip("/")
+    if repo.lower().endswith(("/issues", "/pulls", "/wiki")):
+        return ""
+    return f"https://github.com/{repo}"
+
+
+def _repo_title_from_url(url: str, *, fallback: str) -> str:
+    match = re.match(r"^https?://github\.com/([^/\s]+/[^/\s?#]+)", url, flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return fallback or url
 
 
 def _expand_requested_sources(query: str, sources: list[str]) -> list[str]:
