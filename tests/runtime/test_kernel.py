@@ -267,6 +267,17 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("Here are outside references", response)
         self.assertIn("https://github.com/chat-app/example", response)
 
+    def test_reference_only_knowledge_search_does_not_force_planning(self) -> None:
+        kernel = DevenvKernel("/tmp", memory=FakeMemory(), ai=FakeAI([]))
+
+        should_plan = kernel._should_plan(
+            "I want to add a chat app to this codebase, find references",
+            PlanningMode.AUTO,
+            selected_tools=["knowledge_search"],
+        )
+
+        self.assertFalse(should_plan)
+
     def test_direct_memory_answer_skips_repo_explanation_questions(self) -> None:
         self.assertFalse(_should_try_direct_memory_answer("how does retrieval work?"))
         self.assertFalse(_should_try_direct_memory_answer("can you explain how the retrieval works?"))

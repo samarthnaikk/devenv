@@ -559,6 +559,7 @@ class DevenvKernel:
             continue_plan=continue_plan,
             local_only=local_only,
             planning_mode=planning_mode,
+            selected_tools=turn_metadata["selected_tools"],
             steps=steps,
             total_usage=total_usage,
             ai_logs=ai_logs,
@@ -835,6 +836,7 @@ class DevenvKernel:
         continue_plan: bool,
         local_only: bool,
         planning_mode: PlanningMode,
+        selected_tools: list[str] | tuple[str, ...] | set[str] | None,
         steps: list[ToolExecutionStep],
         total_usage: dict[str, int],
         ai_logs: list[str],
@@ -854,7 +856,7 @@ class DevenvKernel:
             return blueprint, [], trace
 
         planning_conversation: list[dict[str, Any]] = []
-        should_plan = self._should_plan(user_prompt, planning_mode)
+        should_plan = self._should_plan(user_prompt, planning_mode, selected_tools=selected_tools)
         if should_plan:
             prefer_local_planning = local_only or (
                 getattr(self.ai, "preferred_backend", "") == "ollama"
@@ -2609,10 +2611,22 @@ class DevenvKernel:
         )
         return any(marker in text for marker in change_markers)
 
-    def _should_plan(self, user_prompt: str, planning_mode: PlanningMode) -> bool:
+    def _should_plan(
+        self,
+        user_prompt: str,
+        planning_mode: PlanningMode,
+        *,
+        selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
+    ) -> bool:
         if planning_mode is PlanningMode.FORCE_PLAN:
             return True
         if planning_mode is PlanningMode.FORCE_DIRECT:
+            return False
+        selected_scope = self._resolve_selected_tools(selected_tools)
+        lowered = user_prompt.lower()
+        if selected_scope == {"knowledge_search"} and any(
+            marker in lowered for marker in ("reference", "references", "repo", "repos", "example", "examples", "video", "videos", "tutorial")
+        ):
             return False
         return self._requires_planning(user_prompt)
 
