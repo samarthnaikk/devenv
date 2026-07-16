@@ -27,7 +27,16 @@ export function ToolPicker() {
   const { state, dispatch } = useApp();
   const availableTools = Array.isArray(state.health?.tools) ? state.health.tools : [];
   const selected = new Set(state.selectedTools);
+  const [droppingTools, setDroppingTools] = React.useState([]);
   const label = selected.size ? `${selected.size} selected` : "All tools";
+
+  React.useEffect(() => {
+    if (!droppingTools.length) return undefined;
+    const timer = window.setTimeout(() => {
+      setDroppingTools([]);
+    }, 720);
+    return () => window.clearTimeout(timer);
+  }, [droppingTools]);
 
   const toggleToolPicker = () => {
     dispatch({ type: "SET_TOOL_PICKER_OPEN", payload: !state.toolPickerOpen });
@@ -44,101 +53,119 @@ export function ToolPicker() {
       next.delete(toolName);
     } else {
       next.add(toolName);
+      setDroppingTools((current) => Array.from(new Set([...current, toolName])));
     }
     dispatch({ type: "SET_SELECTED_TOOLS", payload: Array.from(next).sort() });
   };
 
   const selectedTools = Array.from(selected);
+  const selectedToolChips = selectedTools.map((toolName) => {
+    const meta = describeTool(toolName);
+    return React.createElement(
+      "button",
+      {
+        key: `selected-${toolName}`,
+        type: "button",
+        className: `tool-token inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-primary/40 bg-surface text-on-surface hover:bg-surface-container-high transition-colors${droppingTools.includes(toolName) ? " tool-token-drop" : ""}`,
+        onClick: () => toggleTool(toolName),
+        title: `Remove ${toolName}`,
+        "aria-label": `Remove ${toolName}`,
+      },
+      React.createElement("span", { className: "material-symbols-outlined text-[15px] text-primary" }, meta.icon),
+      React.createElement("span", { className: "font-label-caps text-[10px] uppercase tracking-[0.08em]" }, meta.label),
+      React.createElement("span", { className: "material-symbols-outlined text-[13px] text-on-surface-variant" }, "close")
+    );
+  });
 
   return React.createElement(
     "div",
-    { className: `relative flex flex-col gap-2${state.toolPickerOpen ? " open" : ""}` },
+    { className: `tool-picker relative flex flex-col gap-2${state.toolPickerOpen ? " open" : ""}` },
     React.createElement(
       "div",
-      { className: "flex items-center gap-2 flex-wrap" },
+      { className: "tool-picker-trigger-row" },
       React.createElement(
         "button",
         {
           type: "button",
-          className: "flex items-center gap-2 px-3 py-1.5 bg-surface-container-highest rounded-lg border border-outline-variant hover:bg-surface-variant transition-colors",
+          className: "tool-picker-trigger flex items-center gap-2 px-3 py-1.5 bg-surface-container-highest rounded-lg border border-outline-variant hover:bg-surface-variant transition-colors",
           onClick: toggleToolPicker,
           "aria-label": "Choose tools",
         },
         React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "TOOLS"),
         React.createElement("span", { className: "text-outline" }, "/"),
         React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface" }, label)
-      ),
-      selectedTools.length
-        ? selectedTools.map((toolName) => {
-            const meta = describeTool(toolName);
-            return React.createElement(
-              "button",
-              {
-                key: `selected-${toolName}`,
-                type: "button",
-                className: "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-primary/40 bg-surface text-on-surface hover:bg-surface-container-high transition-colors",
-                onClick: () => toggleTool(toolName),
-                title: `Remove ${toolName}`,
-                "aria-label": `Remove ${toolName}`,
-              },
-              React.createElement("span", { className: "material-symbols-outlined text-[15px] text-primary" }, meta.icon),
-              React.createElement("span", { className: "font-label-caps text-[10px] uppercase tracking-[0.08em]" }, meta.label),
-              React.createElement("span", { className: "material-symbols-outlined text-[13px] text-on-surface-variant" }, "close")
-            );
-          })
-        : null
+      )
+    ),
+    selectedTools.length
+      ? React.createElement(
+          "div",
+          { className: "tool-picker-selected-row" },
+          React.createElement("span", { className: "tool-picker-selected-label" }, "Active tools"),
+          React.createElement("div", { className: "tool-picker-selected-list" }, selectedToolChips)
+        )
+      : null,
     ),
     state.toolPickerOpen
       ? React.createElement(
           "div",
-          { className: "absolute left-0 bottom-full mb-2 z-10 w-80 max-h-80 overflow-auto border border-outline-variant rounded-lg bg-surface-container p-3 shadow-xl" },
+          { className: "tool-picker-panel absolute left-0 bottom-full mb-3 z-10 w-[28rem] max-w-[calc(100vw-2rem)] overflow-hidden" },
+          React.createElement("div", { className: "tool-picker-panel-glow", "aria-hidden": "true" }),
           React.createElement(
             "div",
-            { className: "flex items-center justify-between mb-2" },
-            React.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, "Choose functions"),
+            { className: "tool-picker-panel-inner" },
             React.createElement(
-              "button",
-              {
-                type: "button",
-                className: "font-label-caps text-label-caps text-primary bg-transparent border-0",
-                onClick: clearToolSelection,
-              },
-              "Use all"
-            )
-          ),
-          React.createElement(
-            "div",
-            { className: "flex flex-col gap-1.5" },
-            availableTools.map((toolName) => {
-              const meta = describeTool(toolName);
-              return React.createElement(
-                "button",
-                {
-                  key: toolName,
-                  type: "button",
-                  className: `flex items-center justify-between w-full px-3 py-2 rounded-md border text-left font-body-md text-body-md text-on-surface hover:bg-surface-container-higher transition-colors ${selected.has(toolName) ? "border-primary bg-surface" : "border-outline-variant bg-surface-dim"}`,
-                  onClick: () => toggleTool(toolName),
-                },
+              React.Fragment,
+              null,
+              React.createElement(
+                "div",
+                { className: "tool-picker-panel-header" },
                 React.createElement(
-                  "span",
-                  { className: "flex items-center gap-2 min-w-0" },
-                  React.createElement(
-                    "span",
-                    { className: "w-9 h-9 rounded-xl bg-surface-container-highest border border-outline-variant flex items-center justify-center shrink-0" },
-                    React.createElement("span", { className: "material-symbols-outlined text-[18px] text-primary" }, meta.icon)
-                  ),
-                  React.createElement(
-                    "span",
-                    { className: "flex flex-col min-w-0" },
-                    React.createElement("span", { className: "font-body-md text-body-md text-on-surface truncate" }, meta.label),
-                    React.createElement("span", { className: "text-[11px] text-on-surface-variant truncate" }, meta.hint)
-                  )
+                  "div",
+                  { className: "tool-picker-panel-copy" },
+                  React.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, "Choose functions"),
+                  React.createElement("span", { className: "text-[11px] leading-5 text-on-surface-variant" }, "Pick tool cards from the tray. Selected ones drop into your active tool row.")
                 ),
-                selected.has(toolName)
-                  ? React.createElement("span", { className: "material-symbols-outlined text-[18px] text-primary" }, "check_circle")
-                  : null
-              );
-            })
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "font-label-caps text-label-caps text-primary bg-transparent border border-outline-variant rounded-full px-3 py-1 shrink-0 hover:bg-surface-container-high transition-colors",
+                    onClick: clearToolSelection,
+                  },
+                  "Use all"
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "tool-picker-grid" },
+                availableTools.map((toolName) => {
+                  const meta = describeTool(toolName);
+                  return React.createElement(
+                    "button",
+                    {
+                      key: toolName,
+                      type: "button",
+                      className: `tool-picker-tile${selected.has(toolName) ? " is-selected" : ""}`,
+                      onClick: () => toggleTool(toolName),
+                    },
+                    React.createElement(
+                      "span",
+                      { className: "tool-picker-tile-icon" },
+                      React.createElement("span", { className: "material-symbols-outlined text-[18px] text-primary" }, meta.icon)
+                    ),
+                    React.createElement("span", { className: "tool-picker-tile-label" }, meta.label),
+                    React.createElement("span", { className: "tool-picker-tile-hint" }, meta.hint),
+                    selected.has(toolName)
+                      ? React.createElement(
+                          "span",
+                          { className: "tool-picker-tile-check" },
+                          React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "south")
+                        )
+                      : null
+                  );
+                })
+              )
+            )
           )
         )
       : null
