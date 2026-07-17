@@ -6,7 +6,7 @@ import { ChatColumn } from "./components/ChatColumn.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { Toast } from "./components/Toast.js";
 import { fetchHealth, updateSessionAccess as apiUpdateSessionAccess, updateBackendAccess as apiUpdateBackendAccess } from "./api.js";
-import { persistAccess, persistPreferredModels, persistSetupState } from "./utils/storage.js";
+import { loadPreferredBackend, persistAccess, persistPreferredModels, persistSetupState } from "./utils/storage.js";
 
 function AppInner() {
   const { state, dispatch } = useApp();
@@ -509,6 +509,8 @@ function setupRow(provider, label, granted, done, isActive, handleGrant) {
 }
 
 function applyHealthPayload(dispatch, payload) {
+  const persistedPreferredBackend = loadPreferredBackend();
+  const preferredBackend = persistedPreferredBackend || payload.preferred_backend || "opencode";
   dispatch({
     type: "SET_HEALTH_META",
     payload: {
@@ -522,7 +524,7 @@ function applyHealthPayload(dispatch, payload) {
   dispatch({ type: "SET_ACCESS_POLICY", payload: payload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, codex: false } } });
   dispatch({ type: "SET_BACKENDS", payload: payload.ai_backends || {} });
   dispatch({ type: "SET_ACTIVE_BACKEND", payload: payload.active_backend || "opencode" });
-  dispatch({ type: "SET_PREFERRED_BACKEND", payload: payload.preferred_backend || "opencode" });
+  dispatch({ type: "SET_PREFERRED_BACKEND", payload: preferredBackend });
   dispatch({ type: "SET_PERFORMANCE_MODE", payload: payload.performance_mode || "medium" });
   dispatch({ type: "SET_PRIVACY_MODE", payload: payload.privacy || { no_memory: false, incognito: false } });
 }

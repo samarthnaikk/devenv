@@ -1,7 +1,7 @@
 import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, formatBackendLabel } from "../utils/format.js";
-import { persistAccess } from "../utils/storage.js";
+import { loadPreferredBackend, persistAccess } from "../utils/storage.js";
 import { showToast } from "./Header.js";
 
 const PERFORMANCE_STEPS = ["low", "medium", "high"];
@@ -243,6 +243,8 @@ async function refreshHealth(dispatch, options = {}) {
   try {
     const { fetchHealth } = await import("../api.js");
     const healthPayload = await fetchHealth();
+    const persistedPreferredBackend = loadPreferredBackend();
+    const preferredBackend = persistedPreferredBackend || healthPayload.preferred_backend || "opencode";
     dispatch({ type: "SET_HEALTH", payload: healthPayload });
     dispatch({
       type: "SET_HEALTH_META",
@@ -257,7 +259,7 @@ async function refreshHealth(dispatch, options = {}) {
     dispatch({ type: "SET_ACCESS_POLICY", payload: healthPayload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, codex: false } } });
     dispatch({ type: "SET_BACKENDS", payload: healthPayload.ai_backends || {} });
     dispatch({ type: "SET_ACTIVE_BACKEND", payload: healthPayload.active_backend || "opencode" });
-    dispatch({ type: "SET_PREFERRED_BACKEND", payload: healthPayload.preferred_backend || "opencode" });
+    dispatch({ type: "SET_PREFERRED_BACKEND", payload: preferredBackend });
     dispatch({ type: "SET_PERFORMANCE_MODE", payload: healthPayload.performance_mode || "medium" });
     dispatch({ type: "SET_PRIVACY_MODE", payload: healthPayload.privacy || { no_memory: false, incognito: false } });
   } catch (err) {
