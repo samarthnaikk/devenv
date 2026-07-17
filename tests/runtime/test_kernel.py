@@ -704,6 +704,30 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(ai.chat_calls[0]["tool_names"], ["read_file"])
         self.assertIn("User selected tools: read_file", result.system_logs)
 
+    def test_execute_turn_logs_denied_selected_tools(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="Searched answer",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"prompt_tokens": 4, "completion_tokens": 2},
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.local_router = _disabled_router()
+            kernel.register_tool(ReadFileTool())
+            result = kernel.execute_turn("Search the docs", selected_tools=["missing_tool", "read_file"])
+
+        log_output = "\n".join(result.system_logs)
+        self.assertIn("Selected tool denied: missing_tool", log_output)
+        self.assertIn("not registered in the current runtime", log_output)
+        self.assertEqual(ai.chat_calls[0]["tool_names"], ["read_file"])
+
     def test_execute_turn_answers_tool_strategy_question_locally_for_memory_recall(self) -> None:
         memory = FailingMemory()
         ai = ExplodingAI([])

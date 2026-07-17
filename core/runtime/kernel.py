@@ -475,6 +475,9 @@ class DevenvKernel:
         system_logs.append(f"Local only: {local_only}")
         if turn_metadata["selected_tools"]:
             system_logs.append(f"User selected tools: {', '.join(turn_metadata['selected_tools'])}")
+        for event in tool_policy_events:
+            if event.decision == "deny":
+                system_logs.append(f"Selected tool denied: {event.tool_name} ({event.reason})")
         if no_memory or incognito:
             system_logs.append(f"Privacy mode: {'incognito' if incognito else 'no_memory'}")
         steps: list[ToolExecutionStep] = []
