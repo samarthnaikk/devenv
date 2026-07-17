@@ -1492,6 +1492,8 @@ class DevenvKernel:
         if blueprint is None or not (0 <= task_index < len(blueprint.tasks)):
             return None
         source_task = blueprint.tasks[task_index]
+        if self._checkpoint_is_context_only(blueprint.original_objective or "", source_task.description):
+            return None
         child_descriptions = self._decompose_checkpoint(source_task)
         if len(child_descriptions) <= 1:
             return None
@@ -2542,6 +2544,19 @@ class DevenvKernel:
                         raise RuntimeError("Execution tool limit reached before the checkpoint completed.")
                     for step_index, step in enumerate(converted_steps, start=start_index + 1):
                         system_logs.append(f"Tool step {step_index}: {step.tool_name} success={step.success}")
+                    context_only_completion = self._complete_context_only_checkpoint_from_steps(
+                        user_prompt=user_prompt,
+                        task_description=task.description,
+                        candidate_steps=converted_steps,
+                    )
+                    if context_only_completion is not None:
+                        final_response = context_only_completion
+                        trace_log = _summarize_execution_note(final_response)
+                        working_blueprint = _mark_checkpoint_completed(working_blueprint, index, trace_log)
+                        self.active_blueprint = working_blueprint
+                        ai_logs.append(f"Checkpoint completed after successful inspection: {task.description}")
+                        system_logs.append(f"Checkpoint {index + 1} completed after successful inspection")
+                        break
                     if checkpoint_requires_mutation and not any(
                         step.tool_name in (*WRITE_EXECUTION_TOOLS, *DELETE_EXECUTION_TOOLS) for step in converted_steps
                     ):
@@ -2638,6 +2653,19 @@ class DevenvKernel:
                     step = self._execute_tool_call(tool_call)
                     steps.append(step)
                     system_logs.append(f"Tool step {len(steps)}: {tool_call.tool_name} success={step.success}")
+                    context_only_completion = self._complete_context_only_checkpoint_from_steps(
+                        user_prompt=user_prompt,
+                        task_description=task.description,
+                        candidate_steps=[step],
+                    )
+                    if context_only_completion is not None:
+                        final_response = context_only_completion
+                        trace_log = _summarize_execution_note(final_response)
+                        working_blueprint = _mark_checkpoint_completed(working_blueprint, index, trace_log)
+                        self.active_blueprint = working_blueprint
+                        ai_logs.append(f"Checkpoint completed after successful inspection: {task.description}")
+                        system_logs.append(f"Checkpoint {index + 1} completed after successful inspection")
+                        break
                     step_conversation.append(_tool_message(tool_call.call_id, tool_call.tool_name, step.output))
                     continue
 
@@ -2679,6 +2707,24 @@ class DevenvKernel:
             self.state = AgentState.EXECUTING
             system_logs.append("Execution paused after one checkpoint")
         return final_response, plan_complete
+
+    def _complete_context_only_checkpoint_from_steps(
+        self,
+        *,
+        user_prompt: str,
+        task_description: str,
+        candidate_steps: list[ToolExecutionStep],
+    ) -> str | None:
+        if not self._checkpoint_is_context_only(user_prompt, task_description):
+            return None
+        successful_steps = [step for step in candidate_steps if step.success]
+        if not successful_steps:
+            return None
+        last_step = successful_steps[-1]
+        if last_step.tool_name == "list_directory":
+            target_path = str(last_step.arguments.get("path") or self.workspace_path)
+            return _summarize_directory_listing(target_path, last_step.output)
+        return None
 
     def _workspace_file_hints_from_steps(
         self,

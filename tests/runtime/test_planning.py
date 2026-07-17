@@ -631,6 +631,26 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertIn("Add the backend files for the chat app", plan)
         self.assertIn("Connect the frontend to the new chat backend surfaces", plan)
 
+    def test_split_active_checkpoint_skips_context_only_tasks(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [ ] Inspect backend hooks",
+                original_objective="Integrate chat backend with frontend",
+                tasks=[
+                    CheckpointTask(
+                        task_id=1,
+                        description="Inspect the existing backend and frontend integration points that the new chat flow must connect to.",
+                        expected_artifact="code",
+                    )
+                ],
+                active_task_pointer=0,
+            )
+
+            updated = kernel._split_active_checkpoint(blueprint, 0, reason="Execution tool limit reached before the checkpoint completed.")
+
+        self.assertIsNone(updated)
+
     def test_mutation_checkpoint_requires_real_write_tool_before_completion(self) -> None:
         ai = FakeAI(
             [

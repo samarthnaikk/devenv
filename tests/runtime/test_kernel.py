@@ -551,6 +551,46 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(artifact, "code")
 
+    def test_context_only_checkpoint_completes_after_successful_list_directory(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="- [ ] Inspect the existing backend and frontend integration points that the new chat flow must connect to.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+                AIResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCallRequest(
+                            call_id="call-1",
+                            tool_name="list_directory",
+                            arguments={"path": "chatapp", "mode": "recursive", "max_depth": 2},
+                        ),
+                    ),
+                    finish_reason="tool_calls",
+                    usage={},
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            chatapp = workspace / "chatapp"
+            chatapp.mkdir(parents=True)
+            (chatapp / "server.py").write_text("print('chat backend')\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            result = kernel.execute_turn(
+                "Inspect the existing backend and frontend integration points that the new chat flow must connect to.",
+                planning_mode=PlanningMode.FORCE_PLAN,
+            )
+
+        self.assertIn("Relevant paths I found", result.final_response or "")
+        self.assertEqual([task.is_completed for task in result.blueprint.tasks], [True])
+
     def test_edit_prompt_is_not_treated_as_scaffold_request(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])
