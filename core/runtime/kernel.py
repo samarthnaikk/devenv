@@ -246,6 +246,10 @@ class DevenvKernel:
         incognito: bool = False,
     ) -> RuntimeTurnResult:
         logger.info("Starting runtime turn: workspace=%s prompt=%s", self.workspace_path, user_prompt)
+        max_consecutive_tools = self._effective_max_consecutive_tools(
+            requested_limit=max_consecutive_tools,
+            local_only=local_only,
+        )
         turn_started_at = time.perf_counter()
         ai_logs = [f"Queued prompt: {user_prompt}"]
         system_logs = [f"Workspace: {self.workspace_path}"]
@@ -850,6 +854,12 @@ class DevenvKernel:
         ):
             return ExecutionMode.REPAIR.value
         return ExecutionMode.PLAN_ONLY.value
+
+    def _effective_max_consecutive_tools(self, *, requested_limit: int, local_only: bool) -> int:
+        preferred_backend = str(getattr(self.ai, "preferred_backend", "") or "").strip().lower()
+        if local_only or preferred_backend == "ollama":
+            return max(requested_limit, 24)
+        return requested_limit
 
     def _build_memory_summary(self, memory_context: str, metadata: dict[str, Any]) -> MemorySummary:
         privacy_mode = "incognito" if metadata.get("incognito") else "no_memory" if metadata.get("no_memory") else "default"
@@ -2992,6 +3002,9 @@ class DevenvKernel:
                 "Allowed tools for this checkpoint: "
                 + ", ".join(f"`{tool_name}`" for tool_name in active_task.allowed_tool_names)
             )
+        mentioned_path = _first_backticked_path(task_description)
+        if mentioned_path and Path(mentioned_path).suffix:
+            lines.append(f"This checkpoint names a file directly: inspect `{mentioned_path}` with `read_file` or `inspect_symbols`, not `list_directory`.")
         if expects_mutation:
             lines.append("This checkpoint expects a real workspace mutation before it can be considered complete.")
         if active_task and active_task.requires_verification:
@@ -4177,6 +4190,22 @@ class DevenvKernel:
     def _execute_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
         logger.info("Intercepted tool call: tool=%s arguments=%s", tool_call.tool_name, tool_call.arguments)
         normalized_arguments = self.sandbox.normalize_arguments(self._repair_tool_arguments(tool_call))
+        if tool_call.tool_name == "list_directory":
+            path_value = normalized_arguments.get("path")
+            if isinstance(path_value, str):
+                resolved_path = Path(path_value).expanduser().resolve()
+                if resolved_path.is_file() and "read_file" in self.tools:
+                    logger.info(
+                        "Repaired list_directory file inspection into read_file: requested=%s repaired=%s",
+                        path_value,
+                        resolved_path,
+                    )
+                    tool_call = ToolCallRequest(
+                        call_id=tool_call.call_id,
+                        tool_name="read_file",
+                        arguments={"path": str(resolved_path), "features": "content"},
+                    )
+                    normalized_arguments = self.sandbox.normalize_arguments(tool_call.arguments)
         unsafe_argument = self.sandbox.find_unsafe_argument(normalized_arguments)
         if unsafe_argument is not None:
             _key, value = unsafe_argument
@@ -4370,7 +4399,7 @@ class DevenvKernel:
         }
         try:
             directories: list[Path] = []
-            ignored_dirs = set(NOISE_DIRECTORIES) | {"site-packages"}
+            ignored_dirs = set(NOISE_DIRECTORIES) | {"site-packages", "codereferences"}
             for entry in Path(self.workspace_path).rglob("*"):
                 if any(part in ignored_dirs for part in entry.parts):
                     continue
@@ -4428,7 +4457,7 @@ class DevenvKernel:
 
         matches_by_name: list[Path] = []
         matches_by_suffix: list[Path] = []
-        ignored_dirs = set(NOISE_DIRECTORIES) | {"site-packages"}
+        ignored_dirs = set(NOISE_DIRECTORIES) | {"site-packages", "codereferences"}
         try:
             for entry in Path(self.workspace_path).rglob("*"):
                 if any(part in ignored_dirs for part in entry.parts):

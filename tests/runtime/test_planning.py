@@ -845,6 +845,16 @@ class PlanningKernelTest(unittest.TestCase):
 
         self.assertIsNone(repaired)
 
+    def test_repair_directory_path_ignores_codereference_backend_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            (workspace / "codereferences" / "codex" / "codex-rs" / "app-server-daemon" / "src" / "backend").mkdir(parents=True)
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+            repaired = kernel._repair_directory_path("backend")
+
+        self.assertIsNone(repaired)
+
     def test_direct_memory_focus_prefers_retrieved_memory_block(self) -> None:
         focused = _focus_memory_context_for_direct_answers(
             "## Working Memory\n- noisy\n## Retrieved Memory\n- [episode] rvidia backend uses FastAPI",

@@ -3815,6 +3815,31 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertTrue(repaired.endswith("rvidia"))
 
+    def test_execute_tool_call_repairs_list_directory_on_file_into_read_file(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            target = workspace / "core" / "runtime" / "web.py"
+            target.parent.mkdir(parents=True)
+            target.write_text("def boot_web():\n    return 'ok'\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+
+            step = kernel._execute_tool_call(
+                ToolCallRequest(
+                    call_id="call_1",
+                    tool_name="list_directory",
+                    arguments={"path": str(target), "mode": "recursive"},
+                )
+            )
+
+        self.assertTrue(step.success)
+        self.assertEqual(step.tool_name, "read_file")
+        self.assertEqual(step.arguments["path"], str(target.resolve()))
+        self.assertIn("read_file completed", step.output)
+
     def test_execute_turn_runs_registered_tool(self) -> None:
         memory = FakeMemory()
         ai = FakeAI(
