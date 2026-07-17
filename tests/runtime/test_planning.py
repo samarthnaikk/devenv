@@ -238,6 +238,27 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertFalse(appended)
         self.assertEqual(len(updated.tasks), 2)
 
+    def test_append_repair_checkpoint_stops_when_repair_budget_is_exhausted(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [ ] Update backend",
+                tasks=[
+                    CheckpointTask(
+                        task_id=1,
+                        description="Update backend",
+                        repair_attempt_count=2,
+                        max_repair_attempts=2,
+                    )
+                ],
+                active_task_pointer=0,
+            )
+
+            updated, appended = kernel._append_repair_checkpoint(blueprint, checkpoint_id=1, reason="Verification failed")
+
+        self.assertFalse(appended)
+        self.assertEqual(len(updated.tasks), 1)
+
     def test_build_checkpoint_task_populates_execution_contract_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
