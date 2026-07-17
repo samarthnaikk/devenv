@@ -733,6 +733,21 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(result.execution_mode, ExecutionMode.DIRECT_ANSWER.value)
         self.assertEqual(result.turn_outcome, TurnOutcome.SUCCESS.value)
 
+    def test_execute_turn_answers_tool_strategy_question_locally_for_code_change(self) -> None:
+        memory = FailingMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn("what tools would you use to answer fix the login form validation bug")
+
+        self.assertIn("coding task", result.final_response or "")
+        self.assertIn("inspect first with `list_directory`, `read_file`, `inspect_symbols`, `search_text`", result.final_response or "")
+        self.assertIn("make the smallest safe file change with `edit_file`, `write_file`", result.final_response or "")
+        self.assertIn("verify with `run_diagnostics`, `audit_changes`", result.final_response or "")
+        self.assertEqual(result.execution_mode, ExecutionMode.DIRECT_ANSWER.value)
+        self.assertEqual(result.turn_outcome, TurnOutcome.SUCCESS.value)
+
     def test_execute_turn_answers_bug_fix_follow_up_from_recent_conversation(self) -> None:
         memory = FailingMemory()
         ai = ExplodingAI([])

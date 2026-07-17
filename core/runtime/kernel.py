@@ -3104,6 +3104,43 @@ class DevenvKernel:
                 "For that architecture question Devenv should stay in charge of retrieval. "
                 "It would usually inspect the workspace with `list_directory`, then ground the answer with `inspect_symbols` on the main backend files."
             )
+        if self._text_requires_mutation_tools(subject_prompt.lower()):
+            available_tools = set(self.tools)
+            inspect_tools = [
+                tool_name
+                for tool_name in ("list_directory", "read_file", "inspect_symbols", "search_text")
+                if tool_name in available_tools or not available_tools
+            ]
+            edit_tools = [
+                tool_name
+                for tool_name in ("edit_file", "write_file")
+                if tool_name in available_tools or not available_tools
+            ]
+            verify_tools = [
+                tool_name
+                for tool_name in ("run_diagnostics", "audit_changes")
+                if tool_name in available_tools or not available_tools
+            ]
+            parts = ["For that coding task Devenv should stay in charge of tool choice."]
+            if inspect_tools:
+                parts.append(
+                    "It should inspect first with "
+                    + ", ".join(f"`{tool_name}`" for tool_name in inspect_tools)
+                    + "."
+                )
+            if edit_tools:
+                parts.append(
+                    "Then it should make the smallest safe file change with "
+                    + ", ".join(f"`{tool_name}`" for tool_name in edit_tools)
+                    + "."
+                )
+            if verify_tools:
+                parts.append(
+                    "After mutation it should verify with "
+                    + ", ".join(f"`{tool_name}`" for tool_name in verify_tools)
+                    + "."
+                )
+            return " ".join(parts)
 
         scoped_tools = self._resolve_direct_tool_scope(subject_prompt, selected_tools=selected_tools)
         if not scoped_tools:
