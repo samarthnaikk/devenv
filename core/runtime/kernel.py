@@ -1031,9 +1031,13 @@ class DevenvKernel:
         planning_conversation: list[dict[str, Any]] = []
         should_plan = self._should_plan(user_prompt, planning_mode, selected_tools=selected_tools)
         if should_plan:
-            prefer_local_planning = local_only or (
+            prefer_local_planning = (
+                local_only
+                or self._is_backend_frontend_integration_request(user_prompt)
+                or (
                 getattr(self.ai, "preferred_backend", "") == "ollama"
                 and self._text_requires_mutation_tools(user_prompt.lower())
+                )
             )
             if prefer_local_planning:
                 planning_response, planning_conversation = self._run_local_only_planning_phase(
@@ -1067,6 +1071,10 @@ class DevenvKernel:
         return blueprint, planning_conversation, trace
 
     def _build_direct_blueprint(self, user_prompt: str) -> ExecutionBlueprint:
+        if self._is_backend_frontend_integration_request(user_prompt):
+            plan = self._build_local_plan_markdown(user_prompt)
+            blueprint = self._parse_markdown_to_blueprint(plan, original_objective=user_prompt)
+            return replace(blueprint, verification_passed=False)
         task = self._build_checkpoint_task(task_id=1, description=user_prompt, original_objective=user_prompt)
         seeded_tasks = self._seed_direct_checkpoint_tasks(user_prompt, task)
         return ExecutionBlueprint(
@@ -3765,7 +3773,7 @@ class DevenvKernel:
     def _build_local_plan_markdown(self, user_prompt: str) -> str:
         target_path = self._derive_scaffold_target_path(user_prompt) or ""
         lowered = user_prompt.lower()
-        if any(marker in lowered for marker in ("backend", "api", "server", "route", "endpoint", "service")) and "frontend" in lowered:
+        if self._is_backend_frontend_integration_request(user_prompt):
             return self._build_backend_frontend_integration_plan(user_prompt, target_path=target_path)
         if self._is_scaffold_request(lowered):
             html_path = f"{target_path}/index.html" if target_path else "index.html"
@@ -3793,6 +3801,14 @@ class DevenvKernel:
                 "- [ ] Apply the requested update inside the matching file or folder.",
                 "- [ ] Verify the result in the workspace.",
             ]
+        )
+
+    def _is_backend_frontend_integration_request(self, user_prompt: str) -> bool:
+        lowered = user_prompt.lower()
+        backend_markers = ("backend", "api", "server", "route", "endpoint", "service")
+        integration_markers = ("integrate", "integration", "connect", "wire", "chat app", "chatapp")
+        return "frontend" in lowered and any(marker in lowered for marker in backend_markers) and any(
+            marker in lowered for marker in integration_markers
         )
 
     def _build_backend_frontend_integration_plan(self, user_prompt: str, *, target_path: str) -> str:

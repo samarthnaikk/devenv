@@ -644,6 +644,41 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertIn("Connect `interface/website/src/api.js`", plan)
         self.assertIn("Connect `interface/website/src/App.js`", plan)
 
+    def test_direct_blueprint_for_backend_frontend_integration_uses_deterministic_plan_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            prompt = "I want to integrate chat app to this codebase, add all the files in chatapp in folder (the backend files). Integrate with frontend"
+            blueprint = kernel._build_direct_blueprint(prompt)
+
+        self.assertGreaterEqual(len(blueprint.tasks), 10)
+        self.assertEqual(blueprint.original_objective, prompt)
+        self.assertTrue(any("Create `chatapp/__init__.py`" in task.description for task in blueprint.tasks))
+        self.assertTrue(any("Connect `interface/website/src/api.js`" in task.description for task in blueprint.tasks))
+
+    def test_checkpoint_creation_prefers_local_planning_for_backend_frontend_integration_prompt(self) -> None:
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
+            prompt = "I want to integrate chat app to this codebase, add all the files in chatapp in folder (the backend files). Integrate with frontend"
+            blueprint, conversation, trace = kernel._checkpoint_creation_stage(
+                user_prompt=prompt,
+                memory_context="",
+                continue_plan=False,
+                local_only=False,
+                planning_mode=PlanningMode.AUTO,
+                steps=[],
+                total_usage={},
+                ai_logs=[],
+                system_logs=[],
+                max_consecutive_tools=5,
+                tool_policy_events=[],
+            )
+
+        self.assertEqual(trace.summary, "Created ordered checkpoint blueprint")
+        self.assertEqual(conversation, [])
+        self.assertGreaterEqual(len(blueprint.tasks), 10)
+        self.assertTrue(any("Inspect `core/runtime/web.py`" in task.description for task in blueprint.tasks))
+
     def test_repair_tool_arguments_defaults_list_directory_mode_to_recursive(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
