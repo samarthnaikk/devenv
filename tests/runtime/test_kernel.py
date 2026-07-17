@@ -714,6 +714,8 @@ class DevenvKernelTest(unittest.TestCase):
             result.final_response,
             "For that question I would not need workspace tools first. Devenv should answer from memory/retrieval, and only fall back if prior context is not reliable enough.",
         )
+        self.assertEqual(result.execution_mode, ExecutionMode.DIRECT_ANSWER.value)
+        self.assertEqual(result.turn_outcome, TurnOutcome.SUCCESS.value)
 
     def test_execute_turn_answers_tool_strategy_question_locally_for_web_lookup(self) -> None:
         memory = FailingMemory()
@@ -728,6 +730,8 @@ class DevenvKernelTest(unittest.TestCase):
             result.final_response,
             "For that question I would use `web_search` first, then answer from the retrieved results.",
         )
+        self.assertEqual(result.execution_mode, ExecutionMode.DIRECT_ANSWER.value)
+        self.assertEqual(result.turn_outcome, TurnOutcome.SUCCESS.value)
 
     def test_execute_turn_answers_bug_fix_follow_up_from_recent_conversation(self) -> None:
         memory = FailingMemory()
@@ -3948,6 +3952,8 @@ class DevenvKernelTest(unittest.TestCase):
         )
         self.assertEqual(builder.calls, 0)
         self.assertEqual(result.steps, [])
+        self.assertEqual(result.execution_mode, ExecutionMode.BLOCKED_FOR_CLARIFICATION.value)
+        self.assertEqual(result.turn_outcome, TurnOutcome.BLOCKED_BY_CLARIFICATION.value)
 
     def test_answer_from_retrieved_memory_does_not_answer_generic_why_does_prompt_from_unrelated_memory(self) -> None:
         answer = _answer_from_retrieved_memory(

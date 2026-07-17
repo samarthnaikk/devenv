@@ -308,7 +308,7 @@ class DevenvKernel:
                 persist_working_memory=False,
                 metadata=turn_metadata,
             )
-            return RuntimeTurnResult(
+            return self._make_turn_result(
                 final_response=fast_response,
                 steps=[],
                 total_usage={},
@@ -317,9 +317,9 @@ class DevenvKernel:
                 stage_traces=stage_traces,
                 verification_results=verification_results,
                 metadata=turn_metadata,
-                state=self.state.name,
-                blueprint=self.active_blueprint,
-                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                memory_context="",
+                started_at=turn_started_at,
+                execution_mode=ExecutionMode.DIRECT_ANSWER.value,
             )
 
         conversation_follow_up = _answer_from_recent_conversation_follow_up(user_prompt, self.ephemeral_history)
@@ -335,7 +335,7 @@ class DevenvKernel:
                 persist_working_memory=False,
                 metadata=turn_metadata,
             )
-            return RuntimeTurnResult(
+            return self._make_turn_result(
                 final_response=conversation_follow_up,
                 steps=[],
                 total_usage={},
@@ -344,9 +344,9 @@ class DevenvKernel:
                 stage_traces=stage_traces,
                 verification_results=verification_results,
                 metadata=turn_metadata,
-                state=self.state.name,
-                blueprint=self.active_blueprint,
-                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                memory_context="",
+                started_at=turn_started_at,
+                execution_mode=ExecutionMode.DIRECT_ANSWER.value,
             )
 
         tool_strategy_response = self._answer_tool_strategy_question(user_prompt, selected_tools=turn_metadata["selected_tools"])
@@ -362,7 +362,7 @@ class DevenvKernel:
                 persist_working_memory=False,
                 metadata=turn_metadata,
             )
-            return RuntimeTurnResult(
+            return self._make_turn_result(
                 final_response=tool_strategy_response,
                 steps=[],
                 total_usage={},
@@ -371,9 +371,9 @@ class DevenvKernel:
                 stage_traces=stage_traces,
                 verification_results=verification_results,
                 metadata=turn_metadata,
-                state=self.state.name,
-                blueprint=self.active_blueprint,
-                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                memory_context="",
+                started_at=turn_started_at,
+                execution_mode=ExecutionMode.DIRECT_ANSWER.value,
             )
 
         if _is_underspecified_troubleshooting_prompt(user_prompt):
@@ -389,7 +389,7 @@ class DevenvKernel:
                 persist_working_memory=False,
                 metadata=turn_metadata,
             )
-            return RuntimeTurnResult(
+            return self._make_turn_result(
                 final_response=fast_response,
                 steps=[],
                 total_usage={},
@@ -398,9 +398,10 @@ class DevenvKernel:
                 stage_traces=stage_traces,
                 verification_results=verification_results,
                 metadata=turn_metadata,
-                state=self.state.name,
-                blueprint=self.active_blueprint,
-                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                memory_context="",
+                started_at=turn_started_at,
+                execution_mode=ExecutionMode.BLOCKED_FOR_CLARIFICATION.value,
+                turn_outcome=TurnOutcome.BLOCKED_BY_CLARIFICATION.value,
             )
 
         if _is_ambiguous_memory_follow_up(user_prompt, conversation):
@@ -416,7 +417,7 @@ class DevenvKernel:
                 persist_working_memory=False,
                 metadata=turn_metadata,
             )
-            return RuntimeTurnResult(
+            return self._make_turn_result(
                 final_response=fast_response,
                 steps=[],
                 total_usage={},
@@ -425,9 +426,10 @@ class DevenvKernel:
                 stage_traces=stage_traces,
                 verification_results=verification_results,
                 metadata=turn_metadata,
-                state=self.state.name,
-                blueprint=self.active_blueprint,
-                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                memory_context="",
+                started_at=turn_started_at,
+                execution_mode=ExecutionMode.BLOCKED_FOR_CLARIFICATION.value,
+                turn_outcome=TurnOutcome.BLOCKED_BY_CLARIFICATION.value,
             )
 
         if _should_try_direct_memory_answer(user_prompt):
@@ -444,7 +446,7 @@ class DevenvKernel:
                     persist_working_memory=False,
                     metadata=turn_metadata,
                 )
-                return RuntimeTurnResult(
+                return self._make_turn_result(
                     final_response=fast_response,
                     steps=[],
                     total_usage={},
@@ -453,9 +455,9 @@ class DevenvKernel:
                     stage_traces=stage_traces,
                     verification_results=verification_results,
                     metadata=turn_metadata,
-                    state=self.state.name,
-                    blueprint=self.active_blueprint,
-                    elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                    memory_context="",
+                    started_at=turn_started_at,
+                    execution_mode=ExecutionMode.DIRECT_ANSWER.value,
                 )
 
         if not incognito:
