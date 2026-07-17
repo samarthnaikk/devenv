@@ -794,6 +794,57 @@ class PlanningKernelTest(unittest.TestCase):
 
         self.assertIn("index.html", error)
 
+    def test_repair_tool_arguments_maps_markdown_init_path_to_active_checkpoint_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.active_plan_prompt = "I want to integrate chat app to this codebase, add all the files in chatapp in folder (the backend files). Integrate with frontend"
+            kernel.active_blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [ ] Create `chatapp/__init__.py`",
+                tasks=[CheckpointTask(task_id=1, description="Create `chatapp/__init__.py` for the chat app package exports.")],
+                active_task_pointer=0,
+            )
+
+            repaired = kernel._repair_tool_arguments(
+                ToolCallRequest(
+                    call_id="call-1",
+                    tool_name="write_file",
+                    arguments={"path": "interface/website/src/chatapp/**init**.py", "content": "x = 1\n", "mode": "fresh"},
+                )
+            )
+
+        self.assertEqual(repaired["path"], str((Path(tempdir) / "chatapp" / "__init__.py").resolve()))
+
+    def test_validate_scaffold_tool_call_rejects_empty_write_for_integration_checkpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.active_plan_prompt = "I want to integrate chat app to this codebase, add all the files in chatapp in folder (the backend files). Integrate with frontend"
+            kernel.active_blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [ ] Create `chatapp/store.py`",
+                tasks=[CheckpointTask(task_id=1, description="Create `chatapp/store.py` for the in-memory chat session store.")],
+                active_task_pointer=0,
+            )
+
+            error = kernel._validate_scaffold_tool_call(
+                "write_file",
+                {
+                    "path": str((Path(tempdir) / "chatapp" / "store.py").resolve()),
+                    "content": "",
+                    "mode": "fresh",
+                },
+            )
+
+        self.assertIn("requires non-empty content", error)
+
+    def test_repair_directory_path_ignores_site_packages_backend_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            (workspace / ".venv" / "lib" / "python3.12" / "site-packages" / "sentence_transformers" / "backend").mkdir(parents=True)
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+            repaired = kernel._repair_directory_path("backend")
+
+        self.assertIsNone(repaired)
+
     def test_direct_memory_focus_prefers_retrieved_memory_block(self) -> None:
         focused = _focus_memory_context_for_direct_answers(
             "## Working Memory\n- noisy\n## Retrieved Memory\n- [episode] rvidia backend uses FastAPI",

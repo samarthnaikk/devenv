@@ -17,6 +17,7 @@ from core.env import load_dotenv
 from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.tools.base import BaseTool
+from core.tools._common import NOISE_DIRECTORIES
 
 from .context_builder import ContextBuilderService
 from .context_stage import build_context_packet
@@ -4247,6 +4248,8 @@ class DevenvKernel:
         if tool_call.tool_name in {"read_file", "edit_file", "write_file", "remove_file"}:
             path_value = arguments.get("path")
             if isinstance(path_value, str):
+                path_value = _sanitize_model_generated_path(path_value)
+                arguments["path"] = path_value
                 repaired_path = self._repair_workspace_file_path(path_value)
                 if repaired_path is not None:
                     arguments["path"] = repaired_path
@@ -4314,13 +4317,24 @@ class DevenvKernel:
         return None
 
     def _validate_scaffold_tool_call(self, tool_name: str, arguments: dict[str, Any]) -> str | None:
-        target_path_hint = self._active_scaffold_target_path()
-        if target_path_hint is None or tool_name not in WRITE_EXECUTION_TOOLS:
+        if tool_name not in WRITE_EXECUTION_TOOLS:
             return None
 
         path_value = arguments.get("path")
         content_value = arguments.get("content")
         if not isinstance(path_value, str):
+            return None
+        if isinstance(content_value, str) and not content_value.strip():
+            active_task = None
+            if self.active_blueprint and 0 <= self.active_blueprint.active_task_pointer < len(self.active_blueprint.tasks):
+                active_task = self.active_blueprint.tasks[self.active_blueprint.active_task_pointer]
+            if active_task is not None:
+                lowered = active_task.description.lower()
+                if any(marker in lowered for marker in ("create ", "add ", "wire ", "connect ", "update ", "implement ")):
+                    return f"write_file for `{path_value}` requires non-empty content for this checkpoint."
+
+        target_path_hint = self._active_scaffold_target_path()
+        if target_path_hint is None:
             return None
 
         target_path = (Path(self.workspace_path) / target_path_hint).resolve()
@@ -4356,7 +4370,7 @@ class DevenvKernel:
         }
         try:
             directories: list[Path] = []
-            ignored_dirs = {".git", "__pycache__", "vectors", "node_modules", "build"}
+            ignored_dirs = set(NOISE_DIRECTORIES) | {"site-packages"}
             for entry in Path(self.workspace_path).rglob("*"):
                 if any(part in ignored_dirs for part in entry.parts):
                     continue
@@ -4393,12 +4407,19 @@ class DevenvKernel:
         return None
 
     def _repair_workspace_file_path(self, requested_path: str) -> str | None:
-        candidate = Path(requested_path).expanduser()
+        active_explicit_path = self._active_checkpoint_explicit_path()
+        sanitized_requested_path = _sanitize_model_generated_path(requested_path)
+        candidate = Path(sanitized_requested_path).expanduser()
         if not candidate.is_absolute():
             candidate = Path(self.workspace_path) / candidate
 
         if candidate.exists():
             return str(candidate.resolve())
+
+        if active_explicit_path:
+            explicit_candidate = Path(active_explicit_path)
+            if _normalized_path_identity(explicit_candidate.name) == _normalized_path_identity(candidate.name):
+                return str((Path(self.workspace_path) / explicit_candidate).resolve())
 
         requested_name = candidate.name.lower()
         requested_suffix = candidate.suffix.lower()
@@ -4407,7 +4428,7 @@ class DevenvKernel:
 
         matches_by_name: list[Path] = []
         matches_by_suffix: list[Path] = []
-        ignored_dirs = {".git", "__pycache__", "vectors", "node_modules", "build"}
+        ignored_dirs = set(NOISE_DIRECTORIES) | {"site-packages"}
         try:
             for entry in Path(self.workspace_path).rglob("*"):
                 if any(part in ignored_dirs for part in entry.parts):
@@ -4429,6 +4450,14 @@ class DevenvKernel:
             logger.info("Repaired missing file path by unique suffix: requested=%s repaired=%s", requested_path, matches_by_suffix[0])
             return str(matches_by_suffix[0].resolve())
 
+        return None
+
+    def _active_checkpoint_explicit_path(self) -> str | None:
+        if self.active_blueprint and 0 <= self.active_blueprint.active_task_pointer < len(self.active_blueprint.tasks):
+            description = self.active_blueprint.tasks[self.active_blueprint.active_task_pointer].description
+            mentioned = _first_backticked_path(description)
+            if mentioned:
+                return mentioned
         return None
 
     def _finalize_turn(
@@ -7166,6 +7195,31 @@ def _first_backticked_path(text: str) -> str | None:
         if "/" in candidate or candidate.endswith((".py", ".js", ".ts", ".tsx", ".jsx", ".html", ".css")):
             return candidate
     return None
+
+
+def _sanitize_model_generated_path(path: str) -> str:
+    cleaned = str(path or "").strip().strip("`").replace("\\", "/")
+    parts: list[str] = []
+    for raw_part in cleaned.split("/"):
+        part = raw_part.strip().strip("`")
+        if not part:
+            continue
+        part = re.sub(r"^\*+|\*+$", "", part)
+        if part.lower() == "init.py":
+            part = "__init__.py"
+        parts.append(part)
+    return "/".join(parts)
+
+
+def _normalized_path_identity(name: str) -> str:
+    lowered = str(name or "").lower().strip()
+    lowered = lowered.replace("`", "").replace("*", "")
+    stem = Path(lowered).stem
+    suffix = Path(lowered).suffix
+    normalized_stem = re.sub(r"[^a-z0-9]+", "", stem)
+    if normalized_stem == "init" and suffix == ".py":
+        return "__init__.py"
+    return f"{normalized_stem}{suffix}"
 
 
 def _local_chatapp_init_py() -> str:
