@@ -218,6 +218,8 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertTrue(any(task.repair_origin_checkpoint_id == 1 for task in result.blueprint.tasks))
         repair_task = next(task for task in result.blueprint.tasks if task.repair_origin_checkpoint_id == 1)
         self.assertIn("Verification failed", repair_task.description)
+        self.assertGreaterEqual(repair_task.repair_attempt_count, 1)
+        self.assertTrue(repair_task.requires_verification)
 
     def test_verification_failure_does_not_chain_repairs_from_repair_checkpoint(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -235,6 +237,20 @@ class PlanningKernelTest(unittest.TestCase):
 
         self.assertFalse(appended)
         self.assertEqual(len(updated.tasks), 2)
+
+    def test_build_checkpoint_task_populates_execution_contract_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            task = kernel._build_checkpoint_task(
+                task_id=1,
+                description="Add index.html",
+                original_objective="complete the frontend for calendar in html css js",
+            )
+
+        self.assertTrue(task.expects_mutation)
+        self.assertTrue(task.requires_verification)
+        self.assertIn("write_file", task.allowed_tool_names)
+        self.assertGreaterEqual(task.max_repair_attempts, 1)
 
     def test_planning_rule_allows_many_single_shot_checkpoints(self) -> None:
         self.assertIn("as many single-shot checkpoints as needed", PLANNING_SYSTEM_RULE)

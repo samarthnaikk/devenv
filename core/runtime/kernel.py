@@ -973,6 +973,22 @@ class DevenvKernel:
         expected_artifact = self._infer_expected_artifact(original_objective, description, target_path_hint)
         verification_mode = self._infer_verification_mode(expected_artifact, original_objective, description)
         output_destination = self._infer_output_destination(expected_artifact)
+        expects_mutation = expected_artifact in {"frontend", "code"}
+        requires_verification = verification_mode != "chat"
+        allowed_tool_names = tuple(
+            self._resolve_execution_tool_scope(
+                original_objective,
+                description,
+                selected_tools=None,
+            )
+        )
+        if not allowed_tool_names:
+            allowed_tool_names = tuple(
+                allowed_tool_names_for_mode(
+                    ExecutionMode.CHECKPOINT_EXECUTE,
+                    set(TOOL_POLICY_REGISTRY),
+                )
+            )
         return CheckpointTask(
             task_id=task_id,
             description=description,
@@ -983,6 +999,11 @@ class DevenvKernel:
             repair_origin_checkpoint_id=repair_origin_checkpoint_id,
             status_reason=None,
             output_destination=output_destination,
+            allowed_tool_names=allowed_tool_names,
+            expects_mutation=expects_mutation,
+            requires_verification=requires_verification,
+            repair_attempt_count=1 if repair_origin_checkpoint_id is not None else 0,
+            max_repair_attempts=2 if expects_mutation else 1,
         )
 
     def _infer_expected_artifact(self, user_prompt: str, task_description: str, target_path_hint: str | None) -> str:
@@ -1253,6 +1274,11 @@ class DevenvKernel:
             repair_origin_checkpoint_id=checkpoint_id,
             status_reason=reason,
             output_destination=source_task.output_destination,
+            allowed_tool_names=source_task.allowed_tool_names,
+            expects_mutation=source_task.expects_mutation,
+            requires_verification=True,
+            repair_attempt_count=source_task.repair_attempt_count + 1,
+            max_repair_attempts=max(source_task.max_repair_attempts, 1),
         )
         insert_at = next((index for index, task in enumerate(tasks) if task.task_id == checkpoint_id), len(tasks)) + 1
         tasks.insert(insert_at, repair_task)
