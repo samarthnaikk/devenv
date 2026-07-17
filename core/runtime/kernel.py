@@ -275,7 +275,7 @@ class DevenvKernel:
                 "used": self.session_usage_totals.get("total_tokens", 0),
                 "remaining": 0,
             }
-            return RuntimeTurnResult(
+            return self._make_turn_result(
                 final_response=None,
                 steps=[],
                 total_usage=dict(self.session_usage_totals),
@@ -284,14 +284,11 @@ class DevenvKernel:
                 stage_traces=stage_traces,
                 verification_results=verification_results,
                 metadata=turn_metadata,
-                state=self.state.name,
-                blueprint=self.active_blueprint,
                 error_message="Session token budget reached. Increase the budget to continue.",
                 execution_mode=ExecutionMode.BLOCKED_FOR_CLARIFICATION.value,
                 turn_outcome=TurnOutcome.BUDGET_STOP.value,
-                memory_summary=self._build_memory_summary("", turn_metadata),
-                repair_state=self._build_repair_state(self.active_blueprint),
-                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                memory_context="",
+                started_at=turn_started_at,
             )
         conversation = list(self.ephemeral_history)
         conversation.append({"role": "user", "content": user_prompt})
@@ -658,7 +655,7 @@ class DevenvKernel:
                     persist_memory=(not incognito) and _should_persist_episodic_response(degraded_response),
                     persist_working_memory=not incognito,
                 )
-                return RuntimeTurnResult(
+                return self._make_turn_result(
                     final_response=degraded_response,
                     steps=steps,
                     total_usage=total_usage,
@@ -667,14 +664,11 @@ class DevenvKernel:
                     stage_traces=stage_traces,
                     verification_results=verification_results,
                     metadata=turn_metadata,
-                    state=self.state.name,
-                    blueprint=self.active_blueprint,
                     error_message=str(exc),
                     execution_mode=self._execution_mode_value(),
                     turn_outcome=TurnOutcome.TOOL_FAILURE.value,
-                    memory_summary=self._build_memory_summary(memory_context, turn_metadata),
-                    repair_state=self._build_repair_state(self.active_blueprint),
-                    elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                    memory_context=memory_context,
+                    started_at=turn_started_at,
                 )
             split_blueprint = self._split_active_checkpoint(self.active_blueprint, active_index, reason=str(exc))
             if split_blueprint is not None:
@@ -697,7 +691,7 @@ class DevenvKernel:
                 persist_memory=False,
                 persist_working_memory=not incognito,
             )
-            return RuntimeTurnResult(
+            return self._make_turn_result(
                 final_response=None,
                 steps=steps,
                 total_usage=total_usage,
@@ -706,14 +700,11 @@ class DevenvKernel:
                 stage_traces=stage_traces,
                 verification_results=verification_results,
                 metadata=turn_metadata,
-                state=self.state.name,
-                blueprint=self.active_blueprint,
                 error_message=str(exc),
                 execution_mode=self._execution_mode_value(),
                 turn_outcome=TurnOutcome.TOOL_FAILURE.value,
-                memory_summary=self._build_memory_summary(memory_context, turn_metadata),
-                repair_state=self._build_repair_state(self.active_blueprint),
-                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                memory_context=memory_context,
+                started_at=turn_started_at,
             )
 
         self.active_blueprint = updated_blueprint
@@ -768,7 +759,7 @@ class DevenvKernel:
                 persist_working_memory=not incognito,
                 metadata=turn_metadata,
             )
-            return RuntimeTurnResult(
+            return self._make_turn_result(
                 final_response=final_response,
                 steps=steps,
                 total_usage=total_usage,
@@ -777,13 +768,10 @@ class DevenvKernel:
                 stage_traces=stage_traces,
                 verification_results=verification_results,
                 metadata=turn_metadata,
-                state=self.state.name,
-                blueprint=self.active_blueprint,
                 execution_mode=ExecutionMode.REPAIR.value if appended_repair else ExecutionMode.VERIFICATION.value,
                 turn_outcome=TurnOutcome.VERIFICATION_FAILURE.value,
-                memory_summary=self._build_memory_summary(memory_context, turn_metadata),
-                repair_state=self._build_repair_state(self.active_blueprint),
-                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                memory_context=memory_context,
+                started_at=turn_started_at,
             )
 
         if _next_incomplete_task_index(self.active_blueprint) is None:
@@ -817,7 +805,7 @@ class DevenvKernel:
                 "used": used,
                 "remaining": max(session_budget_tokens - used, 0),
             }
-        return RuntimeTurnResult(
+        return self._make_turn_result(
             final_response=final_response,
             steps=steps,
             total_usage=total_usage,
@@ -826,13 +814,10 @@ class DevenvKernel:
             stage_traces=stage_traces,
             verification_results=verification_results,
             metadata=turn_metadata,
-            state=self.state.name,
-            blueprint=self.active_blueprint,
             execution_mode=self._execution_mode_value(),
             turn_outcome=TurnOutcome.SUCCESS.value,
-            memory_summary=self._build_memory_summary(memory_context, turn_metadata),
-            repair_state=self._build_repair_state(self.active_blueprint),
-            elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+            memory_context=memory_context,
+            started_at=turn_started_at,
         )
 
     def _execution_mode_value(self) -> str:
@@ -874,6 +859,42 @@ class DevenvKernel:
             repair_attempt_count=repair_task.repair_attempt_count,
             max_repair_attempts=repair_task.max_repair_attempts,
             last_failure_reason=repair_task.status_reason or repair_task.description,
+        )
+
+    def _make_turn_result(
+        self,
+        *,
+        final_response: str | None,
+        steps: list[ToolExecutionStep],
+        total_usage: dict[str, int],
+        ai_logs: list[str],
+        system_logs: list[str],
+        stage_traces: list[StageTrace],
+        verification_results: list[VerificationResult],
+        metadata: dict[str, Any],
+        memory_context: str,
+        started_at: float,
+        error_message: str | None = None,
+        execution_mode: str | None = None,
+        turn_outcome: str = TurnOutcome.SUCCESS.value,
+    ) -> RuntimeTurnResult:
+        return RuntimeTurnResult(
+            final_response=final_response,
+            steps=steps,
+            total_usage=total_usage,
+            ai_logs=ai_logs,
+            system_logs=system_logs,
+            stage_traces=stage_traces,
+            verification_results=verification_results,
+            metadata=metadata,
+            state=self.state.name,
+            blueprint=self.active_blueprint,
+            error_message=error_message,
+            elapsed_ms=int((time.perf_counter() - started_at) * 1000),
+            execution_mode=execution_mode or self._execution_mode_value(),
+            turn_outcome=turn_outcome,
+            memory_summary=self._build_memory_summary(memory_context, metadata),
+            repair_state=self._build_repair_state(self.active_blueprint),
         )
 
     def _build_tool_client(self, *, db_path: str, vector_dir: str):
