@@ -3336,6 +3336,31 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(context, "")
         self.assertEqual(metadata["external_context_state"], "new_context")
 
+    def test_retrieve_memory_context_uses_vector_lookup_for_bug_list_questions(self) -> None:
+        memory = FakeMemory()
+        calls: list[str] = []
+
+        def fake_retrieve(current_prompt: str, top_k: int = 5) -> FakeRetrievalResult:
+            calls.append(current_prompt)
+            return FakeRetrievalResult(
+                markdown_context="\n".join(
+                    [
+                        "## External Session Context",
+                        "- Assistant reported: get-drip still had bugs around root URL redirects and Convex generated imports.",
+                    ]
+                )
+            )
+
+        memory.retrieve_context = fake_retrieve
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=FakeAI([]))
+            context, metadata = kernel._retrieve_memory_context("give get-drip bug list")
+
+        self.assertEqual(calls, ["give get-drip bug list"])
+        self.assertIn("root URL redirects", context)
+        self.assertEqual(metadata["external_context_state"], "new_context")
+
     def test_answer_from_retrieved_memory_handles_merge_conflict_recall(self) -> None:
         answer = _answer_from_retrieved_memory(
             "what was the last merge conflict we solved",

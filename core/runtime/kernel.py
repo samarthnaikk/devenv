@@ -497,7 +497,7 @@ class DevenvKernel:
                 persist_memory=(not incognito) and _should_persist_episodic_response(direct_response),
                 persist_working_memory=not incognito,
             )
-            return RuntimeTurnResult(
+            return self._make_turn_result(
                 final_response=direct_response,
                 steps=steps,
                 total_usage=total_usage,
@@ -506,9 +506,10 @@ class DevenvKernel:
                 stage_traces=stage_traces,
                 verification_results=verification_results,
                 metadata=turn_metadata,
-                state=self.state.name,
-                blueprint=self.active_blueprint,
-                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                memory_context=memory_context,
+                started_at=turn_started_at,
+                execution_mode=ExecutionMode.DIRECT_ANSWER.value,
+                tool_policy_events=tool_policy_events,
             )
         if _should_try_direct_memory_answer(user_prompt):
             direct_memory_answer = self._answer_known_project_question_local(user_prompt, memory_context)
@@ -525,7 +526,7 @@ class DevenvKernel:
                     persist_memory=(not incognito) and _should_persist_episodic_response(direct_memory_answer),
                     persist_working_memory=not incognito,
                 )
-                return RuntimeTurnResult(
+                return self._make_turn_result(
                     final_response=direct_memory_answer,
                     steps=steps,
                     total_usage=total_usage,
@@ -534,9 +535,10 @@ class DevenvKernel:
                     stage_traces=stage_traces,
                     verification_results=verification_results,
                     metadata=turn_metadata,
-                    state=self.state.name,
-                    blueprint=self.active_blueprint,
-                    elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                    memory_context=memory_context,
+                    started_at=turn_started_at,
+                    execution_mode=ExecutionMode.DIRECT_ANSWER.value,
+                    tool_policy_events=tool_policy_events,
                 )
             if _should_answer_from_memory_only(user_prompt):
                 fallback_response = _memory_only_fallback_response(user_prompt)
@@ -550,7 +552,7 @@ class DevenvKernel:
                     persist_memory=(not incognito) and _should_persist_episodic_response(fallback_response),
                     persist_working_memory=not incognito,
                 )
-                return RuntimeTurnResult(
+                return self._make_turn_result(
                     final_response=fallback_response,
                     steps=steps,
                     total_usage=total_usage,
@@ -559,9 +561,10 @@ class DevenvKernel:
                     stage_traces=stage_traces,
                     verification_results=verification_results,
                     metadata=turn_metadata,
-                    state=self.state.name,
-                    blueprint=self.active_blueprint,
-                    elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                    memory_context=memory_context,
+                    started_at=turn_started_at,
+                    execution_mode=ExecutionMode.DIRECT_ANSWER.value,
+                    tool_policy_events=tool_policy_events,
                 )
         blueprint, planning_conversation, creation_trace = self._checkpoint_creation_stage(
             user_prompt=user_prompt,
@@ -592,7 +595,7 @@ class DevenvKernel:
                 persist_memory=False,
                 persist_working_memory=not incognito,
             )
-            return RuntimeTurnResult(
+            return self._make_turn_result(
                 final_response="Nothing left to execute.",
                 steps=steps,
                 total_usage=total_usage,
@@ -601,9 +604,10 @@ class DevenvKernel:
                 stage_traces=stage_traces,
                 verification_results=verification_results,
                 metadata=turn_metadata,
-                state=self.state.name,
-                blueprint=self.active_blueprint,
-                elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                memory_context=memory_context,
+                started_at=turn_started_at,
+                execution_mode=ExecutionMode.PLAN_ONLY.value,
+                tool_policy_events=tool_policy_events,
             )
 
         checkpoint = blueprint.tasks[active_index]
@@ -1122,6 +1126,19 @@ class DevenvKernel:
     ) -> tuple[str | None, ExecutionBlueprint, list[ToolExecutionStep]]:
         pre_step_count = len(steps)
         if checkpoint.expected_artifact == "chat":
+            direct_memory_answer = self._answer_known_project_question_local(user_prompt, raw_memory_context)
+            if direct_memory_answer is None:
+                direct_memory_answer = _answer_from_retrieved_memory(user_prompt, raw_memory_context)
+            if direct_memory_answer is not None and _should_trust_memory_answer_for_prompt(user_prompt):
+                updated = _mark_checkpoint_completed(
+                    blueprint,
+                    blueprint.active_task_pointer,
+                    _summarize_execution_note(direct_memory_answer),
+                )
+                self.active_blueprint = updated
+                ai_logs.append("Checkpoint answered from retrieved memory before direct-turn model execution")
+                return direct_memory_answer, updated, steps[pre_step_count:]
+
             if local_only:
                 final_response = self._run_local_only_direct_turn(
                     user_prompt=user_prompt,
@@ -1457,6 +1474,12 @@ class DevenvKernel:
         tool_scope = self._resolve_direct_tool_scope(user_prompt, selected_tools=selected_tools)
         system_logs.append(f"Direct memory chars sent: {len(direct_memory)}")
         system_logs.append(f"Direct tool scope size: {len(tool_scope)}")
+        structured_answer = self._answer_known_project_question_local(user_prompt, direct_memory)
+        if structured_answer is None:
+            structured_answer = _answer_from_retrieved_memory(user_prompt, direct_memory)
+        if structured_answer is not None and _should_trust_memory_answer_for_prompt(user_prompt):
+            ai_logs.append("Direct turn answered from focused memory before remote model call")
+            return structured_answer
         conversation = [
             {"role": "system", "content": DIRECT_SYSTEM_RULE},
             *self._selected_tool_messages(selected_tools),
@@ -5735,7 +5758,6 @@ def _should_skip_vector_memory_lookup(user_prompt: str) -> bool:
         _is_memory_recall_question(user_prompt)
         or _is_memory_follow_up_question(user_prompt)
         or _is_session_history_question(user_prompt)
-        or _is_bug_list_question(user_prompt)
     )
 
 
@@ -6370,6 +6392,8 @@ def _should_trust_memory_answer_for_prompt(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     if _is_repo_summary_question(user_prompt):
         return False
+    if _is_bug_list_question(user_prompt):
+        return True
     if any(
         phrase in lowered
         for phrase in (
