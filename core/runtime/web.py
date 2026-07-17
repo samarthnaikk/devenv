@@ -41,7 +41,7 @@ DEFAULT_WEB_MODELS = (
     "opencode/claude-haiku-4-5",
     "opencode/north-mini-code-free",
 )
-DEFAULT_OLLAMA_MODELS = ("qwen2.5:3b",)
+DEFAULT_OLLAMA_MODELS: tuple[str, ...] = ()
 READ_ONLY_PLAN_TOOLS = (
     "list_directory",
     "locate_files",
@@ -193,7 +193,7 @@ class DevenvWebApp:
         preferred_backend = getattr(self.kernel.ai, "preferred_backend", "opencode")
         active_provider_label = {
             "opencode": "OpenCode CLI",
-            "ollama": "Ollama",
+            "ollama": "llama.cpp",
             "codex": "Codex via OpenAI",
         }.get(active_backend, getattr(self.kernel.ai, "provider_label", "OpenCode CLI"))
         model_catalog = self._model_catalog(ai_statuses=ai_statuses, active_backend=active_backend, current_model=model)
@@ -887,6 +887,8 @@ class DevenvWebApp:
         self.performance_mode = cleaned
         if hasattr(self.context_builder, "set_performance_mode"):
             self.context_builder.set_performance_mode(cleaned)
+        if hasattr(self.kernel.ai, "set_performance_mode"):
+            self.kernel.ai.set_performance_mode(cleaned)
         return {"performance_mode": self.performance_mode}
 
     def update_privacy_mode(

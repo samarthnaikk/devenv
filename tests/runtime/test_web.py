@@ -83,10 +83,11 @@ class FakeAI:
                 available=True,
                 enabled=True,
                 model="qwen2.5:3b",
-                detail="Ollama reachable",
+                detail="llama.cpp reachable",
                 metadata={
                     "models": ["qwen2.5:3b", "codellama:7b"],
-                    "base_url": "http://127.0.0.1:11434",
+                    "runtime": "llama.cpp",
+                    "transport": "subprocess_cli",
                 },
             ),
             "codex": AIBackendStatus(

@@ -10,7 +10,7 @@ import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
-from core.ai.ollama_backend import DEFAULT_OLLAMA_BASE_URL
+from core.ai.ollama_backend import OllamaAICore
 from core.ai.opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeServerManager, default_opencode_server_config
 from core.memory.storage import SQLiteMemoryStore
 
@@ -202,28 +202,20 @@ def _check_codex_backend() -> tuple[str, str]:
 
 
 def _check_ollama_backend() -> tuple[str, str]:
-    req = urllib.request.Request(
-        url=f"{DEFAULT_OLLAMA_BASE_URL}/api/tags",
-        headers={"Accept": "application/json", "User-Agent": "devenv/0.1"},
-        method="GET",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=2) as response:
-            raw = response.read().decode("utf-8")
-    except Exception as exc:
-        return "pending", f"Ollama is not running at {DEFAULT_OLLAMA_BASE_URL}. Start Ollama to enable local chat. ({exc})"
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        return "failed", f"Ollama responded with malformed JSON: {exc}."
-    models = payload.get("models")
-    if not isinstance(models, list):
-        return "ready", f"Ollama reachable at {DEFAULT_OLLAMA_BASE_URL}."
-    model_names = [str(item.get('name') or '').strip() for item in models if isinstance(item, dict)]
-    model_names = [name for name in model_names if name]
-    if model_names:
-        return "ready", f"Ollama reachable at {DEFAULT_OLLAMA_BASE_URL} with models: {', '.join(model_names[:4])}."
-    return "ready", f"Ollama reachable at {DEFAULT_OLLAMA_BASE_URL}, but no local models were reported."
+    core = OllamaAICore(workspace_path=".")
+    status = core.status()
+    detail = status.detail
+    metadata = dict(status.metadata or {})
+    models = [
+        str(item).strip()
+        for item in metadata.get("models", [])
+        if str(item).strip()
+    ]
+    if status.available and models:
+        return "ready", f"llama.cpp ready with models: {', '.join(models[:4])}."
+    if status.available:
+        return "ready", detail or "llama.cpp CLI is installed."
+    return "pending", detail or "llama.cpp CLI is not ready yet."
 
 
 def _ensure_workspace_state(*, db_path: str, vector_dir: str, apply_changes: bool) -> tuple[bool, str]:

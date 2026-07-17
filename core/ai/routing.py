@@ -498,6 +498,10 @@ class RoutingAICore:
         self.ollama_enabled = ollama_enabled
         self.codex_enabled = codex_enabled
 
+    def set_performance_mode(self, performance_mode: str) -> None:
+        if hasattr(self.ollama_ai, "set_performance_mode"):
+            self.ollama_ai.set_performance_mode(performance_mode)
+
     def reset_session(self) -> None:
         self.opencode_ai.reset_session()
         if hasattr(self.ollama_ai, "reset_session"):

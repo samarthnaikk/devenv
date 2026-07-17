@@ -1,6 +1,6 @@
 export function formatBackendLabel(value) {
   if (value === "opencode") return "OpenCode";
-  if (value === "ollama") return "Ollama";
+  if (value === "ollama") return "llama.cpp";
   if (value === "codex") return "Codex";
   return String(value || "Unknown");
 }
