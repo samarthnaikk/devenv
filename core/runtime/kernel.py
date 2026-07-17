@@ -249,6 +249,7 @@ class DevenvKernel:
         system_logs = [f"Workspace: {self.workspace_path}"]
         stage_traces: list[StageTrace] = []
         verification_results: list[VerificationResult] = []
+        tool_policy_events = self._selected_tool_policy_events(selected_tools)
         turn_metadata: dict[str, Any] = {
             "external_context_state": "new_context",
             "external_context_reason": "No strong prior-session match was found.",
@@ -289,6 +290,7 @@ class DevenvKernel:
                 turn_outcome=TurnOutcome.BUDGET_STOP.value,
                 memory_context="",
                 started_at=turn_started_at,
+                tool_policy_events=tool_policy_events,
             )
         conversation = list(self.ephemeral_history)
         conversation.append({"role": "user", "content": user_prompt})
@@ -669,6 +671,7 @@ class DevenvKernel:
                     turn_outcome=TurnOutcome.TOOL_FAILURE.value,
                     memory_context=memory_context,
                     started_at=turn_started_at,
+                    tool_policy_events=tool_policy_events,
                 )
             split_blueprint = self._split_active_checkpoint(self.active_blueprint, active_index, reason=str(exc))
             if split_blueprint is not None:
@@ -705,6 +708,7 @@ class DevenvKernel:
                 turn_outcome=TurnOutcome.TOOL_FAILURE.value,
                 memory_context=memory_context,
                 started_at=turn_started_at,
+                tool_policy_events=tool_policy_events,
             )
 
         self.active_blueprint = updated_blueprint
@@ -772,6 +776,7 @@ class DevenvKernel:
                 turn_outcome=TurnOutcome.VERIFICATION_FAILURE.value,
                 memory_context=memory_context,
                 started_at=turn_started_at,
+                tool_policy_events=tool_policy_events,
             )
 
         if _next_incomplete_task_index(self.active_blueprint) is None:
@@ -818,6 +823,7 @@ class DevenvKernel:
             turn_outcome=TurnOutcome.SUCCESS.value,
             memory_context=memory_context,
             started_at=turn_started_at,
+            tool_policy_events=tool_policy_events,
         )
 
     def _execution_mode_value(self) -> str:
@@ -874,6 +880,7 @@ class DevenvKernel:
         metadata: dict[str, Any],
         memory_context: str,
         started_at: float,
+        tool_policy_events: list | None = None,
         error_message: str | None = None,
         execution_mode: str | None = None,
         turn_outcome: str = TurnOutcome.SUCCESS.value,
@@ -894,8 +901,43 @@ class DevenvKernel:
             execution_mode=execution_mode or self._execution_mode_value(),
             turn_outcome=turn_outcome,
             memory_summary=self._build_memory_summary(memory_context, metadata),
+            tool_policy_events=list(tool_policy_events or []),
             repair_state=self._build_repair_state(self.active_blueprint),
         )
+
+    def _selected_tool_policy_events(
+        self,
+        selected_tools: list[str] | tuple[str, ...] | set[str] | None,
+    ) -> list:
+        requested = [
+            tool_name.strip()
+            for tool_name in (selected_tools or ())
+            if isinstance(tool_name, str) and tool_name.strip()
+        ]
+        if not requested:
+            return []
+        resolved = self._resolve_selected_tools(selected_tools)
+        events = []
+        for tool_name in requested:
+            if tool_name in resolved:
+                events.append(
+                    build_tool_policy_event(
+                        tool_name,
+                        ExecutionMode.CHECKPOINT_EXECUTE,
+                        "allow",
+                        "User explicitly selected this tool and it is available.",
+                    )
+                )
+            else:
+                events.append(
+                    build_tool_policy_event(
+                        tool_name,
+                        ExecutionMode.CHECKPOINT_EXECUTE,
+                        "deny",
+                        "Requested tool is not registered in the current runtime.",
+                    )
+                )
+        return events
 
     def _build_tool_client(self, *, db_path: str, vector_dir: str):
         transport = _runtime_tool_transport()
@@ -2220,9 +2262,14 @@ class DevenvKernel:
                     if tool_call.tool_name not in planning_allowed_tools:
                         logger.warning("Blocked non-planning tool during planning: tool=%s", tool_call.tool_name)
                         system_logs.append(f"Blocked planning tool call: {tool_call.tool_name}")
-                        ai_logs.append(
-                            f"Planning tool denied by policy: {build_tool_policy_event(tool_call.tool_name, ExecutionMode.PLAN_ONLY, 'deny', 'Tool is not allowed in planning mode.').to_dict()}"
+                        denied_event = build_tool_policy_event(
+                            tool_call.tool_name,
+                            ExecutionMode.PLAN_ONLY,
+                            "deny",
+                            "Tool is not allowed in planning mode.",
                         )
+                        tool_policy_events.append(denied_event)
+                        ai_logs.append(f"Planning tool denied by policy: {denied_event.to_dict()}")
                         conversation.append(_assistant_tool_call_message(ai_response, [tool_call]))
                         conversation.append(
                             _tool_message(

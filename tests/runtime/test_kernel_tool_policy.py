@@ -44,6 +44,19 @@ class KernelToolPolicyTest(unittest.TestCase):
         self.assertNotIn("edit_file", allowed)
         self.assertNotIn("write_file", allowed)
 
+    def test_selected_tool_policy_events_capture_allow_and_deny(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=_FakeMemory())
+            for tool in build_runtime_tools(kernel.memory):
+                kernel.register_tool(tool)
+
+            events = kernel._selected_tool_policy_events(["read_file", "missing_tool"])
+
+        self.assertEqual(events[0].tool_name, "read_file")
+        self.assertEqual(events[0].decision, "allow")
+        self.assertEqual(events[1].tool_name, "missing_tool")
+        self.assertEqual(events[1].decision, "deny")
+
 
 if __name__ == "__main__":
     unittest.main()
