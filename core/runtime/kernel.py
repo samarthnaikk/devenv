@@ -1206,8 +1206,19 @@ class DevenvKernel:
         results: list[VerificationResult] = []
         success = True
         logs: list[str] = []
+        diagnostics_target: str | None = None
 
-        if checkpoint.verification_mode == "chat":
+        if not checkpoint.requires_verification and checkpoint.verification_mode in {"chat", "none"}:
+            results.append(
+                VerificationResult(
+                    checkpoint_id=checkpoint.task_id,
+                    mode="none",
+                    success=True,
+                    details="Verification skipped by checkpoint contract.",
+                )
+            )
+            logs.append("Verification skipped by checkpoint contract.")
+        elif checkpoint.verification_mode == "chat":
             success = bool(final_response.strip())
             details = "Non-empty answer returned." if success else "Empty answer returned."
             results.append(VerificationResult(checkpoint_id=checkpoint.task_id, mode="chat", success=success, details=details))

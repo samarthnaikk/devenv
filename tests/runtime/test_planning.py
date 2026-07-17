@@ -289,6 +289,26 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertTrue(all(call["target_path"].endswith("calendar/frontend") for call in diagnostics.calls))
         self.assertEqual([result.mode for result in results], ["file", "frontend", "lint"])
 
+    def test_verification_can_be_skipped_by_checkpoint_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            checkpoint = CheckpointTask(
+                task_id=1,
+                description="Summarize the backend",
+                verification_mode="chat",
+                requires_verification=False,
+            )
+
+            success, _trace, results = kernel._verify_active_checkpoint(
+                checkpoint=checkpoint,
+                final_response="Backend summarized.",
+                checkpoint_steps=[],
+                system_logs=[],
+            )
+
+        self.assertTrue(success)
+        self.assertEqual(results[0].mode, "none")
+
     def test_scaffold_request_uses_tiny_execution_scope_and_trimmed_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
