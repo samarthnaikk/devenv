@@ -3646,6 +3646,41 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("In get-drip, the recalled bug list was:", result.final_response or "")
         self.assertEqual(memory.working_memory_calls, [])
 
+    def test_execute_turn_uses_pre_retrieval_fast_path_for_latest_getdrip_edit_question(self) -> None:
+        class RecallOnlyMemory(FakeMemory):
+            def __init__(self) -> None:
+                super().__init__()
+                self.store = type(
+                    "Store",
+                    (),
+                    {
+                        "search_agent_responses_for_external_query": lambda self, query, limit=8: [
+                            "The latest get-drip code edit was updating workspace creation to accept https links and convert them internally."
+                        ]
+                        if query in {
+                            "what was the latest code edit we did in get-drip project",
+                            "latest code edit in get-drip",
+                            "latest code edit in get-drip ",
+                        }
+                        else [],
+                        "search_logs": lambda self, terms, limit=20: [],
+                    },
+                )()
+
+            def retrieve_context(self, current_prompt: str, top_k: int = 5) -> FakeRetrievalResult:
+                raise AssertionError("latest-edit exact recall should skip retrieval")
+
+        memory = RecallOnlyMemory()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel.execute_turn("what was the latest code edit we did in get-drip project")
+
+        self.assertEqual(
+            result.final_response,
+            "The latest get-drip code edit was updating workspace creation to accept https links and convert them internally.",
+        )
+        self.assertEqual(memory.working_memory_calls, [])
+
     def test_retrieve_lexical_memory_context_compacts_cleanup_prompt_once_answer_is_supported(self) -> None:
         class FakeStore:
             def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:

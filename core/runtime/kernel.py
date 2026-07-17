@@ -6119,6 +6119,17 @@ def _is_session_history_question(user_prompt: str) -> bool:
             "last bug we fixed",
             "last review we fixed",
             "last issue we fixed",
+            "last code edit",
+            "latest code edit",
+            "most recent code edit",
+            "last edit we did",
+            "latest edit we did",
+            "most recent edit we did",
+            "last change we did",
+            "latest change we did",
+            "most recent change we did",
+            "latest code change",
+            "most recent code change",
         )
     )
 
@@ -6615,6 +6626,27 @@ def _memory_answer_matches_question(user_prompt: str, shaped_lines: list[str]) -
         significant_tokens = [token for token in _memory_query_tokens(user_prompt) if token not in {"what", "this", "that", "about"}]
         return any(token in joined for token in significant_tokens)
     if _is_session_history_question(user_prompt):
+        if any(
+            marker in lowered_prompt
+            for marker in (
+                "code edit",
+                "edit we did",
+                "code change",
+                "change we did",
+            )
+        ):
+            return any(
+                marker in joined
+                for marker in (
+                    "latest",
+                    "recent",
+                    "edit",
+                    "change",
+                    "updated",
+                    "updating",
+                    "fixed",
+                )
+            )
         return any(marker in joined for marker in ("merge conflict", "conflict", "resolved", "resolution", "rebase", "branch"))
     if _is_bug_list_question(user_prompt):
         return _summarize_follow_up_issues(shaped_lines) is not None or any(
@@ -6887,6 +6919,28 @@ def _exact_logged_query_variants(user_prompt: str) -> tuple[str, ...]:
         add("what " + base)
     if lowered.startswith("what do you know about "):
         add(base.replace("what do you know about", "do you know about", 1))
+    if "project" in lowered:
+        add(re.sub(r"\bproject\b", "", base, flags=re.IGNORECASE))
+    if re.search(r"\bwe did\b", lowered):
+        add(re.sub(r"\bwe did\b", "", base, flags=re.IGNORECASE))
+    if any(
+        phrase in lowered
+        for phrase in (
+            "what was the latest code edit",
+            "what was the last code edit",
+            "what was the most recent code edit",
+        )
+    ):
+        add(re.sub(r"^\s*what was the\s+", "", base, flags=re.IGNORECASE))
+    if any(
+        phrase in lowered
+        for phrase in (
+            "what was the latest change",
+            "what was the last change",
+            "what was the most recent change",
+        )
+    ):
+        add(re.sub(r"^\s*what was the\s+", "", base, flags=re.IGNORECASE))
     return tuple(variants)
 
 
