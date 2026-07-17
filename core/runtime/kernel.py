@@ -28,11 +28,14 @@ from .models import (
     CheckpointTask,
     ExecutionMode,
     ExecutionBlueprint,
+    MemorySummary,
     PlanningMode,
     ProcessStage,
+    RepairState,
     RuntimeTurnResult,
     StageTrace,
     ToolExecutionStep,
+    TurnOutcome,
     VerificationResult,
 )
 from .response_sanitizer import normalize_response_text, sanitize_response_text
@@ -284,6 +287,10 @@ class DevenvKernel:
                 state=self.state.name,
                 blueprint=self.active_blueprint,
                 error_message="Session token budget reached. Increase the budget to continue.",
+                execution_mode=ExecutionMode.BLOCKED_FOR_CLARIFICATION.value,
+                turn_outcome=TurnOutcome.BUDGET_STOP.value,
+                memory_summary=self._build_memory_summary("", turn_metadata),
+                repair_state=self._build_repair_state(self.active_blueprint),
                 elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
             )
         conversation = list(self.ephemeral_history)
@@ -663,6 +670,10 @@ class DevenvKernel:
                     state=self.state.name,
                     blueprint=self.active_blueprint,
                     error_message=str(exc),
+                    execution_mode=self._execution_mode_value(),
+                    turn_outcome=TurnOutcome.TOOL_FAILURE.value,
+                    memory_summary=self._build_memory_summary(memory_context, turn_metadata),
+                    repair_state=self._build_repair_state(self.active_blueprint),
                     elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
                 )
             split_blueprint = self._split_active_checkpoint(self.active_blueprint, active_index, reason=str(exc))
@@ -698,6 +709,10 @@ class DevenvKernel:
                 state=self.state.name,
                 blueprint=self.active_blueprint,
                 error_message=str(exc),
+                execution_mode=self._execution_mode_value(),
+                turn_outcome=TurnOutcome.TOOL_FAILURE.value,
+                memory_summary=self._build_memory_summary(memory_context, turn_metadata),
+                repair_state=self._build_repair_state(self.active_blueprint),
                 elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
             )
 
@@ -764,6 +779,10 @@ class DevenvKernel:
                 metadata=turn_metadata,
                 state=self.state.name,
                 blueprint=self.active_blueprint,
+                execution_mode=ExecutionMode.REPAIR.value if appended_repair else ExecutionMode.VERIFICATION.value,
+                turn_outcome=TurnOutcome.VERIFICATION_FAILURE.value,
+                memory_summary=self._build_memory_summary(memory_context, turn_metadata),
+                repair_state=self._build_repair_state(self.active_blueprint),
                 elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
             )
 
@@ -809,7 +828,52 @@ class DevenvKernel:
             metadata=turn_metadata,
             state=self.state.name,
             blueprint=self.active_blueprint,
+            execution_mode=self._execution_mode_value(),
+            turn_outcome=TurnOutcome.SUCCESS.value,
+            memory_summary=self._build_memory_summary(memory_context, turn_metadata),
+            repair_state=self._build_repair_state(self.active_blueprint),
             elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+        )
+
+    def _execution_mode_value(self) -> str:
+        if self.state is AgentState.VERIFYING:
+            return ExecutionMode.VERIFICATION.value
+        if self.state is AgentState.EXECUTING:
+            return ExecutionMode.CHECKPOINT_EXECUTE.value
+        if self.active_blueprint is not None and any(
+            task.repair_origin_checkpoint_id is not None and not task.is_completed for task in self.active_blueprint.tasks
+        ):
+            return ExecutionMode.REPAIR.value
+        return ExecutionMode.PLAN_ONLY.value
+
+    def _build_memory_summary(self, memory_context: str, metadata: dict[str, Any]) -> MemorySummary:
+        privacy_mode = "incognito" if metadata.get("incognito") else "no_memory" if metadata.get("no_memory") else "default"
+        return MemorySummary(
+            used_working_memory=not metadata.get("incognito", False),
+            used_associative_memory=bool(memory_context.strip()),
+            used_external_context=metadata.get("external_context_session_count", 0) > 0,
+            privacy_mode=privacy_mode,
+            context_chars=len(memory_context),
+        )
+
+    def _build_repair_state(self, blueprint: ExecutionBlueprint | None) -> RepairState:
+        if blueprint is None:
+            return RepairState()
+        repair_task = next(
+            (
+                task
+                for task in blueprint.tasks
+                if task.repair_origin_checkpoint_id is not None and not task.is_completed
+            ),
+            None,
+        )
+        if repair_task is None:
+            return RepairState()
+        return RepairState(
+            active_checkpoint_id=repair_task.task_id,
+            repair_attempt_count=repair_task.repair_attempt_count,
+            max_repair_attempts=repair_task.max_repair_attempts,
+            last_failure_reason=repair_task.status_reason or repair_task.description,
         )
 
     def _build_tool_client(self, *, db_path: str, vector_dir: str):
@@ -838,7 +902,7 @@ class DevenvKernel:
         continue_plan: bool,
         local_only: bool,
         planning_mode: PlanningMode,
-        selected_tools: list[str] | tuple[str, ...] | set[str] | None,
+        selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
         steps: list[ToolExecutionStep],
         total_usage: dict[str, int],
         ai_logs: list[str],

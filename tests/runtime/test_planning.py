@@ -8,7 +8,7 @@ from typing import Any
 from core.ai.models import AIResponse, ToolCallRequest
 from core.runtime import DevenvKernel
 from core.runtime.kernel import PLANNING_SYSTEM_RULE, _focus_memory_context_for_direct_answers, _summarize_execution_note
-from core.runtime.models import AgentState, CheckpointTask, ExecutionBlueprint, PlanningMode
+from core.runtime.models import AgentState, CheckpointTask, ExecutionBlueprint, ExecutionMode, PlanningMode, TurnOutcome
 from core.tools.base import BaseTool, ToolResult
 
 
@@ -213,6 +213,8 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertEqual(result.state, AgentState.PLANNING.name)
         self.assertFalse(result.blueprint.verification_passed)
         self.assertIn("Verification failed; appended repair checkpoint", result.system_logs)
+        self.assertEqual(result.execution_mode, ExecutionMode.REPAIR.value)
+        self.assertEqual(result.turn_outcome, TurnOutcome.VERIFICATION_FAILURE.value)
         self.assertTrue(any(task.repair_origin_checkpoint_id == 1 for task in result.blueprint.tasks))
         repair_task = next(task for task in result.blueprint.tasks if task.repair_origin_checkpoint_id == 1)
         self.assertIn("Verification failed", repair_task.description)

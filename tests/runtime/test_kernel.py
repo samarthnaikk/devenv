@@ -30,7 +30,7 @@ from core.runtime.kernel import (
 )
 from core.runtime.local_model import FallbackLocalModel, SentenceTransformerLocalModel, load_local_small_model
 from core.runtime.local_router import LocalRouteDecision
-from core.runtime.models import ExternalSessionProviderConfig, PlanningMode, RuntimeTurnResult
+from core.runtime.models import ExecutionMode, ExternalSessionProviderConfig, PlanningMode, RuntimeTurnResult, TurnOutcome
 from core.tools.edit_file import EditFileTool
 from core.tools.inspect_symbols import InspectSymbolsTool
 from core.tools.list_directory import ListDirectoryTool
@@ -4429,6 +4429,8 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertTrue(second.metadata["budget_state"]["blocked"])
         self.assertIn("budget", second.error_message.lower())
         self.assertEqual(second.total_usage["total_tokens"], 8)
+        self.assertEqual(second.execution_mode, ExecutionMode.BLOCKED_FOR_CLARIFICATION.value)
+        self.assertEqual(second.turn_outcome, TurnOutcome.BUDGET_STOP.value)
 
 
 def _disabled_router():
