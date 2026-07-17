@@ -586,8 +586,9 @@ class DevenvKernel:
         )
         stage_traces.append(creation_trace)
         self.active_blueprint = blueprint
-        self.active_plan_prompt = user_prompt
-        turn_metadata["original_objective"] = blueprint.original_objective or user_prompt
+        execution_objective = blueprint.original_objective or user_prompt
+        self.active_plan_prompt = execution_objective
+        turn_metadata["original_objective"] = execution_objective
 
         active_index = _next_incomplete_task_index(blueprint)
         if active_index is None:
@@ -623,7 +624,7 @@ class DevenvKernel:
             memory_context=memory_context,
             local_model=self.local_small_model,
             tool_names=self._resolve_execution_tool_scope(
-                user_prompt,
+                execution_objective,
                 checkpoint.description,
                 selected_tools=turn_metadata["selected_tools"],
             ),
@@ -635,7 +636,7 @@ class DevenvKernel:
 
         try:
             final_response, updated_blueprint, checkpoint_steps = self._brain_stage(
-                user_prompt=user_prompt,
+                user_prompt=execution_objective,
                 checkpoint=checkpoint,
                 blueprint=self.active_blueprint,
                 planning_conversation=planning_conversation,
@@ -735,7 +736,7 @@ class DevenvKernel:
         )
 
         metadata_record, metadata_trace = build_checkpoint_metadata(
-            original_objective=user_prompt,
+            original_objective=execution_objective,
             checkpoint=self.active_blueprint.tasks[min(active_index, len(self.active_blueprint.tasks) - 1)],
             checkpoint_steps=checkpoint_steps,
             completion_summary=_summarize_execution_note(final_response),
@@ -4025,19 +4026,21 @@ class DevenvKernel:
         return self._derive_scaffold_target_path(prompt, task_description)
 
     def _derive_scaffold_target_path(self, user_prompt: str, task_description: str = "") -> str | None:
-        combined = f"{user_prompt} {task_description}".strip().lower()
-        if "frontend" in combined and "calendar" in combined:
+        prompt_text = user_prompt.strip().lower()
+        task_text = task_description.strip().lower()
+        combined = f"{prompt_text} {task_text}".strip()
+        if "frontend" in prompt_text and "calendar" in prompt_text:
             return "calendar/frontend"
         if not self._is_scaffold_request(combined):
             return None
-        direct_match = re.search(r"\b([a-z0-9_.-]+/[a-z0-9_./-]+)\b", combined)
+        direct_match = re.search(r"\b([a-z0-9_.-]+/[a-z0-9_./-]+)\b", prompt_text)
         if direct_match:
             candidate = direct_match.group(1).strip("/")
             suffix = Path(candidate).suffix.lower()
             if suffix in {".html", ".css", ".js", ".py"}:
                 return str(Path(candidate).parent).replace("\\", "/")
             return candidate
-        nested_match = re.search(r"\b([a-z0-9_-]+)\s+folder\s+(?:inside|in|under)\s+([a-z0-9_/-]+)\b", combined)
+        nested_match = re.search(r"\b([a-z0-9_-]+)\s+folder\s+(?:inside|in|under)\s+([a-z0-9_/-]+)\b", prompt_text)
         if nested_match:
             child, parent = nested_match.groups()
             return f"{parent.strip('/')}/{child.strip('/')}"

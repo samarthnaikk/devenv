@@ -30,7 +30,7 @@ from core.runtime.kernel import (
 )
 from core.runtime.local_model import FallbackLocalModel, SentenceTransformerLocalModel, load_local_small_model
 from core.runtime.local_router import LocalRouteDecision
-from core.runtime.models import CheckpointTask, ExecutionMode, ExternalSessionProviderConfig, PlanningMode, RuntimeTurnResult, TurnOutcome
+from core.runtime.models import AgentState, CheckpointTask, ExecutionMode, ExternalSessionProviderConfig, PlanningMode, RuntimeTurnResult, TurnOutcome
 from core.tools.edit_file import EditFileTool
 from core.tools.inspect_symbols import InspectSymbolsTool
 from core.tools.list_directory import ListDirectoryTool
@@ -4475,6 +4475,45 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("color-scheme: dark", css_content)
         self.assertIn("--bg: #11161d", css_content)
         self.assertIn("calendar styling", second.final_response or "")
+
+    def test_local_only_scaffold_respects_non_calendar_target_folder_across_turns(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(WriteFileTool())
+            prompt = "make a todo app frontend folder in tasks with html css and js"
+            first = kernel.execute_turn(
+                prompt,
+                planning_mode=PlanningMode.FORCE_PLAN,
+                local_only=True,
+            )
+            second = kernel.execute_turn(
+                "continue",
+                planning_mode=PlanningMode.AUTO,
+                continue_plan=True,
+                local_only=True,
+            )
+            third = kernel.execute_turn(
+                "continue",
+                planning_mode=PlanningMode.AUTO,
+                continue_plan=True,
+                local_only=True,
+            )
+
+            expected_root = Path(tempdir) / "tasks" / "frontend"
+            misplaced_root = Path(tempdir) / "calendar" / "frontend"
+            expected_files = sorted(path.name for path in expected_root.iterdir())
+
+        self.assertIsNotNone(first.blueprint)
+        self.assertEqual(expected_files, ["index.html", "script.js", "styles.css"])
+        self.assertFalse(misplaced_root.exists())
+        self.assertEqual([task.is_completed for task in third.blueprint.tasks], [True, True, True])
+        self.assertIn("JavaScript calendar behavior", third.final_response or "")
+        self.assertEqual(second.state, AgentState.EXECUTING.name)
+        self.assertEqual(third.state, AgentState.VERIFYING.name)
+        self.assertEqual(third.metadata.get("original_objective"), prompt)
 
     def test_memory_persists_across_kernel_sessions(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
