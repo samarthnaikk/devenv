@@ -627,9 +627,26 @@ class PlanningKernelTest(unittest.TestCase):
                 "Okay add all the files in chatapp in folder (the backend files). Integrate with frontend"
             )
 
-        self.assertIn("Inspect the existing backend and frontend integration points", plan)
-        self.assertIn("Add the backend files for the chat app", plan)
-        self.assertIn("Connect the frontend to the new chat backend surfaces", plan)
+        self.assertIn("Inspect `chatapp` and confirm which backend files already exist or are still missing.", plan)
+        self.assertIn("Inspect `core/runtime/web.py` and `core/ai/routing.py`", plan)
+        self.assertIn("Inspect `interface/website/src/api.js` and `interface/website/src/App.js`", plan)
+        self.assertIn("Create the missing backend implementation files under `chatapp`", plan)
+        self.assertIn("Wire the new backend files into `core/runtime/web.py` and `core/ai/routing.py`", plan)
+        self.assertIn("Connect `interface/website/src/api.js` and `interface/website/src/App.js`", plan)
+
+    def test_repair_tool_arguments_defaults_list_directory_mode_to_recursive(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+            repaired = kernel._repair_tool_arguments(
+                ToolCallRequest(
+                    call_id="call-1",
+                    tool_name="list_directory",
+                    arguments={"path": "chatapp", "max_depth": 3},
+                )
+            )
+
+        self.assertEqual(repaired["mode"], "recursive")
 
     def test_split_active_checkpoint_skips_context_only_tasks(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

@@ -3712,14 +3712,7 @@ class DevenvKernel:
         target_path = self._derive_scaffold_target_path(user_prompt) or ""
         lowered = user_prompt.lower()
         if any(marker in lowered for marker in ("backend", "api", "server", "route", "endpoint", "service")) and "frontend" in lowered:
-            integration_root = target_path or "chatapp"
-            return "\n".join(
-                [
-                    f"- [ ] Inspect the existing backend and frontend integration points that the new chat flow must connect to.",
-                    f"- [ ] Add the backend files for the chat app under `{integration_root}` and wire their imports or routes into the current runtime.",
-                    "- [ ] Connect the frontend to the new chat backend surfaces and verify the integration end to end.",
-                ]
-            )
+            return self._build_backend_frontend_integration_plan(user_prompt, target_path=target_path)
         if self._is_scaffold_request(lowered):
             html_path = f"{target_path}/index.html" if target_path else "index.html"
             css_path = f"{target_path}/styles.css" if target_path else "styles.css"
@@ -3745,6 +3738,25 @@ class DevenvKernel:
                 "- [ ] Inspect the relevant workspace files for the requested change.",
                 "- [ ] Apply the requested update inside the matching file or folder.",
                 "- [ ] Verify the result in the workspace.",
+            ]
+        )
+
+    def _build_backend_frontend_integration_plan(self, user_prompt: str, *, target_path: str) -> str:
+        integration_root = target_path or "chatapp"
+        backend_surface = "core/runtime/web.py"
+        routing_surface = "core/ai/routing.py"
+        frontend_api_surface = "interface/website/src/api.js"
+        frontend_ui_surface = "interface/website/src/App.js"
+        if "composer" in user_prompt.lower():
+            frontend_ui_surface = "interface/website/src/components/Composer.js"
+        return "\n".join(
+            [
+                f"- [ ] Inspect `{integration_root}` and confirm which backend files already exist or are still missing.",
+                f"- [ ] Inspect `{backend_surface}` and `{routing_surface}` to map the backend request, routing, and registration surfaces the chat app must plug into.",
+                f"- [ ] Inspect `{frontend_api_surface}` and `{frontend_ui_surface}` to map the frontend request flow that must call the new chat backend.",
+                f"- [ ] Create the missing backend implementation files under `{integration_root}` and keep each file aligned to the backend contract discovered in `{backend_surface}`.",
+                f"- [ ] Wire the new backend files into `{backend_surface}` and `{routing_surface}` so the runtime can serve the chat flow.",
+                f"- [ ] Connect `{frontend_api_surface}` and `{frontend_ui_surface}` to the new chat backend surfaces, then verify the integration end to end.",
             ]
         )
 
@@ -4108,6 +4120,8 @@ class DevenvKernel:
 
         if tool_call.tool_name == "list_directory":
             path_value = arguments.get("path")
+            if "mode" not in arguments:
+                arguments["mode"] = "recursive"
             if isinstance(path_value, str):
                 repaired_path = self._repair_directory_path(path_value)
                 if repaired_path is not None:
