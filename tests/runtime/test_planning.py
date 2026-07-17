@@ -628,11 +628,18 @@ class PlanningKernelTest(unittest.TestCase):
             )
 
         self.assertIn("Inspect `chatapp` and confirm which backend files already exist or are still missing.", plan)
-        self.assertIn("Inspect `core/runtime/web.py` and `core/ai/routing.py`", plan)
-        self.assertIn("Inspect `interface/website/src/api.js` and `interface/website/src/App.js`", plan)
-        self.assertIn("Create the missing backend implementation files under `chatapp`", plan)
-        self.assertIn("Wire the new backend files into `core/runtime/web.py` and `core/ai/routing.py`", plan)
-        self.assertIn("Connect `interface/website/src/api.js` and `interface/website/src/App.js`", plan)
+        self.assertIn("Inspect `core/runtime/web.py` to map the backend request and registration surface", plan)
+        self.assertIn("Inspect `core/ai/routing.py` to map the backend routing surface", plan)
+        self.assertIn("Inspect `interface/website/src/api.js` to map the frontend API helper", plan)
+        self.assertIn("Inspect `interface/website/src/App.js` to map the frontend UI surface", plan)
+        self.assertIn("Create `chatapp/__init__.py`", plan)
+        self.assertIn("Create `chatapp/store.py`", plan)
+        self.assertIn("Create `chatapp/service.py`", plan)
+        self.assertIn("Create `chatapp/routes.py`", plan)
+        self.assertIn("Wire `core/runtime/web.py`", plan)
+        self.assertIn("Wire `core/ai/routing.py`", plan)
+        self.assertIn("Connect `interface/website/src/api.js`", plan)
+        self.assertIn("Connect `interface/website/src/App.js`", plan)
 
     def test_repair_tool_arguments_defaults_list_directory_mode_to_recursive(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

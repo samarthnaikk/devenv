@@ -1197,7 +1197,7 @@ class DevenvKernel:
         selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
     ) -> tuple[str | None, ExecutionBlueprint, list[ToolExecutionStep]]:
         pre_step_count = len(steps)
-        if checkpoint.expected_artifact == "chat":
+        if checkpoint.expected_artifact == "chat" and not self._checkpoint_is_context_only(user_prompt, checkpoint.description):
             direct_memory_answer = self._answer_known_project_question_local(user_prompt, raw_memory_context)
             if direct_memory_answer is None:
                 direct_memory_answer = _answer_from_retrieved_memory(user_prompt, raw_memory_context)
@@ -2354,6 +2354,7 @@ class DevenvKernel:
             )
             system_logs.append(f"Execution memory chars sent: {len(execution_memory)}")
             local_tool_call = self._build_local_execution_tool_call(user_prompt, task.description)
+            checkpoint_requires_mutation = task.expects_mutation
             if local_tool_call is not None:
                 ai_logs.append(f"Local-only tool requested: {local_tool_call.tool_name}")
                 step = self._execute_tool_call(local_tool_call)
@@ -2361,6 +2362,21 @@ class DevenvKernel:
                 system_logs.append(f"Tool step {len(steps)}: {local_tool_call.tool_name} success={step.success}")
                 if not step.success:
                     raise RuntimeError(step.output)
+                context_only_completion = self._complete_context_only_checkpoint_from_steps(
+                    user_prompt=user_prompt,
+                    task_description=task.description,
+                    candidate_steps=[step],
+                )
+                if context_only_completion is not None:
+                    final_response = context_only_completion
+                    trace_log = _summarize_execution_note(final_response)
+                    working_blueprint = _mark_checkpoint_completed(working_blueprint, index, trace_log)
+                    self.active_blueprint = working_blueprint
+                    ai_logs.append(f"Checkpoint completed locally after successful inspection: {task.description}")
+                    system_logs.append(f"Checkpoint {index + 1} completed after successful inspection")
+                    continue
+            elif checkpoint_requires_mutation:
+                raise RuntimeError(f"Local-only execution cannot perform mutation checkpoint: {task.description}")
 
             final_response = self._build_local_checkpoint_response(user_prompt, task.description, execution_memory)
             trace_log = _summarize_execution_note(final_response)
@@ -2724,6 +2740,15 @@ class DevenvKernel:
         if last_step.tool_name == "list_directory":
             target_path = str(last_step.arguments.get("path") or self.workspace_path)
             return _summarize_directory_listing(target_path, last_step.output)
+        if last_step.tool_name == "read_file":
+            path_value = str(last_step.arguments.get("path") or "")
+            payload = dict(last_step.data or {})
+            content = payload.get("content")
+            if isinstance(content, str) and content.strip():
+                summary = _summarize_local_text_file(Path(path_value).name, content)
+                if summary:
+                    return summary
+                return f"Inspected `{Path(path_value).name}` successfully."
         return None
 
     def _workspace_file_hints_from_steps(
@@ -3116,7 +3141,14 @@ class DevenvKernel:
         return any(marker in text for marker in continue_markers)
 
     def _execution_checkpoint_indexes(self, blueprint: ExecutionBlueprint) -> list[int]:
-        return [index for index, task in enumerate(blueprint.tasks) if not task.is_completed]
+        indexes: list[int] = []
+        for index, task in enumerate(blueprint.tasks):
+            if task.is_completed:
+                continue
+            if task.description.strip().lower().startswith("verify "):
+                continue
+            indexes.append(index)
+        return indexes
 
     def _should_update_active_plan_from_follow_up(self, user_prompt: str, planning_mode: PlanningMode) -> bool:
         if planning_mode is PlanningMode.FORCE_DIRECT:
@@ -3752,11 +3784,18 @@ class DevenvKernel:
         return "\n".join(
             [
                 f"- [ ] Inspect `{integration_root}` and confirm which backend files already exist or are still missing.",
-                f"- [ ] Inspect `{backend_surface}` and `{routing_surface}` to map the backend request, routing, and registration surfaces the chat app must plug into.",
-                f"- [ ] Inspect `{frontend_api_surface}` and `{frontend_ui_surface}` to map the frontend request flow that must call the new chat backend.",
-                f"- [ ] Create the missing backend implementation files under `{integration_root}` and keep each file aligned to the backend contract discovered in `{backend_surface}`.",
-                f"- [ ] Wire the new backend files into `{backend_surface}` and `{routing_surface}` so the runtime can serve the chat flow.",
-                f"- [ ] Connect `{frontend_api_surface}` and `{frontend_ui_surface}` to the new chat backend surfaces, then verify the integration end to end.",
+                f"- [ ] Inspect `{backend_surface}` to map the backend request and registration surface the chat app must plug into.",
+                f"- [ ] Inspect `{routing_surface}` to map the backend routing surface the chat app must plug into.",
+                f"- [ ] Inspect `{frontend_api_surface}` to map the frontend API helper that must call the chat backend.",
+                f"- [ ] Inspect `{frontend_ui_surface}` to map the frontend UI surface that must trigger the chat backend.",
+                f"- [ ] Create `{integration_root}/__init__.py` for the chat app package exports.",
+                f"- [ ] Create `{integration_root}/store.py` for the in-memory chat session store.",
+                f"- [ ] Create `{integration_root}/service.py` for the chat request orchestration logic.",
+                f"- [ ] Create `{integration_root}/routes.py` for the chat backend request handlers.",
+                f"- [ ] Wire `{backend_surface}` to register the chat app backend surface.",
+                f"- [ ] Wire `{routing_surface}` to expose the chat app routing target.",
+                f"- [ ] Connect `{frontend_api_surface}` to call the chat app backend endpoint.",
+                f"- [ ] Connect `{frontend_ui_surface}` to send chat messages through the new frontend API helper.",
             ]
         )
 
@@ -3764,6 +3803,7 @@ class DevenvKernel:
         target_path = self._derive_scaffold_target_path(user_prompt, task_description)
         lowered_task = task_description.lower()
         lowered_prompt = user_prompt.lower()
+        local_integration_target = self._local_integration_root_for_prompt(user_prompt)
 
         if "main.py" in lowered_task and "calendar" in lowered_prompt:
             path = "calendar/main.py"
@@ -3804,6 +3844,45 @@ class DevenvKernel:
                     },
                 )
 
+        mentioned_path = _first_backticked_path(task_description)
+        if mentioned_path:
+            absolute_target = Path(self.workspace_path) / mentioned_path
+            if lowered_task.startswith("inspect "):
+                if absolute_target.is_dir():
+                    return ToolCallRequest(
+                        call_id=f"local_inspect_{uuid.uuid4().hex[:10]}",
+                        tool_name="list_directory",
+                        arguments={"path": str(absolute_target), "mode": "recursive", "max_depth": 2},
+                    )
+                return ToolCallRequest(
+                    call_id=f"local_read_{uuid.uuid4().hex[:10]}",
+                    tool_name="read_file",
+                    arguments={"path": str(absolute_target), "features": "content"},
+                )
+            integration_content = self._build_local_integration_file_content(
+                user_prompt=user_prompt,
+                task_description=task_description,
+                relative_path=mentioned_path,
+            )
+            if integration_content is not None:
+                return ToolCallRequest(
+                    call_id=f"local_write_{uuid.uuid4().hex[:10]}",
+                    tool_name="write_file",
+                    arguments={
+                        "path": mentioned_path,
+                        "content": integration_content,
+                        "mode": "overwrite" if absolute_target.exists() else "fresh",
+                    },
+                )
+
+        if local_integration_target and lowered_task.startswith("inspect "):
+            candidate_path = Path(self.workspace_path) / local_integration_target
+            return ToolCallRequest(
+                call_id=f"local_inspect_{uuid.uuid4().hex[:10]}",
+                tool_name="list_directory",
+                arguments={"path": str(candidate_path), "mode": "recursive", "max_depth": 2},
+            )
+
         if lowered_task.startswith("inspect "):
             candidate_path = self._resolve_workspace_candidate(user_prompt) or self.workspace_path
             return ToolCallRequest(
@@ -3824,12 +3903,51 @@ class DevenvKernel:
             return "Added the local JavaScript calendar behavior for month navigation and day rendering."
         if "main.py" in lowered_task:
             return "Created calendar/main.py so it prints today's date using Python's datetime module."
+        if "chatapp/" in lowered_task or "core/runtime/web.py" in lowered_task or "core/ai/routing.py" in lowered_task or "interface/website/src/" in lowered_task:
+            mentioned_path = _first_backticked_path(task_description)
+            if mentioned_path:
+                return f"Updated `{mentioned_path}` for the chat app integration checkpoint."
         if "verify" in lowered_task:
             return "Verified the generated workspace artifact against the requested local-only checkpoint."
         memory_answer = _answer_from_retrieved_memory(user_prompt, execution_memory)
         if memory_answer:
             return memory_answer
         return f"Completed locally: {task_description}"
+
+    def _local_integration_root_for_prompt(self, user_prompt: str) -> str | None:
+        lowered = user_prompt.lower()
+        if "chatapp" in lowered and "frontend" in lowered and any(token in lowered for token in ("backend", "integrate", "integration", "chat app")):
+            return self._derive_scaffold_target_path(user_prompt) or "chatapp"
+        return None
+
+    def _build_local_integration_file_content(self, *, user_prompt: str, task_description: str, relative_path: str) -> str | None:
+        integration_root = self._local_integration_root_for_prompt(user_prompt)
+        if not integration_root:
+            return None
+        normalized = relative_path.replace("\\", "/").strip("/")
+        if normalized.startswith(f"{integration_root}/"):
+            file_name = normalized.split("/")[-1]
+            if file_name == "__init__.py":
+                return _local_chatapp_init_py()
+            if file_name == "store.py":
+                return _local_chatapp_store_py()
+            if file_name == "service.py":
+                return _local_chatapp_service_py()
+            if file_name == "routes.py":
+                return _local_chatapp_routes_py(integration_root)
+            return None
+
+        absolute_target = Path(self.workspace_path) / normalized
+        existing = absolute_target.read_text(encoding="utf-8") if absolute_target.exists() else ""
+        if normalized == "core/runtime/web.py":
+            return _merge_local_web_integration(existing, integration_root)
+        if normalized == "core/ai/routing.py":
+            return _merge_local_routing_integration(existing)
+        if normalized == "interface/website/src/api.js":
+            return _merge_local_frontend_api_integration(existing)
+        if normalized in {"interface/website/src/App.js", "interface/website/src/components/Composer.js"}:
+            return _merge_local_frontend_ui_integration(existing, normalized)
+        return None
 
     def _select_local_relevant_paths(self, user_prompt: str, listing_output: str) -> list[str]:
         payload = _extract_tool_payload_json(listing_output)
@@ -7040,6 +7158,134 @@ def _summarize_local_text_file(file_name: str, content: str) -> str | None:
     if frameworks:
         return f"`{file_name}` references {', '.join(frameworks[:4])}. Preview: {preview}"
     return f"`{file_name}` preview: {preview}"
+
+
+def _first_backticked_path(text: str) -> str | None:
+    for match in re.findall(r"`([^`]+)`", text):
+        candidate = str(match).strip()
+        if "/" in candidate or candidate.endswith((".py", ".js", ".ts", ".tsx", ".jsx", ".html", ".css")):
+            return candidate
+    return None
+
+
+def _local_chatapp_init_py() -> str:
+    return """from .routes import CHATAPP_ROUTE, build_chatapp_response
+
+__all__ = ["CHATAPP_ROUTE", "build_chatapp_response"]
+"""
+
+
+def _local_chatapp_store_py() -> str:
+    return """from __future__ import annotations
+
+from collections import defaultdict
+
+
+class ChatSessionStore:
+    def __init__(self) -> None:
+        self._messages: dict[str, list[dict[str, str]]] = defaultdict(list)
+
+    def append(self, session_id: str, role: str, content: str) -> None:
+        self._messages[session_id].append({"role": role, "content": content})
+
+    def history(self, session_id: str) -> list[dict[str, str]]:
+        return list(self._messages.get(session_id, ()))
+
+
+store = ChatSessionStore()
+"""
+
+
+def _local_chatapp_service_py() -> str:
+    return """from __future__ import annotations
+
+from .store import store
+
+
+def handle_chat_message(session_id: str, message: str) -> dict[str, object]:
+    cleaned = message.strip()
+    if not cleaned:
+        return {"error": "message is required"}
+
+    store.append(session_id, "user", cleaned)
+    reply = f"Echo: {cleaned}"
+    store.append(session_id, "assistant", reply)
+    return {
+        "session_id": session_id,
+        "reply": reply,
+        "messages": store.history(session_id),
+    }
+"""
+
+
+def _local_chatapp_routes_py(integration_root: str) -> str:
+    return f"""from __future__ import annotations
+
+from .service import handle_chat_message
+
+CHATAPP_ROUTE = "/api/{integration_root}/messages"
+
+
+def build_chatapp_response(payload: dict[str, object] | None = None) -> dict[str, object]:
+    data = dict(payload or {{}})
+    session_id = str(data.get("session_id") or "default-session")
+    message = str(data.get("message") or "")
+    return handle_chat_message(session_id, message)
+"""
+
+
+def _append_once(existing: str, block: str) -> str:
+    if block.strip() in existing:
+        return existing
+    trimmed = existing.rstrip()
+    if trimmed:
+        return f"{trimmed}\n\n{block.rstrip()}\n"
+    return f"{block.rstrip()}\n"
+
+
+def _merge_local_web_integration(existing: str, integration_root: str) -> str:
+    block = f"""# Chat app integration
+from {integration_root} import CHATAPP_ROUTE, build_chatapp_response
+
+
+def register_chatapp_route() -> tuple[str, object]:
+    return CHATAPP_ROUTE, build_chatapp_response
+"""
+    return _append_once(existing, block)
+
+
+def _merge_local_routing_integration(existing: str) -> str:
+    block = """# Chat app routing
+CHATAPP_ROUTE_KEY = "chatapp"
+
+
+def route_chatapp_request() -> str:
+    return CHATAPP_ROUTE_KEY
+"""
+    return _append_once(existing, block)
+
+
+def _merge_local_frontend_api_integration(existing: str) -> str:
+    block = """export async function sendChatAppMessage(sessionId, message) {
+  return {
+    endpoint: "/api/chatapp/messages",
+    sessionId,
+    message,
+  };
+}
+"""
+    return _append_once(existing, block)
+
+
+def _merge_local_frontend_ui_integration(existing: str, relative_path: str) -> str:
+    import_path = "./api" if relative_path.endswith("/App.js") else "../api"
+    import_block = f'import {{ sendChatAppMessage }} from "{import_path}";'
+    handler_block = """export async function submitChatAppMessage(sessionId, message) {
+  return sendChatAppMessage(sessionId, message);
+}
+"""
+    merged = _append_once(existing, import_block)
+    return _append_once(merged, handler_block)
 
 
 def _local_calendar_html(target_path: str) -> str:
