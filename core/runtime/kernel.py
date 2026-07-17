@@ -2492,6 +2492,30 @@ class DevenvKernel:
                 ai_logs.append("Planning blueprint generated")
             return content, conversation
 
+    def _should_use_deterministic_execution_tool(
+        self,
+        *,
+        user_prompt: str,
+        task: CheckpointTask,
+    ) -> bool:
+        integration_root = self._local_integration_root_for_prompt(user_prompt)
+        if not integration_root:
+            return False
+        mentioned_path = _first_backticked_path(task.description)
+        if mentioned_path and (
+            mentioned_path.startswith(f"{integration_root}/")
+            or mentioned_path in {
+                "core/runtime/web.py",
+                "core/ai/routing.py",
+                "interface/website/src/api.js",
+                "interface/website/src/App.js",
+                "interface/website/src/components/Composer.js",
+            }
+        ):
+            return True
+        lowered = task.description.lower()
+        return lowered.startswith("inspect ") and integration_root in lowered
+
     def _run_execution_phase(
         self,
         *,
@@ -2531,6 +2555,19 @@ class DevenvKernel:
             )
             system_logs.append(f"Execution memory chars sent: {len(execution_memory)}")
             system_logs.append(f"Execution tool scope size: {len(scoped_tool_names)}")
+            deterministic_tool_call = None
+            if self._should_use_deterministic_execution_tool(
+                user_prompt=user_prompt,
+                task=task,
+            ):
+                deterministic_tool_call = self._build_local_execution_tool_call(
+                    user_prompt,
+                    task.description,
+                )
+                if deterministic_tool_call is not None:
+                    ai_logs.append(
+                        f"Deterministic execution tool prepared for checkpoint {index + 1}: {deterministic_tool_call.tool_name}"
+                    )
             step_conversation = [
                 {"role": "system", "content": EXECUTION_SYSTEM_RULE},
                 *self._selected_tool_messages(selected_tools),
@@ -2562,6 +2599,41 @@ class DevenvKernel:
             )
 
             while True:
+                if deterministic_tool_call is not None:
+                    tool_iterations += 1
+                    if tool_iterations > max_consecutive_tools:
+                        raise RuntimeError("Execution tool limit reached before the checkpoint completed.")
+                    ai_logs.append(
+                        f"Deterministic tool requested: checkpoint={index + 1} tool={deterministic_tool_call.tool_name}"
+                    )
+                    step = self._execute_tool_call(deterministic_tool_call)
+                    steps.append(step)
+                    system_logs.append(
+                        f"Tool step {len(steps)}: {deterministic_tool_call.tool_name} success={step.success} deterministic=true"
+                    )
+                    if not step.success:
+                        raise RuntimeError(step.output)
+                    context_only_completion = self._complete_context_only_checkpoint_from_steps(
+                        user_prompt=user_prompt,
+                        task_description=task.description,
+                        candidate_steps=[step],
+                    )
+                    if context_only_completion is not None:
+                        final_response = context_only_completion
+                    else:
+                        final_response = self._build_local_checkpoint_response(
+                            user_prompt,
+                            task.description,
+                            execution_memory,
+                        )
+                    trace_log = _summarize_execution_note(final_response)
+                    working_blueprint = _mark_checkpoint_completed(working_blueprint, index, trace_log)
+                    self.active_blueprint = working_blueprint
+                    ai_logs.append(f"Checkpoint completed deterministically: {task.description}")
+                    system_logs.append(
+                        f"Checkpoint {index + 1} completed with deterministic workspace execution"
+                    )
+                    break
                 ai_response = self.ai.chat(
                     messages=list(step_conversation),
                     memory_context=execution_memory,

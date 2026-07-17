@@ -4679,6 +4679,40 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("submitChatAppMessage", app_content)
         self.assertIn("sendChatAppMessage", app_content)
 
+    def test_chatapp_integration_prompt_uses_deterministic_execution_without_remote_ai(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            (workspace / "chatapp").mkdir(parents=True)
+            (workspace / "core" / "runtime").mkdir(parents=True)
+            (workspace / "core" / "ai").mkdir(parents=True)
+            (workspace / "interface" / "website" / "src").mkdir(parents=True)
+            (workspace / "core" / "runtime" / "web.py").write_text("def boot_web():\n    return 'ok'\n", encoding="utf-8")
+            (workspace / "core" / "ai" / "routing.py").write_text("def route_request():\n    return 'default'\n", encoding="utf-8")
+            (workspace / "interface" / "website" / "src" / "api.js").write_text("export const api = {};\n", encoding="utf-8")
+            (workspace / "interface" / "website" / "src" / "App.js").write_text("export default function App() {\n  return null;\n}\n", encoding="utf-8")
+
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(WriteFileTool())
+
+            prompt = "I want to integrate chat app to this codebase, add all the files in chatapp in folder (the backend files). Integrate with frontend"
+            result = kernel.execute_turn(prompt, planning_mode=PlanningMode.FORCE_PLAN, local_only=False)
+
+            init_content = (workspace / "chatapp" / "__init__.py").read_text(encoding="utf-8")
+            routes_content = (workspace / "chatapp" / "routes.py").read_text(encoding="utf-8")
+            web_content = (workspace / "core" / "runtime" / "web.py").read_text(encoding="utf-8")
+            api_content = (workspace / "interface" / "website" / "src" / "api.js").read_text(encoding="utf-8")
+
+        self.assertTrue(all(task.is_completed for task in result.blueprint.tasks))
+        self.assertIn("CHATAPP_ROUTE", init_content)
+        self.assertIn('CHATAPP_ROUTE = "/api/chatapp/messages"', routes_content)
+        self.assertIn("register_chatapp_route", web_content)
+        self.assertIn("sendChatAppMessage", api_content)
+
     def test_memory_persists_across_kernel_sessions(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             first_memory = MemoryEngine(
