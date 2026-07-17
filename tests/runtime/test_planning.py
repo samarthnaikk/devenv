@@ -491,7 +491,7 @@ class PlanningKernelTest(unittest.TestCase):
 
         self.assertFalse(can_continue)
 
-    def test_force_plan_executes_one_checkpoint_per_turn(self) -> None:
+    def test_force_plan_executes_remaining_checkpoints_in_same_turn(self) -> None:
         ai = FakeAI(
             [
                 AIResponse(
@@ -517,19 +517,11 @@ class PlanningKernelTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
-            first = kernel.execute_turn("Create a calendar app", planning_mode=PlanningMode.FORCE_PLAN)
-            second = kernel.execute_turn(
-                "Create a calendar app",
-                planning_mode=PlanningMode.FORCE_PLAN,
-                continue_plan=True,
-            )
+            result = kernel.execute_turn("Create a calendar app", planning_mode=PlanningMode.FORCE_PLAN)
 
-        self.assertEqual(first.final_response, "Created the calendar folder.")
-        self.assertEqual([task.is_completed for task in first.blueprint.tasks], [True, False])
-        self.assertEqual(first.state, AgentState.EXECUTING.name)
-        self.assertEqual(second.final_response, "Added main.py.")
-        self.assertEqual([task.is_completed for task in second.blueprint.tasks], [True, True])
-        self.assertEqual(second.state, AgentState.VERIFYING.name)
+        self.assertEqual(result.final_response, "Added main.py.")
+        self.assertEqual([task.is_completed for task in result.blueprint.tasks], [True, True])
+        self.assertEqual(result.state, AgentState.VERIFYING.name)
 
     def test_follow_up_continue_prompt_resumes_active_plan(self) -> None:
         ai = FakeAI(
@@ -560,11 +552,11 @@ class PlanningKernelTest(unittest.TestCase):
             first = kernel.execute_turn("Create a calendar app", planning_mode=PlanningMode.FORCE_PLAN)
             second = kernel.execute_turn("continue", planning_mode=PlanningMode.AUTO)
 
-        self.assertEqual(first.final_response, "Created the calendar folder.")
-        self.assertEqual(second.final_response, "Added main.py.")
+        self.assertEqual(first.final_response, "Added main.py.")
+        self.assertEqual(second.final_response, "Nothing left to execute.")
         self.assertEqual([task.is_completed for task in second.blueprint.tasks], [True, True])
 
-    def test_auto_planning_executes_one_checkpoint_per_turn(self) -> None:
+    def test_auto_planning_executes_remaining_checkpoints_in_same_turn(self) -> None:
         ai = FakeAI(
             [
                 AIResponse(
@@ -579,6 +571,12 @@ class PlanningKernelTest(unittest.TestCase):
                     finish_reason="stop",
                     usage={},
                 ),
+                AIResponse(
+                    content="Added styles.css.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
             ]
         )
 
@@ -586,9 +584,52 @@ class PlanningKernelTest(unittest.TestCase):
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
             result = kernel.execute_turn("Create a frontend folder")
 
-        self.assertEqual(result.final_response, "Created the frontend folder.")
-        self.assertEqual([task.is_completed for task in result.blueprint.tasks], [True, False])
-        self.assertEqual(result.state, AgentState.EXECUTING.name)
+        self.assertEqual(result.final_response, "Added styles.css.")
+        self.assertEqual([task.is_completed for task in result.blueprint.tasks], [True, True])
+        self.assertEqual(result.state, AgentState.VERIFYING.name)
+
+    def test_follow_up_instruction_updates_active_plan_instead_of_replanning(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.active_plan_prompt = "I want to integrate chat app to this codebase, make a plan"
+            kernel.active_blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [ ] Inspect backend hooks\n- [ ] Draft integration plan",
+                original_objective="I want to integrate chat app to this codebase, make a plan",
+                tasks=[
+                    CheckpointTask(task_id=1, description="Inspect backend hooks"),
+                    CheckpointTask(task_id=2, description="Draft integration plan"),
+                ],
+                active_task_pointer=0,
+            )
+
+            blueprint, _conversation, trace = kernel._checkpoint_creation_stage(
+                user_prompt="Okay add all the files in chatapp in folder (the backend files). Integrate with frontend",
+                memory_context="",
+                continue_plan=False,
+                local_only=False,
+                planning_mode=PlanningMode.AUTO,
+                steps=[],
+                total_usage={},
+                ai_logs=[],
+                system_logs=[],
+                max_consecutive_tools=5,
+                tool_policy_events=[],
+            )
+
+        self.assertEqual(trace.summary, "Updated active checkpoint plan from follow-up instruction")
+        self.assertEqual(blueprint.original_objective, "Okay add all the files in chatapp in folder (the backend files). Integrate with frontend")
+        self.assertEqual(blueprint.tasks[0].expected_artifact, "code")
+
+    def test_local_plan_markdown_prefers_backend_frontend_integration_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            plan = kernel._build_local_plan_markdown(
+                "Okay add all the files in chatapp in folder (the backend files). Integrate with frontend"
+            )
+
+        self.assertIn("Inspect the existing backend and frontend integration points", plan)
+        self.assertIn("Add the backend files for the chat app", plan)
+        self.assertIn("Connect the frontend to the new chat backend surfaces", plan)
 
     def test_mutation_checkpoint_requires_real_write_tool_before_completion(self) -> None:
         ai = FakeAI(

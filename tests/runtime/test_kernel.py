@@ -529,6 +529,28 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("Inspect the relevant workspace files", blueprint.tasks[0].description)
         self.assertEqual(ai.chat_calls, [])
 
+    def test_backend_frontend_integration_prompt_is_not_treated_as_scaffold_request(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel._is_scaffold_request("add all the backend files in chatapp and integrate with frontend")
+
+        self.assertFalse(result)
+
+    def test_backend_frontend_integration_prompt_prefers_code_artifact(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            artifact = kernel._infer_expected_artifact(
+                "add all the backend files in chatapp and integrate with frontend",
+                "Add the backend files and wire the frontend integration",
+                "chatapp",
+            )
+
+        self.assertEqual(artifact, "code")
+
     def test_edit_prompt_is_not_treated_as_scaffold_request(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])

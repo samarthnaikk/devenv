@@ -987,6 +987,15 @@ class DevenvKernel:
         tool_policy_events: list[ToolPolicyEvent],
     ) -> tuple[ExecutionBlueprint, list[dict[str, Any]], StageTrace]:
         should_resume_plan = planning_mode is not PlanningMode.FORCE_DIRECT and (continue_plan or self._is_plan_continue_request(user_prompt))
+        if should_resume_plan and self.active_blueprint is not None and _next_incomplete_task_index(self.active_blueprint) is None:
+            trace = StageTrace(
+                stage=ProcessStage.CHECKPOINT_CREATION.value,
+                success=True,
+                summary="Resumed completed checkpoint plan",
+                logs=[f"Checkpoint count: {len(self.active_blueprint.tasks)}"],
+                payload={"continued": True, "completed": True},
+            )
+            return self.active_blueprint, [], trace
         if should_resume_plan and self._can_continue_active_plan(user_prompt):
             blueprint = self.active_blueprint or self._build_direct_blueprint(user_prompt)
             trace = StageTrace(
@@ -995,6 +1004,16 @@ class DevenvKernel:
                 summary="Resumed existing checkpoint plan",
                 logs=[f"Checkpoint count: {len(blueprint.tasks)}"],
                 payload={"continued": True},
+            )
+            return blueprint, [], trace
+        if self._should_update_active_plan_from_follow_up(user_prompt, planning_mode):
+            blueprint = self._build_direct_blueprint(user_prompt)
+            trace = StageTrace(
+                stage=ProcessStage.CHECKPOINT_CREATION.value,
+                success=True,
+                summary="Updated active checkpoint plan from follow-up instruction",
+                logs=[f"Checkpoint count: {len(blueprint.tasks)}"],
+                payload={"continued": True, "updated_from_follow_up": True},
             )
             return blueprint, [], trace
 
@@ -1112,6 +1131,24 @@ class DevenvKernel:
 
     def _infer_expected_artifact(self, user_prompt: str, task_description: str, target_path_hint: str | None) -> str:
         text = f"{user_prompt} {task_description}".lower()
+        backend_markers = (
+            "backend",
+            "server",
+            "api",
+            "route",
+            "routes",
+            "endpoint",
+            "service",
+            "controller",
+            "model",
+            "database",
+            "schema",
+            "auth",
+            "integration",
+        )
+        frontend_markers = ("html", "css", "javascript", "frontend", "ui")
+        if any(token in text for token in backend_markers):
+            return "code"
         if any(token in text for token in ("html", "css", "javascript", "frontend")):
             return "frontend"
         if any(token in text for token in ("create", "write", "edit", "modify", "update", "fix", "implement", "file", "folder")) or target_path_hint:
@@ -2896,7 +2933,25 @@ class DevenvKernel:
         creation_markers = ("create", "make", "add", "build", "generate")
         frontend_markers = ("html", "css", "js", "javascript", "frontend", "ui")
         non_backend_markers = ("dont connect with backend", "don't connect with backend", "no need to connect to backend")
+        backend_markers = (
+            "backend",
+            "api",
+            "server",
+            "route",
+            "routes",
+            "endpoint",
+            "controller",
+            "service",
+            "database",
+            "schema",
+            "model",
+            "auth",
+            "integrate with frontend",
+            "frontend integration",
+        )
         file_markers = ("folder", "file")
+        if any(marker in text for marker in backend_markers) and not any(marker in text for marker in non_backend_markers):
+            return False
         scaffold_match = (
             any(marker in text for marker in creation_markers)
             and any(marker in text for marker in frontend_markers)
@@ -3015,19 +3070,27 @@ class DevenvKernel:
         return any(marker in text for marker in continue_markers)
 
     def _execution_checkpoint_indexes(self, blueprint: ExecutionBlueprint) -> list[int]:
-        start_index = _next_incomplete_task_index(blueprint)
-        if start_index is None:
-            return []
-        indexes = [start_index]
-        if self._checkpoint_is_context_only(blueprint.original_objective or "", blueprint.tasks[start_index].description):
-            for index in range(start_index + 1, len(blueprint.tasks)):
-                task = blueprint.tasks[index]
-                if task.is_completed:
-                    continue
-                indexes.append(index)
-                if self._checkpoint_requires_mutation(blueprint.original_objective or "", task.description):
-                    break
-        return indexes
+        return [index for index, task in enumerate(blueprint.tasks) if not task.is_completed]
+
+    def _should_update_active_plan_from_follow_up(self, user_prompt: str, planning_mode: PlanningMode) -> bool:
+        if planning_mode is PlanningMode.FORCE_DIRECT:
+            return False
+        if self.active_blueprint is None or _next_incomplete_task_index(self.active_blueprint) is None:
+            return False
+        if self._is_plan_continue_request(user_prompt) or self._is_plan_exit_request(user_prompt):
+            return False
+        if not self.active_plan_prompt:
+            return False
+        lowered = user_prompt.lower()
+        if not self._text_requires_mutation_tools(lowered):
+            return False
+        active_tokens = set(_prompt_keywords(self.active_plan_prompt))
+        current_tokens = set(_prompt_keywords(user_prompt))
+        if not active_tokens or not current_tokens:
+            return False
+        overlap = len(active_tokens & current_tokens) / max(min(len(active_tokens), len(current_tokens)), 1)
+        follow_up_markers = ("ok", "okay", "now", "next", "also", "instead", "integrate", "add", "update", "implement", "wire")
+        return overlap >= 0.3 or any(marker in lowered for marker in follow_up_markers)
 
     def _checkpoint_is_context_only(self, user_prompt: str, task_description: str) -> bool:
         lowered = task_description.lower()
@@ -3602,6 +3665,15 @@ class DevenvKernel:
     def _build_local_plan_markdown(self, user_prompt: str) -> str:
         target_path = self._derive_scaffold_target_path(user_prompt) or ""
         lowered = user_prompt.lower()
+        if any(marker in lowered for marker in ("backend", "api", "server", "route", "endpoint", "service")) and "frontend" in lowered:
+            integration_root = target_path or "chatapp"
+            return "\n".join(
+                [
+                    f"- [ ] Inspect the existing backend and frontend integration points that the new chat flow must connect to.",
+                    f"- [ ] Add the backend files for the chat app under `{integration_root}` and wire their imports or routes into the current runtime.",
+                    "- [ ] Connect the frontend to the new chat backend surfaces and verify the integration end to end.",
+                ]
+            )
         if self._is_scaffold_request(lowered):
             html_path = f"{target_path}/index.html" if target_path else "index.html"
             css_path = f"{target_path}/styles.css" if target_path else "styles.css"
