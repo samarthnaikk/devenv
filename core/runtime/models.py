@@ -25,6 +25,26 @@ class AgentState(Enum):
     VERIFYING = auto()
 
 
+class ExecutionMode(Enum):
+    DIRECT_ANSWER = "direct_answer"
+    PLAN_ONLY = "plan_only"
+    CHECKPOINT_EXECUTE = "checkpoint_execute"
+    VERIFICATION = "verification"
+    REPAIR = "repair"
+    BLOCKED_FOR_CLARIFICATION = "blocked_for_clarification"
+
+
+class TurnOutcome(Enum):
+    SUCCESS = "success"
+    BLOCKED_BY_POLICY = "blocked_by_policy"
+    BLOCKED_BY_CLARIFICATION = "blocked_by_clarification"
+    TOOL_FAILURE = "tool_failure"
+    VERIFICATION_FAILURE = "verification_failure"
+    BACKEND_FAILURE = "backend_failure"
+    BUDGET_STOP = "budget_stop"
+    PRIVACY_STOP = "privacy_stop"
+
+
 class ProcessStage(Enum):
     CHECKPOINT_CREATION = "checkpoint_creation"
     CONTEXT_MEMORY = "context_memory"
@@ -46,6 +66,60 @@ class VerificationResult:
             "mode": self.mode,
             "success": self.success,
             "details": self.details,
+        }
+
+
+@dataclass(frozen=True)
+class MemorySummary:
+    used_working_memory: bool = False
+    used_associative_memory: bool = False
+    used_external_context: bool = False
+    privacy_mode: str = "default"
+    context_chars: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "used_working_memory": self.used_working_memory,
+            "used_associative_memory": self.used_associative_memory,
+            "used_external_context": self.used_external_context,
+            "privacy_mode": self.privacy_mode,
+            "context_chars": self.context_chars,
+        }
+
+
+@dataclass(frozen=True)
+class ToolPolicyEvent:
+    tool_name: str
+    category: str
+    decision: str
+    reason: str = ""
+    mode: str = ExecutionMode.CHECKPOINT_EXECUTE.value
+    retry_safe: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tool_name": self.tool_name,
+            "category": self.category,
+            "decision": self.decision,
+            "reason": self.reason,
+            "mode": self.mode,
+            "retry_safe": self.retry_safe,
+        }
+
+
+@dataclass(frozen=True)
+class RepairState:
+    active_checkpoint_id: int | None = None
+    repair_attempt_count: int = 0
+    max_repair_attempts: int = 0
+    last_failure_reason: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "active_checkpoint_id": self.active_checkpoint_id,
+            "repair_attempt_count": self.repair_attempt_count,
+            "max_repair_attempts": self.max_repair_attempts,
+            "last_failure_reason": self.last_failure_reason,
         }
 
 
@@ -83,6 +157,11 @@ class CheckpointTask:
     child_checkpoint_ids: tuple[int, ...] = ()
     is_completed: bool = False
     execution_trace_log: str | None = None
+    allowed_tool_names: tuple[str, ...] = ()
+    expects_mutation: bool = False
+    requires_verification: bool = False
+    repair_attempt_count: int = 0
+    max_repair_attempts: int = 1
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -98,6 +177,11 @@ class CheckpointTask:
             "child_checkpoint_ids": list(self.child_checkpoint_ids),
             "is_completed": self.is_completed,
             "execution_trace_log": self.execution_trace_log,
+            "allowed_tool_names": list(self.allowed_tool_names),
+            "expects_mutation": self.expects_mutation,
+            "requires_verification": self.requires_verification,
+            "repair_attempt_count": self.repair_attempt_count,
+            "max_repair_attempts": self.max_repair_attempts,
         }
 
 
@@ -155,6 +239,11 @@ class RuntimeTurnResult:
     blueprint: ExecutionBlueprint | None = None
     error_message: str | None = None
     elapsed_ms: int = 0
+    execution_mode: str = ExecutionMode.CHECKPOINT_EXECUTE.value
+    turn_outcome: str = TurnOutcome.SUCCESS.value
+    memory_summary: MemorySummary = field(default_factory=MemorySummary)
+    tool_policy_events: list[ToolPolicyEvent] = field(default_factory=list)
+    repair_state: RepairState = field(default_factory=RepairState)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "final_response", sanitize_response_text(self.final_response))
@@ -174,6 +263,11 @@ class RuntimeTurnResult:
             "blueprint": self.blueprint.to_dict() if self.blueprint else None,
             "error_message": self.error_message,
             "elapsed_ms": self.elapsed_ms,
+            "execution_mode": self.execution_mode,
+            "turn_outcome": self.turn_outcome,
+            "memory_summary": self.memory_summary.to_dict(),
+            "tool_policy_events": [event.to_dict() for event in self.tool_policy_events],
+            "repair_state": self.repair_state.to_dict(),
         }
 
 
