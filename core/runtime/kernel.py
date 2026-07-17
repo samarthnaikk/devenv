@@ -26,6 +26,7 @@ from .metadata_stage import build_checkpoint_metadata
 from .models import (
     AgentState,
     CheckpointTask,
+    ExecutionMode,
     ExecutionBlueprint,
     PlanningMode,
     ProcessStage,
@@ -37,10 +38,11 @@ from .models import (
 from .response_sanitizer import normalize_response_text, sanitize_response_text
 from .sandbox import PathSandbox
 from .state import resolve_memory_paths
+from .tool_policy import TOOL_POLICY_REGISTRY, allowed_tool_names_for_mode, build_tool_policy_event
 
 logger = logging.getLogger(__name__)
 MAX_EPHEMERAL_TURNS = 4
-PLANNING_ALLOWED_TOOLS = frozenset({"list_directory", "read_file", "inspect_symbols"})
+PLANNING_ALLOWED_TOOLS = frozenset(allowed_tool_names_for_mode(ExecutionMode.PLAN_ONLY, set(TOOL_POLICY_REGISTRY)))
 READ_ONLY_EXECUTION_TOOLS = frozenset(
     {"list_directory", "locate_files", "read_file", "peek_lines", "inspect_symbols", "search_text", "track_symbol"}
 )
@@ -2091,9 +2093,13 @@ class DevenvKernel:
                 return content, conversation
             if ai_response.tool_calls:
                 for tool_call in ai_response.tool_calls:
-                    if tool_call.tool_name not in PLANNING_ALLOWED_TOOLS:
+                    planning_allowed_tools = self._planning_allowed_tool_names()
+                    if tool_call.tool_name not in planning_allowed_tools:
                         logger.warning("Blocked non-planning tool during planning: tool=%s", tool_call.tool_name)
                         system_logs.append(f"Blocked planning tool call: {tool_call.tool_name}")
+                        ai_logs.append(
+                            f"Planning tool denied by policy: {build_tool_policy_event(tool_call.tool_name, ExecutionMode.PLAN_ONLY, 'deny', 'Tool is not allowed in planning mode.').to_dict()}"
+                        )
                         conversation.append(_assistant_tool_call_message(ai_response, [tool_call]))
                         conversation.append(
                             _tool_message(
@@ -2828,6 +2834,13 @@ class DevenvKernel:
             if isinstance(tool_name, str) and tool_name.strip() in self.tools
         }
 
+    def _allowed_tool_names_for_phase(self, *, execution_phase: bool) -> set[str]:
+        mode = ExecutionMode.CHECKPOINT_EXECUTE if execution_phase else ExecutionMode.DIRECT_ANSWER
+        return allowed_tool_names_for_mode(mode, set(self.tools))
+
+    def _planning_allowed_tool_names(self) -> set[str]:
+        return allowed_tool_names_for_mode(ExecutionMode.PLAN_ONLY, set(self.tools))
+
     def _answer_tool_strategy_question(
         self,
         user_prompt: str,
@@ -2884,7 +2897,7 @@ class DevenvKernel:
     ) -> list[str]:
         selected_scope = self._resolve_selected_tools(selected_tools)
         if selected_scope:
-            return sorted(selected_scope)
+            return sorted(selected_scope & self._allowed_tool_names_for_phase(execution_phase=execution_phase))
 
         available = set(self.tools)
         if not available:
