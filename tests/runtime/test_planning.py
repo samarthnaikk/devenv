@@ -310,6 +310,42 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertTrue(all(call["target_path"].endswith("calendar/frontend") for call in diagnostics.calls))
         self.assertEqual([result.mode for result in results], ["file", "frontend", "lint"])
 
+    def test_verification_prefers_touched_paths_reported_by_tool_data(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            src_dir = Path(tempdir) / "src"
+            src_dir.mkdir(parents=True)
+            target_file = src_dir / "feature.py"
+            target_file.write_text("print('ok')\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            diagnostics = CapturingDiagnosticsTool()
+            kernel.register_tool(diagnostics)
+            checkpoint = CheckpointTask(
+                task_id=1,
+                description="Update the feature module",
+                expected_artifact="code",
+                verification_mode="code",
+            )
+
+            success, _trace, results = kernel._verify_active_checkpoint(
+                checkpoint=checkpoint,
+                final_response="Updated feature module.",
+                checkpoint_steps=[
+                    type(
+                        "Step",
+                        (),
+                        {
+                            "arguments": {},
+                            "data": {"written_paths": ["src/feature.py"]},
+                        },
+                    )()
+                ],
+                system_logs=[],
+            )
+
+        self.assertTrue(success)
+        self.assertEqual(results[0].mode, "file")
+        self.assertTrue(all(call["target_path"].endswith("src/feature.py") for call in diagnostics.calls))
+
     def test_verification_can_be_skipped_by_checkpoint_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))

@@ -1292,14 +1292,7 @@ class DevenvKernel:
     def _resolve_verification_target_path(self, checkpoint: CheckpointTask, checkpoint_steps: list[ToolExecutionStep]) -> str:
         candidates: list[Path] = []
         for step in checkpoint_steps:
-            for key in ("path", "file_path", "target_path"):
-                value = step.arguments.get(key)
-                if not isinstance(value, str) or not value.strip():
-                    continue
-                candidate = Path(value)
-                if not candidate.is_absolute():
-                    candidate = Path(self.workspace_path) / candidate
-                candidates.append(candidate)
+            candidates.extend(self._tool_step_candidate_paths(step))
 
         if checkpoint.target_path_hint:
             hinted = Path(checkpoint.target_path_hint)
@@ -1317,10 +1310,11 @@ class DevenvKernel:
     def _verify_file_artifact(self, checkpoint: CheckpointTask, checkpoint_steps: list[ToolExecutionStep]) -> VerificationResult | None:
         paths = []
         for step in checkpoint_steps:
-            for key in ("path", "file_path", "target_path"):
-                value = step.arguments.get(key)
-                if isinstance(value, str) and value.strip():
-                    paths.append(value)
+            for candidate in self._tool_step_candidate_paths(step):
+                try:
+                    paths.append(str(candidate.relative_to(self.workspace_path)))
+                except ValueError:
+                    paths.append(str(candidate))
         path_hint = (paths[-1] if paths else None) or checkpoint.target_path_hint
         if not path_hint:
             return None
@@ -1347,6 +1341,31 @@ class DevenvKernel:
             success=success,
             details=details,
         )
+
+    def _tool_step_candidate_paths(self, step: ToolExecutionStep) -> list[Path]:
+        raw_values: list[str] = []
+        for container in (step.arguments, step.data):
+            for key in ("path", "file_path", "target_path", "absolute_path"):
+                value = container.get(key)
+                if isinstance(value, str) and value.strip():
+                    raw_values.append(value)
+            for key in ("paths", "file_paths", "target_paths", "touched_paths", "written_paths", "modified_paths"):
+                value = container.get(key)
+                if isinstance(value, (list, tuple)):
+                    raw_values.extend(item for item in value if isinstance(item, str) and item.strip())
+
+        candidates: list[Path] = []
+        seen: set[str] = set()
+        for raw_value in raw_values:
+            candidate = Path(raw_value)
+            if not candidate.is_absolute():
+                candidate = Path(self.workspace_path) / candidate
+            normalized = str(candidate)
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            candidates.append(candidate)
+        return candidates
 
     def _append_repair_checkpoint(self, blueprint: ExecutionBlueprint, *, checkpoint_id: int, reason: str) -> tuple[ExecutionBlueprint, bool]:
         tasks = list(blueprint.tasks)
