@@ -273,6 +273,45 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertFalse(appended)
         self.assertEqual(len(updated.tasks), 1)
 
+    def test_describe_repair_chain_block_reports_budget_exhaustion(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [ ] Update backend",
+                tasks=[
+                    CheckpointTask(
+                        task_id=1,
+                        description="Update backend",
+                        repair_attempt_count=2,
+                        max_repair_attempts=2,
+                    )
+                ],
+                active_task_pointer=0,
+            )
+
+            reason = kernel._describe_repair_chain_block(blueprint, 1)
+
+        self.assertEqual(reason, "repair budget exhausted for checkpoint 1")
+
+    def test_describe_repair_chain_block_reports_repair_checkpoint_origin(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [ ] Repair checkpoint 1",
+                tasks=[
+                    CheckpointTask(
+                        task_id=2,
+                        description="Repair checkpoint 1",
+                        repair_origin_checkpoint_id=1,
+                    )
+                ],
+                active_task_pointer=0,
+            )
+
+            reason = kernel._describe_repair_chain_block(blueprint, 2)
+
+        self.assertEqual(reason, "checkpoint 2 is already a repair checkpoint")
+
     def test_build_checkpoint_task_populates_execution_contract_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))

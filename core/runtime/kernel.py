@@ -765,7 +765,8 @@ class DevenvKernel:
             if appended_repair:
                 system_logs.append("Verification failed; appended repair checkpoint")
             else:
-                system_logs.append("Verification failed; stopped automatic repair chaining")
+                repair_block_reason = self._describe_repair_chain_block(self.active_blueprint, checkpoint.task_id)
+                system_logs.append(f"Verification failed; stopped automatic repair chaining ({repair_block_reason})")
             self._finalize_turn(
                 user_prompt,
                 final_response or "",
@@ -1436,6 +1437,18 @@ class DevenvKernel:
             active_task_pointer=insert_at,
             verification_passed=False,
         ), True
+
+    def _describe_repair_chain_block(self, blueprint: ExecutionBlueprint | None, checkpoint_id: int) -> str:
+        if blueprint is None:
+            return "repair state unavailable"
+        task = next((candidate for candidate in blueprint.tasks if candidate.task_id == checkpoint_id), None)
+        if task is None:
+            return f"checkpoint {checkpoint_id} no longer exists"
+        if task.repair_origin_checkpoint_id is not None:
+            return f"checkpoint {checkpoint_id} is already a repair checkpoint"
+        if task.repair_attempt_count >= max(task.max_repair_attempts, 1):
+            return f"repair budget exhausted for checkpoint {checkpoint_id}"
+        return f"repair checkpoint could not be appended for checkpoint {checkpoint_id}"
 
     def _split_active_checkpoint(self, blueprint: ExecutionBlueprint | None, task_index: int, *, reason: str) -> ExecutionBlueprint | None:
         if blueprint is None or not (0 <= task_index < len(blueprint.tasks)):
