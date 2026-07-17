@@ -1262,6 +1262,8 @@ class DevenvKernel:
             return blueprint, False
         if source_task.repair_origin_checkpoint_id is not None:
             return blueprint, False
+        if source_task.repair_attempt_count >= max(source_task.max_repair_attempts, 1):
+            return blueprint, False
         repair_id = max(task.task_id for task in tasks) + 1 if tasks else 1
         repair_summary = _summarize_verification_failure_reason(reason)
         repair_task = CheckpointTask(
@@ -1313,6 +1315,11 @@ class DevenvKernel:
                     repair_origin_checkpoint_id=source_task.repair_origin_checkpoint_id,
                     status_reason=reason,
                     output_destination=source_task.output_destination,
+                    allowed_tool_names=source_task.allowed_tool_names,
+                    expects_mutation=source_task.expects_mutation,
+                    requires_verification=source_task.requires_verification,
+                    repair_attempt_count=source_task.repair_attempt_count,
+                    max_repair_attempts=source_task.max_repair_attempts,
                 )
             )
             next_id += 1
@@ -1329,6 +1336,11 @@ class DevenvKernel:
             child_checkpoint_ids=tuple(child_ids),
             is_completed=True,
             execution_trace_log="Split into smaller child checkpoints before completion.",
+            allowed_tool_names=source_task.allowed_tool_names,
+            expects_mutation=source_task.expects_mutation,
+            requires_verification=source_task.requires_verification,
+            repair_attempt_count=source_task.repair_attempt_count,
+            max_repair_attempts=source_task.max_repair_attempts,
         )
         tasks.insert(task_index, source_with_children)
         tasks.extend(blueprint.tasks[task_index + 1 :])
@@ -2559,6 +2571,11 @@ class DevenvKernel:
                     output_destination=task.output_destination,
                     child_checkpoint_ids=task.child_checkpoint_ids,
                     is_completed=match.group("status").lower() == "x",
+                    allowed_tool_names=task.allowed_tool_names,
+                    expects_mutation=task.expects_mutation,
+                    requires_verification=task.requires_verification,
+                    repair_attempt_count=task.repair_attempt_count,
+                    max_repair_attempts=task.max_repair_attempts,
                 )
             )
 
@@ -2638,9 +2655,15 @@ class DevenvKernel:
         task_description: str,
         blueprint: ExecutionBlueprint,
     ) -> str:
-        target_path_hint = self._derive_scaffold_target_path(user_prompt, task_description)
+        active_task = blueprint.tasks[checkpoint_index - 1] if 0 <= checkpoint_index - 1 < len(blueprint.tasks) else None
+        target_path_hint = (active_task.target_path_hint if active_task else None) or self._derive_scaffold_target_path(
+            user_prompt, task_description
+        )
         plan_context = self._build_checkpoint_context(blueprint, checkpoint_index - 1)
-        if self._is_scaffold_request(f"{user_prompt} {task_description}".lower()):
+        expects_mutation = active_task.expects_mutation if active_task is not None else self._checkpoint_requires_mutation(
+            user_prompt, task_description
+        )
+        if self._is_scaffold_request(f"{user_prompt} {task_description}".lower()) or (active_task and active_task.expected_artifact == "frontend"):
             lines = [
                 f"Goal: {user_prompt}\n"
                 f"Checkpoint {checkpoint_index}/{total_checkpoints}: {task_description}",
@@ -2651,13 +2674,18 @@ class DevenvKernel:
                 lines.append(plan_context)
             lines.append("Complete only this checkpoint. Use the smallest valid tool call and stop after it succeeds.")
             return "\n".join(lines)
-        return (
+        lines = [
             f"Original request:\n{user_prompt}\n\n"
             f"Current checkpoint ({checkpoint_index}/{total_checkpoints}):\n- [ ] {task_description}\n\n"
             f"Workspace root: {self.workspace_path}\n"
-            "Use real workspace paths discovered from tools. Do not invent /workspace or external paths.\n"
-            "Complete only this checkpoint, then stop."
-        )
+            "Use real workspace paths discovered from tools. Do not invent /workspace or external paths."
+        ]
+        if target_path_hint:
+            lines.append(f"All new files for this request must stay under: {target_path_hint}")
+        if plan_context:
+            lines.append(plan_context)
+        lines.append("Complete only this checkpoint, then stop.")
+        return "\n".join(lines)
 
     def _is_scaffold_request(self, text: str) -> bool:
         creation_markers = ("create", "make", "add", "build", "generate")
@@ -3731,6 +3759,8 @@ class DevenvKernel:
 
     def _derive_scaffold_target_path(self, user_prompt: str, task_description: str = "") -> str | None:
         combined = f"{user_prompt} {task_description}".strip().lower()
+        if "frontend" in combined and "calendar" in combined:
+            return "calendar/frontend"
         if not self._is_scaffold_request(combined):
             return None
         direct_match = re.search(r"\b([a-z0-9_.-]+/[a-z0-9_./-]+)\b", combined)
@@ -3744,8 +3774,6 @@ class DevenvKernel:
         if nested_match:
             child, parent = nested_match.groups()
             return f"{parent.strip('/')}/{child.strip('/')}"
-        if "frontend" in combined and "calendar" in combined:
-            return "calendar/frontend"
         return None
 
     def _repair_scaffold_path(self, requested_path: str, target_path_hint: str) -> str | None:
