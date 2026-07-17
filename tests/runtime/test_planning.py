@@ -10,6 +10,9 @@ from core.runtime import DevenvKernel
 from core.runtime.kernel import PLANNING_SYSTEM_RULE, _focus_memory_context_for_direct_answers, _summarize_execution_note
 from core.runtime.models import AgentState, CheckpointTask, ExecutionBlueprint, ExecutionMode, PlanningMode, TurnOutcome
 from core.tools.base import BaseTool, ToolResult
+from core.tools.inspect_symbols import InspectSymbolsTool
+from core.tools.list_directory import ListDirectoryTool
+from core.tools.read_file import ReadFileTool
 
 
 class FakeMemory:
@@ -754,6 +757,28 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertIn("Verification will run after completion using mode: code.", prompt)
         self.assertIn("Completed earlier: Create frontend folder", prompt)
         self.assertIn("Next after this: Add styles.css", prompt)
+
+    def test_execution_scope_for_explicit_file_inspection_omits_list_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(InspectSymbolsTool())
+            checkpoint = CheckpointTask(
+                task_id=1,
+                description="Inspect `core/runtime/web.py` to map the backend request surface.",
+                allowed_tool_names=("list_directory", "read_file", "inspect_symbols"),
+            )
+
+            scope = kernel._resolve_execution_tool_scope(
+                "Integrate the chat backend with frontend",
+                checkpoint.description,
+                checkpoint=checkpoint,
+            )
+
+        self.assertNotIn("list_directory", scope)
+        self.assertIn("read_file", scope)
+        self.assertIn("inspect_symbols", scope)
 
     def test_repair_tool_arguments_prefixes_scaffold_files_under_calendar_frontend(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

@@ -858,7 +858,7 @@ class DevenvKernel:
     def _effective_max_consecutive_tools(self, *, requested_limit: int, local_only: bool) -> int:
         preferred_backend = str(getattr(self.ai, "preferred_backend", "") or "").strip().lower()
         if local_only or preferred_backend == "ollama":
-            return max(requested_limit, 24)
+            return max(requested_limit, 64)
         return requested_limit
 
     def _build_memory_summary(self, memory_context: str, metadata: dict[str, Any]) -> MemorySummary:
@@ -2953,7 +2953,15 @@ class DevenvKernel:
         if not checkpoint_scope:
             return scoped
         narrowed = [tool_name for tool_name in scoped if tool_name in checkpoint_scope]
-        return narrowed or sorted(checkpoint_scope)
+        resolved = narrowed or sorted(checkpoint_scope)
+        explicit_path = _first_backticked_path(task_description)
+        if explicit_path and Path(explicit_path).suffix and self._checkpoint_is_context_only(user_prompt, task_description):
+            resolved = [tool_name for tool_name in resolved if tool_name != "list_directory"]
+            if "read_file" in self.tools and "read_file" not in resolved:
+                resolved.append("read_file")
+            if explicit_path.endswith(".py") and "inspect_symbols" in self.tools and "inspect_symbols" not in resolved:
+                resolved.append("inspect_symbols")
+        return resolved
 
     def _resolve_execution_memory(self, *, user_prompt: str, task_description: str, memory_context: str) -> str:
         text = f"{user_prompt} {task_description}".lower()
@@ -4190,6 +4198,31 @@ class DevenvKernel:
     def _execute_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
         logger.info("Intercepted tool call: tool=%s arguments=%s", tool_call.tool_name, tool_call.arguments)
         normalized_arguments = self.sandbox.normalize_arguments(self._repair_tool_arguments(tool_call))
+        explicit_path = self._active_checkpoint_explicit_path()
+        active_task = None
+        if self.active_blueprint and 0 <= self.active_blueprint.active_task_pointer < len(self.active_blueprint.tasks):
+            active_task = self.active_blueprint.tasks[self.active_blueprint.active_task_pointer]
+        if (
+            tool_call.tool_name == "list_directory"
+            and explicit_path
+            and active_task is not None
+            and self._checkpoint_is_context_only(self.active_plan_prompt or "", active_task.description)
+            and Path(explicit_path).suffix
+            and "read_file" in self.tools
+        ):
+            resolved_explicit = (Path(self.workspace_path) / explicit_path).resolve()
+            if resolved_explicit.exists():
+                logger.info(
+                    "Forced explicit file checkpoint inspection to read_file: requested=%s explicit=%s",
+                    normalized_arguments.get("path"),
+                    resolved_explicit,
+                )
+                tool_call = ToolCallRequest(
+                    call_id=tool_call.call_id,
+                    tool_name="read_file",
+                    arguments={"path": str(resolved_explicit), "features": "content"},
+                )
+                normalized_arguments = self.sandbox.normalize_arguments(tool_call.arguments)
         if tool_call.tool_name == "list_directory":
             path_value = normalized_arguments.get("path")
             if isinstance(path_value, str):

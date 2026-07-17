@@ -30,7 +30,7 @@ from core.runtime.kernel import (
 )
 from core.runtime.local_model import FallbackLocalModel, SentenceTransformerLocalModel, load_local_small_model
 from core.runtime.local_router import LocalRouteDecision
-from core.runtime.models import AgentState, CheckpointTask, ExecutionMode, ExternalSessionProviderConfig, PlanningMode, RuntimeTurnResult, TurnOutcome
+from core.runtime.models import AgentState, CheckpointTask, ExecutionBlueprint, ExecutionMode, ExternalSessionProviderConfig, PlanningMode, RuntimeTurnResult, TurnOutcome
 from core.tools.edit_file import EditFileTool
 from core.tools.inspect_symbols import InspectSymbolsTool
 from core.tools.list_directory import ListDirectoryTool
@@ -3832,6 +3832,39 @@ class DevenvKernelTest(unittest.TestCase):
                     call_id="call_1",
                     tool_name="list_directory",
                     arguments={"path": str(target), "mode": "recursive"},
+                )
+            )
+
+        self.assertTrue(step.success)
+        self.assertEqual(step.tool_name, "read_file")
+        self.assertEqual(step.arguments["path"], str(target.resolve()))
+        self.assertIn("read_file completed", step.output)
+
+    def test_execute_tool_call_for_explicit_file_checkpoint_ignores_directory_probe_and_reads_named_file(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            target = workspace / "core" / "runtime" / "web.py"
+            other_dir = workspace / "codereferences" / "codex" / "codex-rs" / "app-server-daemon" / "src" / "backend"
+            target.parent.mkdir(parents=True)
+            other_dir.mkdir(parents=True)
+            target.write_text("def boot_web():\n    return 'ok'\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.active_plan_prompt = "I want to integrate chat app to this codebase"
+            kernel.active_blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [ ] Inspect `core/runtime/web.py`",
+                tasks=[CheckpointTask(task_id=1, description="Inspect `core/runtime/web.py` to map the backend request surface.")],
+                active_task_pointer=0,
+            )
+
+            step = kernel._execute_tool_call(
+                ToolCallRequest(
+                    call_id="call_1",
+                    tool_name="list_directory",
+                    arguments={"path": str(other_dir), "mode": "recursive"},
                 )
             )
 
