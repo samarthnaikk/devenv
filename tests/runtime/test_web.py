@@ -10,7 +10,11 @@ from typing import Any
 from unittest import mock
 
 from core.ai.models import AIExecutedToolStep, AIResponse, ToolCallRequest
-from core.runtime.models import CheckpointTask, ExecutionBlueprint
+from core.runtime.models import (
+    DEFAULT_MAX_CONSECUTIVE_TOOLS,
+    CheckpointTask,
+    ExecutionBlueprint,
+)
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode, RunConfig
 from core.runtime.setup import inspect_setup
 from core.runtime.web import DevenvWebApp
@@ -319,6 +323,39 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(captured["planning_mode"], PlanningMode.FORCE_PLAN)
         self.assertTrue(captured["continue_plan"])
         self.assertTrue(captured["local_only"])
+
+    def test_run_turn_uses_shared_default_max_consecutive_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            captured: dict[str, object] = {}
+
+            def fake_execute_turn(
+                prompt,
+                max_consecutive_tools=5,
+                planning_mode=PlanningMode.AUTO,
+                continue_plan=False,
+                local_only=False,
+            ):
+                captured.update(
+                    {
+                        "prompt": prompt,
+                        "max_consecutive_tools": max_consecutive_tools,
+                    }
+                )
+                return type("Result", (), {"to_dict": lambda self: {"final_response": "ok"}})()
+
+            app.kernel.execute_turn = fake_execute_turn
+            result = app.run_turn("hello")
+
+        self.assertEqual(result["final_response"], "ok")
+        self.assertEqual(captured["prompt"], "hello")
+        self.assertEqual(
+            captured["max_consecutive_tools"], DEFAULT_MAX_CONSECUTIVE_TOOLS
+        )
 
     def test_run_turn_forwards_selected_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -780,6 +817,47 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertIsNone(result["error_message"])
         self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "inspect-web")
         self.assertEqual(result["usage_sample"]["total_tokens"], 10)
+
+    def test_run_plan_uses_shared_default_max_consecutive_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            chat_calls: list[dict[str, object]] = []
+
+            def fake_chat(
+                messages: list[dict[str, Any]],
+                memory_context: str | None = None,
+                temperature: float = 0.2,
+                tool_names=None,
+            ) -> AIResponse:
+                chat_calls.append({"messages": messages, "tool_names": tool_names})
+                return AIResponse(
+                    content=json.dumps(
+                        {
+                            "tasks": [
+                                {
+                                    "task_id": "inspect-chatapp",
+                                    "description": "Inspect chatapp backend files",
+                                    "level": 0,
+                                }
+                            ],
+                            "edges": [],
+                        }
+                    ),
+                    finish_reason="stop",
+                    usage={"total_tokens": 1},
+                    backend="ollama",
+                )
+
+            app.kernel.ai.chat = fake_chat
+            result = app.run_plan("plan chat app integration")
+
+        self.assertIsNone(result["error_message"])
+        self.assertEqual(app.config.max_consecutive_tools, DEFAULT_MAX_CONSECUTIVE_TOOLS)
+        self.assertEqual(len(chat_calls), 1)
 
     def test_run_plan_blocks_mutation_tools_and_recovers_with_valid_json(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

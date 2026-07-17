@@ -21,6 +21,7 @@ from .context_builder import ContextBuilderService
 from .kernel import DevenvKernel
 from .mcp_http import MCPHTTPServerManager, default_mcp_http_server_config
 from .models import (
+    DEFAULT_MAX_CONSECUTIVE_TOOLS,
     PlanningMode,
     PreparedPromptRequest,
     PrivacyModeState,
@@ -1265,7 +1266,11 @@ def main() -> int:
     )
     parser.add_argument("--db-path", default="memory.db")
     parser.add_argument("--vector-dir", default="vectors")
-    parser.add_argument("--max-consecutive-tools", type=int, default=5)
+    parser.add_argument(
+        "--max-consecutive-tools",
+        type=int,
+        default=DEFAULT_MAX_CONSECUTIVE_TOOLS,
+    )
     parser.add_argument(
         "--performance-mode", default="low", choices=("low", "medium", "high")
     )

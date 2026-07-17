@@ -6,7 +6,7 @@ from pathlib import Path
 from core.logging_utils import configure_logging
 
 from .kernel import DevenvKernel
-from .models import RunConfig, RuntimeTurnResult
+from .models import DEFAULT_MAX_CONSECUTIVE_TOOLS, RunConfig, RuntimeTurnResult
 from .tooling import build_runtime_tools
 
 
@@ -76,7 +76,11 @@ def main() -> int:
     parser.add_argument("workspace", nargs="?", default=".", help="Workspace path to sandbox the runtime within.")
     parser.add_argument("--db-path", default="memory.db")
     parser.add_argument("--vector-dir", default="vectors")
-    parser.add_argument("--max-consecutive-tools", type=int, default=5)
+    parser.add_argument(
+        "--max-consecutive-tools",
+        type=int,
+        default=DEFAULT_MAX_CONSECUTIVE_TOOLS,
+    )
     parser.add_argument("--performance-mode", default="medium", choices=("low", "medium", "high"))
     parser.add_argument("--log-level", default=None)
     args = parser.parse_args()

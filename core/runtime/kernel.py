@@ -27,8 +27,9 @@ from .metadata_stage import build_checkpoint_metadata
 from .models import (
     AgentState,
     CheckpointTask,
-    ExecutionMode,
+    DEFAULT_MAX_CONSECUTIVE_TOOLS,
     ExecutionBlueprint,
+    ExecutionMode,
     MemorySummary,
     PlanningMode,
     ProcessStage,
@@ -232,7 +233,7 @@ class DevenvKernel:
     def execute_turn(
         self,
         user_prompt: str,
-        max_consecutive_tools: int = 5,
+        max_consecutive_tools: int = DEFAULT_MAX_CONSECUTIVE_TOOLS,
         planning_mode: PlanningMode = PlanningMode.AUTO,
         continue_plan: bool = False,
         local_only: bool = False,

@@ -6,6 +6,8 @@ from typing import Any
 
 from .response_sanitizer import sanitize_response_text
 
+DEFAULT_MAX_CONSECUTIVE_TOOLS = 64
+
 
 class PlanningMode(Enum):
     AUTO = "auto"
@@ -276,7 +278,7 @@ class RunConfig:
     workspace_path: str
     db_path: str = "memory.db"
     vector_dir: str = "vectors"
-    max_consecutive_tools: int = 5
+    max_consecutive_tools: int = DEFAULT_MAX_CONSECUTIVE_TOOLS
     performance_mode: str = PerformanceMode.LOW.value
     no_memory: bool = False
     incognito: bool = False
