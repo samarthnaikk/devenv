@@ -604,7 +604,14 @@ class PlanningKernelTest(unittest.TestCase):
                 raw_plan_markdown="- [x] Create frontend folder\n- [ ] Add index.html\n- [ ] Add styles.css",
                 tasks=[
                     CheckpointTask(task_id=1, description="Create frontend folder", is_completed=True),
-                    CheckpointTask(task_id=2, description="Add index.html"),
+                    CheckpointTask(
+                        task_id=2,
+                        description="Add index.html",
+                        allowed_tool_names=("read_file", "write_file"),
+                        expects_mutation=True,
+                        requires_verification=True,
+                        verification_mode="code",
+                    ),
                     CheckpointTask(task_id=3, description="Add styles.css"),
                 ],
                 active_task_pointer=1,
@@ -618,6 +625,9 @@ class PlanningKernelTest(unittest.TestCase):
             )
 
         self.assertIn("All new files for this request must stay under: calendar/frontend", prompt)
+        self.assertIn("Allowed tools for this checkpoint: `read_file`, `write_file`", prompt)
+        self.assertIn("expects a real workspace mutation", prompt)
+        self.assertIn("Verification will run after completion using mode: code.", prompt)
         self.assertIn("Completed earlier: Create frontend folder", prompt)
         self.assertIn("Next after this: Add styles.css", prompt)
 

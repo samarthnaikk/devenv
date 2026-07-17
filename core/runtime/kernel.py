@@ -2861,6 +2861,15 @@ class DevenvKernel:
         ]
         if target_path_hint:
             lines.append(f"All new files for this request must stay under: {target_path_hint}")
+        if active_task and active_task.allowed_tool_names:
+            lines.append(
+                "Allowed tools for this checkpoint: "
+                + ", ".join(f"`{tool_name}`" for tool_name in active_task.allowed_tool_names)
+            )
+        if expects_mutation:
+            lines.append("This checkpoint expects a real workspace mutation before it can be considered complete.")
+        if active_task and active_task.requires_verification:
+            lines.append(f"Verification will run after completion using mode: {active_task.verification_mode}.")
         if plan_context:
             lines.append(plan_context)
         lines.append("Complete only this checkpoint, then stop.")
