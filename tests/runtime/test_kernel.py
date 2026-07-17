@@ -38,6 +38,7 @@ from core.tools.locate_files import LocateFilesTool
 from core.tools.manage_memory import ManageMemoryTool
 from core.tools.peek_lines import PeekLinesTool
 from core.tools.read_file import ReadFileTool
+from core.tools.run_diagnostics import RunDiagnosticsTool
 from core.tools.run_shell import RunShellTool
 from core.tools.search_text import SearchTextTool
 from core.tools.track_symbol import TrackSymbolTool
@@ -520,6 +521,7 @@ class DevenvKernelTest(unittest.TestCase):
                 ai_logs=[],
                 system_logs=[],
                 max_consecutive_tools=5,
+                tool_policy_events=[],
             )
 
         self.assertEqual(trace.summary, "Created ordered checkpoint blueprint")
@@ -1525,6 +1527,24 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("write_file", scope)
         self.assertIn("run_shell", scope)
         self.assertIn("read_file", scope)
+
+    def test_execution_tool_scope_adds_diagnostics_for_fix_and_verification_work(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(EditFileTool())
+            kernel.register_tool(WriteFileTool())
+            kernel.register_tool(RunDiagnosticsTool())
+
+            scope = kernel._resolve_execution_tool_scope(
+                "fix the backend validation regression",
+                "Update the validator and confirm the failing checks are clean",
+            )
+
+        self.assertIn("read_file", scope)
+        self.assertIn("edit_file", scope)
+        self.assertIn("run_diagnostics", scope)
 
     def test_local_only_mode_can_answer_from_external_tool_output_context(self) -> None:
         memory = FakeMemory()

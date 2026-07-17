@@ -55,6 +55,7 @@ DIRECT_REPO_SUMMARY_TOOLS = frozenset({"list_directory", "read_file", "peek_line
 WRITE_EXECUTION_TOOLS = frozenset({"write_file", "edit_file"})
 DELETE_EXECUTION_TOOLS = frozenset({"remove_file"})
 SHELL_EXECUTION_TOOLS = frozenset({"run_shell", "run_diagnostics", "audit_changes"})
+DIAGNOSTIC_EXECUTION_TOOLS = frozenset({"run_diagnostics", "audit_changes"})
 MEMORY_EXECUTION_TOOLS = frozenset({"manage_memory", "inspect_trace"})
 WEB_EXECUTION_TOOLS = frozenset({"web_search"})
 KNOWLEDGE_EXECUTION_TOOLS = frozenset({"knowledge_search"})
@@ -3278,6 +3279,9 @@ class DevenvKernel:
         if self._should_offer_memory_tools(lowered):
             scope.update(MEMORY_EXECUTION_TOOLS & available)
 
+        if execution_phase and self._should_offer_diagnostics_tools(lowered):
+            scope.update(DIAGNOSTIC_EXECUTION_TOOLS & available)
+
         if execution_phase and self._text_requires_mutation_tools(lowered):
             scope.discard("search_text")
             scope.update((WRITE_EXECUTION_TOOLS | DELETE_EXECUTION_TOOLS) & available)
@@ -3504,6 +3508,29 @@ class DevenvKernel:
                 "retrieval",
                 "episodic",
                 "working memory",
+            )
+        )
+
+    def _should_offer_diagnostics_tools(self, lowered_prompt: str) -> bool:
+        return any(
+            marker in lowered_prompt
+            for marker in (
+                "fix",
+                "bug",
+                "failing",
+                "failure",
+                "broken",
+                "error",
+                "regression",
+                "verify",
+                "validation",
+                "test",
+                "tests",
+                "lint",
+                "typecheck",
+                "types",
+                "diagnostic",
+                "diagnostics",
             )
         )
 
