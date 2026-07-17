@@ -30,7 +30,7 @@ from core.runtime.kernel import (
 )
 from core.runtime.local_model import FallbackLocalModel, SentenceTransformerLocalModel, load_local_small_model
 from core.runtime.local_router import LocalRouteDecision
-from core.runtime.models import ExecutionMode, ExternalSessionProviderConfig, PlanningMode, RuntimeTurnResult, TurnOutcome
+from core.runtime.models import CheckpointTask, ExecutionMode, ExternalSessionProviderConfig, PlanningMode, RuntimeTurnResult, TurnOutcome
 from core.tools.edit_file import EditFileTool
 from core.tools.inspect_symbols import InspectSymbolsTool
 from core.tools.list_directory import ListDirectoryTool
@@ -351,6 +351,29 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("read_file", scope)
         self.assertIn("list_directory", scope)
         self.assertIn("edit_file", scope)
+
+    def test_execution_scope_is_narrowed_by_checkpoint_allowed_tools(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(EditFileTool())
+            kernel.register_tool(WriteFileTool())
+
+            checkpoint = CheckpointTask(
+                task_id=1,
+                description="Add index.html",
+                allowed_tool_names=("write_file",),
+            )
+            scope = kernel._resolve_execution_tool_scope(
+                "complete the frontend for calendar in html css js",
+                "Add index.html",
+                checkpoint=checkpoint,
+            )
+
+        self.assertEqual(scope, ["write_file"])
 
     def test_repair_tool_arguments_maps_missing_file_to_unique_workspace_suffix_match(self) -> None:
         memory = FakeMemory()

@@ -2259,6 +2259,7 @@ class DevenvKernel:
             scoped_tool_names = self._resolve_execution_tool_scope(
                 user_prompt,
                 task.description,
+                checkpoint=task,
                 selected_tools=selected_tools,
             )
             execution_memory = self._resolve_execution_memory(
@@ -2632,13 +2633,21 @@ class DevenvKernel:
         user_prompt: str,
         task_description: str,
         *,
+        checkpoint: CheckpointTask | None = None,
         selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
     ) -> list[str]:
-        return self._tool_scope_for_prompt(
+        scoped = self._tool_scope_for_prompt(
             f"{user_prompt}\n{task_description}",
             selected_tools=selected_tools,
             execution_phase=True,
         )
+        if checkpoint is None or not checkpoint.allowed_tool_names:
+            return scoped
+        checkpoint_scope = {tool_name for tool_name in checkpoint.allowed_tool_names if tool_name in self.tools}
+        if not checkpoint_scope:
+            return scoped
+        narrowed = [tool_name for tool_name in scoped if tool_name in checkpoint_scope]
+        return narrowed or sorted(checkpoint_scope)
 
     def _resolve_execution_memory(self, *, user_prompt: str, task_description: str, memory_context: str) -> str:
         text = f"{user_prompt} {task_description}".lower()
