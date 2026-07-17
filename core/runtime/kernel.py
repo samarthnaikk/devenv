@@ -6,7 +6,7 @@ import os
 import re
 import time
 import uuid
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from difflib import get_close_matches
 from pathlib import Path
 from typing import Any
@@ -578,6 +578,7 @@ class DevenvKernel:
             ai_logs=ai_logs,
             system_logs=system_logs,
             max_consecutive_tools=max_consecutive_tools,
+            tool_policy_events=tool_policy_events,
         )
         stage_traces.append(creation_trace)
         self.active_blueprint = blueprint
@@ -977,6 +978,7 @@ class DevenvKernel:
         ai_logs: list[str],
         system_logs: list[str],
         max_consecutive_tools: int,
+        tool_policy_events: list[ToolPolicyEvent],
     ) -> tuple[ExecutionBlueprint, list[dict[str, Any]], StageTrace]:
         should_resume_plan = planning_mode is not PlanningMode.FORCE_DIRECT and (continue_plan or self._is_plan_continue_request(user_prompt))
         if should_resume_plan and self._can_continue_active_plan(user_prompt):
@@ -1013,6 +1015,7 @@ class DevenvKernel:
                     ai_logs=ai_logs,
                     system_logs=system_logs,
                     max_consecutive_tools=max_consecutive_tools,
+                    tool_policy_events=tool_policy_events,
                 )
             blueprint = self._parse_markdown_to_blueprint(planning_response or user_prompt, original_objective=user_prompt)
         else:
@@ -1029,13 +1032,39 @@ class DevenvKernel:
 
     def _build_direct_blueprint(self, user_prompt: str) -> ExecutionBlueprint:
         task = self._build_checkpoint_task(task_id=1, description=user_prompt, original_objective=user_prompt)
+        seeded_tasks = self._seed_direct_checkpoint_tasks(user_prompt, task)
         return ExecutionBlueprint(
-            raw_plan_markdown=f"- [ ] {user_prompt}",
+            raw_plan_markdown="\n".join(f"- [ ] {seed_task.description}" for seed_task in seeded_tasks),
             original_objective=user_prompt,
-            tasks=[task],
+            tasks=seeded_tasks,
             active_task_pointer=0,
             verification_passed=False,
         )
+
+    def _seed_direct_checkpoint_tasks(self, user_prompt: str, task: CheckpointTask) -> list[CheckpointTask]:
+        if task.expected_artifact == "chat":
+            return [task]
+        if not self._should_pre_split_direct_checkpoint(user_prompt, task):
+            return [task]
+
+        descriptions = self._decompose_checkpoint(task)
+        tasks: list[CheckpointTask] = []
+        for index, description in enumerate(descriptions, start=1):
+            child = self._build_checkpoint_task(
+                task_id=index,
+                description=description,
+                original_objective=user_prompt,
+                repair_origin_checkpoint_id=task.repair_origin_checkpoint_id,
+            )
+            if description.lower().startswith("inspect "):
+                child = replace(
+                    child,
+                    expects_mutation=False,
+                    requires_verification=False,
+                    verification_mode="chat",
+                )
+            tasks.append(child)
+        return tasks or [task]
 
     def _build_checkpoint_task(self, *, task_id: int, description: str, original_objective: str, repair_origin_checkpoint_id: int | None = None) -> CheckpointTask:
         target_path_hint = self._derive_scaffold_target_path(original_objective, description)
@@ -1476,6 +1505,22 @@ class DevenvKernel:
             f"Gather the context required for: {description}",
             f"Answer the request clearly for: {description}",
         ]
+
+    def _should_pre_split_direct_checkpoint(self, user_prompt: str, task: CheckpointTask) -> bool:
+        if not task.expects_mutation:
+            return False
+        lowered = user_prompt.lower()
+        compound_markers = (
+            " and ",
+            " then ",
+            " after that ",
+            " while ",
+            ", and ",
+        )
+        file_mentions = re.findall(r"\b[\w./-]+\.[a-z0-9]+\b", lowered)
+        if len(file_mentions) >= 2:
+            return True
+        return len(lowered.split()) >= 9 and any(marker in lowered for marker in compound_markers)
 
     def _run_direct_turn(
         self,
@@ -2283,6 +2328,7 @@ class DevenvKernel:
         ai_logs: list[str],
         system_logs: list[str],
         max_consecutive_tools: int,
+        tool_policy_events: list[ToolPolicyEvent],
     ) -> tuple[str | None, list[dict[str, Any]]]:
         planning_memory = _trim_memory_context(memory_context, PLANNING_MEMORY_CHAR_LIMIT)
         system_logs.append(f"Planning memory chars sent: {len(planning_memory)}")

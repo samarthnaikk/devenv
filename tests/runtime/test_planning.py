@@ -187,6 +187,20 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertIn("Blocked planning tool call: write_file", result.system_logs)
         self.assertEqual(result.blueprint.tasks[0].description, "Create main.py")
 
+    def test_direct_blueprint_pre_splits_compound_mutation_requests(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            blueprint = kernel._build_direct_blueprint(
+                "Update auth.py and api.py, then verify the login flow still works"
+            )
+
+        self.assertEqual(len(blueprint.tasks), 3)
+        self.assertTrue(blueprint.tasks[0].description.startswith("Inspect the files and dependencies needed for:"))
+        self.assertFalse(blueprint.tasks[0].expects_mutation)
+        self.assertEqual(blueprint.tasks[0].verification_mode, "chat")
+        self.assertTrue(blueprint.tasks[1].expects_mutation)
+        self.assertEqual(blueprint.tasks[2].verification_mode, "code")
+
     def test_verification_failure_resets_state_to_planning(self) -> None:
         ai = FakeAI(
             [
