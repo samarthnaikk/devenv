@@ -590,6 +590,21 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("generate_pdf", scope)
 
+    def test_run_diagnostics_defaults_target_to_active_workspace(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            repaired = kernel._repair_tool_arguments(
+                ToolCallRequest(
+                    call_id="diag-1",
+                    tool_name="run_diagnostics",
+                    arguments={"mode": "frontend"},
+                )
+            )
+
+        self.assertEqual(repaired["target_path"], str(Path(tempdir).resolve()))
+
     def test_generate_pdf_tool_arguments_repair_absolute_workspace_output_path(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])

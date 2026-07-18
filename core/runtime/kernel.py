@@ -4634,6 +4634,8 @@ class DevenvKernel:
                 repaired_path = self._repair_directory_path(path_value)
                 if repaired_path is not None:
                     arguments["path"] = repaired_path
+        if tool_call.tool_name == "run_diagnostics" and not arguments.get("target_path"):
+            arguments["target_path"] = self.workspace_path
         if tool_call.tool_name in {"read_file", "edit_file", "write_file", "remove_file"}:
             path_value = arguments.get("path")
             if isinstance(path_value, str):
