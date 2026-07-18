@@ -43,3 +43,26 @@ class ManageMemoryToolTest(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertIsNone(self.memory.store.get_node("proj_calendar"))
         self.assertIn("sync_state", result.data)
+
+    def test_update_mode_creates_manual_node_when_missing(self) -> None:
+        result = self.tool.execute(node_id="manual_fact", mode="update", text="Manual fact for later recall.")
+
+        self.assertTrue(result.success)
+        node = self.memory.store.get_node("manual_fact")
+        self.assertIsNotNone(node)
+        self.assertEqual(node.category, "manual")
+        self.assertEqual(node.label, "Manual Fact")
+        self.assertEqual(node.summary, "Manual fact for later recall.")
+
+    def test_update_mode_rejects_blank_text(self) -> None:
+        result = self.tool.execute(node_id="proj_calendar", mode="update", text="   ")
+
+        self.assertFalse(result.success)
+        self.assertIn("non-empty text", result.output)
+
+    def test_prune_mode_reports_missing_node_clearly(self) -> None:
+        result = self.tool.execute(node_id="missing_fact", mode="prune")
+
+        self.assertFalse(result.success)
+        self.assertFalse(result.data["deleted"])
+        self.assertEqual(result.output, "Memory node not found: missing_fact")

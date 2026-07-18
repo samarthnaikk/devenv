@@ -52,9 +52,10 @@ class ManageMemoryTool(BaseTool):
             if mode == "prune":
                 deleted = bool(self.memory.forget_node(node_id, strategy="prune"))
                 logger.info("Pruned memory node: node_id=%s deleted=%s", node_id, deleted)
+                output = f"manage_memory prune completed for {node_id}" if deleted else f"Memory node not found: {node_id}"
                 return ToolResult(
                     success=deleted,
-                    output=f"manage_memory prune completed for {node_id}",
+                    output=output,
                     data={
                         "node_id": node_id,
                         "mode": mode,
