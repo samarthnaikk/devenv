@@ -720,6 +720,16 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertGreaterEqual(len(blueprint.tasks), 10)
         self.assertTrue(any("Inspect `core/runtime/web.py`" in task.description for task in blueprint.tasks))
 
+    def test_local_plan_markdown_uses_single_checkpoint_for_pdf_artifact_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            plan = kernel._build_local_plan_markdown("Generate a PDF deployment report for the current release")
+
+        self.assertEqual(
+            plan,
+            "- [ ] Generate the requested PDF artifact and verify that the file was written successfully.",
+        )
+
     def test_repair_tool_arguments_defaults_list_directory_mode_to_recursive(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))

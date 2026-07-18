@@ -3994,8 +3994,11 @@ class DevenvKernel:
     def _build_local_plan_markdown(self, user_prompt: str) -> str:
         target_path = self._derive_scaffold_target_path(user_prompt) or ""
         lowered = user_prompt.lower()
+        expected_artifact = self._infer_expected_artifact(user_prompt, user_prompt, target_path or None)
         if self._is_backend_frontend_integration_request(user_prompt):
             return self._build_backend_frontend_integration_plan(user_prompt, target_path=target_path)
+        if expected_artifact == "document":
+            return "- [ ] Generate the requested PDF artifact and verify that the file was written successfully."
         if self._is_scaffold_request(lowered):
             html_path = f"{target_path}/index.html" if target_path else "index.html"
             css_path = f"{target_path}/styles.css" if target_path else "styles.css"
