@@ -16,6 +16,7 @@ from core.ai.models import AIExecutedToolStep, AIResponse, ToolCallRequest
 from core.env import load_dotenv
 from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
+from core.memory.models import RetrievalTrace
 from core.tools.base import BaseTool
 from core.tools._common import NOISE_DIRECTORIES
 
@@ -4975,6 +4976,7 @@ class DevenvKernel:
         lexical_context = self._retrieve_lexical_memory_context(user_prompt, search_query=lexical_query)
         if lexical_context:
             memory_context = lexical_context
+            self._persist_last_retrieval_trace(RetrievalTrace(markdown_context=memory_context))
             if self._can_skip_external_memory_fetch(user_prompt, memory_context=memory_context, local_only=local_only):
                 return memory_context, metadata
         elif not _should_skip_vector_memory_lookup(user_prompt):

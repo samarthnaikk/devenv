@@ -34,6 +34,7 @@ from core.runtime.local_router import LocalRouteDecision
 from core.runtime.models import AgentState, CheckpointTask, ExecutionBlueprint, ExecutionMode, ExternalSessionProviderConfig, PlanningMode, RuntimeTurnResult, TurnOutcome
 from core.tools.edit_file import EditFileTool
 from core.tools.generate_pdf import GeneratePDFTool
+from core.tools.inspect_trace import InspectTraceTool
 from core.tools.inspect_symbols import InspectSymbolsTool
 from core.tools.list_directory import ListDirectoryTool
 from core.tools.locate_files import LocateFilesTool
@@ -4913,6 +4914,46 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("Python backend", result.final_response or "")
         self.assertEqual(second_ai.chat_calls, [])
+
+    def test_lexical_memory_recall_persists_trace_for_future_inspection(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            first_memory = MemoryEngine(
+                db_path=f"{tempdir}/memory.db",
+                vector_dir=f"{tempdir}/vectors",
+                embedder=HashingEmbedder(dimension=8),
+                vector_index=InMemoryVectorIndex(),
+            )
+            first_memory.update_associative_tree(
+                {
+                    "node_id": "atlas_backend_fact",
+                    "label": "Atlas Backend Fact",
+                    "category": "project",
+                    "summary": "Project Atlas used FastAPI for the backend service.",
+                    "edges": (),
+                }
+            )
+
+            second_memory = MemoryEngine(
+                db_path=f"{tempdir}/memory.db",
+                vector_dir=f"{tempdir}/vectors",
+                embedder=HashingEmbedder(dimension=8),
+                vector_index=InMemoryVectorIndex(),
+            )
+            second_kernel = DevenvKernel(tempdir, memory=second_memory, ai=FakeAI([]))
+            second_kernel.local_router = _disabled_router()
+            result = second_kernel.execute_turn("What was the Atlas backend?")
+
+            third_memory = MemoryEngine(
+                db_path=f"{tempdir}/memory.db",
+                vector_dir=f"{tempdir}/vectors",
+                embedder=HashingEmbedder(dimension=8),
+                vector_index=InMemoryVectorIndex(),
+            )
+            trace_result = InspectTraceTool(third_memory).execute(mode="last_retrieval")
+
+        self.assertIn("FastAPI", result.final_response or "")
+        self.assertTrue(trace_result.success)
+        self.assertIn("Atlas Backend Fact", trace_result.data["trace"]["markdown_context"])
 
     def test_session_budget_blocks_future_turns_after_limit_is_reached(self) -> None:
         memory = FakeMemory()
