@@ -69,6 +69,25 @@ class MemoryEngineCoreTest(unittest.TestCase):
         workspace_node = self.engine.store.get_node(workspace_node_id)
         self.assertIsNotNone(workspace_node)
 
+    def test_add_episodic_log_still_persists_when_vector_indexing_fails(self) -> None:
+        def fail_index(*, log, interaction):  # noqa: ANN001,ARG001
+            raise RuntimeError("vector spill failure")
+
+        self.engine._index_episodic_log = fail_index  # type: ignore[method-assign]
+
+        log_id = self.engine.add_episodic_log(
+            "Inspect retrieval warning",
+            "The turn completed, but vector indexing failed.",
+            metadata={"workspace_path": self.tempdir.name},
+        )
+
+        logs = self.engine.store.list_logs_since(0.0)
+
+        self.assertEqual(logs[0].log_id, log_id)
+        payload = json.loads(logs[0].raw_interaction)
+        self.assertEqual(payload["user"], "Inspect retrieval warning")
+        self.assertIsNone(self.engine.store.get_node(f"episodic_{log_id}"))
+
     def test_update_associative_tree_refreshes_vector_summary(self) -> None:
         self.engine.update_associative_tree(
             {
