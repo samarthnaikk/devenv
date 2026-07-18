@@ -61,7 +61,7 @@ class ManageMemoryTool(BaseTool):
 
         if not isinstance(node_id, str) or not node_id.strip():
             return ToolResult(success=False, output="Missing required argument: node_id", data={})
-        if not isinstance(mode, str) or not mode.strip():
+        if not isinstance(mode, str) or mode not in self.supported_modes:
             mode = action
         if not isinstance(mode, str) or mode not in self.supported_modes:
             return ToolResult(success=False, output="Missing or unsupported argument: mode", data={})

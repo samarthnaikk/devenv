@@ -97,6 +97,17 @@ class ManageMemoryToolTest(unittest.TestCase):
         self.assertEqual(node.label, "Atlas Stack Fact")
         self.assertEqual(node.category, "manual")
 
+    def test_valid_action_wins_over_unsupported_mode(self) -> None:
+        result = self.tool.execute(
+            node_id="atlas_runtime_fact",
+            mode="code",
+            action="create",
+            text="Project Atlas runs locally.",
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["mode"], "create")
+
     def test_create_mode_rejects_existing_node(self) -> None:
         result = self.tool.execute(node_id="proj_calendar", mode="create", text="Duplicate fact.")
 
