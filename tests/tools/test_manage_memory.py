@@ -66,3 +66,45 @@ class ManageMemoryToolTest(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertFalse(result.data["deleted"])
         self.assertEqual(result.output, "Memory node not found: missing_fact")
+
+    def test_create_mode_creates_manual_node_explicitly(self) -> None:
+        result = self.tool.execute(
+            node_id="atlas_backend_fact",
+            mode="create",
+            label="Atlas Backend Fact",
+            category="project",
+            text="Project Atlas used FastAPI for the backend service.",
+        )
+
+        self.assertTrue(result.success)
+        node = self.memory.store.get_node("atlas_backend_fact")
+        self.assertIsNotNone(node)
+        self.assertEqual(node.label, "Atlas Backend Fact")
+        self.assertEqual(node.category, "project")
+        self.assertEqual(node.summary, "Project Atlas used FastAPI for the backend service.")
+        self.assertTrue(result.data["created"])
+
+    def test_create_mode_accepts_action_alias(self) -> None:
+        result = self.tool.execute(
+            node_id="atlas_stack_fact",
+            action="create",
+            text="Project Atlas used SQLite for local state.",
+        )
+
+        self.assertTrue(result.success)
+        node = self.memory.store.get_node("atlas_stack_fact")
+        self.assertIsNotNone(node)
+        self.assertEqual(node.label, "Atlas Stack Fact")
+        self.assertEqual(node.category, "manual")
+
+    def test_create_mode_rejects_existing_node(self) -> None:
+        result = self.tool.execute(node_id="proj_calendar", mode="create", text="Duplicate fact.")
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.output, "Memory node already exists: proj_calendar")
+
+    def test_create_mode_rejects_blank_text(self) -> None:
+        result = self.tool.execute(node_id="atlas_backend_fact", mode="create", text="   ")
+
+        self.assertFalse(result.success)
+        self.assertIn("non-empty text", result.output)
