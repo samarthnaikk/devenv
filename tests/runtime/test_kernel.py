@@ -4714,6 +4714,30 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("devenv-notes-studio", js_content)
         self.assertIn("notes behavior", first.final_response or "")
 
+    def test_local_only_weather_scaffold_uses_weather_specific_content(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(WriteFileTool())
+            prompt = "Create a tiny static HTML weather app in folder weatherapp with index.html, styles.css, and script.js."
+            result = kernel.execute_turn(
+                prompt,
+                planning_mode=PlanningMode.FORCE_PLAN,
+                local_only=True,
+            )
+
+            html_content = (Path(tempdir) / "weatherapp" / "index.html").read_text(encoding="utf-8")
+            js_content = (Path(tempdir) / "weatherapp" / "script.js").read_text(encoding="utf-8")
+
+        self.assertIsNotNone(result.blueprint)
+        self.assertIn("weather dashboard layout", result.blueprint.raw_plan_markdown)
+        self.assertEqual(result.state, AgentState.VERIFYING.name)
+        self.assertIn("Skyboard", html_content)
+        self.assertIn("forecastSets", js_content)
+        self.assertIn("weather behavior", result.final_response or "")
+
     def test_local_only_chatapp_integration_prompt_creates_backend_files_and_wires_surfaces(self) -> None:
         memory = FakeMemory()
         ai = ExplodingAI([])

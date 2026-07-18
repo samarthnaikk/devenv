@@ -3893,6 +3893,14 @@ class DevenvKernel:
                         f"- [ ] Add {js_path} with add, toggle, and render behavior for tasks.",
                     ]
                 )
+            if scaffold_kind == "weather":
+                return "\n".join(
+                    [
+                        f"- [ ] Create {html_path} with the weather dashboard layout and linked assets.",
+                        f"- [ ] Add {css_path} with the weather app styling.",
+                        f"- [ ] Add {js_path} with forecast card rendering and refresh behavior.",
+                    ]
+                )
             if scaffold_kind == "date":
                 return "\n".join(
                     [
@@ -4064,6 +4072,8 @@ class DevenvKernel:
                 return "Created the base HTML shell for the notes app and linked the local stylesheet and script."
             if scaffold_kind == "todo":
                 return "Created the base HTML shell for the task list app and linked the local stylesheet and script."
+            if scaffold_kind == "weather":
+                return "Created the base HTML shell for the weather dashboard and linked the local stylesheet and script."
             if scaffold_kind == "date":
                 return "Created the base HTML shell for the date display app and linked the local stylesheet and script."
             return "Created the base HTML shell for the local app and linked the local stylesheet and script."
@@ -4074,6 +4084,8 @@ class DevenvKernel:
                 return "Added the notes app styling layer with an editorial layout, composer panel, and note cards."
             if scaffold_kind == "todo":
                 return "Added the task list styling layer with a dashboard layout, controls, and checklist presentation."
+            if scaffold_kind == "weather":
+                return "Added the weather dashboard styling layer with forecast cards, status accents, and responsive panels."
             if scaffold_kind == "date":
                 return "Added the date card styling layer with a centered layout and clear typography."
             return "Added the local app styling layer for the generated interface."
@@ -4084,6 +4096,8 @@ class DevenvKernel:
                 return "Added the local JavaScript notes behavior for capture, persistence, and rendering."
             if scaffold_kind == "todo":
                 return "Added the local JavaScript task behavior for adding, toggling, and rendering tasks."
+            if scaffold_kind == "weather":
+                return "Added the local JavaScript weather behavior for rendering forecast cards and refreshing conditions."
             if scaffold_kind == "date":
                 return "Added the local JavaScript behavior to render today's date and refresh the display."
             return "Added the local JavaScript behavior for the generated app."
@@ -7691,6 +7705,8 @@ def _local_scaffold_kind(*texts: str) -> str:
         return "notes"
     if "todo app" in joined or "task list" in joined or ("todo" in joined and "app" in joined):
         return "todo"
+    if "weather app" in joined or "forecast" in joined or ("weather" in joined and "app" in joined):
+        return "weather"
     if any(marker in joined for marker in ("today's date", "todays date", "today date", "current date")):
         return "date"
     return "generic"
@@ -7703,6 +7719,8 @@ def _local_scaffold_html(scaffold_kind: str, target_path: str) -> str:
         return _local_notes_html()
     if scaffold_kind == "todo":
         return _local_todo_html()
+    if scaffold_kind == "weather":
+        return _local_weather_html()
     if scaffold_kind == "date":
         return _local_date_html()
     return _local_generic_html()
@@ -7715,6 +7733,8 @@ def _local_scaffold_css(scaffold_kind: str, *, dark_theme: bool = False) -> str:
         return _local_notes_css()
     if scaffold_kind == "todo":
         return _local_todo_css()
+    if scaffold_kind == "weather":
+        return _local_weather_css()
     if scaffold_kind == "date":
         return _local_date_css()
     return _local_generic_css()
@@ -7727,6 +7747,8 @@ def _local_scaffold_js(scaffold_kind: str) -> str:
         return _local_notes_js()
     if scaffold_kind == "todo":
         return _local_todo_js()
+    if scaffold_kind == "weather":
+        return _local_weather_js()
     if scaffold_kind == "date":
         return _local_date_js()
     return _local_generic_js()
@@ -7830,6 +7852,38 @@ def _local_todo_html() -> str:
           <p id="todo-count">0 tasks pending</p>
         </div>
         <ul id="todo-list" class="todo-list"></ul>
+      </section>
+    </main>
+    <script src="script.js"></script>
+  </body>
+</html>
+"""
+
+
+def _local_weather_html() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Skyboard</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="weather-app">
+      <section class="weather-hero">
+        <p class="weather-kicker">Static Forecast Demo</p>
+        <h1>Skyboard</h1>
+        <p id="weather-status">Clear planning weather for the next three checkpoints.</p>
+      </section>
+      <section class="weather-shell">
+        <div class="weather-current">
+          <p class="weather-city">San Francisco</p>
+          <h2 id="weather-temp">68°F</h2>
+          <p id="weather-summary">Mild breeze and bright skies.</p>
+          <button id="weather-refresh" type="button">Refresh outlook</button>
+        </div>
+        <div id="forecast-grid" class="forecast-grid"></div>
       </section>
     </main>
     <script src="script.js"></script>
@@ -8408,6 +8462,138 @@ body {
 """
 
 
+def _local_weather_css() -> str:
+    return """:root {
+  color-scheme: light;
+  --bg: #e7f0fb;
+  --panel: rgba(255, 255, 255, 0.94);
+  --panel-strong: rgba(244, 249, 255, 0.96);
+  --border: #bfd1e8;
+  --text: #14314f;
+  --muted: #5a7391;
+  --accent: #1b78d0;
+  --sun: #f59e0b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(27, 120, 208, 0.16), transparent 30%),
+    linear-gradient(180deg, #edf5fd 0%, #dbe9f8 100%);
+  color: var(--text);
+}
+
+.weather-app {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 52px 24px 72px;
+}
+
+.weather-kicker {
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.weather-hero h1,
+.weather-hero p {
+  margin: 0;
+}
+
+.weather-shell {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  gap: 22px;
+  margin-top: 28px;
+}
+
+.weather-current,
+.forecast-card {
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--panel);
+  box-shadow: 0 18px 44px rgba(26, 66, 110, 0.1);
+}
+
+.weather-current {
+  padding: 24px;
+}
+
+.weather-city {
+  margin: 0;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+}
+
+.weather-current h2 {
+  margin: 12px 0 8px;
+  font-size: 56px;
+}
+
+.weather-current button {
+  margin-top: 18px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  padding: 12px 18px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.forecast-card {
+  padding: 18px;
+  background: var(--panel-strong);
+}
+
+.forecast-card h3,
+.forecast-card p {
+  margin: 0;
+}
+
+.forecast-card h3 {
+  margin-bottom: 10px;
+}
+
+.forecast-card .forecast-temp {
+  margin: 10px 0 6px;
+  font-size: 28px;
+  color: var(--accent);
+}
+
+.forecast-card .forecast-icon {
+  color: var(--sun);
+}
+
+@media (max-width: 760px) {
+  .weather-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .forecast-grid {
+    grid-template-columns: 1fr;
+  }
+}
+"""
+
+
 def _local_date_css() -> str:
     return """:root {
   color-scheme: light;
@@ -8748,6 +8934,68 @@ form.addEventListener("submit", (event) => {
 });
 
 renderTasks();
+"""
+
+
+def _local_weather_js() -> str:
+    return """const forecastGrid = document.getElementById("forecast-grid");
+const refreshButton = document.getElementById("weather-refresh");
+const weatherStatus = document.getElementById("weather-status");
+const weatherTemp = document.getElementById("weather-temp");
+const weatherSummary = document.getElementById("weather-summary");
+
+const forecastSets = [
+  [
+    { day: "Today", icon: "Sun", temp: "68°F", summary: "Clear skies" },
+    { day: "Sunday", icon: "Cloud", temp: "64°F", summary: "Coastal clouds" },
+    { day: "Monday", icon: "Breeze", temp: "66°F", summary: "Windy afternoon" },
+  ],
+  [
+    { day: "Today", icon: "Sun", temp: "71°F", summary: "Warmer downtown" },
+    { day: "Sunday", icon: "Mist", temp: "63°F", summary: "Fog before noon" },
+    { day: "Monday", icon: "Rain", temp: "61°F", summary: "Light showers" },
+  ],
+];
+
+let activeSet = 0;
+
+function renderForecast() {
+  const forecast = forecastSets[activeSet];
+  const current = forecast[0];
+  forecastGrid.innerHTML = "";
+  weatherTemp.textContent = current.temp;
+  weatherSummary.textContent = current.summary;
+  weatherStatus.textContent = `Updated ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+
+  forecast.forEach((entry) => {
+    const card = document.createElement("article");
+    card.className = "forecast-card";
+
+    const heading = document.createElement("h3");
+    heading.textContent = entry.day;
+
+    const icon = document.createElement("p");
+    icon.className = "forecast-icon";
+    icon.textContent = entry.icon;
+
+    const temp = document.createElement("p");
+    temp.className = "forecast-temp";
+    temp.textContent = entry.temp;
+
+    const summary = document.createElement("p");
+    summary.textContent = entry.summary;
+
+    card.append(heading, icon, temp, summary);
+    forecastGrid.appendChild(card);
+  });
+}
+
+refreshButton.addEventListener("click", () => {
+  activeSet = (activeSet + 1) % forecastSets.length;
+  renderForecast();
+});
+
+renderForecast();
 """
 
 
