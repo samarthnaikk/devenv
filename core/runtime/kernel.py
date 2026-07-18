@@ -163,6 +163,8 @@ class DevenvKernel:
         self._last_consolidation_wall_time = 0.0
         self._exact_logged_answer_cache: dict[str, str | None] = {}
         self.session_usage_totals: dict[str, int] = {}
+        self._runtime_state_path = str(Path(self.workspace_path) / ".devenv-runtime-state.json")
+        self._load_runtime_state()
 
     def register_tool(self, tool: BaseTool) -> None:
         self.tools[tool.name] = tool
@@ -194,6 +196,7 @@ class DevenvKernel:
         self.active_blueprint = None
         self.active_plan_prompt = None
         self.state = AgentState.PLANNING
+        self._save_runtime_state()
         return had_active_plan
 
     @property
@@ -910,6 +913,7 @@ class DevenvKernel:
         execution_mode: str | None = None,
         turn_outcome: str = TurnOutcome.SUCCESS.value,
     ) -> RuntimeTurnResult:
+        self._save_runtime_state()
         return RuntimeTurnResult(
             final_response=final_response,
             steps=steps,
@@ -928,6 +932,91 @@ class DevenvKernel:
             memory_summary=self._build_memory_summary(memory_context, metadata),
             tool_policy_events=list(tool_policy_events or []),
             repair_state=self._build_repair_state(self.active_blueprint),
+        )
+
+    def _load_runtime_state(self) -> None:
+        state_path = Path(self._runtime_state_path)
+        if not state_path.exists():
+            return
+        try:
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            logger.warning("Failed to load runtime state: path=%s", state_path, exc_info=True)
+            return
+        if not isinstance(payload, dict):
+            return
+        blueprint_payload = payload.get("active_blueprint")
+        if isinstance(blueprint_payload, dict):
+            self.active_blueprint = self._blueprint_from_dict(blueprint_payload)
+        active_plan_prompt = payload.get("active_plan_prompt")
+        if isinstance(active_plan_prompt, str) and active_plan_prompt.strip():
+            self.active_plan_prompt = active_plan_prompt
+        state_name = payload.get("state")
+        if isinstance(state_name, str):
+            try:
+                self.state = AgentState[state_name]
+            except KeyError:
+                logger.debug("Ignoring unknown persisted agent state: %s", state_name)
+
+    def _save_runtime_state(self) -> None:
+        state_path = Path(self._runtime_state_path)
+        payload = {
+            "active_blueprint": self.active_blueprint.to_dict() if self.active_blueprint is not None else None,
+            "active_plan_prompt": self.active_plan_prompt,
+            "state": self.state.name,
+        }
+        try:
+            state_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        except OSError:
+            logger.warning("Failed to save runtime state: path=%s", state_path, exc_info=True)
+
+    def _blueprint_from_dict(self, payload: dict[str, Any]) -> ExecutionBlueprint:
+        tasks_payload = payload.get("tasks")
+        tasks: list[CheckpointTask] = []
+        if isinstance(tasks_payload, list):
+            for item in tasks_payload:
+                if not isinstance(item, dict):
+                    continue
+                task_id = item.get("task_id")
+                description = item.get("description")
+                if not isinstance(task_id, int) or not isinstance(description, str):
+                    continue
+                child_ids = item.get("child_checkpoint_ids")
+                child_checkpoint_ids = tuple(
+                    child_id for child_id in child_ids if isinstance(child_id, int)
+                ) if isinstance(child_ids, list) else ()
+                allowed_tool_names_raw = item.get("allowed_tool_names")
+                allowed_tool_names = tuple(
+                    tool_name for tool_name in allowed_tool_names_raw if isinstance(tool_name, str)
+                ) if isinstance(allowed_tool_names_raw, list) else ()
+                tasks.append(
+                    CheckpointTask(
+                        task_id=task_id,
+                        description=description,
+                        objective=item.get("objective") if isinstance(item.get("objective"), str) else None,
+                        target_path_hint=item.get("target_path_hint") if isinstance(item.get("target_path_hint"), str) else None,
+                        expected_artifact=item.get("expected_artifact") if isinstance(item.get("expected_artifact"), str) else "chat",
+                        verification_mode=item.get("verification_mode") if isinstance(item.get("verification_mode"), str) else "chat",
+                        repair_origin_checkpoint_id=item.get("repair_origin_checkpoint_id") if isinstance(item.get("repair_origin_checkpoint_id"), int) else None,
+                        status_reason=item.get("status_reason") if isinstance(item.get("status_reason"), str) else None,
+                        output_destination=item.get("output_destination") if isinstance(item.get("output_destination"), str) else None,
+                        child_checkpoint_ids=child_checkpoint_ids,
+                        is_completed=bool(item.get("is_completed")),
+                        execution_trace_log=item.get("execution_trace_log") if isinstance(item.get("execution_trace_log"), str) else None,
+                        allowed_tool_names=allowed_tool_names,
+                        expects_mutation=bool(item.get("expects_mutation")),
+                        requires_verification=bool(item.get("requires_verification")),
+                        repair_attempt_count=item.get("repair_attempt_count") if isinstance(item.get("repair_attempt_count"), int) else 0,
+                        max_repair_attempts=item.get("max_repair_attempts") if isinstance(item.get("max_repair_attempts"), int) else 1,
+                    )
+                )
+        active_task_pointer = payload.get("active_task_pointer")
+        return ExecutionBlueprint(
+            raw_plan_markdown=payload.get("raw_plan_markdown") if isinstance(payload.get("raw_plan_markdown"), str) else "",
+            original_objective=payload.get("original_objective") if isinstance(payload.get("original_objective"), str) else None,
+            tasks=tasks,
+            active_task_pointer=active_task_pointer if isinstance(active_task_pointer, int) else 0,
+            verification_passed=bool(payload.get("verification_passed")),
         )
 
     def _selected_tool_policy_events(
