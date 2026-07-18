@@ -40,3 +40,9 @@ class PeekLinesToolTest(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertIn("start and end", result.output)
+
+    def test_range_mode_rejects_start_past_end_of_file(self) -> None:
+        result = self.tool.execute(path=str(FIXTURE_FILE), mode="range", start=100, end=102)
+
+        self.assertFalse(result.success)
+        self.assertIn("exceeds file length", result.output)
