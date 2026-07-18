@@ -75,13 +75,13 @@ class InspectSymbolsTool(BaseTool):
                         "type": "class",
                         "name": node.name,
                         "line": node.lineno,
-                        "methods": [child.name for child in node.body if isinstance(child, ast.FunctionDef)],
+                        "methods": [child.name for child in node.body if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))],
                     }
                 )
-            elif isinstance(node, ast.FunctionDef):
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 symbols.append(
                     {
-                        "type": "function",
+                        "type": "async function" if isinstance(node, ast.AsyncFunctionDef) else "function",
                         "name": node.name,
                         "line": node.lineno,
                         "signature": self._signature_string(node),
@@ -92,12 +92,13 @@ class InspectSymbolsTool(BaseTool):
     def _signatures(self, tree: ast.AST) -> list[dict[str, object]]:
         signatures: list[dict[str, object]] = []
         for node in ast.walk(tree):
-            if not isinstance(node, ast.FunctionDef):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             signatures.append(
                 {
                     "name": node.name,
                     "line": node.lineno,
+                    "async": isinstance(node, ast.AsyncFunctionDef),
                     "parameters": [self._parameter_payload(argument) for argument in node.args.args],
                     "returns": ast.unparse(node.returns) if node.returns is not None else None,
                 }
@@ -117,17 +118,18 @@ class InspectSymbolsTool(BaseTool):
                 if doc:
                     docs.append({"scope": "class", "name": node.name, "docstring": doc})
                 for child in node.body:
-                    if isinstance(child, ast.FunctionDef):
+                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         method_doc = ast.get_docstring(child)
                         if method_doc:
                             docs.append({"scope": "method", "name": f"{node.name}.{child.name}", "docstring": method_doc})
-            elif isinstance(node, ast.FunctionDef):
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 doc = ast.get_docstring(node)
                 if doc:
-                    docs.append({"scope": "function", "name": node.name, "docstring": doc})
+                    scope = "async function" if isinstance(node, ast.AsyncFunctionDef) else "function"
+                    docs.append({"scope": scope, "name": node.name, "docstring": doc})
         return docs
 
-    def _signature_string(self, node: ast.FunctionDef) -> str:
+    def _signature_string(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
         arguments = [self._parameter_text(argument) for argument in node.args.args]
         returns = f" -> {ast.unparse(node.returns)}" if node.returns is not None else ""
         return f"{node.name}({', '.join(arguments)}){returns}"

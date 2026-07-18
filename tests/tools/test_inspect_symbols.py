@@ -51,3 +51,29 @@ class InspectSymbolsToolTest(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertIn("Invalid Python syntax", result.output)
+
+    def test_async_functions_and_methods_are_included(self) -> None:
+        with tempfile.TemporaryDirectory(dir=FIXTURE_FILE.parents[3]) as tempdir:
+            target = Path(tempdir) / "async_demo.py"
+            target.write_text(
+                'class Runner:\n'
+                '    async def ping(self, value: int) -> str:\n'
+                '        """Ping the runner."""\n'
+                '        return str(value)\n\n'
+                'async def orchestrate(task: str) -> str:\n'
+                '    """Run orchestration."""\n'
+                '    return task\n',
+                encoding="utf-8",
+            )
+
+            outline = self.tool.execute(path=str(target), mode="outline")
+            signatures = self.tool.execute(path=str(target), mode="signatures")
+            documentation = self.tool.execute(path=str(target), mode="documentation")
+
+        self.assertTrue(outline.success)
+        self.assertIn("ping", outline.data["symbols"][0]["methods"])
+        async_functions = [symbol for symbol in outline.data["symbols"] if symbol["type"] == "async function"]
+        self.assertEqual(async_functions[0]["name"], "orchestrate")
+        self.assertTrue(signatures.success)
+        self.assertTrue(any(signature["name"] == "ping" and signature["async"] for signature in signatures.data["signatures"]))
+        self.assertTrue(any(doc["scope"] == "async function" and doc["name"] == "orchestrate" for doc in documentation.data["documentation"]))

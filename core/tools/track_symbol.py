@@ -133,6 +133,8 @@ class TrackSymbolTool(BaseTool):
             return {"kind": "class", "name": symbol, "line": node.lineno}
         if isinstance(node, ast.FunctionDef) and node.name == symbol:
             return {"kind": "function", "name": symbol, "line": node.lineno}
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == symbol:
+            return {"kind": "async function", "name": symbol, "line": node.lineno}
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id == symbol:

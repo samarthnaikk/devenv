@@ -40,3 +40,18 @@ class TrackSymbolToolTest(unittest.TestCase):
         self.assertEqual(result.data["matches"][0]["relative_path"], "good.py")
         self.assertEqual(len(result.data["skipped_files"]), 1)
         self.assertEqual(result.data["skipped_files"][0]["relative_path"], "broken.py")
+
+    def test_definitions_mode_finds_async_functions(self) -> None:
+        with tempfile.TemporaryDirectory(dir=FIXTURE_ROOT.parent) as tempdir:
+            root = Path(tempdir)
+            (root / "async_demo.py").write_text(
+                "async def orchestrate(task: str) -> str:\n"
+                "    return task\n",
+                encoding="utf-8",
+            )
+
+            result = self.tool.execute(path=str(root), symbol="orchestrate", mode="definitions")
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["count"], 1)
+        self.assertEqual(result.data["matches"][0]["kind"], "async function")
