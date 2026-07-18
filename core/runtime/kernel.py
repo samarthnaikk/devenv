@@ -2547,6 +2547,7 @@ class DevenvKernel:
             task = working_blueprint.tasks[index]
             working_blueprint = _set_active_task(working_blueprint, index)
             self.active_blueprint = working_blueprint
+            checkpoint_step_start = len(steps)
             system_logs.append(f"Current checkpoint {index + 1}/{len(working_blueprint.tasks)}: {task.description}")
             scoped_tool_names = self._resolve_execution_tool_scope(
                 user_prompt,
@@ -2605,6 +2606,11 @@ class DevenvKernel:
             )
 
             while True:
+                checkpoint_has_successful_mutation = any(
+                    step.success and step.tool_name in (*WRITE_EXECUTION_TOOLS, *DELETE_EXECUTION_TOOLS)
+                    for step in steps[checkpoint_step_start:]
+                )
+                checkpoint_has_failed_step = any(not step.success for step in steps[checkpoint_step_start:])
                 if deterministic_tool_call is not None:
                     tool_iterations += 1
                     if tool_iterations > max_consecutive_tools:
@@ -2673,7 +2679,8 @@ class DevenvKernel:
                         system_logs.append(f"Checkpoint {index + 1} completed after successful inspection")
                         break
                     if checkpoint_requires_mutation and not any(
-                        step.tool_name in (*WRITE_EXECUTION_TOOLS, *DELETE_EXECUTION_TOOLS) for step in converted_steps
+                        step.success and step.tool_name in (*WRITE_EXECUTION_TOOLS, *DELETE_EXECUTION_TOOLS)
+                        for step in converted_steps
                     ):
                         ai_logs.append(f"Checkpoint requires mutation before completion: {task.description}")
                         system_logs.append(f"Checkpoint {index + 1} requires a file mutation tool before completion")
@@ -2784,7 +2791,9 @@ class DevenvKernel:
                     step_conversation.append(_tool_message(tool_call.call_id, tool_call.tool_name, step.output))
                     continue
 
-                if checkpoint_requires_mutation and tool_iterations == 0:
+                if checkpoint_requires_mutation and not checkpoint_has_successful_mutation and (
+                    tool_iterations == 0 or checkpoint_has_failed_step
+                ):
                     ai_logs.append(f"Checkpoint requires mutation before completion: {task.description}")
                     system_logs.append(f"Checkpoint {index + 1} requires a file mutation tool before completion")
                     step_conversation.append(
@@ -2804,9 +2813,10 @@ class DevenvKernel:
                             ),
                         }
                     )
-                    tool_iterations += 1
-                    if tool_iterations > max_consecutive_tools:
-                        raise RuntimeError("Execution tool limit reached before the checkpoint completed.")
+                    if tool_iterations == 0:
+                        tool_iterations += 1
+                        if tool_iterations > max_consecutive_tools:
+                            raise RuntimeError("Execution tool limit reached before the checkpoint completed.")
                     continue
 
                 final_response = ai_response.content or final_response
@@ -3144,12 +3154,19 @@ class DevenvKernel:
             "frontend integration",
         )
         file_markers = ("folder", "file")
+        app_markers = ("app", "website", "page", "dashboard")
         if any(marker in text for marker in backend_markers) and not any(marker in text for marker in non_backend_markers):
             return False
         scaffold_match = (
             any(marker in text for marker in creation_markers)
             and any(marker in text for marker in frontend_markers)
-            and any(marker in text for marker in file_markers)
+            and (
+                any(marker in text for marker in file_markers)
+                or (
+                    any(marker in text for marker in app_markers)
+                    and _local_scaffold_kind(text) in {"notes", "todo", "weather", "date"}
+                )
+            )
         ) or any(marker in text for marker in non_backend_markers)
         if scaffold_match:
             return True
@@ -4546,6 +4563,13 @@ class DevenvKernel:
             candidate = explicit_folder_match.group(1).strip("/")
             if candidate and candidate not in {"in", "inside", "under"}:
                 return candidate
+        scaffold_kind = _local_scaffold_kind(user_prompt, task_description)
+        if scaffold_kind == "notes":
+            return "notesapp"
+        if scaffold_kind == "weather":
+            return "weatherapp"
+        if scaffold_kind == "date":
+            return "dateapp"
         return None
 
     def _repair_scaffold_path(self, requested_path: str, target_path_hint: str) -> str | None:

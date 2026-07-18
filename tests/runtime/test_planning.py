@@ -800,6 +800,91 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertIn("requires a file mutation tool before completion", "\n".join(result.system_logs))
         self.assertEqual(result.final_response, "Created index.html.")
 
+    def test_mutation_checkpoint_stays_open_after_failed_non_mutation_tool(self) -> None:
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCallRequest(
+                            call_id="call-1",
+                            tool_name="list_directory",
+                            arguments={"path": "/workspace", "mode": "flat"},
+                        ),
+                    ),
+                    finish_reason="tool_calls",
+                    usage={},
+                ),
+                AIResponse(
+                    content="Please work in the allowed workspace instead.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+                AIResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCallRequest(
+                            call_id="call-2",
+                            tool_name="write_file",
+                            arguments={
+                                "path": "notesapp/index.html",
+                                "content": "<!doctype html><title>Notes</title>",
+                                "mode": "fresh",
+                            },
+                        ),
+                    ),
+                    finish_reason="tool_calls",
+                    usage={},
+                ),
+                AIResponse(
+                    content="Created the notes app shell.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={},
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(FakeWriteTool())
+            blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [ ] Apply the requested update inside the matching file or folder.",
+                original_objective="Create a tiny notes app with html css js",
+                tasks=[
+                    CheckpointTask(
+                        task_id=1,
+                        description="Apply the requested update inside the matching file or folder.",
+                        target_path_hint="notesapp",
+                        expected_artifact="frontend",
+                        verification_mode="frontend",
+                        allowed_tool_names=("list_directory", "write_file"),
+                        expects_mutation=True,
+                        requires_verification=True,
+                    )
+                ],
+                active_task_pointer=0,
+            )
+            final_response, plan_complete = kernel._run_execution_phase(
+                user_prompt="Create a tiny notes app with html css js",
+                memory_context="",
+                blueprint=blueprint,
+                conversation=[],
+                steps=[],
+                total_usage={},
+                ai_logs=[],
+                system_logs=[],
+                max_consecutive_tools=6,
+                planning_mode=PlanningMode.FORCE_PLAN,
+            )
+
+        self.assertTrue(plan_complete)
+        self.assertEqual(final_response, "Created the notes app shell.")
+        self.assertEqual(len(kernel.active_blueprint.tasks), 1)
+        self.assertTrue(kernel.active_blueprint.tasks[0].is_completed)
+
     def test_build_execution_prompt_includes_target_path_and_checkpoint_context(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))

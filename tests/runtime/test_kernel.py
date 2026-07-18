@@ -4937,6 +4937,14 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(target, "demoapp")
 
+    def test_scaffold_target_path_defaults_notes_app_without_explicit_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+            target = kernel._derive_scaffold_target_path("Create a tiny notes app with html css js")
+
+        self.assertEqual(target, "notesapp")
+
     def test_deterministic_scaffold_marks_backend_used_local(self) -> None:
         memory = FakeMemory()
         ai = ExplodingAI([])
