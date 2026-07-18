@@ -73,6 +73,26 @@ class GeneratePDFToolTest(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.data["image_references"][0]["title"], "Chat UI mockup")
 
+    def test_execute_rejects_parent_traversal_output_path(self) -> None:
+        result = GeneratePDFTool().execute(
+            title="Demo PDF",
+            output_path="../escaped.pdf",
+            sections=[{"heading": "Summary", "body": "Professional output."}],
+        )
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.data["status"], "invalid_input")
+
+    def test_execute_rejects_absolute_output_path(self) -> None:
+        result = GeneratePDFTool().execute(
+            title="Demo PDF",
+            output_path="/tmp/escaped.pdf",
+            sections=[{"heading": "Summary", "body": "Professional output."}],
+        )
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.data["status"], "invalid_input")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3868,11 +3868,44 @@ class DevenvKernel:
             html_path = f"{target_path}/index.html" if target_path else "index.html"
             css_path = f"{target_path}/styles.css" if target_path else "styles.css"
             js_path = f"{target_path}/script.js" if target_path else "script.js"
+            scaffold_kind = _local_scaffold_kind(user_prompt)
+            if scaffold_kind == "calendar":
+                return "\n".join(
+                    [
+                        f"- [ ] Create {html_path} with the base calendar layout and linked assets.",
+                        f"- [ ] Add {css_path} with the calendar styling.",
+                        f"- [ ] Add {js_path} with month navigation and date rendering.",
+                    ]
+                )
+            if scaffold_kind == "notes":
+                return "\n".join(
+                    [
+                        f"- [ ] Create {html_path} with the notes workspace layout and linked assets.",
+                        f"- [ ] Add {css_path} with the notes app styling.",
+                        f"- [ ] Add {js_path} with note capture, persistence, and rendering behavior.",
+                    ]
+                )
+            if scaffold_kind == "todo":
+                return "\n".join(
+                    [
+                        f"- [ ] Create {html_path} with the task list layout and linked assets.",
+                        f"- [ ] Add {css_path} with the todo app styling.",
+                        f"- [ ] Add {js_path} with add, toggle, and render behavior for tasks.",
+                    ]
+                )
+            if scaffold_kind == "date":
+                return "\n".join(
+                    [
+                        f"- [ ] Create {html_path} with the date display layout and linked assets.",
+                        f"- [ ] Add {css_path} with the date card styling.",
+                        f"- [ ] Add {js_path} with today's date rendering behavior.",
+                    ]
+                )
             return "\n".join(
                 [
-                    f"- [ ] Create {html_path} with the base calendar layout and linked assets.",
-                    f"- [ ] Add {css_path} with the calendar styling.",
-                    f"- [ ] Add {js_path} with month navigation and date rendering.",
+                    f"- [ ] Create {html_path} with the base app shell and linked assets.",
+                    f"- [ ] Add {css_path} with the app styling.",
+                    f"- [ ] Add {js_path} with the requested client-side behavior.",
                 ]
             )
 
@@ -3949,15 +3982,16 @@ class DevenvKernel:
             file_name: str | None = None
             content: str | None = None
             wants_dark_theme = any(token in lowered_prompt or token in lowered_task for token in ("dark theme", "dark mode"))
+            scaffold_kind = _local_scaffold_kind(user_prompt, task_description)
             if "index.html" in lowered_task or ("html" in lowered_task and "calendar" in lowered_prompt):
                 file_name = "index.html"
-                content = _local_calendar_html(target_path)
+                content = _local_scaffold_html(scaffold_kind, target_path)
             elif "styles.css" in lowered_task or ("css" in lowered_task and "calendar" in lowered_prompt):
                 file_name = "styles.css"
-                content = _local_calendar_css(dark_theme=wants_dark_theme)
+                content = _local_scaffold_css(scaffold_kind, dark_theme=wants_dark_theme)
             elif "script.js" in lowered_task or ("javascript" in lowered_task) or ("js" in lowered_task and "calendar" in lowered_prompt):
                 file_name = "script.js"
-                content = _local_calendar_js()
+                content = _local_scaffold_js(scaffold_kind)
 
             if file_name and content is not None:
                 relative_path = str(target_root / file_name).replace("\\", "/")
@@ -4022,12 +4056,37 @@ class DevenvKernel:
 
     def _build_local_checkpoint_response(self, user_prompt: str, task_description: str, execution_memory: str) -> str:
         lowered_task = task_description.lower()
+        scaffold_kind = _local_scaffold_kind(user_prompt, task_description)
         if "index.html" in lowered_task:
-            return "Created the base HTML shell for the calendar frontend and linked the local stylesheet and script."
+            if scaffold_kind == "calendar":
+                return "Created the base HTML shell for the calendar frontend and linked the local stylesheet and script."
+            if scaffold_kind == "notes":
+                return "Created the base HTML shell for the notes app and linked the local stylesheet and script."
+            if scaffold_kind == "todo":
+                return "Created the base HTML shell for the task list app and linked the local stylesheet and script."
+            if scaffold_kind == "date":
+                return "Created the base HTML shell for the date display app and linked the local stylesheet and script."
+            return "Created the base HTML shell for the local app and linked the local stylesheet and script."
         if "styles.css" in lowered_task:
-            return "Added the calendar styling layer with a responsive layout, panels, and day grid presentation."
+            if scaffold_kind == "calendar":
+                return "Added the calendar styling layer with a responsive layout, panels, and day grid presentation."
+            if scaffold_kind == "notes":
+                return "Added the notes app styling layer with an editorial layout, composer panel, and note cards."
+            if scaffold_kind == "todo":
+                return "Added the task list styling layer with a dashboard layout, controls, and checklist presentation."
+            if scaffold_kind == "date":
+                return "Added the date card styling layer with a centered layout and clear typography."
+            return "Added the local app styling layer for the generated interface."
         if "script.js" in lowered_task:
-            return "Added the local JavaScript calendar behavior for month navigation and day rendering."
+            if scaffold_kind == "calendar":
+                return "Added the local JavaScript calendar behavior for month navigation and day rendering."
+            if scaffold_kind == "notes":
+                return "Added the local JavaScript notes behavior for capture, persistence, and rendering."
+            if scaffold_kind == "todo":
+                return "Added the local JavaScript task behavior for adding, toggling, and rendering tasks."
+            if scaffold_kind == "date":
+                return "Added the local JavaScript behavior to render today's date and refresh the display."
+            return "Added the local JavaScript behavior for the generated app."
         if "main.py" in lowered_task:
             return "Created calendar/main.py so it prints today's date using Python's datetime module."
         if "chatapp/" in lowered_task or "core/runtime/web.py" in lowered_task or "core/ai/routing.py" in lowered_task or "interface/website/src/" in lowered_task:
@@ -4460,15 +4519,15 @@ class DevenvKernel:
             if suffix in {".html", ".css", ".js", ".py"}:
                 return str(Path(candidate).parent).replace("\\", "/")
             return candidate
-        explicit_folder_match = re.search(r"\bfolder\s+([a-z0-9_/-]+)\b", prompt_text)
-        if explicit_folder_match:
-            candidate = explicit_folder_match.group(1).strip("/")
-            if candidate:
-                return candidate
         nested_match = re.search(r"\b([a-z0-9_-]+)\s+folder\s+(?:inside|in|under)\s+([a-z0-9_/-]+)\b", prompt_text)
         if nested_match:
             child, parent = nested_match.groups()
             return f"{parent.strip('/')}/{child.strip('/')}"
+        explicit_folder_match = re.search(r"\bfolder\s+([a-z0-9_/-]+)\b", prompt_text)
+        if explicit_folder_match:
+            candidate = explicit_folder_match.group(1).strip("/")
+            if candidate and candidate not in {"in", "inside", "under"}:
+                return candidate
         return None
 
     def _repair_scaffold_path(self, requested_path: str, target_path_hint: str) -> str | None:
@@ -7624,6 +7683,55 @@ def _merge_local_frontend_ui_integration(existing: str, relative_path: str) -> s
     return _append_once(merged, handler_block)
 
 
+def _local_scaffold_kind(*texts: str) -> str:
+    joined = " ".join(texts).lower()
+    if "calendar" in joined:
+        return "calendar"
+    if "notes app" in joined or "note-taking" in joined or ("notes" in joined and "app" in joined):
+        return "notes"
+    if "todo app" in joined or "task list" in joined or ("todo" in joined and "app" in joined):
+        return "todo"
+    if any(marker in joined for marker in ("today's date", "todays date", "today date", "current date")):
+        return "date"
+    return "generic"
+
+
+def _local_scaffold_html(scaffold_kind: str, target_path: str) -> str:
+    if scaffold_kind == "calendar":
+        return _local_calendar_html(target_path)
+    if scaffold_kind == "notes":
+        return _local_notes_html()
+    if scaffold_kind == "todo":
+        return _local_todo_html()
+    if scaffold_kind == "date":
+        return _local_date_html()
+    return _local_generic_html()
+
+
+def _local_scaffold_css(scaffold_kind: str, *, dark_theme: bool = False) -> str:
+    if scaffold_kind == "calendar":
+        return _local_calendar_css(dark_theme=dark_theme)
+    if scaffold_kind == "notes":
+        return _local_notes_css()
+    if scaffold_kind == "todo":
+        return _local_todo_css()
+    if scaffold_kind == "date":
+        return _local_date_css()
+    return _local_generic_css()
+
+
+def _local_scaffold_js(scaffold_kind: str) -> str:
+    if scaffold_kind == "calendar":
+        return _local_calendar_js()
+    if scaffold_kind == "notes":
+        return _local_notes_js()
+    if scaffold_kind == "todo":
+        return _local_todo_js()
+    if scaffold_kind == "date":
+        return _local_date_js()
+    return _local_generic_js()
+
+
 def _local_calendar_html(target_path: str) -> str:
     asset_prefix = ""
     if "/" in target_path:
@@ -7653,6 +7761,125 @@ def _local_calendar_html(target_path: str) -> str:
       </section>
     </main>
     <script src="{asset_prefix}script.js"></script>
+  </body>
+</html>
+"""
+
+
+def _local_notes_html() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Notes Studio</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="notes-app">
+      <section class="notes-hero">
+        <p class="notes-kicker">Local Workspace</p>
+        <h1>Notes Studio</h1>
+        <p class="notes-copy">Capture quick thoughts, pin your best ideas, and keep them in your browser.</p>
+      </section>
+      <section class="notes-shell">
+        <form class="notes-composer" id="note-form">
+          <label for="note-title">Title</label>
+          <input id="note-title" name="title" type="text" placeholder="Sprint retro" maxlength="60" />
+          <label for="note-body">Note</label>
+          <textarea id="note-body" name="body" rows="6" placeholder="Write the note you want to keep..."></textarea>
+          <button type="submit">Save note</button>
+        </form>
+        <section class="notes-feed">
+          <div class="notes-feed-header">
+            <h2>Saved notes</h2>
+            <p id="notes-status">Nothing saved yet.</p>
+          </div>
+          <div id="notes-list" class="notes-list"></div>
+        </section>
+      </section>
+    </main>
+    <script src="script.js"></script>
+  </body>
+</html>
+"""
+
+
+def _local_todo_html() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Task Sprint</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="todo-app">
+      <header class="todo-hero">
+        <p class="todo-kicker">Local Planner</p>
+        <h1>Task Sprint</h1>
+        <p>Track the next few things that matter and check them off as you go.</p>
+      </header>
+      <section class="todo-shell">
+        <form id="todo-form" class="todo-form">
+          <input id="todo-input" type="text" maxlength="80" placeholder="Add a task" />
+          <button type="submit">Add</button>
+        </form>
+        <div class="todo-summary">
+          <p id="todo-count">0 tasks pending</p>
+        </div>
+        <ul id="todo-list" class="todo-list"></ul>
+      </section>
+    </main>
+    <script src="script.js"></script>
+  </body>
+</html>
+"""
+
+
+def _local_date_html() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Today Board</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="date-app">
+      <section class="date-card">
+        <p class="date-kicker">Live Local Date</p>
+        <h1 id="today-label">Today</h1>
+        <p id="date-detail">Preparing the current date...</p>
+      </section>
+    </main>
+    <script src="script.js"></script>
+  </body>
+</html>
+"""
+
+
+def _local_generic_html() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Local Starter App</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="starter-app">
+      <section class="starter-card">
+        <p class="starter-kicker">Static Starter</p>
+        <h1>Local Starter App</h1>
+        <p id="starter-status">Your app is ready for custom interaction.</p>
+        <button id="starter-action" type="button">Try it</button>
+      </section>
+    </main>
+    <script src="script.js"></script>
   </body>
 </html>
 """
@@ -7908,6 +8135,408 @@ body {
 """
 
 
+def _local_notes_css() -> str:
+    return """:root {
+  color-scheme: light;
+  --bg: #f5efe6;
+  --panel: rgba(255, 252, 247, 0.94);
+  --panel-strong: #fffaf3;
+  --border: #d8c8b4;
+  --text: #2c241b;
+  --muted: #766555;
+  --accent: #b85c38;
+  --accent-strong: #8d3d1f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(184, 92, 56, 0.12), transparent 28%),
+    linear-gradient(180deg, #f7f1e8 0%, #ede2d2 100%);
+  color: var(--text);
+}
+
+.notes-app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+}
+
+.notes-hero h1,
+.notes-feed-header h2 {
+  margin: 0;
+}
+
+.notes-kicker {
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 12px;
+  color: var(--accent-strong);
+}
+
+.notes-copy {
+  max-width: 620px;
+  color: var(--muted);
+}
+
+.notes-shell {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) 1fr;
+  gap: 24px;
+  margin-top: 28px;
+}
+
+.notes-composer,
+.notes-feed {
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--panel);
+  padding: 20px;
+  box-shadow: 0 18px 44px rgba(86, 59, 34, 0.08);
+}
+
+.notes-composer {
+  display: grid;
+  gap: 10px;
+}
+
+.notes-composer input,
+.notes-composer textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font: inherit;
+  background: var(--panel-strong);
+  color: var(--text);
+}
+
+.notes-composer button {
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  padding: 12px 16px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notes-feed-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: baseline;
+  margin-bottom: 18px;
+}
+
+.notes-feed-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.notes-list {
+  display: grid;
+  gap: 14px;
+}
+
+.note-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px;
+  background: var(--panel-strong);
+}
+
+.note-card h3,
+.note-card p {
+  margin: 0;
+}
+
+.note-card h3 {
+  margin-bottom: 8px;
+}
+
+.note-card time {
+  display: inline-block;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 820px) {
+  .notes-shell {
+    grid-template-columns: 1fr;
+  }
+}
+"""
+
+
+def _local_todo_css() -> str:
+    return """:root {
+  color-scheme: light;
+  --bg: #eef3ef;
+  --panel: rgba(255, 255, 255, 0.96);
+  --border: #c8d7cc;
+  --text: #1d2a21;
+  --muted: #64756a;
+  --accent: #256f4a;
+  --accent-soft: #ddf1e6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top right, rgba(37, 111, 74, 0.1), transparent 26%),
+    linear-gradient(180deg, #eff5f0 0%, #dde9df 100%);
+  color: var(--text);
+}
+
+.todo-app {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 52px 24px 72px;
+}
+
+.todo-kicker {
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.todo-hero h1,
+.todo-hero p {
+  margin: 0;
+}
+
+.todo-hero p:last-child {
+  margin-top: 10px;
+  color: var(--muted);
+}
+
+.todo-shell {
+  margin-top: 28px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 22px;
+  background: var(--panel);
+  box-shadow: 0 18px 44px rgba(33, 66, 47, 0.08);
+}
+
+.todo-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+}
+
+.todo-form input {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 12px 16px;
+  font: inherit;
+}
+
+.todo-form button {
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  padding: 12px 18px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.todo-summary {
+  margin: 16px 0 10px;
+  color: var(--muted);
+}
+
+.todo-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: white;
+}
+
+.todo-item.is-done {
+  background: var(--accent-soft);
+}
+
+.todo-item button {
+  border: none;
+  border-radius: 999px;
+  background: rgba(37, 111, 74, 0.12);
+  color: var(--accent);
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .todo-form {
+    grid-template-columns: 1fr;
+  }
+}
+"""
+
+
+def _local_date_css() -> str:
+    return """:root {
+  color-scheme: light;
+  --bg: #f2f6fb;
+  --card: rgba(255, 255, 255, 0.96);
+  --text: #132238;
+  --muted: #5d6b7f;
+  --accent: #1769e0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(23, 105, 224, 0.12), transparent 26%),
+    linear-gradient(180deg, #eff4fb 0%, #dfe8f6 100%);
+  color: var(--text);
+}
+
+.date-card {
+  width: min(560px, calc(100vw - 32px));
+  border-radius: 28px;
+  padding: 36px 32px;
+  background: var(--card);
+  box-shadow: 0 24px 60px rgba(16, 37, 67, 0.12);
+  text-align: center;
+}
+
+.date-kicker {
+  margin: 0 0 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.date-card h1,
+.date-card p {
+  margin: 0;
+}
+
+.date-card h1 {
+  font-size: clamp(34px, 5vw, 54px);
+}
+
+#date-detail {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 18px;
+}
+"""
+
+
+def _local_generic_css() -> str:
+    return """:root {
+  color-scheme: light;
+  --bg: #f7f6f2;
+  --card: rgba(255, 255, 255, 0.95);
+  --border: #ddd7cc;
+  --text: #1f1b16;
+  --muted: #6c655b;
+  --accent: #8c4f2f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(140, 79, 47, 0.12), transparent 24%),
+    linear-gradient(180deg, #f8f6f1 0%, #ece7de 100%);
+  color: var(--text);
+}
+
+.starter-card {
+  width: min(560px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: 26px;
+  padding: 34px 30px;
+  background: var(--card);
+  text-align: center;
+  box-shadow: 0 20px 48px rgba(67, 53, 38, 0.1);
+}
+
+.starter-kicker {
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.starter-card h1,
+.starter-card p {
+  margin: 0;
+}
+
+#starter-status {
+  margin-top: 12px;
+  color: var(--muted);
+}
+
+#starter-action {
+  margin-top: 22px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  padding: 12px 18px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+"""
+
+
 def _local_calendar_js() -> str:
     return """const monthLabel = document.getElementById("month-label");
 const calendarGrid = document.getElementById("calendar-grid");
@@ -7994,6 +8623,163 @@ nextMonthButton.addEventListener("click", () => {
 });
 
 renderCalendar();
+"""
+
+
+def _local_notes_js() -> str:
+    return """const form = document.getElementById("note-form");
+const titleInput = document.getElementById("note-title");
+const bodyInput = document.getElementById("note-body");
+const notesList = document.getElementById("notes-list");
+const notesStatus = document.getElementById("notes-status");
+
+const storageKey = "devenv-notes-studio";
+let notes = loadNotes();
+
+function loadNotes() {
+  try {
+    return JSON.parse(localStorage.getItem(storageKey) || "[]");
+  } catch (error) {
+    return [];
+  }
+}
+
+function persistNotes() {
+  localStorage.setItem(storageKey, JSON.stringify(notes));
+}
+
+function renderNotes() {
+  notesList.innerHTML = "";
+  notesStatus.textContent = notes.length ? `${notes.length} saved note${notes.length === 1 ? "" : "s"}` : "Nothing saved yet.";
+
+  notes.forEach((note) => {
+    const card = document.createElement("article");
+    card.className = "note-card";
+
+    const heading = document.createElement("h3");
+    heading.textContent = note.title;
+
+    const body = document.createElement("p");
+    body.textContent = note.body;
+
+    const time = document.createElement("time");
+    time.textContent = new Date(note.createdAt).toLocaleString();
+
+    card.append(heading, body, time);
+    notesList.appendChild(card);
+  });
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const title = titleInput.value.trim() || "Untitled note";
+  const body = bodyInput.value.trim();
+  if (!body) {
+    notesStatus.textContent = "Write something before saving.";
+    return;
+  }
+  notes.unshift({ title, body, createdAt: new Date().toISOString() });
+  persistNotes();
+  form.reset();
+  renderNotes();
+});
+
+renderNotes();
+"""
+
+
+def _local_todo_js() -> str:
+    return """const form = document.getElementById("todo-form");
+const input = document.getElementById("todo-input");
+const list = document.getElementById("todo-list");
+const count = document.getElementById("todo-count");
+
+const storageKey = "devenv-task-sprint";
+let tasks = loadTasks();
+
+function loadTasks() {
+  try {
+    return JSON.parse(localStorage.getItem(storageKey) || "[]");
+  } catch (error) {
+    return [];
+  }
+}
+
+function persistTasks() {
+  localStorage.setItem(storageKey, JSON.stringify(tasks));
+}
+
+function renderTasks() {
+  list.innerHTML = "";
+  const pending = tasks.filter((task) => !task.done).length;
+  count.textContent = `${pending} task${pending === 1 ? "" : "s"} pending`;
+
+  tasks.forEach((task) => {
+    const item = document.createElement("li");
+    item.className = `todo-item${task.done ? " is-done" : ""}`;
+
+    const label = document.createElement("span");
+    label.textContent = task.label;
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.textContent = task.done ? "Undo" : "Done";
+    toggle.addEventListener("click", () => {
+      task.done = !task.done;
+      persistTasks();
+      renderTasks();
+    });
+
+    item.append(label, toggle);
+    list.appendChild(item);
+  });
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const label = input.value.trim();
+  if (!label) {
+    return;
+  }
+  tasks.unshift({ label, done: false });
+  persistTasks();
+  form.reset();
+  renderTasks();
+});
+
+renderTasks();
+"""
+
+
+def _local_date_js() -> str:
+    return """const todayLabel = document.getElementById("today-label");
+const dateDetail = document.getElementById("date-detail");
+
+function renderToday() {
+  const now = new Date();
+  todayLabel.textContent = now.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+  dateDetail.textContent = `Current time: ${now.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
+}
+
+renderToday();
+setInterval(renderToday, 60000);
+"""
+
+
+def _local_generic_js() -> str:
+    return """const actionButton = document.getElementById("starter-action");
+const status = document.getElementById("starter-status");
+
+actionButton.addEventListener("click", () => {
+  status.textContent = "Interaction confirmed. Customize this starter app for your workflow.";
+});
 """
 
 

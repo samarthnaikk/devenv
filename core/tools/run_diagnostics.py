@@ -145,12 +145,17 @@ class RunDiagnosticsTool(BaseTool):
                 issues.append("index.html does not link styles.css")
             if 'src="script.js"' not in html_text:
                 issues.append("index.html does not load script.js")
-            if "calendar-grid" not in html_text:
-                issues.append("index.html is missing the calendar grid container")
-            if "calendar-day" not in css_text:
-                issues.append("styles.css is missing calendar day styling")
-            if "renderCalendar" not in js_text:
-                issues.append("script.js is missing renderCalendar")
+            if not css_text.strip():
+                issues.append("styles.css is empty")
+            if not js_text.strip():
+                issues.append("script.js is empty")
+            if "calendar-grid" in html_text or "renderCalendar" in js_text or "calendar-day" in css_text:
+                if "calendar-grid" not in html_text:
+                    issues.append("index.html is missing the calendar grid container")
+                if "calendar-day" not in css_text:
+                    issues.append("styles.css is missing calendar day styling")
+                if "renderCalendar" not in js_text:
+                    issues.append("script.js is missing renderCalendar")
 
         success = not missing and not issues
         detail_parts: list[str] = []

@@ -4670,10 +4670,49 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(expected_files, ["index.html", "script.js", "styles.css"])
         self.assertFalse(misplaced_root.exists())
         self.assertEqual([task.is_completed for task in third.blueprint.tasks], [True, True, True])
-        self.assertIn("JavaScript calendar behavior", third.final_response or "")
-        self.assertEqual(second.state, AgentState.EXECUTING.name)
-        self.assertEqual(third.state, AgentState.VERIFYING.name)
+        self.assertIn("local JavaScript task behavior", first.final_response or "")
+        self.assertEqual(first.state, AgentState.VERIFYING.name)
+        self.assertEqual(second.final_response, "Nothing left to execute.")
+        self.assertEqual(third.final_response, "Nothing left to execute.")
         self.assertEqual(third.metadata.get("original_objective"), prompt)
+
+    def test_local_only_notes_scaffold_uses_notes_specific_content(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(WriteFileTool())
+            prompt = "Create a tiny static HTML notes app in folder notesapp with index.html, styles.css, and script.js."
+            first = kernel.execute_turn(
+                prompt,
+                planning_mode=PlanningMode.FORCE_PLAN,
+                local_only=True,
+            )
+            second = kernel.execute_turn(
+                "continue",
+                planning_mode=PlanningMode.AUTO,
+                continue_plan=True,
+                local_only=True,
+            )
+            third = kernel.execute_turn(
+                "continue",
+                planning_mode=PlanningMode.AUTO,
+                continue_plan=True,
+                local_only=True,
+            )
+
+            html_content = (Path(tempdir) / "notesapp" / "index.html").read_text(encoding="utf-8")
+            js_content = (Path(tempdir) / "notesapp" / "script.js").read_text(encoding="utf-8")
+
+        self.assertIsNotNone(first.blueprint)
+        self.assertIn("notes workspace layout", first.blueprint.raw_plan_markdown)
+        self.assertEqual(first.state, AgentState.VERIFYING.name)
+        self.assertEqual(second.final_response, "Nothing left to execute.")
+        self.assertEqual(third.final_response, "Nothing left to execute.")
+        self.assertIn("Notes Studio", html_content)
+        self.assertIn("devenv-notes-studio", js_content)
+        self.assertIn("notes behavior", first.final_response or "")
 
     def test_local_only_chatapp_integration_prompt_creates_backend_files_and_wires_surfaces(self) -> None:
         memory = FakeMemory()
