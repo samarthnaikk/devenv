@@ -61,6 +61,7 @@ DIAGNOSTIC_EXECUTION_TOOLS = frozenset({"run_diagnostics", "audit_changes"})
 MEMORY_EXECUTION_TOOLS = frozenset({"manage_memory", "inspect_trace"})
 WEB_EXECUTION_TOOLS = frozenset({"web_search"})
 KNOWLEDGE_EXECUTION_TOOLS = frozenset({"knowledge_search"})
+ARTIFACT_EXECUTION_TOOLS = frozenset({"generate_pdf"})
 PLANNING_MEMORY_CHAR_LIMIT = 900
 EXECUTION_MEMORY_CHAR_LIMIT = 1400
 SCAFFOLD_EXECUTION_TOOLS = frozenset({"list_directory", "write_file", "edit_file"})
@@ -1256,10 +1257,16 @@ class DevenvKernel:
             "integration",
         )
         frontend_markers = ("html", "css", "javascript", "frontend", "ui")
+        document_markers = ("pdf", "document", "report", "brief", "handout", "invoice")
         if any(token in text for token in backend_markers):
             return "code"
         if any(token in text for token in ("html", "css", "javascript", "frontend")):
             return "frontend"
+        if "pdf" in text or (
+            any(token in text for token in document_markers)
+            and any(token in text for token in ("create", "generate", "build", "make", "export"))
+        ):
+            return "document"
         if any(token in text for token in ("create", "write", "edit", "modify", "update", "fix", "implement", "file", "folder")) or target_path_hint:
             return "code"
         return "chat"
@@ -1269,6 +1276,8 @@ class DevenvKernel:
             return "frontend"
         if expected_artifact == "code":
             return "code"
+        if expected_artifact == "document":
+            return "file"
         text = f"{user_prompt} {task_description}".lower()
         if any(token in text for token in ("file", "folder", "remove", "delete")):
             return "file"
@@ -1279,6 +1288,8 @@ class DevenvKernel:
             return "file_write"
         if expected_artifact == "code":
             return "file_edit"
+        if expected_artifact == "document":
+            return "artifact_write"
         return "chat"
 
     def _context_char_limit_for_checkpoint(self, checkpoint: CheckpointTask) -> int:
@@ -3675,6 +3686,9 @@ class DevenvKernel:
         if self._should_offer_memory_tools(lowered):
             scope.update(MEMORY_EXECUTION_TOOLS & available)
 
+        if execution_phase and self._should_offer_artifact_tools(lowered):
+            scope.update(ARTIFACT_EXECUTION_TOOLS & available)
+
         if execution_phase and self._should_offer_diagnostics_tools(lowered):
             scope.update(DIAGNOSTIC_EXECUTION_TOOLS & available)
 
@@ -3905,6 +3919,13 @@ class DevenvKernel:
                 "episodic",
                 "working memory",
             )
+        )
+
+    def _should_offer_artifact_tools(self, lowered_prompt: str) -> bool:
+        if "pdf" in lowered_prompt:
+            return True
+        return any(marker in lowered_prompt for marker in ("document", "report", "brief", "handout", "invoice")) and any(
+            marker in lowered_prompt for marker in ("create", "generate", "build", "make", "export")
         )
 
     def _should_offer_diagnostics_tools(self, lowered_prompt: str) -> bool:
@@ -4603,6 +4624,13 @@ class DevenvKernel:
                 repaired_path = self._repair_workspace_file_path(path_value)
                 if repaired_path is not None:
                     arguments["path"] = repaired_path
+        if tool_call.tool_name == "generate_pdf":
+            arguments["workspace_root"] = self.workspace_path
+            output_path = arguments.get("output_path")
+            if isinstance(output_path, str):
+                output_path = _sanitize_model_generated_path(output_path)
+                repaired_pdf_path = self._repair_workspace_pdf_output_path(output_path)
+                arguments["output_path"] = repaired_pdf_path if repaired_pdf_path is not None else output_path
         if tool_call.tool_name == "write_file" and "mode" not in arguments:
             path_value = arguments.get("path")
             if isinstance(path_value, str):
@@ -4620,6 +4648,23 @@ class DevenvKernel:
                         arguments["path"] = repaired_path
 
         return arguments
+
+    def _repair_workspace_pdf_output_path(self, path_value: str) -> str | None:
+        cleaned = str(path_value or "").strip()
+        if not cleaned:
+            return None
+        candidate = Path(cleaned).expanduser()
+        if not candidate.is_absolute():
+            if candidate.suffix.lower() == ".pdf" and ".." not in candidate.parts:
+                return cleaned
+            return None
+        try:
+            relative = candidate.resolve().relative_to(Path(self.workspace_path).resolve())
+        except ValueError:
+            return None
+        if relative.suffix.lower() != ".pdf" or ".." in relative.parts:
+            return None
+        return relative.as_posix()
 
     def _active_scaffold_target_path(self) -> str | None:
         prompt = self.active_plan_prompt or ""

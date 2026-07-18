@@ -65,6 +65,7 @@ class GeneratePDFTool(BaseTool):
         keep_tex = bool(kwargs.get("keep_tex"))
         output_path = str(kwargs.get("output_path") or "").strip()
         image_query = str(kwargs.get("image_query") or "").strip()
+        workspace_root = str(kwargs.get("workspace_root") or "").strip()
 
         latex_engine = shutil.which("pdflatex") or shutil.which("xelatex") or shutil.which("lualatex")
         if not latex_engine:
@@ -85,7 +86,7 @@ class GeneratePDFTool(BaseTool):
 
         file_stem = _slugify(Path(output_path).stem or title)
         relative_pdf_path = output_path or f"output/pdf/{file_stem}.pdf"
-        pdf_target = _resolve_output_pdf_path(relative_pdf_path)
+        pdf_target = _resolve_output_pdf_path(relative_pdf_path, workspace_root=workspace_root)
         if pdf_target is None:
             return ToolResult(
                 success=False,
@@ -235,12 +236,16 @@ def _slugify(value: str) -> str:
     return lowered or "document"
 
 
-def _resolve_output_pdf_path(output_path: str) -> Path | None:
+def _resolve_output_pdf_path(output_path: str, *, workspace_root: str = "") -> Path | None:
+    workspace = Path(workspace_root).expanduser().resolve() if workspace_root else Path.cwd().resolve()
     candidate = Path(output_path)
     if candidate.is_absolute():
-        return None
+        try:
+            candidate = candidate.expanduser().resolve().relative_to(workspace)
+        except ValueError:
+            return None
     if any(part == ".." for part in candidate.parts):
         return None
     if candidate.suffix.lower() != ".pdf":
         return None
-    return candidate
+    return workspace / candidate

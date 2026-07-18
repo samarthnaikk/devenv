@@ -33,6 +33,7 @@ from core.runtime.local_model import FallbackLocalModel, SentenceTransformerLoca
 from core.runtime.local_router import LocalRouteDecision
 from core.runtime.models import AgentState, CheckpointTask, ExecutionBlueprint, ExecutionMode, ExternalSessionProviderConfig, PlanningMode, RuntimeTurnResult, TurnOutcome
 from core.tools.edit_file import EditFileTool
+from core.tools.generate_pdf import GeneratePDFTool
 from core.tools.inspect_symbols import InspectSymbolsTool
 from core.tools.list_directory import ListDirectoryTool
 from core.tools.locate_files import LocateFilesTool
@@ -555,6 +556,58 @@ class DevenvKernelTest(unittest.TestCase):
             )
 
         self.assertEqual(artifact, "code")
+
+    def test_pdf_generation_prompt_prefers_document_artifact(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            artifact = kernel._infer_expected_artifact(
+                "Generate a PDF deployment report for the current release",
+                "Create the PDF report artifact for stakeholders",
+                None,
+            )
+            verification_mode = kernel._infer_verification_mode(artifact, "Generate a PDF deployment report", "Create the PDF report artifact")
+            output_destination = kernel._infer_output_destination(artifact)
+
+        self.assertEqual(artifact, "document")
+        self.assertEqual(verification_mode, "file")
+        self.assertEqual(output_destination, "artifact_write")
+
+    def test_pdf_generation_prompt_offers_generate_pdf_in_execution_scope(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(GeneratePDFTool())
+
+            scope = kernel._resolve_execution_tool_scope(
+                "Generate a PDF deployment report for the current release",
+                "Create the PDF report artifact for stakeholders",
+            )
+
+        self.assertIn("generate_pdf", scope)
+
+    def test_generate_pdf_tool_arguments_repair_absolute_workspace_output_path(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            repaired = kernel._repair_tool_arguments(
+                ToolCallRequest(
+                    call_id="pdf-1",
+                    tool_name="generate_pdf",
+                    arguments={
+                        "title": "Deployment Report",
+                        "sections": [{"heading": "Summary", "body": "Ready"}],
+                        "output_path": str(Path(tempdir) / "output" / "pdf" / "report.pdf"),
+                    },
+                )
+            )
+
+        self.assertEqual(repaired["output_path"], "output/pdf/report.pdf")
+        self.assertEqual(Path(repaired["workspace_root"]).resolve(), Path(tempdir).resolve())
 
     def test_context_only_checkpoint_completes_after_successful_list_directory(self) -> None:
         memory = FakeMemory()
