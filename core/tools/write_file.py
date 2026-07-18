@@ -50,6 +50,8 @@ class WriteFileTool(BaseTool):
 
         try:
             file_path = resolve_path(path)
+            if file_path.exists() and file_path.is_dir():
+                raise IsADirectoryError(f"Expected a file path, got a directory: {file_path}")
             file_path.parent.mkdir(parents=True, exist_ok=True)
 
             if mode == "fresh":
@@ -73,6 +75,6 @@ class WriteFileTool(BaseTool):
                     "size_bytes": file_path.stat().st_size,
                 },
             )
-        except (FileExistsError, PermissionError, OSError) as exc:
+        except (FileExistsError, IsADirectoryError, PermissionError, OSError) as exc:
             logger.error("write_file failed: path=%s mode=%s error=%s", path, mode, exc)
             return ToolResult(success=False, output=str(exc), data={})
