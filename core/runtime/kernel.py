@@ -2498,6 +2498,8 @@ class DevenvKernel:
         user_prompt: str,
         task: CheckpointTask,
     ) -> bool:
+        if self._is_scaffold_request(f"{user_prompt} {task.description}".lower()):
+            return True
         integration_root = self._local_integration_root_for_prompt(user_prompt)
         if not integration_root:
             return False
@@ -2603,6 +2605,7 @@ class DevenvKernel:
                     tool_iterations += 1
                     if tool_iterations > max_consecutive_tools:
                         raise RuntimeError("Execution tool limit reached before the checkpoint completed.")
+                    self._mark_local_backend_response()
                     ai_logs.append(
                         f"Deterministic tool requested: checkpoint={index + 1} tool={deterministic_tool_call.tool_name}"
                     )
@@ -4457,6 +4460,11 @@ class DevenvKernel:
             if suffix in {".html", ".css", ".js", ".py"}:
                 return str(Path(candidate).parent).replace("\\", "/")
             return candidate
+        explicit_folder_match = re.search(r"\bfolder\s+([a-z0-9_/-]+)\b", prompt_text)
+        if explicit_folder_match:
+            candidate = explicit_folder_match.group(1).strip("/")
+            if candidate:
+                return candidate
         nested_match = re.search(r"\b([a-z0-9_-]+)\s+folder\s+(?:inside|in|under)\s+([a-z0-9_/-]+)\b", prompt_text)
         if nested_match:
             child, parent = nested_match.groups()
@@ -7591,6 +7599,7 @@ def _local_calendar_html(target_path: str) -> str:
         <div>
           <p class="calendar-kicker">Local Demo</p>
           <h1 id="month-label">Calendar</h1>
+          <p class="calendar-today" id="today-label">Today</p>
         </div>
         <button id="next-month" type="button" aria-label="Next month">Next</button>
       </header>
@@ -7861,6 +7870,7 @@ const calendarGrid = document.getElementById("calendar-grid");
 const weekdays = document.getElementById("calendar-weekdays");
 const prevMonthButton = document.getElementById("prev-month");
 const nextMonthButton = document.getElementById("next-month");
+const todayLabel = document.getElementById("today-label");
 
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const monthLabels = [
@@ -7881,6 +7891,15 @@ const monthLabels = [
 const today = new Date();
 let visibleMonth = today.getMonth();
 let visibleYear = today.getFullYear();
+
+if (todayLabel) {
+  todayLabel.textContent = `Today is ${today.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })}`;
+}
 
 weekdayLabels.forEach((label) => {
   const item = document.createElement("div");

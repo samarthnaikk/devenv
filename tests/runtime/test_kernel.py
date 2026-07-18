@@ -4845,6 +4845,48 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(answer, "Devenv AI")
 
+    def test_frontend_scaffold_checkpoints_prefer_deterministic_execution_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            task = CheckpointTask(
+                task_id=1,
+                description="Create tasks/frontend/index.html with the base calendar layout and linked assets.",
+                expected_artifact="frontend",
+            )
+
+            result = kernel._should_use_deterministic_execution_tool(
+                user_prompt="make a todo app frontend folder in tasks with html css and js",
+                task=task,
+            )
+
+        self.assertTrue(result)
+
+    def test_scaffold_target_path_supports_simple_folder_phrasing(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+            target = kernel._derive_scaffold_target_path(
+                "Create a tiny static HTML app in folder demoapp with index.html, styles.css, and script.js that shows today's date."
+            )
+
+        self.assertEqual(target, "demoapp")
+
+    def test_deterministic_scaffold_marks_backend_used_local(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(WriteFileTool())
+            kernel.register_tool(RunDiagnosticsTool())
+            result = kernel.execute_turn(
+                "Create a tiny static HTML app in folder demoapp with index.html, styles.css, and script.js that shows today's date.",
+                planning_mode=PlanningMode.FORCE_PLAN,
+                local_only=True,
+            )
+
+        self.assertEqual(result.metadata["backend_used"], "local")
+
 
 def _disabled_router():
     return type(
