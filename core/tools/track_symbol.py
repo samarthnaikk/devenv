@@ -52,6 +52,7 @@ class TrackSymbolTool(BaseTool):
         try:
             root = ensure_directory(path)
             files = self._collect_text_files(root)
+            self._last_skipped_files = []
             if mode == "references":
                 matches = self._references(files, symbol, root)
             else:
@@ -67,6 +68,7 @@ class TrackSymbolTool(BaseTool):
                     "mode": mode,
                     "matches": matches,
                     "count": len(matches),
+                    "skipped_files": getattr(self, "_last_skipped_files", []),
                 },
             )
         except (FileNotFoundError, NotADirectoryError, OSError, UnicodeDecodeError, SyntaxError, ValueError) as exc:
@@ -99,11 +101,22 @@ class TrackSymbolTool(BaseTool):
 
     def _definitions(self, files: list, symbol: str, root) -> list[dict[str, object]]:
         matches: list[dict[str, object]] = []
+        skipped_files: list[dict[str, object]] = []
         for file_path in files:
             if file_path.suffix.lower() != ".py":
                 continue
             source = file_path.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=str(file_path))
+            try:
+                tree = ast.parse(source, filename=str(file_path))
+            except SyntaxError as exc:
+                skipped_files.append(
+                    {
+                        "path": str(file_path),
+                        "relative_path": relative_display(file_path, root),
+                        "reason": f"syntax error on line {exc.lineno}",
+                    }
+                )
+                continue
             for node in ast.walk(tree):
                 payload = self._definition_payload(node, symbol)
                 if payload is None:
@@ -112,6 +125,7 @@ class TrackSymbolTool(BaseTool):
                 payload["relative_path"] = relative_display(file_path, root)
                 matches.append(payload)
         matches.sort(key=lambda item: (item["relative_path"], item["line"]))
+        self._last_skipped_files = skipped_files
         return matches
 
     def _definition_payload(self, node: ast.AST, symbol: str) -> dict[str, object] | None:
