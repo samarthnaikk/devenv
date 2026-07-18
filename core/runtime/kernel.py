@@ -4988,6 +4988,9 @@ class DevenvKernel:
         if _should_skip_retrieval_for_prompt(user_prompt):
             metadata["external_context_reason"] = "Skipped memory retrieval for a low-context prompt."
             return "", metadata
+        if _should_skip_trace_memory_lookup(user_prompt):
+            metadata["external_context_reason"] = "Skipped memory retrieval for a trace-inspection prompt."
+            return "", metadata
         if self._should_skip_current_workspace_memory_lookup(user_prompt):
             metadata["external_context_reason"] = "Skipped memory retrieval for a current-workspace inspection prompt."
             return "", metadata
@@ -6691,6 +6694,23 @@ def _memory_only_fallback_response(user_prompt: str) -> str:
     if _is_memory_follow_up_question(user_prompt):
         return "I couldn't recover a reliable prior note for that follow-up."
     return "I couldn't recover a reliable prior answer for that yet."
+
+
+def _should_skip_trace_memory_lookup(user_prompt: str) -> bool:
+    lowered = user_prompt.lower().strip()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "last retrieval trace",
+            "retrieval trace",
+            "trace from memory",
+            "memory trace",
+            "inspect trace",
+            "show the trace",
+            "show trace",
+            "node history",
+        )
+    )
 
 
 def _tool_strategy_subject_prompt(user_prompt: str) -> str | None:
