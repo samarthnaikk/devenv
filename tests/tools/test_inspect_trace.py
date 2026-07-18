@@ -6,6 +6,7 @@ import unittest
 from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.memory.vector_index import InMemoryVectorIndex
+from core.memory.vector_index import LanceDBVectorIndex
 from core.tools.inspect_trace import InspectTraceTool
 
 
@@ -49,3 +50,27 @@ class InspectTraceToolTest(unittest.TestCase):
         self.assertEqual(result.data["node"]["node_id"], "proj_calendar")
         self.assertTrue(result.data["vector_present"])
         self.assertIn("sync_state", result.data)
+
+    def test_node_history_mode_detects_vector_presence_for_lancedb_index(self) -> None:
+        with tempfile.TemporaryDirectory(dir="sample-test") as tempdir:
+            memory = MemoryEngine(
+                db_path=f"{tempdir}/memory.db",
+                vector_dir=f"{tempdir}/vectors",
+                embedder=HashingEmbedder(dimension=8),
+                vector_index=LanceDBVectorIndex(vector_dir=f"{tempdir}/vectors", dimension=8),
+            )
+            memory.update_associative_tree(
+                {
+                    "node_id": "proj_lance",
+                    "label": "Lance Project",
+                    "category": "project",
+                    "summary": "Persistent vector-backed project memory.",
+                    "edges": (),
+                }
+            )
+            tool = InspectTraceTool(memory)
+
+            result = tool.execute(mode="node_history", node_id="proj_lance")
+
+        self.assertTrue(result.success)
+        self.assertTrue(result.data["vector_present"])
