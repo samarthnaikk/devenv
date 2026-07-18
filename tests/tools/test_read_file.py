@@ -33,3 +33,9 @@ class ReadFileToolTest(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertIn("Unsupported feature", result.output)
+
+    def test_non_string_feature_iterable_is_rejected(self) -> None:
+        result = self.tool.execute(path=str(FIXTURE_ROOT / "README.md"), features=[123])
+
+        self.assertFalse(result.success)
+        self.assertIn("contain only strings", result.output)
