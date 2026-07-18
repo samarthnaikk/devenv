@@ -402,6 +402,47 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertEqual(results[0].mode, "file")
         self.assertTrue(all(call["target_path"].endswith("src/feature.py") for call in diagnostics.calls))
 
+    def test_verification_ignores_external_failed_path_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            frontend = Path(tempdir) / "notesapp"
+            frontend.mkdir(parents=True)
+            (frontend / "index.html").write_text(
+                '<link rel="stylesheet" href="styles.css" />\n<main><h1>Notes</h1></main>\n<script src="script.js"></script>\n',
+                encoding="utf-8",
+            )
+            (frontend / "styles.css").write_text("body { color: #222; }\n", encoding="utf-8")
+            (frontend / "script.js").write_text("console.log('notes ready');\n", encoding="utf-8")
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            diagnostics = CapturingDiagnosticsTool()
+            kernel.register_tool(diagnostics)
+            checkpoint = CheckpointTask(
+                task_id=1,
+                description="Create notes frontend",
+                target_path_hint="notesapp",
+                expected_artifact="frontend",
+                verification_mode="frontend",
+            )
+
+            success, _trace, _results = kernel._verify_active_checkpoint(
+                checkpoint=checkpoint,
+                final_response="Created the notes frontend files.",
+                checkpoint_steps=[
+                    type(
+                        "Step",
+                        (),
+                        {
+                            "arguments": {"path": "/workspace"},
+                            "data": {},
+                        },
+                    )()
+                ],
+                system_logs=[],
+            )
+
+        self.assertTrue(success)
+        self.assertEqual(len(diagnostics.calls), 2)
+        self.assertTrue(all(call["target_path"].endswith("notesapp") for call in diagnostics.calls))
+
     def test_verification_can_be_skipped_by_checkpoint_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))

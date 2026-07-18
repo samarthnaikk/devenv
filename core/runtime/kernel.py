@@ -1452,6 +1452,10 @@ class DevenvKernel:
             candidate = Path(raw_value)
             if not candidate.is_absolute():
                 candidate = Path(self.workspace_path) / candidate
+            try:
+                candidate.relative_to(self.workspace_path)
+            except ValueError:
+                continue
             normalized = str(candidate)
             if normalized in seen:
                 continue
