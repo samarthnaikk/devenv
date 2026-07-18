@@ -284,6 +284,10 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertFalse(_should_try_direct_memory_answer("how does retrieval work?"))
         self.assertFalse(_should_try_direct_memory_answer("can you explain how the retrieval works?"))
         self.assertFalse(_should_try_direct_memory_answer("how does this repo work?"))
+        self.assertFalse(_should_try_direct_memory_answer("What is the backend of this repo?"))
+
+    def test_direct_memory_answer_handles_explicit_project_fact_recall(self) -> None:
+        self.assertTrue(_should_try_direct_memory_answer("What was the calendar project backend?"))
 
     def test_sentence_transformer_local_model_falls_back_when_embedding_model_is_unavailable(self) -> None:
         model = SentenceTransformerLocalModel()
@@ -4791,9 +4795,8 @@ class DevenvKernelTest(unittest.TestCase):
             second_kernel.local_router = _disabled_router()
             result = second_kernel.execute_turn("What was the calendar project backend?")
 
-        self.assertEqual(result.final_response, "I found prior context.")
-        self.assertIn("calendar project", second_ai.chat_calls[0]["memory_context"].lower())
-        self.assertIn("python backend", second_ai.chat_calls[0]["memory_context"].lower())
+        self.assertIn("Python backend", result.final_response or "")
+        self.assertEqual(second_ai.chat_calls, [])
 
     def test_session_budget_blocks_future_turns_after_limit_is_reached(self) -> None:
         memory = FakeMemory()

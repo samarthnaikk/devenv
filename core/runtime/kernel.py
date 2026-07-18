@@ -6114,9 +6114,49 @@ def _follow_up_line_score(lowered_line: str) -> int:
     return score
 
 
+def _is_explicit_project_fact_memory_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower().strip()
+    if not lowered:
+        return False
+
+    if any(
+        marker in lowered
+        for marker in (
+            "this repo",
+            "the repo",
+            "this repository",
+            "the repository",
+            "this codebase",
+            "the codebase",
+            "this system",
+            "the system",
+        )
+    ):
+        return False
+
+    has_question_shape = lowered.startswith(("what was ", "which was ", "what were ", "which were "))
+    has_past_project_fact = any(
+        marker in lowered
+        for marker in (
+            " backend",
+            " frontend",
+            " stack",
+            " architecture",
+            " database",
+            " framework",
+            " language",
+            " api",
+        )
+    )
+    if not (has_question_shape and has_past_project_fact):
+        return False
+
+    return _has_explicit_memory_subject(user_prompt)
+
+
 def _is_memory_recall_question(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
-    return any(
+    return _is_explicit_project_fact_memory_question(user_prompt) or any(
         phrase in lowered
         for phrase in (
             "do you remember",
@@ -6372,6 +6412,8 @@ def _should_try_direct_memory_answer(user_prompt: str) -> bool:
 
 
 def _should_skip_vector_memory_lookup(user_prompt: str) -> bool:
+    if _is_explicit_project_fact_memory_question(user_prompt):
+        return False
     return (
         _is_memory_recall_question(user_prompt)
         or _is_memory_follow_up_question(user_prompt)
@@ -7051,6 +7093,8 @@ def _is_repo_overview_question(user_prompt: str) -> bool:
 
 def _should_trust_memory_answer_for_prompt(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
+    if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt) or _is_session_history_question(user_prompt):
+        return True
     if _is_repo_summary_question(user_prompt):
         return False
     if _is_bug_list_question(user_prompt):
