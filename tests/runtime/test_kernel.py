@@ -670,6 +670,15 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertTrue(result)
 
+    def test_kanban_board_prompt_is_treated_as_scaffold_request(self) -> None:
+        memory = FakeMemory()
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel._is_scaffold_request("build a tiny kanban board app with html css js and localstorage")
+
+        self.assertTrue(result)
+
     def test_repair_directory_path_recovers_nested_workspace_project(self) -> None:
         memory = FakeMemory()
         ai = FakeAI([])
@@ -5039,6 +5048,14 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(target, "notesapp")
 
+    def test_scaffold_target_path_defaults_kanban_app_without_explicit_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+            target = kernel._derive_scaffold_target_path("Build a tiny kanban board app with html css js and localStorage")
+
+        self.assertEqual(target, "kanbanapp")
+
     def test_deterministic_scaffold_marks_backend_used_local(self) -> None:
         memory = FakeMemory()
         ai = ExplodingAI([])
@@ -5054,6 +5071,28 @@ class DevenvKernelTest(unittest.TestCase):
             )
 
         self.assertEqual(result.metadata["backend_used"], "local")
+
+    def test_deterministic_kanban_scaffold_writes_expected_files(self) -> None:
+        memory = FakeMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(WriteFileTool())
+            kernel.register_tool(RunDiagnosticsTool())
+            result = kernel.execute_turn(
+                "Build a tiny kanban board app with html css js and localStorage",
+                planning_mode=PlanningMode.FORCE_PLAN,
+                local_only=True,
+            )
+            html = Path(tempdir, "kanbanapp", "index.html").read_text(encoding="utf-8")
+            css = Path(tempdir, "kanbanapp", "styles.css").read_text(encoding="utf-8")
+            js = Path(tempdir, "kanbanapp", "script.js").read_text(encoding="utf-8")
+
+        self.assertEqual(result.metadata["backend_used"], "local")
+        self.assertIn("Kanban Sprint", html)
+        self.assertIn(".kanban-board", css)
+        self.assertIn("devenv-kanban-sprint", js)
 
 
 def _disabled_router():

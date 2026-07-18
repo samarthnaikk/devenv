@@ -3265,7 +3265,7 @@ class DevenvKernel:
                 any(marker in text for marker in file_markers)
                 or (
                     any(marker in text for marker in app_markers)
-                    and _local_scaffold_kind(text) in {"notes", "todo", "weather", "date"}
+                    and _local_scaffold_kind(text) in {"notes", "todo", "weather", "date", "kanban"}
                 )
             )
         ) or any(marker in text for marker in non_backend_markers)
@@ -4025,6 +4025,14 @@ class DevenvKernel:
                         f"- [ ] Add {js_path} with add, toggle, and render behavior for tasks.",
                     ]
                 )
+            if scaffold_kind == "kanban":
+                return "\n".join(
+                    [
+                        f"- [ ] Create {html_path} with the kanban board layout and linked assets.",
+                        f"- [ ] Add {css_path} with the kanban board styling.",
+                        f"- [ ] Add {js_path} with localStorage-backed card creation and lane movement behavior.",
+                    ]
+                )
             if scaffold_kind == "weather":
                 return "\n".join(
                     [
@@ -4204,6 +4212,8 @@ class DevenvKernel:
                 return "Created the base HTML shell for the notes app and linked the local stylesheet and script."
             if scaffold_kind == "todo":
                 return "Created the base HTML shell for the task list app and linked the local stylesheet and script."
+            if scaffold_kind == "kanban":
+                return "Created the base HTML shell for the kanban board and linked the local stylesheet and script."
             if scaffold_kind == "weather":
                 return "Created the base HTML shell for the weather dashboard and linked the local stylesheet and script."
             if scaffold_kind == "date":
@@ -4216,6 +4226,8 @@ class DevenvKernel:
                 return "Added the notes app styling layer with an editorial layout, composer panel, and note cards."
             if scaffold_kind == "todo":
                 return "Added the task list styling layer with a dashboard layout, controls, and checklist presentation."
+            if scaffold_kind == "kanban":
+                return "Added the kanban board styling layer with responsive lanes, cards, and movement controls."
             if scaffold_kind == "weather":
                 return "Added the weather dashboard styling layer with forecast cards, status accents, and responsive panels."
             if scaffold_kind == "date":
@@ -4228,6 +4240,8 @@ class DevenvKernel:
                 return "Added the local JavaScript notes behavior for capture, persistence, and rendering."
             if scaffold_kind == "todo":
                 return "Added the local JavaScript task behavior for adding, toggling, and rendering tasks."
+            if scaffold_kind == "kanban":
+                return "Added the local JavaScript kanban behavior for card creation, persistence, and lane movement."
             if scaffold_kind == "weather":
                 return "Added the local JavaScript weather behavior for rendering forecast cards and refreshing conditions."
             if scaffold_kind == "date":
@@ -4701,6 +4715,8 @@ class DevenvKernel:
         scaffold_kind = _local_scaffold_kind(user_prompt, task_description)
         if scaffold_kind == "notes":
             return "notesapp"
+        if scaffold_kind == "kanban":
+            return "kanbanapp"
         if scaffold_kind == "weather":
             return "weatherapp"
         if scaffold_kind == "date":
@@ -7869,6 +7885,8 @@ def _local_scaffold_kind(*texts: str) -> str:
         return "notes"
     if "todo app" in joined or "task list" in joined or ("todo" in joined and "app" in joined):
         return "todo"
+    if "kanban" in joined or "board app" in joined or ("board" in joined and "localstorage" in joined):
+        return "kanban"
     if "weather app" in joined or "forecast" in joined or ("weather" in joined and "app" in joined):
         return "weather"
     if any(marker in joined for marker in ("today's date", "todays date", "today date", "current date")):
@@ -7883,6 +7901,8 @@ def _local_scaffold_html(scaffold_kind: str, target_path: str) -> str:
         return _local_notes_html()
     if scaffold_kind == "todo":
         return _local_todo_html()
+    if scaffold_kind == "kanban":
+        return _local_kanban_html()
     if scaffold_kind == "weather":
         return _local_weather_html()
     if scaffold_kind == "date":
@@ -7897,6 +7917,8 @@ def _local_scaffold_css(scaffold_kind: str, *, dark_theme: bool = False) -> str:
         return _local_notes_css()
     if scaffold_kind == "todo":
         return _local_todo_css()
+    if scaffold_kind == "kanban":
+        return _local_kanban_css()
     if scaffold_kind == "weather":
         return _local_weather_css()
     if scaffold_kind == "date":
@@ -7911,6 +7933,8 @@ def _local_scaffold_js(scaffold_kind: str) -> str:
         return _local_notes_js()
     if scaffold_kind == "todo":
         return _local_todo_js()
+    if scaffold_kind == "kanban":
+        return _local_kanban_js()
     if scaffold_kind == "weather":
         return _local_weather_js()
     if scaffold_kind == "date":
@@ -8016,6 +8040,58 @@ def _local_todo_html() -> str:
           <p id="todo-count">0 tasks pending</p>
         </div>
         <ul id="todo-list" class="todo-list"></ul>
+      </section>
+    </main>
+    <script src="script.js"></script>
+  </body>
+</html>
+"""
+
+
+def _local_kanban_html() -> str:
+    return """<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kanban Sprint</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="kanban-app">
+      <header class="kanban-hero">
+        <p class="kanban-kicker">Local Delivery Board</p>
+        <h1>Kanban Sprint</h1>
+        <p>Capture quick tasks, then move them across the board with local persistence.</p>
+      </header>
+      <section class="kanban-shell">
+        <form id="kanban-form" class="kanban-form">
+          <input id="kanban-input" type="text" maxlength="80" placeholder="Add a board card" />
+          <button type="submit">Add card</button>
+        </form>
+        <div class="kanban-board" id="kanban-board">
+          <section class="kanban-column" data-column="todo">
+            <div class="kanban-column-header">
+              <h2>Todo</h2>
+              <span id="count-todo">0</span>
+            </div>
+            <div id="column-todo" class="kanban-cards"></div>
+          </section>
+          <section class="kanban-column" data-column="doing">
+            <div class="kanban-column-header">
+              <h2>Doing</h2>
+              <span id="count-doing">0</span>
+            </div>
+            <div id="column-doing" class="kanban-cards"></div>
+          </section>
+          <section class="kanban-column" data-column="done">
+            <div class="kanban-column-header">
+              <h2>Done</h2>
+              <span id="count-done">0</span>
+            </div>
+            <div id="column-done" class="kanban-cards"></div>
+          </section>
+        </div>
       </section>
     </main>
     <script src="script.js"></script>
@@ -8626,6 +8702,177 @@ body {
 """
 
 
+def _local_kanban_css() -> str:
+    return """:root {
+  color-scheme: light;
+  --bg: #f2efe7;
+  --panel: rgba(255, 251, 245, 0.96);
+  --border: #d8ccb9;
+  --text: #2a241b;
+  --muted: #756858;
+  --accent: #b85c38;
+  --accent-soft: #f6dcc8;
+  --lane: rgba(255, 255, 255, 0.72);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(184, 92, 56, 0.14), transparent 24%),
+    linear-gradient(180deg, #f7f3ec 0%, #ece1d3 100%);
+  color: var(--text);
+}
+
+.kanban-app {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 48px 22px 72px;
+}
+
+.kanban-kicker {
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.kanban-hero h1,
+.kanban-hero p {
+  margin: 0;
+}
+
+.kanban-hero p:last-child {
+  margin-top: 10px;
+  color: var(--muted);
+  max-width: 720px;
+}
+
+.kanban-shell {
+  margin-top: 28px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: var(--panel);
+  box-shadow: 0 24px 70px rgba(56, 44, 27, 0.12);
+}
+
+.kanban-form {
+  display: flex;
+  gap: 12px;
+}
+
+.kanban-form input,
+.kanban-form button {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font: inherit;
+}
+
+.kanban-form input {
+  flex: 1;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.kanban-form button {
+  padding: 14px 20px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.kanban-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+  padding: 18px;
+  border: 1px solid rgba(216, 204, 185, 0.9);
+  border-radius: 22px;
+  background: var(--lane);
+}
+
+.kanban-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.kanban-column-header h2,
+.kanban-column-header span {
+  margin: 0;
+}
+
+.kanban-column-header span {
+  min-width: 34px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  text-align: center;
+  font-size: 13px;
+}
+
+.kanban-cards {
+  display: grid;
+  gap: 12px;
+}
+
+.kanban-card {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 20px rgba(56, 44, 27, 0.08);
+}
+
+.kanban-card p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.kanban-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.kanban-card-actions button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: white;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+@media (max-width: 860px) {
+  .kanban-board {
+    grid-template-columns: 1fr;
+  }
+
+  .kanban-form {
+    flex-direction: column;
+  }
+}
+"""
+
+
 def _local_weather_css() -> str:
     return """:root {
   color-scheme: light;
@@ -9098,6 +9345,127 @@ form.addEventListener("submit", (event) => {
 });
 
 renderTasks();
+"""
+
+
+def _local_kanban_js() -> str:
+    return """const form = document.getElementById("kanban-form");
+const input = document.getElementById("kanban-input");
+const columns = {
+  todo: document.getElementById("column-todo"),
+  doing: document.getElementById("column-doing"),
+  done: document.getElementById("column-done"),
+};
+const counters = {
+  todo: document.getElementById("count-todo"),
+  doing: document.getElementById("count-doing"),
+  done: document.getElementById("count-done"),
+};
+
+const storageKey = "devenv-kanban-sprint";
+const laneOrder = ["todo", "doing", "done"];
+let cards = loadCards();
+
+function loadCards() {
+  try {
+    return JSON.parse(localStorage.getItem(storageKey) || "[]");
+  } catch (error) {
+    return [];
+  }
+}
+
+function persistCards() {
+  localStorage.setItem(storageKey, JSON.stringify(cards));
+}
+
+function moveCard(cardId, direction) {
+  cards = cards.map((card) => {
+    if (card.id !== cardId) {
+      return card;
+    }
+    const nextIndex = laneOrder.indexOf(card.column) + direction;
+    if (nextIndex < 0 || nextIndex >= laneOrder.length) {
+      return card;
+    }
+    return { ...card, column: laneOrder[nextIndex] };
+  });
+  persistCards();
+  renderBoard();
+}
+
+function removeCard(cardId) {
+  cards = cards.filter((card) => card.id !== cardId);
+  persistCards();
+  renderBoard();
+}
+
+function updateCounters() {
+  laneOrder.forEach((lane) => {
+    counters[lane].textContent = String(cards.filter((card) => card.column === lane).length);
+  });
+}
+
+function renderBoard() {
+  laneOrder.forEach((lane) => {
+    columns[lane].innerHTML = "";
+  });
+
+  cards.forEach((card) => {
+    const item = document.createElement("article");
+    item.className = "kanban-card";
+
+    const copy = document.createElement("p");
+    copy.textContent = card.label;
+
+    const actions = document.createElement("div");
+    actions.className = "kanban-card-actions";
+
+    if (card.column !== "todo") {
+      const back = document.createElement("button");
+      back.type = "button";
+      back.textContent = "Back";
+      back.addEventListener("click", () => moveCard(card.id, -1));
+      actions.appendChild(back);
+    }
+
+    if (card.column !== "done") {
+      const forward = document.createElement("button");
+      forward.type = "button";
+      forward.textContent = "Forward";
+      forward.addEventListener("click", () => moveCard(card.id, 1));
+      actions.appendChild(forward);
+    }
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", () => removeCard(card.id));
+    actions.appendChild(remove);
+
+    item.append(copy, actions);
+    columns[card.column].appendChild(item);
+  });
+
+  updateCounters();
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const label = input.value.trim();
+  if (!label) {
+    return;
+  }
+  cards.unshift({
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    label,
+    column: "todo",
+  });
+  persistCards();
+  form.reset();
+  renderBoard();
+});
+
+renderBoard();
 """
 
 
