@@ -72,6 +72,19 @@ class ManageMemoryTool(BaseTool):
                     raise ValueError("create mode requires a non-empty text argument")
                 existing = getattr(self.memory, "store", None).get_node(node_id) if hasattr(self.memory, "store") else None
                 if existing is not None:
+                    requested_summary = text.strip()
+                    requested_label = label.strip() if isinstance(label, str) and label.strip() else node_id.replace("_", " ").title()
+                    requested_category = category.strip() if isinstance(category, str) and category.strip() else "manual"
+                    if (
+                        existing.summary == requested_summary
+                        and existing.label == requested_label
+                        and existing.category == requested_category
+                    ):
+                        return ToolResult(
+                            success=True,
+                            output=f"manage_memory create already satisfied for {node_id}",
+                            data={"node_id": node_id, "mode": mode, "created": False, "idempotent": True},
+                        )
                     return ToolResult(
                         success=False,
                         output=f"Memory node already exists: {node_id}",

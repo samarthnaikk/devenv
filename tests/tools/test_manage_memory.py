@@ -114,6 +114,18 @@ class ManageMemoryToolTest(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertEqual(result.output, "Memory node already exists: proj_calendar")
 
+    def test_create_mode_is_idempotent_for_identical_existing_node(self) -> None:
+        result = self.tool.execute(
+            node_id="proj_calendar",
+            mode="create",
+            label="Calendar Project",
+            category="project",
+            text="Calendar backend with reminders.",
+        )
+
+        self.assertTrue(result.success)
+        self.assertTrue(result.data["idempotent"])
+
     def test_create_mode_rejects_blank_text(self) -> None:
         result = self.tool.execute(node_id="atlas_backend_fact", mode="create", text="   ")
 
