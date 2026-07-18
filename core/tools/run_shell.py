@@ -94,6 +94,22 @@ class RunShellTool(BaseTool):
                     "stderr": stderr,
                 },
             )
+        except subprocess.TimeoutExpired as exc:
+            logger.error("run_shell timed out: mode=%s command=%s timeout=%s", mode, command, timeout)
+            stdout = (exc.stdout or "").strip() if isinstance(exc.stdout, str) else ""
+            stderr = (exc.stderr or "").strip() if isinstance(exc.stderr, str) else ""
+            return ToolResult(
+                success=False,
+                output=str(exc),
+                data={
+                    "command": command,
+                    "mode": mode,
+                    "timeout": timeout,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "timed_out": True,
+                },
+            )
         except (OSError, subprocess.SubprocessError) as exc:
             logger.error("run_shell failed: mode=%s command=%s error=%s", mode, command, exc)
             return ToolResult(success=False, output=str(exc), data={})
