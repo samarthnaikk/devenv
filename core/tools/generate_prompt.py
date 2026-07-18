@@ -51,6 +51,12 @@ class GeneratePromptTool(BaseTool):
         allow_web_search = _parse_bool(kwargs.get("allow_web_search"), default=False)
         provider = kwargs.get("provider")
         output_format = str(kwargs.get("output_format") or "strict").strip().lower()
+        if output_format not in {"compact", "detailed", "strict"}:
+            return ToolResult(
+                success=False,
+                output="output_format must be one of: compact, detailed, strict",
+                data={"status": "invalid_input"},
+            )
         normalized_format = "detailed" if output_format == "detailed" else "compact"
         session_ids = _parse_session_ids(kwargs.get("session_ids"))
 
