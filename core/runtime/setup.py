@@ -212,10 +212,10 @@ def _check_ollama_backend() -> tuple[str, str]:
         if str(item).strip()
     ]
     if status.available and models:
-        return "ready", f"llama.cpp ready with models: {', '.join(models[:4])}."
+        return "ready", f"Ollama reachable at {metadata.get('base_url', 'http://127.0.0.1:11434')} with models: {', '.join(models[:4])}."
     if status.available:
-        return "ready", detail or "llama.cpp CLI is installed."
-    return "pending", detail or "llama.cpp CLI is not ready yet."
+        return "ready", detail or "Ollama is reachable."
+    return "pending", detail or "Ollama is not running yet."
 
 
 def _ensure_workspace_state(*, db_path: str, vector_dir: str, apply_changes: bool) -> tuple[bool, str]:

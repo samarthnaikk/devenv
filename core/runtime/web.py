@@ -193,7 +193,7 @@ class DevenvWebApp:
         preferred_backend = getattr(self.kernel.ai, "preferred_backend", "opencode")
         active_provider_label = {
             "opencode": "OpenCode CLI",
-            "ollama": "llama.cpp",
+            "ollama": "Ollama",
             "codex": "Codex via OpenAI",
         }.get(active_backend, getattr(self.kernel.ai, "provider_label", "OpenCode CLI"))
         model_catalog = self._model_catalog(ai_statuses=ai_statuses, active_backend=active_backend, current_model=model)

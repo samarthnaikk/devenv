@@ -313,7 +313,7 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
           { className: "grid md:grid-cols-3 gap-3" },
           startupFact("Remembered", anyGranted ? "Your last access choices will be restored automatically." : "Once granted, access can be restored on the next launch."),
           startupFact("Chunking", "Devenv indexes prior sessions in the background after access is granted."),
-          startupFact("Local-first", "You can still prefer llama.cpp and keep web lookups or PDFs scoped per task.")
+          startupFact("Local-first", "You can still prefer Ollama and keep web lookups or PDFs scoped per task.")
         ),
         anyGranted
           ? React.createElement(

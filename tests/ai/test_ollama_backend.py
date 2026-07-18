@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 from core.ai.ollama_backend import OllamaAICore
@@ -26,136 +25,148 @@ class FakeTool(BaseTool):
 
 
 class OllamaBackendTest(unittest.TestCase):
-    def test_list_models_reads_gguf_directory(self) -> None:
+    def test_list_models_reads_ollama_tags(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
-            model_dir = Path(tempdir) / "models"
-            model_dir.mkdir()
-            (model_dir / "tiny.gguf").write_text("x", encoding="utf-8")
-            with patch.dict("os.environ", {"DEVENV_LLAMA_CPP_MODELS_DIR": str(model_dir)}):
-                core = OllamaAICore(workspace_path=tempdir)
+            core = OllamaAICore(workspace_path=tempdir)
+            with patch(
+                "core.ai.ollama_backend.urllib.request.urlopen",
+                return_value=_response({"models": [{"name": "qwen2.5-coder:3b"}]}),
+            ):
                 models = core.list_models()
 
-        self.assertIn("tiny.gguf", models)
+        self.assertEqual(models, ["qwen2.5-coder:3b"])
 
-    def test_chat_runs_llama_cpp_subprocess_and_returns_text(self) -> None:
+    def test_chat_posts_to_ollama_and_returns_text(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
-            model_path = Path(tempdir) / "tiny.gguf"
-            model_path.write_text("x", encoding="utf-8")
-            core = OllamaAICore(workspace_path=tempdir, model=str(model_path))
-            with patch("core.ai.ollama_backend.shutil.which", return_value="/usr/local/bin/llama-cli"):
-                with patch(
-                    "core.ai.ollama_backend.subprocess.run",
-                    return_value=_completed(stdout="Hello world\n"),
-                ):
-                    response = core.chat(messages=[{"role": "user", "content": "Say hello"}])
+            core = OllamaAICore(workspace_path=tempdir, model="qwen2.5-coder:3b")
+            with patch(
+                "core.ai.ollama_backend.urllib.request.urlopen",
+                return_value=_response(
+                    {
+                        "message": {"role": "assistant", "content": "Hello world"},
+                        "prompt_eval_count": 12,
+                        "eval_count": 7,
+                    }
+                ),
+            ) as mock_urlopen:
+                response = core.chat(messages=[{"role": "user", "content": "Say hello"}])
 
         self.assertEqual(response.content, "Hello world")
         self.assertEqual(response.backend, "ollama")
-        self.assertEqual(response.metadata["runtime"], "llama.cpp")
+        self.assertEqual(response.metadata["runtime"], "ollama")
+        request = mock_urlopen.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(payload["model"], "qwen2.5-coder:3b")
+        self.assertFalse(payload["stream"])
 
     def test_chat_parses_tool_call_json_response(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
-            model_path = Path(tempdir) / "tiny.gguf"
-            model_path.write_text("x", encoding="utf-8")
-            core = OllamaAICore(workspace_path=tempdir, model=str(model_path))
+            core = OllamaAICore(workspace_path=tempdir, model="qwen2.5-coder:3b")
             core.register_tool(FakeTool())
-            with patch("core.ai.ollama_backend.shutil.which", return_value="/usr/local/bin/llama-cli"):
-                with patch(
-                    "core.ai.ollama_backend.subprocess.run",
-                    return_value=_completed(
-                        stdout=json.dumps(
-                            {
-                                "type": "tool_call",
-                                "tool_name": "read_file",
-                                "arguments": {"path": "README.md"},
-                            }
-                        )
-                    ),
-                ):
-                    response = core.chat(
-                        messages=[{"role": "user", "content": "Open the readme"}],
-                        tool_names=["read_file"],
-                    )
+            with patch(
+                "core.ai.ollama_backend.urllib.request.urlopen",
+                return_value=_response(
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": json.dumps(
+                                {
+                                    "type": "tool_call",
+                                    "tool_name": "read_file",
+                                    "arguments": {"path": "README.md"},
+                                }
+                            ),
+                        }
+                    }
+                ),
+            ):
+                response = core.chat(
+                    messages=[{"role": "user", "content": "Open the readme"}],
+                    tool_names=["read_file"],
+                )
 
         self.assertEqual(response.finish_reason, "tool_calls")
         self.assertEqual(response.tool_calls[0].tool_name, "read_file")
 
-    def test_chat_uses_json_schema_for_planner_mode(self) -> None:
+    def test_chat_uses_schema_format_for_planner_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
-            model_path = Path(tempdir) / "tiny.gguf"
-            model_path.write_text("x", encoding="utf-8")
-            core = OllamaAICore(workspace_path=tempdir, model=str(model_path))
+            core = OllamaAICore(workspace_path=tempdir, model="qwen2.5-coder:3b")
             core.register_tool(FakeTool())
-            captured: dict[str, object] = {}
-
-            def fake_run(command, **kwargs):
-                captured["command"] = command
-                return _completed(
-                    stdout=json.dumps(
-                        {
-                            "tasks": [
-                                {"task_id": "task-1", "description": "Inspect runtime", "level": 0}
-                            ],
-                            "edges": [],
+            with patch(
+                "core.ai.ollama_backend.urllib.request.urlopen",
+                return_value=_response(
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": json.dumps(
+                                {
+                                    "tasks": [
+                                        {"task_id": "task-1", "description": "Inspect runtime", "level": 0}
+                                    ],
+                                    "edges": [],
+                                }
+                            ),
                         }
-                    )
+                    }
+                ),
+            ) as mock_urlopen:
+                response = core.chat(
+                    messages=[
+                        {"role": "system", "content": "PLANNER_OUTPUT_MODE: blueprint_json"},
+                        {"role": "user", "content": "Plan the work"},
+                    ],
+                    tool_names=["read_file"],
+                    temperature=0.0,
                 )
 
-            with patch("core.ai.ollama_backend.shutil.which", return_value="/usr/local/bin/llama-cli"):
-                with patch("core.ai.ollama_backend.subprocess.run", side_effect=fake_run):
-                    response = core.chat(
-                        messages=[
-                            {"role": "system", "content": "PLANNER_OUTPUT_MODE: blueprint_json"},
-                            {"role": "user", "content": "Plan the work"},
-                        ],
-                        tool_names=["read_file"],
-                        temperature=0.0,
-                    )
-
         self.assertEqual(response.finish_reason, "stop")
-        command = captured["command"]
-        self.assertIn("--json-schema", command)
+        request = mock_urlopen.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertIn("format", payload)
+        self.assertEqual(payload["options"]["temperature"], 0.0)
 
-    def test_status_reports_cli_missing_detail(self) -> None:
+    def test_status_reports_ollama_unreachable(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             core = OllamaAICore(workspace_path=tempdir)
-            with patch("core.ai.ollama_backend.shutil.which", return_value=None):
+            with patch(
+                "core.ai.ollama_backend.urllib.request.urlopen",
+                side_effect=OSError("connection refused"),
+            ):
                 status = core.status()
 
         self.assertFalse(status.available)
-        self.assertIn("llama.cpp CLI", status.detail)
+        self.assertIn("Ollama is not running", status.detail)
 
     def test_low_performance_mode_uses_single_thread_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
-            model_path = Path(tempdir) / "tiny.gguf"
-            model_path.write_text("x", encoding="utf-8")
-            core = OllamaAICore(workspace_path=tempdir, model=str(model_path))
+            core = OllamaAICore(workspace_path=tempdir, model="qwen2.5-coder:3b")
             core.set_performance_mode("low")
-            captured: dict[str, object] = {}
+            with patch(
+                "core.ai.ollama_backend.urllib.request.urlopen",
+                return_value=_response({"message": {"role": "assistant", "content": "done"}}),
+            ) as mock_urlopen:
+                core.chat(messages=[{"role": "user", "content": "Hi"}])
 
-            def fake_run(command, **kwargs):
-                captured["command"] = command
-                return _completed(stdout="done")
-
-            with patch("core.ai.ollama_backend.shutil.which", return_value="/usr/local/bin/llama-cli"):
-                with patch("core.ai.ollama_backend.subprocess.run", side_effect=fake_run):
-                    core.chat(messages=[{"role": "user", "content": "Hi"}])
-
-        command = captured["command"]
-        thread_index = command.index("--threads")
-        self.assertEqual(command[thread_index + 1], "1")
+        request = mock_urlopen.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(payload["options"]["num_thread"], 1)
 
 
-def _completed(*, stdout: str, stderr: str = "", returncode: int = 0):
-    return type(
-        "Completed",
-        (),
-        {
-            "stdout": stdout,
-            "stderr": stderr,
-            "returncode": returncode,
-        },
-    )()
+def _response(payload: dict[str, object]):
+    class _FakeResponse:
+        def __init__(self, body: bytes) -> None:
+            self._body = body
+
+        def read(self) -> bytes:
+            return self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+    return _FakeResponse(json.dumps(payload).encode("utf-8"))
 
 
 if __name__ == "__main__":
