@@ -626,13 +626,25 @@ def _extract_agent_response(raw_interaction: str) -> str | None:
 
 def _normalize_fts_query(query: str) -> str:
     tokens = [token.strip().lower() for token in json.dumps(query).strip('"').replace("\\n", " ").split() if token.strip()]
-    cleaned_tokens = [
-        replaced
-        for token in tokens
-        if (replaced := "".join(ch for ch in token if ch.isalnum() or ch in {"_", "-", "."}))
-        and len(replaced) > 2
-        and replaced not in {"the", "and", "for", "with", "what", "was", "were", "about", "again"}
-    ]
+    cleaned_tokens: list[str] = []
+    for token in tokens:
+        replaced = "".join(ch for ch in token if ch.isalnum() or ch in {"_", "-", "."})
+        if not replaced or len(replaced) <= 2:
+            continue
+        if replaced in {"the", "and", "for", "with", "what", "was", "were", "about", "again"}:
+            continue
+        cleaned_tokens.append(replaced)
     if not cleaned_tokens:
         return ""
-    return " ".join(f'"{token}"' for token in cleaned_tokens[:8])
+
+    counts: dict[str, int] = {}
+    first_seen: dict[str, int] = {}
+    for index, token in enumerate(cleaned_tokens):
+        counts[token] = counts.get(token, 0) + 1
+        first_seen.setdefault(token, index)
+
+    ranked = sorted(
+        counts,
+        key=lambda token: (-counts[token], -len(token), first_seen[token]),
+    )
+    return " OR ".join(f'"{token}"' for token in ranked[:8])

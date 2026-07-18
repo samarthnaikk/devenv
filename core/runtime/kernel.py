@@ -2837,6 +2837,14 @@ class DevenvKernel:
             payload = dict(last_step.data or {})
             content = payload.get("content")
             if isinstance(content, str) and content.strip():
+                focused_answer = _extract_context_only_file_answer(
+                    user_prompt=user_prompt,
+                    task_description=task_description,
+                    file_name=Path(path_value).name,
+                    content=content,
+                )
+                if focused_answer:
+                    return focused_answer
                 summary = _summarize_local_text_file(Path(path_value).name, content)
                 if summary:
                     return summary
@@ -3023,11 +3031,16 @@ class DevenvKernel:
         checkpoint: CheckpointTask | None = None,
         selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
     ) -> list[str]:
+        combined_prompt = f"{user_prompt}\n{task_description}"
         scoped = self._tool_scope_for_prompt(
-            f"{user_prompt}\n{task_description}",
+            combined_prompt,
             selected_tools=selected_tools,
             execution_phase=True,
         )
+        if checkpoint is None and self._is_scaffold_request(combined_prompt.lower()):
+            scaffold_only = [tool_name for tool_name in scoped if tool_name in SCAFFOLD_EXECUTION_TOOLS]
+            if scaffold_only:
+                return sorted(scaffold_only)
         if checkpoint is None or not checkpoint.allowed_tool_names:
             return scoped
         checkpoint_scope = {tool_name for tool_name in checkpoint.allowed_tool_names if tool_name in self.tools}
@@ -4475,6 +4488,18 @@ class DevenvKernel:
         content_value = arguments.get("content")
         if not isinstance(path_value, str):
             return None
+        target_path_hint = self._active_scaffold_target_path()
+        target_path: Path | None = None
+        requested_path = Path(path_value).expanduser()
+        if target_path_hint is not None:
+            target_path = (Path(self.workspace_path) / target_path_hint).resolve()
+            if not requested_path.is_absolute():
+                requested_path = (Path(self.workspace_path) / requested_path).resolve()
+            if requested_path == target_path and isinstance(content_value, str) and not content_value.strip():
+                return (
+                    f"Use write_file on a file inside {target_path_hint} such as "
+                    f"{target_path_hint}/index.html, not on the folder itself."
+                )
         if isinstance(content_value, str) and not content_value.strip():
             active_task = None
             if self.active_blueprint and 0 <= self.active_blueprint.active_task_pointer < len(self.active_blueprint.tasks):
@@ -4483,21 +4508,8 @@ class DevenvKernel:
                 lowered = active_task.description.lower()
                 if any(marker in lowered for marker in ("create ", "add ", "wire ", "connect ", "update ", "implement ")):
                     return f"write_file for `{path_value}` requires non-empty content for this checkpoint."
-
-        target_path_hint = self._active_scaffold_target_path()
         if target_path_hint is None:
             return None
-
-        target_path = (Path(self.workspace_path) / target_path_hint).resolve()
-        requested_path = Path(path_value).expanduser()
-        if not requested_path.is_absolute():
-            requested_path = (Path(self.workspace_path) / requested_path).resolve()
-
-        if requested_path == target_path and isinstance(content_value, str) and not content_value.strip():
-            return (
-                f"Use write_file on a file inside {target_path_hint} such as "
-                f"{target_path_hint}/index.html, not on the folder itself."
-            )
         return None
 
     def _repair_directory_path(self, requested_path: str) -> str | None:
@@ -7394,6 +7406,15 @@ def _summarize_local_text_file(file_name: str, content: str) -> str | None:
     return f"`{file_name}` preview: {preview}"
 
 
+def _extract_context_only_file_answer(*, user_prompt: str, task_description: str, file_name: str, content: str) -> str | None:
+    lowered_request = f"{user_prompt} {task_description}".lower()
+    if file_name.lower().endswith(".md") and any(token in lowered_request for token in ("h1", "heading", "title")):
+        heading = next((line.strip().lstrip("#").strip() for line in content.splitlines() if line.strip().startswith("#")), "")
+        if heading:
+            return heading
+    return None
+
+
 def _first_backticked_path(text: str) -> str | None:
     for match in re.findall(r"`([^`]+)`", text):
         candidate = str(match).strip()
@@ -7404,6 +7425,7 @@ def _first_backticked_path(text: str) -> str | None:
 
 def _sanitize_model_generated_path(path: str) -> str:
     cleaned = str(path or "").strip().strip("`").replace("\\", "/")
+    is_absolute = cleaned.startswith("/")
     parts: list[str] = []
     for raw_part in cleaned.split("/"):
         part = raw_part.strip().strip("`")
@@ -7413,7 +7435,10 @@ def _sanitize_model_generated_path(path: str) -> str:
         if part.lower() == "init.py":
             part = "__init__.py"
         parts.append(part)
-    return "/".join(parts)
+    normalized = "/".join(parts)
+    if is_absolute and normalized:
+        return f"/{normalized}"
+    return normalized
 
 
 def _normalized_path_identity(name: str) -> str:

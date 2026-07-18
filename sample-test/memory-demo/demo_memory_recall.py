@@ -8,7 +8,7 @@ from core.memory.embeddings import HashingEmbedder
 from core.memory.vector_index import InMemoryVectorIndex
 
 DEMO_ROOT = Path(__file__).resolve().parent
-PROJECT_ROOT = DEMO_ROOT.parents[2]
+PROJECT_ROOT = DEMO_ROOT.parents[1]
 DEMO_DB = PROJECT_ROOT / "memory.db"
 DEMO_VECTORS = PROJECT_ROOT / "vectors"
 
@@ -28,14 +28,32 @@ def seed_demo_db(force: bool = False) -> None:
             DEMO_DB.unlink()
 
     engine = create_engine()
+    engine.update_associative_tree(
+        {
+            "node_id": "proj_calendar",
+            "label": "Project: Calendar",
+            "category": "project",
+            "summary": "The calendar project uses a React frontend, Python backend, and drag-and-drop scheduling.",
+        }
+    )
+    engine.update_associative_tree(
+        {
+            "node_id": "proj_jobs",
+            "label": "Project: Jobs",
+            "category": "project",
+            "summary": "The jobs project uses Django for the backend and React for the admin web app.",
+        }
+    )
     engine.add_episodic_log(
         "We were building a calendar project with a React frontend, Python backend, and drag-and-drop scheduling.",
         "Stored the calendar stack and scheduling details for later recall.",
+        node_id="proj_calendar",
         metadata={"workspace_path": "/demo/calendar-project"},
     )
     engine.add_episodic_log(
         "The current jobs project uses Django for the backend and React for the admin web app.",
         "Stored the jobs platform architecture separately from the calendar project.",
+        node_id="proj_jobs",
         metadata={"workspace_path": "/demo/jobs-project"},
     )
     engine.run_consolidation()

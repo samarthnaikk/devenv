@@ -102,6 +102,43 @@ class SQLiteMemoryStoreTest(unittest.TestCase):
         self.assertEqual(self.store.search_nodes_fts("django auth middleware", limit=2)[0].node_id, "auth_node")
         self.assertEqual(self.store.search_logs_fts("django auth help", limit=2)[0].log_id, "log-auth")
 
+    def test_fts_query_normalization_keeps_repeated_project_terms_for_vague_follow_up(self) -> None:
+        if not getattr(self.store, "_fts_enabled", False):
+            self.skipTest("SQLite FTS5 is not available in this environment")
+
+        self.store.upsert_node(
+            MemoryNode(
+                node_id="proj_calendar",
+                parent_id=None,
+                label="Project: Calendar",
+                category="project",
+                summary="Calendar project with a React frontend and Python backend.",
+                created_at=1.0,
+                last_accessed=1.0,
+                access_count=0,
+            )
+        )
+        self.store.upsert_node(
+            MemoryNode(
+                node_id="proj_jobs",
+                parent_id=None,
+                label="Project: Jobs",
+                category="project",
+                summary="Jobs project with a Django backend and React admin UI.",
+                created_at=1.0,
+                last_accessed=1.0,
+                access_count=0,
+            )
+        )
+
+        results = self.store.search_nodes_fts(
+            "Not in the current directory, I mean the project we were working on earlier.\n"
+            "Do you know about the calendar project we were building?",
+            limit=2,
+        )
+
+        self.assertEqual(results[0].node_id, "proj_calendar")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -24,6 +24,7 @@ from core.runtime.kernel import (
     _memory_context_sections,
     _prefer_reference_results_over_empty_summary,
     _sanitize_logged_answer,
+    _sanitize_model_generated_path,
     _should_try_direct_memory_answer,
     _summarize_local_text_file,
     _summarize_directory_listing,
@@ -4816,6 +4817,33 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(second.total_usage["total_tokens"], 8)
         self.assertEqual(second.execution_mode, ExecutionMode.BLOCKED_FOR_CLARIFICATION.value)
         self.assertEqual(second.turn_outcome, TurnOutcome.BUDGET_STOP.value)
+
+    def test_sanitize_model_generated_path_preserves_absolute_paths(self) -> None:
+        self.assertEqual(
+            _sanitize_model_generated_path("/Users/demo/project/README.md"),
+            "/Users/demo/project/README.md",
+        )
+
+    def test_context_only_readme_title_request_returns_heading(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            answer = kernel._complete_context_only_checkpoint_from_steps(
+                user_prompt="Read README.md and answer with just the H1 title.",
+                task_description="Read README.md and answer with just the H1 title.",
+                candidate_steps=[
+                    ToolExecutionStep(
+                        step_id="step-1",
+                        tool_name="read_file",
+                        arguments={"path": str(Path(tempdir) / "README.md")},
+                        output="ok",
+                        success=True,
+                        is_sandboxed_violation=False,
+                        data={"content": "# Devenv AI\n\nLocal-first coding agent foundation."},
+                    )
+                ],
+            )
+
+        self.assertEqual(answer, "Devenv AI")
 
 
 def _disabled_router():
