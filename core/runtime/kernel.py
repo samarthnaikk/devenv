@@ -2344,9 +2344,8 @@ class DevenvKernel:
                 direct_candidates.sort(key=lambda item: item[0], reverse=True)
                 best_score, best_response = direct_candidates[0]
                 if best_score >= 1:
-                    shaped_response = _shape_logged_answer_for_prompt(user_prompt, best_response)
-                    self._exact_logged_answer_cache[lowered] = shaped_response
-                    return shaped_response
+                    self._exact_logged_answer_cache[lowered] = best_response
+                    return best_response
 
         logs = []
         if hasattr(store, "search_logs_for_external_query"):
@@ -2383,11 +2382,11 @@ class DevenvKernel:
             exact_external_query = str(metadata.get("external_context_query") or "").strip().lower() if isinstance(metadata, dict) else ""
             logged_user = str(payload.get("user") or "").strip().lower()
             if exact_external_query in query_variants:
-                exact_answer = _shape_logged_answer_for_prompt(user_prompt, cleaned_agent_text)
+                exact_answer = cleaned_agent_text
                 self._exact_logged_answer_cache[lowered] = exact_answer
                 return exact_answer
             if logged_user in query_variants:
-                exact_answer = _shape_logged_answer_for_prompt(user_prompt, cleaned_agent_text)
+                exact_answer = cleaned_agent_text
                 self._exact_logged_answer_cache[lowered] = exact_answer
                 return exact_answer
             if allow_fallback_candidates:
@@ -2464,7 +2463,9 @@ class DevenvKernel:
         self.state = AgentState.EXECUTING
         system_logs.append(f"State: {self.state.name}")
         working_blueprint = blueprint
-        checkpoint_indexes = self._execution_checkpoint_indexes(working_blueprint)
+        # Match remote execution semantics: advance one checkpoint per turn so
+        # follow-up/continue-plan can observe and resume the active plan.
+        checkpoint_indexes = self._execution_checkpoint_indexes(working_blueprint)[:1]
         final_response: str | None = None
 
         for index in checkpoint_indexes:
@@ -3786,6 +3787,7 @@ class DevenvKernel:
                 "explain the repository",
                 "explain this repository",
                 "how does the backend work",
+                "how does backend work",
                 "how does this backend work",
                 "how does the repo work",
                 "how does the repository work",
