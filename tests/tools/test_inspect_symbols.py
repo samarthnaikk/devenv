@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -40,3 +41,13 @@ class InspectSymbolsToolTest(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.data["documentation"][0]["scope"], "module")
         self.assertIn("Business logic", result.data["documentation"][0]["docstring"])
+
+    def test_syntax_broken_python_reports_clear_error(self) -> None:
+        with tempfile.TemporaryDirectory(dir=FIXTURE_FILE.parents[3]) as tempdir:
+            broken = Path(tempdir) / "broken.py"
+            broken.write_text("class Broken(\n", encoding="utf-8")
+
+            result = self.tool.execute(path=str(broken), mode="outline")
+
+        self.assertFalse(result.success)
+        self.assertIn("Invalid Python syntax", result.output)

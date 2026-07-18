@@ -44,7 +44,10 @@ class InspectSymbolsTool(BaseTool):
         try:
             file_path = ensure_file(path)
             source = file_path.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=str(file_path))
+            try:
+                tree = ast.parse(source, filename=str(file_path))
+            except SyntaxError as exc:
+                raise ValueError(f"Invalid Python syntax: {exc}") from exc
 
             if mode == "outline":
                 payload = {"symbols": self._outline(tree)}
@@ -59,7 +62,7 @@ class InspectSymbolsTool(BaseTool):
                 output=f"inspect_symbols completed for {file_path.name} using {mode} mode",
                 data={"path": str(file_path), "mode": mode, **payload},
             )
-        except (FileNotFoundError, IsADirectoryError, OSError, SyntaxError, UnicodeDecodeError, ValueError) as exc:
+        except (FileNotFoundError, IsADirectoryError, OSError, UnicodeDecodeError, ValueError) as exc:
             logger.error("inspect_symbols failed: path=%s mode=%s error=%s", path, mode, exc)
             return ToolResult(success=False, output=str(exc), data={})
 
