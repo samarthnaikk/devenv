@@ -260,6 +260,14 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
         )
       ),
       React.createElement(
+        "div",
+        { className: "plan-runway-rail" },
+        React.createElement("span", { className: "plan-runway-pill" }, blueprint.verification_passed ? "Verified" : allDone ? "Done" : "Active graph"),
+        React.createElement("span", { className: "plan-runway-pill" }, mode === "forced" ? "Plan mode" : "Auto plan"),
+        React.createElement("span", { className: "plan-runway-pill" }, nextActionLabel(normalized.nodes)),
+        React.createElement("span", { className: "plan-runway-copy" }, normalized.nodes.some((node) => node.status === "active") ? "The execution graph is actively progressing through the current checkpoint." : "This graph is staged and ready to inspect before execution continues.")
+      ),
+      React.createElement(
         MotionDeck,
         { className: "plan-summary-grid mb-2" },
         planStat("Layers", String(new Set(normalized.nodes.map((node) => node.level)).size), "Execution depth across the graph", 0),

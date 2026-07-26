@@ -12,8 +12,14 @@ export function Toast() {
     React.createElement(
       BeamFrame,
       { tone: "sunrise", className: "toast-banner markdown-body inline-markdown" },
+      React.createElement("span", { className: "toast-banner-orbit", "aria-hidden": "true" }),
       React.createElement("span", { className: "material-symbols-outlined toast-banner-icon" }, "notifications_active"),
-      React.createElement("span", { className: "toast-banner-copy" }, state.toast)
+      React.createElement(
+        "span",
+        { className: "toast-banner-copy-wrap" },
+        React.createElement("span", { className: "toast-banner-label" }, "Runtime update"),
+        React.createElement("span", { className: "toast-banner-copy" }, state.toast)
+      )
     )
   );
 }
