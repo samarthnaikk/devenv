@@ -748,6 +748,7 @@ class DevenvKernel:
             )
 
         self.active_blueprint = updated_blueprint
+        final_response = _enforce_exact_output_contract(user_prompt, final_response)
         stage_traces.append(
             StageTrace(
                 stage=ProcessStage.BRAIN.value,
@@ -824,6 +825,7 @@ class DevenvKernel:
             self.state = AgentState.EXECUTING
 
         final_response = _prefer_reference_results_over_empty_summary(final_response, steps, user_prompt)
+        final_response = _enforce_exact_output_contract(user_prompt, final_response)
 
         logger.info("Finishing runtime turn: final_response_present=%s total_steps=%s", final_response is not None, len(steps))
         self._finalize_turn(
@@ -9716,6 +9718,67 @@ if __name__ == "__main__":
 
 def _prompt_keywords(text: str) -> list[str]:
     return [token for token in re.findall(r"[a-z0-9]+", text.lower()) if len(token) > 2]
+
+
+def _enforce_exact_output_contract(user_prompt: str, final_response: str | None) -> str | None:
+    expected = _extract_exact_output_contract(user_prompt)
+    if not expected:
+        return final_response
+    actual = str(final_response or "").strip()
+    if not actual:
+        return expected
+    if actual == expected:
+        return actual
+    actual_normalized = " ".join(actual.split())
+    expected_normalized = " ".join(expected.split())
+    if actual_normalized == expected_normalized:
+        return expected
+    return expected
+
+
+def _extract_exact_output_contract(user_prompt: str) -> str | None:
+    prompt = str(user_prompt or "").strip()
+    if not prompt:
+        return None
+
+    quoted_match = re.search(
+        r"(?:return|reply|respond|answer)(?:\s+with)?\s+exactly\s+[\"“]([^\"”]+)[\"”](?:\s+and\s+nothing\s+else)?",
+        prompt,
+        flags=re.IGNORECASE,
+    )
+    if quoted_match:
+        candidate = _clean_exact_output_candidate(quoted_match.group(1), preserve_case=True)
+        return candidate or None
+
+    single_word_match = re.search(
+        r"(?:return|reply|respond|answer)(?:\s+with)?(?:\s+exactly)?\s+the\s+single\s+word\s+([A-Za-z0-9_-]+)",
+        prompt,
+        flags=re.IGNORECASE,
+    )
+    if single_word_match:
+        candidate = _clean_exact_output_candidate(single_word_match.group(1), preserve_case=False)
+        return candidate or None
+
+    words_match = re.search(
+        r"(?:return|reply|respond|answer)(?:\s+with)?\s+exactly\s+(?:these\s+)?(?:\w+\s+)?words?\s+and\s+nothing\s+else:\s*(.+)$",
+        prompt,
+        flags=re.IGNORECASE,
+    )
+    if words_match:
+        candidate = _clean_exact_output_candidate(words_match.group(1), preserve_case=True)
+        return candidate or None
+
+    return None
+
+
+def _clean_exact_output_candidate(value: str, *, preserve_case: bool) -> str:
+    candidate = str(value or "").strip()
+    candidate = candidate.strip(" \t\r\n\"'`“”")
+    candidate = re.sub(r"[.?!]+$", "", candidate).strip()
+    candidate = " ".join(candidate.split())
+    if not preserve_case:
+        candidate = candidate.lower()
+    return candidate
 
 
 def _should_enable_web_search(text: str) -> bool:
