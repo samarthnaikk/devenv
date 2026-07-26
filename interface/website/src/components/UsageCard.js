@@ -9,6 +9,9 @@ export function UsageCard() {
   const statusLabel = state.isRunning ? "Running" : "Idle";
   const statusColor = state.isRunning ? "bg-primary" : "bg-outline";
   const elapsed = state.isRunning ? formatDuration(Date.now() - state.runStartedAt) : formatDuration(state.latestElapsedMs || 0);
+  const usedTokens = Number(state.sessionUsageTotal || 0);
+  const budgetTokens = Number(state.sessionBudgetTokens || 0);
+  const budgetRatio = budgetTokens > 0 ? Math.min(1, usedTokens / budgetTokens) : 0;
 
   const applyBudget = () => {
     const nextValue = Number.parseInt(state.budgetInput, 10);
@@ -73,6 +76,25 @@ export function UsageCard() {
           React.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Session total"),
           React.createElement("div", { className: "font-body-md text-body-md font-bold" }, React.createElement(MotionNumber, { value: `${String(state.sessionUsageTotal || 0)} tokens` }))
         )
+      ),
+      React.createElement(
+        "div",
+        { className: "workspace-budget-panel mt-3" },
+        React.createElement(
+          "div",
+          { className: "workspace-budget-head" },
+          React.createElement("span", { className: "workspace-budget-label" }, "Budget load"),
+          React.createElement("span", { className: "workspace-budget-value" }, budgetTokens > 0 ? `${Math.round(budgetRatio * 100)}%` : "Open")
+        ),
+        React.createElement(
+          "div",
+          { className: "workspace-budget-bar" },
+          React.createElement("span", {
+            className: "workspace-budget-fill",
+            style: { width: budgetTokens > 0 ? `${Math.max(6, Math.round(budgetRatio * 100))}%` : "18%" },
+          })
+        ),
+        React.createElement("div", { className: "workspace-budget-detail" }, budgetTokens > 0 ? `${usedTokens} of ${budgetTokens} tokens used this session` : "No cap set. The runtime can keep spending until you apply a budget.")
       ),
       React.createElement(
         "div",

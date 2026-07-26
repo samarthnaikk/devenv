@@ -2,7 +2,7 @@ import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, escapeAttribute, formatBackendLabel } from "../utils/format.js";
 import { persistPreferredBackend, persistPreferredModels } from "../utils/storage.js";
-import { BeamFrame, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
+import { BeamFrame, MotionDeck, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 export function SettingsDropdown() {
   const { state, dispatch } = useApp();
@@ -109,6 +109,13 @@ export function SettingsDropdown() {
           )
         ),
         React.createElement(
+          MotionDeck,
+          { className: "settings-status-grid" },
+          statusChip("Preferred", formatBackendLabel(preferredBackend)),
+          statusChip("Active", formatBackendLabel(state.activeBackend || preferredBackend)),
+          statusChip("Model", compactModelName(currentModel))
+        ),
+        React.createElement(
           "div",
           { className: "settings-panel-section space-y-1.5" },
           React.createElement("label", { className: "font-label-caps text-[11px] text-on-surface-variant block" }, "Model"),
@@ -141,4 +148,20 @@ export function SettingsDropdown() {
       )
     )
   );
+}
+
+function statusChip(label, value) {
+  return React.createElement(
+    "div",
+    { className: "settings-status-chip" },
+    React.createElement("span", { className: "settings-status-label" }, label),
+    React.createElement("strong", { className: "settings-status-value" }, value)
+  );
+}
+
+function compactModelName(value) {
+  const text = String(value || "").trim();
+  if (!text) return "Auto";
+  const last = text.split("/").pop() || text;
+  return last.length > 18 ? `${last.slice(0, 15)}...` : last;
 }

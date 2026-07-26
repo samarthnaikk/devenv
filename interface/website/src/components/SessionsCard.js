@@ -2,7 +2,7 @@ import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, escapeAttribute } from "../utils/format.js";
 import { showToast } from "./Header.js";
-import { BeamFrame, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
+import { BeamFrame, MotionDeck, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 export function SessionsCard() {
   const { state, dispatch } = useApp();
@@ -77,6 +77,12 @@ export function SessionsCard() {
     React.createElement(
       BeamFrame,
       { active: state.sessionLoading, tone: "mono", className: "workspace-card-shell rounded-[22px] overflow-hidden" },
+      React.createElement(
+        MotionDeck,
+        { className: "workspace-provider-grid p-3 border-b border-outline-variant/30" },
+        providerStat("Codex", codexAllowed, (state.providerSessions?.codex || []).length, codexVisible),
+        providerStat("OpenCode", opencodeAllowed, (state.providerSessions?.opencode || []).length, opencodeVisible)
+      ),
       renderSessionRow("codex", "Codex History", codexAllowed, codexVisible, state, dispatch, toggleProviderVisibility, selectSession),
       renderSessionRow("opencode", "OpenCode History", opencodeAllowed, opencodeVisible, state, dispatch, toggleProviderVisibility, selectSession)
     )
@@ -87,11 +93,16 @@ function renderSessionRow(provider, label, allowed, visible, state, dispatch, to
   const sessions = state.providerSessions[provider] || [];
   return React.createElement(
     "div",
-    { key: provider, className: "workspace-card-section bg-surface-container rounded-lg border border-outline-variant overflow-hidden" },
+    { key: provider, className: "workspace-card-section workspace-session-section bg-surface-container rounded-lg border border-outline-variant overflow-hidden" },
     React.createElement(
       "div",
-      { className: "p-3 flex justify-between items-center" },
-      React.createElement("span", { className: "font-body-md text-body-md" }, escapeHtml(label)),
+      { className: "p-3 flex justify-between items-center gap-3" },
+      React.createElement(
+        "div",
+        { className: "workspace-session-headline" },
+        React.createElement("span", { className: "font-body-md text-body-md" }, escapeHtml(label)),
+        React.createElement("span", { className: "workspace-session-meta" }, allowed ? visible ? "Open in rail" : "Available to inspect" : "Grant access to inspect")
+      ),
       React.createElement(
         "button",
         {
@@ -106,7 +117,7 @@ function renderSessionRow(provider, label, allowed, visible, state, dispatch, to
     visible && allowed
       ? React.createElement(
           "div",
-          { className: "border-t border-outline-variant/30 p-2 space-y-1 max-h-48 overflow-y-auto" },
+          { className: "border-t border-outline-variant/30 p-2 space-y-1 max-h-48 overflow-y-auto workspace-session-list" },
           sessions.length
             ? sessions.map((session) =>
                 React.createElement(
@@ -114,7 +125,7 @@ function renderSessionRow(provider, label, allowed, visible, state, dispatch, to
                   {
                     key: session.session_id,
                     type: "button",
-                    className: `w-full text-left p-2 rounded-lg ${state.selectedProvider === provider && state.selectedSessionId === session.session_id ? "bg-surface-container-highest border border-primary" : "bg-surface-dim border border-transparent"} hover:bg-surface-container-highest transition-colors`,
+                    className: `w-full text-left p-2 rounded-lg workspace-session-card ${state.selectedProvider === provider && state.selectedSessionId === session.session_id ? "is-selected bg-surface-container-highest border border-primary" : "bg-surface-dim border border-transparent"} hover:bg-surface-container-highest transition-colors`,
                     onClick: () => selectSession(provider, session.session_id),
                   },
                   React.createElement("div", { className: "font-label-caps text-label-caps text-on-surface text-[11px]" }, escapeHtml(session.title || "Untitled session")),
@@ -124,6 +135,16 @@ function renderSessionRow(provider, label, allowed, visible, state, dispatch, to
             : React.createElement("div", { className: "font-body-md text-body-md text-on-surface-variant p-2" }, state.sessionLoading ? "Loading..." : "No sessions")
         )
       : null
+  );
+}
+
+function providerStat(label, allowed, count, visible) {
+  return React.createElement(
+    "div",
+    { className: "workspace-provider-stat" },
+    React.createElement("span", { className: "workspace-provider-label" }, label),
+    React.createElement("strong", { className: "workspace-provider-value" }, allowed ? `${count}` : "Off"),
+    React.createElement("span", { className: "workspace-provider-detail" }, allowed ? visible ? "Visible now" : "Ready to open" : "Needs consent")
   );
 }
 

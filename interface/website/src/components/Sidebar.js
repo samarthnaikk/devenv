@@ -4,7 +4,7 @@ import { AccessCard } from "./AccessCard.js";
 import { SessionsCard } from "./SessionsCard.js";
 import { UsageCard } from "./UsageCard.js";
 import { Footer } from "./Footer.js";
-import { BeamFrame, MotionReveal, MotionShimmerText, MotionStage } from "./MotionPrimitives.js";
+import { BeamFrame, MotionDeck, MotionReveal, MotionShimmerText, MotionStage } from "./MotionPrimitives.js";
 
 export function Sidebar() {
   const { state, dispatch } = useApp();
@@ -71,10 +71,30 @@ export function Sidebar() {
           React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "keyboard_double_arrow_right")
         )
       ),
+      React.createElement(
+        MotionDeck,
+        { className: "workspace-rail-overview" },
+        overviewPill("Backend", state.activeBackend || state.preferredBackend || "opencode"),
+        overviewPill("Mode", state.planMode ? "Plan" : state.isRunning ? "Live" : "Ready"),
+        overviewPill("Sessions", String(totalVisibleSessions(state)))
+      ),
       React.createElement(MotionReveal, { delay: 50 }, React.createElement(AccessCard, null)),
       React.createElement(MotionReveal, { delay: 100 }, React.createElement(SessionsCard, null)),
       React.createElement(MotionReveal, { delay: 150 }, React.createElement(UsageCard, null))
     ),
     React.createElement(Footer, null)
   );
+}
+
+function overviewPill(label, value) {
+  return React.createElement(
+    "div",
+    { className: "workspace-rail-pill" },
+    React.createElement("span", { className: "workspace-rail-pill-label" }, label),
+    React.createElement("strong", { className: "workspace-rail-pill-value" }, value)
+  );
+}
+
+function totalVisibleSessions(state) {
+  return ["codex", "opencode"].reduce((total, provider) => total + ((state.providerSessions?.[provider] || []).length), 0);
 }
