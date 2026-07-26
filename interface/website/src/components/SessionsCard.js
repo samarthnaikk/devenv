@@ -75,6 +75,14 @@ export function SessionsCard() {
       )
     ),
     React.createElement(
+      "div",
+      { className: "workspace-summary-rail workspace-summary-rail-secondary" },
+      React.createElement("span", { className: "workspace-summary-pill" }, `${(state.providerSessions?.codex || []).length + (state.providerSessions?.opencode || []).length} loaded`),
+      React.createElement("span", { className: "workspace-summary-pill" }, state.selectedProvider ? escapeHtml(state.selectedProvider) : "No selection"),
+      React.createElement("span", { className: "workspace-summary-pill" }, codexVisible || opencodeVisible ? "Rail open" : "Rail idle"),
+      React.createElement("span", { className: "workspace-summary-copy" }, "Open provider histories, inspect threads, and keep retrieval context visible.")
+    ),
+    React.createElement(
       BeamFrame,
       { active: state.sessionLoading, tone: "mono", className: "workspace-card-shell rounded-[22px] overflow-hidden" },
       React.createElement("span", { className: "workspace-card-ribbon workspace-card-ribbon-secondary", "aria-hidden": "true" }),

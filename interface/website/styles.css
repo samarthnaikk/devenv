@@ -1369,6 +1369,27 @@ pre {
   box-shadow: 0 18px 40px rgba(20, 35, 33, 0.08);
 }
 
+.app-footer-orbit {
+  position: absolute;
+  top: 10px;
+  right: 148px;
+  width: 96px;
+  height: 96px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.app-footer-orbit::after {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border-radius: 999px;
+  border: 1px dashed color-mix(in srgb, var(--secondary) 18%, transparent);
+  opacity: 0.74;
+}
+
 .app-footer-ribbon {
   position: absolute;
   top: 12px;
@@ -1443,6 +1464,44 @@ pre {
 
 .app-footer-metric-value {
   font-size: 11px;
+  color: var(--text);
+}
+
+.app-footer-lane {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 22rem;
+  margin-left: 14px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 54%, transparent);
+  background:
+    radial-gradient(circle at top right, rgba(36, 93, 168, 0.08), transparent 30%),
+    color-mix(in srgb, var(--surface-container-low) 80%, white 20%);
+  box-shadow: 0 12px 24px rgba(20, 35, 33, 0.06);
+}
+
+.app-footer-lane-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 10%, white 90%);
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--outline-variant));
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.app-footer-lane-copy {
+  font-size: 11px;
+  line-height: 1.4;
   color: var(--text);
 }
 
@@ -2107,6 +2166,47 @@ pre {
   position: relative;
 }
 
+.workspace-summary-rail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 56%, transparent);
+  background:
+    radial-gradient(circle at top right, rgba(79, 219, 200, 0.08), transparent 32%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 84%, white 16%), color-mix(in srgb, var(--surface-container-low) 92%, white 8%));
+  box-shadow: 0 14px 28px rgba(20, 35, 33, 0.06);
+}
+
+.workspace-summary-rail-secondary {
+  background:
+    radial-gradient(circle at top right, rgba(36, 93, 168, 0.08), transparent 30%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 84%, white 16%), color-mix(in srgb, var(--surface-container-low) 92%, white 8%));
+}
+
+.workspace-summary-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-container-high) 78%, white 22%);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 58%, transparent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.workspace-summary-copy {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
 .workspace-rail-overview-shell {
   border: 1px solid color-mix(in srgb, var(--outline-variant) 68%, transparent);
   box-shadow: 0 18px 42px rgba(20, 35, 33, 0.08);
@@ -2382,6 +2482,10 @@ pre {
   .workspace-rail-overview,
   .workspace-status-grid {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-summary-rail {
+    align-items: flex-start;
   }
 
   .workspace-access-row {
@@ -3327,6 +3431,17 @@ pre {
   .workspace-rail {
     max-width: 20rem;
     min-width: 18rem;
+  }
+
+  .app-footer-shell {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .app-footer-lane {
+    margin-left: 0;
+    max-width: none;
+    justify-content: flex-start;
   }
 
   .app-header-pills {

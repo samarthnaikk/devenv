@@ -25,6 +25,7 @@ export function Footer() {
       BeamFrame,
       { active: state.isRunning, tone: "mono", className: "app-footer-shell flex justify-between items-center rounded-[22px] px-4 py-3" },
       React.createElement("span", { className: "app-footer-ribbon", "aria-hidden": "true" }),
+      React.createElement("span", { className: "app-footer-orbit", "aria-hidden": "true" }),
       React.createElement(
         "div",
         { className: "flex items-center gap-3" },
@@ -52,6 +53,12 @@ export function Footer() {
           footerMetric("Route", routeLabel),
           footerMetric("Mode", state.isRunning ? "Live" : "Idle")
         )
+      ),
+      React.createElement(
+        "div",
+        { className: "app-footer-lane" },
+        React.createElement("span", { className: "app-footer-lane-label" }, state.planMode ? "Plan lane" : "Run lane"),
+        React.createElement("span", { className: "app-footer-lane-copy" }, state.isRunning ? "Runtime is actively shaping this turn." : "Shell is ready for the next routed prompt.")
       )
     )
   );

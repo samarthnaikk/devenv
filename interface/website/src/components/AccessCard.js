@@ -121,6 +121,14 @@ export function AccessCard() {
       )
     ),
     React.createElement(
+      "div",
+      { className: "workspace-summary-rail" },
+      React.createElement("span", { className: "workspace-summary-pill" }, activeBackendLabel),
+      React.createElement("span", { className: "workspace-summary-pill" }, state.performanceMode || "medium"),
+      React.createElement("span", { className: "workspace-summary-pill" }, state.privacyMode.incognito ? "Incognito" : "Memory on"),
+      React.createElement("span", { className: "workspace-summary-copy" }, "Provider consent, backend access, and runtime privacy live together here.")
+    ),
+    React.createElement(
       BeamFrame,
       { active: state.accessUpdating, tone: "mono", className: "workspace-card-shell workspace-card-shell-access rounded-[22px] overflow-hidden" },
       React.createElement("span", { className: "workspace-card-ribbon", "aria-hidden": "true" }),

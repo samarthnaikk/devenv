@@ -42,6 +42,14 @@ export function UsageCard() {
       )
     ),
     React.createElement(
+      "div",
+      { className: "workspace-summary-rail workspace-summary-rail-secondary" },
+      React.createElement("span", { className: "workspace-summary-pill" }, statusLabel),
+      React.createElement("span", { className: "workspace-summary-pill" }, budgetTokens > 0 ? `${usedTokens}/${budgetTokens}` : "No cap"),
+      React.createElement("span", { className: "workspace-summary-pill" }, elapsed),
+      React.createElement("span", { className: "workspace-summary-copy" }, "Track live burn, elapsed time, and the session budget before the runtime drifts too far.")
+    ),
+    React.createElement(
       BeamFrame,
       { active: state.isRunning, tone: "ocean", className: "workspace-card-shell rounded-[22px] p-3" },
       React.createElement("span", { className: "workspace-card-ribbon workspace-card-ribbon-secondary", "aria-hidden": "true" }),
