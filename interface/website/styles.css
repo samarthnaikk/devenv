@@ -1463,6 +1463,51 @@ pre {
     linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, white 8%), color-mix(in srgb, var(--surface-container-low) 96%, white 4%));
 }
 
+.workspace-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.workspace-status-stat {
+  padding: 12px 13px;
+  border-radius: 18px;
+  min-height: 94px;
+  background:
+    radial-gradient(circle at top right, rgba(79, 219, 200, 0.12), transparent 30%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-container-high) 84%, white 16%), color-mix(in srgb, var(--surface-container-low) 90%, white 10%));
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 66%, transparent);
+  box-shadow: 0 16px 34px rgba(20, 35, 33, 0.08);
+}
+
+.workspace-status-label {
+  display: inline-block;
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.workspace-status-value {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.workspace-status-detail {
+  display: block;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.workspace-card-section-head {
+  background: color-mix(in srgb, var(--surface-container-low) 72%, white 28%);
+}
+
 .workspace-card-section:last-child,
 .workspace-card-row:last-child {
   border-bottom: none !important;
@@ -1481,8 +1526,84 @@ pre {
   transform: translateY(-1px);
 }
 
+.workspace-access-row {
+  position: relative;
+  overflow: hidden;
+}
+
+.workspace-access-row::after {
+  content: "";
+  position: absolute;
+  inset: auto -16% -58% auto;
+  width: 100px;
+  height: 100px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(36, 93, 168, 0.1), transparent 72%);
+  pointer-events: none;
+}
+
 .workspace-card-subpanel {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.workspace-access-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface-container-high) 80%, white 20%);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 60%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.workspace-access-icon.is-live {
+  color: var(--primary);
+  background: linear-gradient(145deg, rgba(79, 219, 200, 0.14), rgba(36, 93, 168, 0.1));
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--outline-variant));
+}
+
+.workspace-access-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.workspace-inline-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 62%, transparent);
+  background: color-mix(in srgb, var(--surface-container-high) 74%, white 26%);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.workspace-inline-pill.is-active {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--outline-variant));
+}
+
+.workspace-access-detail {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+  max-width: 24ch;
+}
+
+.workspace-access-action {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
 }
 
 .workspace-toggle-row {
@@ -1495,6 +1616,16 @@ pre {
 .workspace-toggle-row:hover {
   border-color: color-mix(in srgb, var(--primary) 28%, var(--outline-variant));
   background: color-mix(in srgb, var(--surface-container-high) 76%, white 24%);
+}
+
+@media (max-width: 720px) {
+  .workspace-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-access-row {
+    align-items: flex-start;
+  }
 }
 
 .workspace-usage-grid {

@@ -3,7 +3,7 @@ import { useApp } from "../context/AppContext.js";
 import { escapeHtml, formatBackendLabel } from "../utils/format.js";
 import { loadPreferredBackend, persistAccess } from "../utils/storage.js";
 import { showToast } from "./Header.js";
-import { BeamFrame, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionDeck, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 const PERFORMANCE_STEPS = ["low", "medium", "high"];
 
@@ -15,6 +15,8 @@ export function AccessCard() {
   const ollamaBackendAllowed = Boolean(state.accessPolicy.backend_access?.ollama);
   const codexBackendAllowed = Boolean(state.accessPolicy.backend_access?.codex);
   const activeBackendLabel = formatBackendLabel(state.activeBackend);
+  const preferredBackendLabel = formatBackendLabel(state.preferredBackend || "opencode");
+  const preferredModel = state.healthMeta.selectedModelsByBackend?.[state.preferredBackend || "opencode"] || state.healthMeta.model || "";
 
   const updateSessionAccess = async (provider, allowed) => {
     dispatch({ type: "SET_ACCESS_UPDATING", payload: true });
@@ -122,8 +124,15 @@ export function AccessCard() {
       BeamFrame,
       { active: state.accessUpdating, tone: "mono", className: "workspace-card-shell workspace-card-shell-access rounded-[22px] overflow-hidden" },
       React.createElement(
+        MotionDeck,
+        { className: "workspace-status-grid p-3 border-b border-outline-variant/30" },
+        statusStat("Active", activeBackendLabel, state.isRunning ? "Handling the current turn" : "Ready for the next prompt"),
+        statusStat("Preferred", preferredBackendLabel, preferredModel ? compactModelName(preferredModel) : "Routing default"),
+        statusStat("Privacy", state.privacyMode.incognito ? "Incognito" : "Memory on", state.privacyMode.incognito ? "No memory retained" : "Sessions can be grounded")
+      ),
+      React.createElement(
         "div",
-        { className: "workspace-card-section p-3 border-b border-outline-variant/30 flex justify-between items-center" },
+        { className: "workspace-card-section workspace-card-section-head p-3 border-b border-outline-variant/30 flex justify-between items-center" },
         React.createElement("span", { className: "font-body-md text-body-md" }, "Consent"),
         React.createElement("span", { className: "text-primary material-symbols-outlined text-[18px]" }, "check_circle")
       ),
@@ -204,18 +213,27 @@ function renderProviderRow(provider, label, allowed, type, state, updateSessionA
   const actionAttr = allowed ? "revoke" : "grant";
   return React.createElement(
     "div",
-    { key: provider, className: "workspace-card-row p-3 border-b border-outline-variant/30 flex justify-between items-center" },
+    { key: provider, className: "workspace-card-row workspace-access-row p-3 border-b border-outline-variant/30 flex justify-between items-center gap-3" },
     React.createElement(
       "div",
-      { className: "flex flex-col" },
-      React.createElement("span", { className: "font-body-md text-body-md" }, escapeHtml(label)),
-      React.createElement("span", { className: `text-[10px] uppercase font-bold ${allowed ? "text-primary" : "text-outline"}` }, allowed ? "Granted" : "Not granted")
+      { className: "flex items-center gap-3 min-w-0" },
+      React.createElement(
+        "div",
+        { className: `workspace-access-icon${allowed ? " is-live" : ""}` },
+        React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, allowed ? "lock_open" : "vpn_key_off")
+      ),
+      React.createElement(
+        "div",
+        { className: "flex flex-col min-w-0" },
+        React.createElement("span", { className: "font-body-md text-body-md" }, escapeHtml(label)),
+        React.createElement("span", { className: `text-[10px] uppercase font-bold ${allowed ? "text-primary" : "text-outline"}` }, allowed ? "Granted" : "Not granted")
+      )
     ),
     React.createElement(
       "button",
       {
         type: "button",
-        className: `px-3 py-1 rounded font-label-caps text-[10px] transition-colors ${allowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"}`,
+        className: `workspace-access-action px-3 py-1 rounded font-label-caps text-[10px] transition-colors ${allowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"}`,
         onClick: () => updateSessionAccess(provider, actionAttr === "grant"),
         disabled: state.accessUpdating,
       },
@@ -227,30 +245,71 @@ function renderProviderRow(provider, label, allowed, type, state, updateSessionA
 function renderBackendRow(backend, allowed, activeBackendLabel, state, updateBackendAccess) {
   const label = formatBackendLabel(backend);
   const isActive = activeBackendLabel === label;
+  const isPreferred = (state.preferredBackend || "opencode") === backend;
+  const backendStatus = state.backends?.[backend] || null;
+  const model = state.healthMeta.selectedModelsByBackend?.[backend] || backendStatus?.model || "";
+  const detail = backendStatus?.detail || (allowed ? "Ready for routing." : "Access is still disabled.");
   return React.createElement(
     "div",
-    { className: "workspace-card-row p-3 border-b border-outline-variant/30 flex justify-between items-center" },
+    { className: "workspace-card-row workspace-access-row p-3 border-b border-outline-variant/30 flex justify-between items-center gap-3" },
     React.createElement(
       "div",
-      { className: "flex flex-col" },
-      React.createElement("span", { className: "font-body-md text-body-md" }, label),
+      { className: "flex items-center gap-3 min-w-0" },
       React.createElement(
-        "span",
-        { className: "text-[10px] text-outline uppercase font-bold" },
-        isActive ? "Active" : allowed ? "Enabled" : "Disabled"
+        "div",
+        { className: `workspace-access-icon workspace-access-icon-backend${isActive ? " is-live" : ""}` },
+        React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, backend === "ollama" ? "neurology" : backend === "codex" ? "deployed_code" : "bolt")
+      ),
+      React.createElement(
+        "div",
+        { className: "flex flex-col min-w-0" },
+        React.createElement(
+          "div",
+          { className: "workspace-access-label-row" },
+          React.createElement("span", { className: "font-body-md text-body-md" }, label),
+          isActive ? React.createElement("span", { className: "workspace-inline-pill is-active" }, "Active") : null,
+          isPreferred ? React.createElement("span", { className: "workspace-inline-pill" }, "Preferred") : null
+        ),
+        React.createElement(
+          "span",
+          { className: "text-[10px] text-outline uppercase font-bold" },
+          isActive ? "Active" : allowed ? "Enabled" : "Disabled"
+        ),
+        React.createElement(
+          "span",
+          { className: "workspace-access-detail" },
+          model ? `${compactModelName(model)} · ${detail}` : detail
+        )
       )
     ),
     React.createElement(
       "button",
       {
         type: "button",
-        className: `px-3 py-1 rounded font-label-caps text-[10px] transition-colors ${allowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"}`,
+        className: `workspace-access-action px-3 py-1 rounded font-label-caps text-[10px] transition-colors ${allowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"}`,
         onClick: () => updateBackendAccess(backend, !allowed),
         disabled: state.accessUpdating,
       },
       allowed ? "Revoke" : "Grant"
     )
   );
+}
+
+function statusStat(label, value, detail) {
+  return React.createElement(
+    MetalSurface,
+    { className: "workspace-status-stat" },
+    React.createElement("span", { className: "workspace-status-label" }, label),
+    React.createElement("strong", { className: "workspace-status-value" }, value),
+    React.createElement("span", { className: "workspace-status-detail" }, detail)
+  );
+}
+
+function compactModelName(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const lastSegment = text.split("/").pop() || text;
+  return lastSegment.length > 24 ? `${lastSegment.slice(0, 21)}...` : lastSegment;
 }
 
 async function refreshHealth(dispatch, options = {}) {
