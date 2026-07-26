@@ -6,7 +6,7 @@ import { BeamFrame, MetalSurface, MotionReveal, MotionShimmerText, MotionSwap } 
 export function Header() {
   const { state, dispatch } = useApp();
   const activeBackend = formatBackendLabel(state.activeBackend || state.preferredBackend || "opencode");
-  const toolCount = state.selectedTools.length;
+  const routeLabel = summarizeHeaderRoute(state.selectedTools, state.planMode);
   const statusLabel = state.isRunning ? "Live" : state.planMode ? "Plan" : "Direct";
 
   const toggleSettings = () => {
@@ -84,7 +84,7 @@ export function Header() {
               { className: "app-header-pills" },
               React.createElement("span", { className: "app-header-pill" }, activeBackend),
               React.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
-              React.createElement("span", { className: "app-header-pill" }, `${toolCount} tool${toolCount === 1 ? "" : "s"}`)
+              React.createElement("span", { className: "app-header-pill" }, routeLabel)
             ),
             React.createElement(
               "div",
@@ -96,7 +96,7 @@ export function Header() {
                   ? `Running through ${activeBackend}`
                   : state.planMode
                     ? "Planning with grounded files and read-only tools first"
-                    : "Light shell, direct answers, and tools only when the task actually needs them"
+                    : describeHeaderStatus(state.selectedTools)
               )
             )
           )
@@ -151,4 +151,37 @@ export function showToast(dispatch, message) {
   toastTimeoutId = window.setTimeout(() => {
     dispatch({ type: "SET_TOAST", payload: "" });
   }, 1600);
+}
+
+function summarizeHeaderRoute(selectedTools, planMode) {
+  if (planMode) return "Repo plan";
+  const tools = Array.isArray(selectedTools) ? selectedTools : [];
+  if (!tools.length) return "Auto route";
+  if (tools.includes("track_symbol")) return "Trace route";
+  if (tools.includes("inspect_symbols")) return "Symbols route";
+  if (tools.includes("search_text")) return "Search route";
+  if (tools.includes("read_file")) return "Read route";
+  if (tools.includes("locate_files")) return "Locate route";
+  if (tools.includes("list_directory")) return "Files route";
+  if (tools.includes("knowledge_search")) return "Knowledge route";
+  if (tools.includes("web_search")) return "Web route";
+  if (tools.includes("generate_pdf")) return "PDF route";
+  if (tools.includes("generate_prompt")) return "Prompt route";
+  return `${tools.length} routes`;
+}
+
+function describeHeaderStatus(selectedTools) {
+  const tools = Array.isArray(selectedTools) ? selectedTools : [];
+  if (!tools.length) return "Light shell, direct answers, and tools only when the task actually needs them";
+  if (tools.includes("track_symbol")) return "Following one symbol through the codebase before answering";
+  if (tools.includes("inspect_symbols")) return "Inspecting definitions, exports, and structure first";
+  if (tools.includes("search_text")) return "Scanning the repo for strings and usage sites first";
+  if (tools.includes("read_file")) return "Opening exact files before answering or planning";
+  if (tools.includes("locate_files")) return "Finding the right files before deeper inspection";
+  if (tools.includes("list_directory")) return "Mapping folders and workspace structure first";
+  if (tools.includes("knowledge_search")) return "Pulling external references, repos, docs, and threads";
+  if (tools.includes("web_search")) return "Biasing toward current web results and live facts";
+  if (tools.includes("generate_pdf")) return "Preparing a polished PDF artifact instead of only chat output";
+  if (tools.includes("generate_prompt")) return "Preparing a stronger prompt output for the task";
+  return "Constraining the runtime to the selected surfaces";
 }
