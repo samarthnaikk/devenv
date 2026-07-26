@@ -2659,13 +2659,18 @@ class DevenvKernelTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
             kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(LocateFilesTool())
             kernel.register_tool(ReadFileTool())
             kernel.register_tool(InspectSymbolsTool())
+            kernel.register_tool(SearchTextTool())
             result = kernel.execute_turn("what tools would you use to answer how does backend work?")
 
         self.assertIn("Devenv should stay in charge of retrieval", result.final_response or "")
         self.assertIn("`list_directory`", result.final_response or "")
+        self.assertIn("`locate_files`", result.final_response or "")
+        self.assertIn("`read_file`", result.final_response or "")
         self.assertIn("`inspect_symbols`", result.final_response or "")
+        self.assertIn("`search_text`", result.final_response or "")
 
     def test_summarize_directory_listing_parses_structured_payload_without_leaking_json(self) -> None:
         summary = _summarize_directory_listing(

@@ -3775,16 +3775,38 @@ class DevenvKernel:
             )
 
         if _is_repo_summary_question(subject_prompt):
-            return (
-                "For that repo-summary question Devenv should stay in charge of retrieval. "
-                "It would usually inspect the workspace with `list_directory`, then ground the answer with `read_file` and `inspect_symbols`."
-            )
+            available_tools = set(self.tools)
+            inspect_tools = [
+                tool_name
+                for tool_name in ("list_directory", "locate_files", "read_file", "inspect_symbols", "search_text")
+                if tool_name in available_tools or not available_tools
+            ]
+            parts = ["For that repo-summary question Devenv should stay in charge of retrieval."]
+            if inspect_tools:
+                parts.append(
+                    "It would usually map the workspace first with "
+                    + ", ".join(f"`{tool_name}`" for tool_name in inspect_tools)
+                    + "."
+                )
+            parts.append("Then it should answer from the grounded repo context instead of guessing.")
+            return " ".join(parts)
 
         if _is_architecture_question(subject_prompt):
-            return (
-                "For that architecture question Devenv should stay in charge of retrieval. "
-                "It would usually inspect the workspace with `list_directory`, then ground the answer with `inspect_symbols` on the main backend files."
-            )
+            available_tools = set(self.tools)
+            inspect_tools = [
+                tool_name
+                for tool_name in ("list_directory", "locate_files", "read_file", "inspect_symbols", "search_text")
+                if tool_name in available_tools or not available_tools
+            ]
+            parts = ["For that architecture question Devenv should stay in charge of retrieval."]
+            if inspect_tools:
+                parts.append(
+                    "It would usually inspect the backend surface first with "
+                    + ", ".join(f"`{tool_name}`" for tool_name in inspect_tools)
+                    + "."
+                )
+            parts.append("Then it should answer from the main runtime and routing files rather than a generic summary.")
+            return " ".join(parts)
         if self._text_requires_mutation_tools(subject_prompt.lower()):
             available_tools = set(self.tools)
             inspect_tools = [
