@@ -2,6 +2,7 @@ import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, formatDuration } from "../utils/format.js";
 import { showToast } from "./Header.js";
+import { MotionNumber } from "./MotionPrimitives.js";
 
 export function UsageCard() {
   const { state, dispatch } = useApp();
@@ -42,19 +43,19 @@ export function UsageCard() {
         "div",
         { className: "p-3 bg-surface-container rounded-lg border border-outline-variant" },
         React.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Elapsed"),
-        React.createElement("div", { className: "font-body-md text-body-md font-bold" }, escapeHtml(elapsed))
+          React.createElement("div", { className: "font-body-md text-body-md font-bold" }, React.createElement(MotionNumber, { value: elapsed }))
       ),
       React.createElement(
         "div",
         { className: "p-3 bg-surface-container rounded-lg border border-outline-variant" },
         React.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Last request"),
-        React.createElement("div", { className: "font-body-md text-body-md font-bold" }, escapeHtml(formatDuration(state.latestElapsedMs || 0)))
+          React.createElement("div", { className: "font-body-md text-body-md font-bold" }, React.createElement(MotionNumber, { value: formatDuration(state.latestElapsedMs || 0) }))
       ),
       React.createElement(
         "div",
         { className: "p-3 bg-surface-container rounded-lg border border-outline-variant" },
         React.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Session total"),
-        React.createElement("div", { className: "font-body-md text-body-md font-bold" }, `${String(state.sessionUsageTotal || 0)} tokens`)
+          React.createElement("div", { className: "font-body-md text-body-md font-bold" }, React.createElement(MotionNumber, { value: `${String(state.sessionUsageTotal || 0)} tokens` }))
       )
     ),
     React.createElement(

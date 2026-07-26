@@ -1,9 +1,10 @@
 import React from "https://esm.sh/react@18.2.0";
 import { renderMarkdown } from "../lib/markdown.js";
+import { MotionReveal } from "./MotionPrimitives.js";
 
 export function AssistantMessage({ message, onCopy, onReply }) {
   return React.createElement(
-    "div",
+    MotionReveal,
     { className: "flex flex-col gap-2 max-w-3xl" },
     React.createElement(
       "div",

@@ -5,6 +5,7 @@ import ReactFlow, {
 } from "https://esm.sh/reactflow@11?deps=react@18.2.0,react-dom@18.2.0";
 import { validatePlanBlueprint, normalizeBlueprint } from "../utils/validation.js";
 import { escapeHtml } from "../utils/format.js";
+import { BeamFrame, MotionReveal } from "./MotionPrimitives.js";
 
 function BlueprintNode({ data }) {
   const [showModal, setShowModal] = React.useState(false);
@@ -217,7 +218,7 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
 
   if (!validation.valid) {
     return React.createElement(
-      "div",
+      MotionReveal,
       { className: "flex flex-col gap-2 w-full max-w-[88rem]" },
       React.createElement(
         "div",
@@ -247,8 +248,8 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
   }, [flowNodes, flowEdges, setNodes, setEdges]);
 
   return React.createElement(
-    "div",
-    { className: "flex flex-col gap-2 w-full max-w-[88rem]" },
+    BeamFrame,
+    { active: normalized.nodes.some((node) => node.status === "active"), tone: "ocean", className: "flex flex-col gap-2 w-full max-w-[88rem]" },
     React.createElement(
       "div",
       { className: "flex items-center gap-2 mb-1" },

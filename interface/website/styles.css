@@ -196,6 +196,107 @@ pre {
   min-height: 24px;
 }
 
+/* Motion system: transitions.dev-style reveals/swaps, metal sheen, and beam borders. */
+.motion-reveal {
+  animation: motion-reveal-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--motion-delay, 0ms);
+}
+
+.motion-swap {
+  display: inline-flex;
+  align-items: baseline;
+  animation: motion-swap-in 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.motion-beam {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.motion-beam > :not(.motion-beam-track),
+.motion-metal > :not(.motion-metal-sheen) {
+  position: relative;
+  z-index: 1;
+}
+
+.motion-beam-track {
+  position: absolute;
+  z-index: 2;
+  inset: -1px;
+  border: 1px solid transparent;
+  border-radius: inherit;
+  background: conic-gradient(from 0deg, transparent 0 72%, rgba(79, 219, 200, 0.95) 82%, transparent 90% 100%) border-box;
+  -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.motion-beam.is-active .motion-beam-track {
+  opacity: 1;
+  animation: motion-beam-orbit 2.8s linear infinite;
+}
+
+.motion-beam-mono .motion-beam-track {
+  background: conic-gradient(from 0deg, transparent 0 72%, rgba(226, 226, 230, 0.75) 82%, transparent 90% 100%) border-box;
+}
+
+.motion-beam-ocean .motion-beam-track {
+  filter: drop-shadow(0 0 6px rgba(79, 219, 200, 0.7));
+}
+
+.motion-metal {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(40, 42, 45, 0.96), rgba(13, 15, 18, 0.98));
+}
+
+.motion-metal-sheen {
+  position: absolute;
+  z-index: 0;
+  inset: -80%;
+  background:
+    radial-gradient(ellipse at 28% 35%, rgba(255, 255, 255, 0.4), transparent 13%),
+    radial-gradient(ellipse at 70% 66%, rgba(79, 219, 200, 0.24), transparent 21%),
+    linear-gradient(115deg, transparent 34%, rgba(255, 255, 255, 0.12) 48%, transparent 60%);
+  mix-blend-mode: screen;
+  opacity: 0.45;
+  filter: blur(12px) contrast(1.2);
+  transform: rotate(-12deg);
+  animation: motion-metal-flow 7s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+.motion-number {
+  display: inline-block;
+  animation: motion-number-pop 460ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.motion-user-entry:hover { transform: perspective(900px) rotateX(0.5deg) translateY(-1px); }
+.motion-reveal { transform-origin: 20% 50%; }
+
+@keyframes motion-reveal-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); filter: blur(6px); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+@keyframes motion-swap-in {
+  from { opacity: 0; transform: translateY(5px); filter: blur(5px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+@keyframes motion-beam-orbit { to { transform: rotate(360deg); } }
+@keyframes motion-metal-flow { from { transform: translate3d(-7%, -4%, 0) rotate(-16deg) scale(0.95); } to { transform: translate3d(9%, 7%, 0) rotate(16deg) scale(1.08); } }
+@keyframes motion-number-pop { 0% { opacity: 0; transform: translateY(-8px) scale(1.25); filter: blur(4px); } 100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-reveal, .motion-swap, .motion-beam.is-active .motion-beam-track, .motion-metal-sheen, .motion-number { animation: none !important; }
+  .motion-reveal { opacity: 1; transform: none; filter: none; }
+}
+
 .glowing-pip {
   box-shadow: 0 0 8px #4fdbc8;
 }

@@ -1,10 +1,11 @@
 import React from "https://esm.sh/react@18.2.0";
 import { escapeHtml } from "../utils/format.js";
+import { MotionReveal } from "./MotionPrimitives.js";
 
 export function UserMessage({ message, onCopy, onReply }) {
   return React.createElement(
-    "div",
-    { className: "flex flex-col gap-2 max-w-3xl" },
+    MotionReveal,
+    { className: "flex flex-col gap-2 max-w-3xl motion-user-entry" },
     React.createElement(
       "div",
       { className: "flex items-center gap-2" },

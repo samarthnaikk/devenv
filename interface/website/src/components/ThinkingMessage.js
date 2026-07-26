@@ -2,6 +2,7 @@ import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, formatDuration, formatBackendLabel } from "../utils/format.js";
 import { ThinkingOrb, stateForThinkingStep } from "./ThinkingOrb.js";
+import { BeamFrame, MetalSurface, MotionReveal, MotionSwap } from "./MotionPrimitives.js";
 
 export function ThinkingMessage({ message }) {
   const { state } = useApp();
@@ -33,8 +34,8 @@ export function ThinkingMessage({ message }) {
     "div",
     { className: "ml-8 space-y-4" },
     React.createElement(
-      "div",
-      { className: "inset-terminal rounded-lg border border-outline-variant p-4" },
+      BeamFrame,
+      { active: message.pending, tone: orbState === "searching" ? "ocean" : "mono", className: "inset-terminal rounded-lg border border-outline-variant p-4" },
       React.createElement(
         "div",
         { className: "flex justify-between items-center mb-4" },
@@ -77,8 +78,11 @@ export function ThinkingMessage({ message }) {
         { className: "space-y-1 font-code-sm text-code-sm text-on-surface-variant" },
         timelineSteps.map((step, i) =>
           React.createElement(
-            "div",
-            { key: i, className: "thinking-trace-row flex gap-3 items-center" },
+            MotionReveal,
+            { key: i, delay: i * 35, className: "thinking-trace-row" },
+            React.createElement(
+              "div",
+              { className: "flex gap-3 items-center" },
             React.createElement(ThinkingOrb, {
               state: stateForThinkingStep(step, message.pending && i === timelineSteps.length - 1),
               size: 20,
@@ -87,6 +91,7 @@ export function ThinkingMessage({ message }) {
             }),
             React.createElement("span", { className: "text-outline w-4 shrink-0" }, i + 1),
             React.createElement("span", null, `[${(step.label || "TRACE").toUpperCase()}] ${step.text}`)
+            )
           )
         )
       ),
@@ -99,13 +104,13 @@ export function ThinkingMessage({ message }) {
         : null
     ),
     React.createElement(
-      "div",
+      MetalSurface,
       { className: "flex items-center gap-3 px-4 py-2 bg-surface-container rounded-full border border-outline-variant w-fit" },
       React.createElement("span", { className: "material-symbols-outlined text-primary text-[16px]" }, "bolt"),
       React.createElement(
         "span",
         { className: `font-body-md text-body-md text-on-surface process-status${message.pending ? " is-live" : ""}` },
-        message.pending ? React.createElement(React.Fragment, null, React.createElement("span", { className: "process-status-word" }, statusWord), React.createElement("span", { className: "process-status-dots", "aria-hidden": "true" }, "...")) : (lastStatus || "Completed")
+        message.pending ? React.createElement(MotionSwap, null, React.createElement("span", { className: "process-status-word" }, statusWord), React.createElement("span", { className: "process-status-dots", "aria-hidden": "true" }, "...")) : (lastStatus || "Completed")
       )
     )
   );
