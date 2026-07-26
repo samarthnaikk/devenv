@@ -34,6 +34,8 @@ export function ChatColumn() {
     React.createElement("div", { className: "chat-column-grid", "aria-hidden": "true" }),
     React.createElement("div", { className: "chat-column-glow chat-column-glow-one", "aria-hidden": "true" }),
     React.createElement("div", { className: "chat-column-glow chat-column-glow-two", "aria-hidden": "true" }),
+    React.createElement("div", { className: "chat-column-ribbon chat-column-ribbon-one", "aria-hidden": "true" }),
+    React.createElement("div", { className: "chat-column-ribbon chat-column-ribbon-two", "aria-hidden": "true" }),
     React.createElement(
       MotionStage,
       { axis: "x", className: "chat-status-shell px-margin-desktop pt-3" },

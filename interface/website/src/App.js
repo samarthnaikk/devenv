@@ -190,15 +190,31 @@ function AppInner() {
   return React.createElement(
     "div",
     { className: "app-shell flex flex-col h-screen overflow-hidden bg-background" },
+    React.createElement("div", { className: "app-shell-noise", "aria-hidden": "true" }),
     React.createElement("div", { className: "app-shell-aura app-shell-aura-one", "aria-hidden": "true" }),
     React.createElement("div", { className: "app-shell-aura app-shell-aura-two", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-aura app-shell-aura-three", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-beam app-shell-beam-top", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-beam app-shell-beam-bottom", "aria-hidden": "true" }),
     React.createElement(Header, null),
     state.showSettings ? React.createElement(SettingsDropdown, null) : null,
     React.createElement(
       "main",
       { className: "app-main flex flex-1 overflow-hidden" },
-      React.createElement(ChatColumn, null),
-      React.createElement(Sidebar, null)
+      React.createElement(
+        MotionStage,
+        { axis: "y", className: "app-main-chat flex-1 min-w-0" },
+        React.createElement(
+          BeamFrame,
+          { active: state.isRunning, tone: "ocean", className: "app-main-chat-shell" },
+          React.createElement(ChatColumn, null)
+        )
+      ),
+      React.createElement(
+        MotionStage,
+        { axis: "x", delay: 110, className: "app-main-sidebar-stage" },
+        React.createElement(Sidebar, null)
+      )
     ),
     React.createElement(Toast, null)
   );

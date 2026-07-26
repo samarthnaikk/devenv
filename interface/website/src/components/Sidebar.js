@@ -4,7 +4,7 @@ import { AccessCard } from "./AccessCard.js";
 import { SessionsCard } from "./SessionsCard.js";
 import { UsageCard } from "./UsageCard.js";
 import { Footer } from "./Footer.js";
-import { BeamFrame, MotionDeck, MotionReveal, MotionShimmerText, MotionStage } from "./MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionDeck, MotionReveal, MotionShimmerText, MotionStack, MotionStage } from "./MotionPrimitives.js";
 
 export function Sidebar() {
   const { state, dispatch } = useApp();
@@ -72,15 +72,23 @@ export function Sidebar() {
         )
       ),
       React.createElement(
-        MotionDeck,
-        { className: "workspace-rail-overview" },
-        overviewPill("Backend", state.activeBackend || state.preferredBackend || "opencode"),
-        overviewPill("Mode", state.planMode ? "Plan" : state.isRunning ? "Live" : "Ready"),
-        overviewPill("Sessions", String(totalVisibleSessions(state)))
+        MotionStack,
+        { className: "workspace-rail-stack" },
+        React.createElement(
+          MetalSurface,
+          { className: "workspace-rail-overview-shell rounded-[22px] p-2" },
+          React.createElement(
+            MotionDeck,
+            { className: "workspace-rail-overview" },
+            overviewPill("Backend", state.activeBackend || state.preferredBackend || "opencode"),
+            overviewPill("Mode", state.planMode ? "Plan" : state.isRunning ? "Live" : "Ready"),
+            overviewPill("Sessions", String(totalVisibleSessions(state)))
+          )
+        )
       ),
-      React.createElement(MotionReveal, { delay: 50 }, React.createElement(AccessCard, null)),
-      React.createElement(MotionReveal, { delay: 100 }, React.createElement(SessionsCard, null)),
-      React.createElement(MotionReveal, { delay: 150 }, React.createElement(UsageCard, null))
+      React.createElement(MotionStack, { className: "workspace-rail-stack" }, React.createElement(MotionReveal, { delay: 50 }, React.createElement(AccessCard, null))),
+      React.createElement(MotionStack, { className: "workspace-rail-stack" }, React.createElement(MotionReveal, { delay: 100 }, React.createElement(SessionsCard, null))),
+      React.createElement(MotionStack, { className: "workspace-rail-stack" }, React.createElement(MotionReveal, { delay: 150 }, React.createElement(UsageCard, null)))
     ),
     React.createElement(Footer, null)
   );

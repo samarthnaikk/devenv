@@ -1228,6 +1228,18 @@ pre {
     linear-gradient(180deg, color-mix(in srgb, var(--background) 92%, white 8%), var(--background));
 }
 
+.app-shell-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.18;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.38) 0, transparent 24%),
+    radial-gradient(circle at 80% 32%, rgba(36, 93, 168, 0.12) 0, transparent 18%),
+    radial-gradient(circle at 62% 74%, rgba(8, 121, 107, 0.12) 0, transparent 20%);
+  mix-blend-mode: soft-light;
+}
+
 .app-footer-shell {
   background:
     radial-gradient(circle at top right, rgba(79, 219, 200, 0.08), transparent 28%),
@@ -1359,6 +1371,48 @@ pre {
   height: 240px;
   background: rgba(8, 121, 107, 0.16);
   animation: drift-aura 16s ease-in-out infinite reverse;
+}
+
+.app-shell-aura-three {
+  bottom: 12%;
+  left: 38%;
+  width: 320px;
+  height: 160px;
+  background: rgba(255, 255, 255, 0.24);
+  opacity: 0.7;
+  filter: blur(48px);
+  animation: drift-aura-wide 22s ease-in-out infinite;
+}
+
+.app-shell-beam {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(36, 93, 168, 0.18), rgba(8, 121, 107, 0.24), transparent);
+  opacity: 0.8;
+}
+
+.app-shell-beam::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: 12%;
+  width: 20%;
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.92), transparent);
+  filter: blur(2px);
+  animation: shell-beam-slide 8s linear infinite;
+}
+
+.app-shell-beam-top {
+  top: 86px;
+}
+
+.app-shell-beam-bottom {
+  bottom: 82px;
 }
 
 .app-header {
@@ -1498,6 +1552,94 @@ pre {
   animation: drift-aura 22s ease-in-out infinite reverse;
 }
 
+.app-main {
+  gap: 14px;
+  min-height: 0;
+  padding: 0 12px 12px;
+}
+
+.app-main-chat,
+.app-main-sidebar-stage {
+  min-height: 0;
+  display: flex;
+}
+
+.app-main-sidebar-stage {
+  flex-shrink: 0;
+}
+
+.app-main-chat-shell {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 30px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 72%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 88%, white 12%), color-mix(in srgb, var(--surface-container-low) 96%, white 4%));
+  box-shadow: 0 28px 70px rgba(20, 35, 33, 0.08);
+  backdrop-filter: blur(24px);
+}
+
+.app-main-chat-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at top left, rgba(36, 93, 168, 0.08), transparent 28%),
+    radial-gradient(circle at 78% 18%, rgba(8, 121, 107, 0.12), transparent 26%);
+  z-index: 0;
+}
+
+.app-main-chat-shell::after {
+  content: "";
+  position: absolute;
+  inset: auto -10% 18% auto;
+  width: 46%;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.95), rgba(79, 219, 200, 0.45), transparent);
+  opacity: 0.8;
+  filter: blur(0.5px);
+  animation: shell-scanline 9s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  z-index: 0;
+}
+
+.chat-column {
+  border-radius: 30px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--background) 94%, white 6%), color-mix(in srgb, var(--background) 98%, white 2%));
+}
+
+.chat-column-ribbon {
+  position: absolute;
+  height: 14px;
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0.72;
+  filter: blur(0.4px);
+}
+
+.chat-column-ribbon-one {
+  top: 92px;
+  left: 4%;
+  width: 180px;
+  background: linear-gradient(90deg, rgba(36, 93, 168, 0), rgba(36, 93, 168, 0.24), rgba(255, 255, 255, 0.9));
+  animation: ribbon-sweep 10s ease-in-out infinite;
+}
+
+.chat-column-ribbon-two {
+  top: 156px;
+  right: 7%;
+  width: 120px;
+  background: linear-gradient(90deg, rgba(8, 121, 107, 0), rgba(8, 121, 107, 0.3), rgba(255, 255, 255, 0.92));
+  animation: ribbon-sweep 11.4s ease-in-out infinite reverse;
+}
+
 .chat-status-shell {
   position: relative;
   z-index: 1;
@@ -1590,10 +1732,37 @@ pre {
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, box-shadow 220ms ease;
 }
 
+.chat-status-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(36, 93, 168, 0.8), rgba(8, 121, 107, 0.75), transparent 92%);
+  opacity: 0.75;
+}
+
+.chat-status-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -18% -28% auto;
+  width: 110px;
+  height: 110px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(79, 219, 200, 0.15), transparent 72%);
+  pointer-events: none;
+  transform: translateY(18px);
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .chat-status-card:hover {
   transform: translateY(-3px) rotate(-0.18deg);
   border-color: color-mix(in srgb, var(--primary) 36%, var(--outline-variant));
   box-shadow: 0 18px 34px rgba(20, 35, 33, 0.08);
+}
+
+.chat-status-card:hover::after {
+  transform: translateY(0);
 }
 
 .chat-status-card-label {
@@ -1620,7 +1789,8 @@ pre {
 
 .workspace-rail,
 .workspace-rail-collapsed {
-  margin: 10px 10px 10px 0;
+  margin: 0;
+  height: 100%;
   border-radius: 24px;
   overflow: hidden;
 }
@@ -1646,6 +1816,15 @@ pre {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.workspace-rail-stack {
+  position: relative;
+}
+
+.workspace-rail-overview-shell {
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 68%, transparent);
+  box-shadow: 0 18px 42px rgba(20, 35, 33, 0.08);
 }
 
 .workspace-rail-pill {
@@ -2310,6 +2489,11 @@ pre {
   50% { transform: translate3d(14px, 10px, 0) scale(1.08); }
 }
 
+@keyframes drift-aura-wide {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-18px, 12px, 0) scale(1.12); }
+}
+
 @keyframes deck-settle {
   0% {
     opacity: 0;
@@ -2343,6 +2527,27 @@ pre {
   to { background-position: -220% 0; }
 }
 
+@keyframes shell-beam-slide {
+  0% { transform: translateX(-48%) scaleX(0.8); opacity: 0; }
+  18% { opacity: 0.95; }
+  50% { transform: translateX(118%) scaleX(1.05); opacity: 0.78; }
+  100% { transform: translateX(220%) scaleX(0.9); opacity: 0; }
+}
+
+@keyframes shell-scanline {
+  0%, 100% { transform: translate3d(28px, 0, 0); opacity: 0; }
+  14% { opacity: 0; }
+  26% { opacity: 0.78; }
+  72% { transform: translate3d(-180px, -10px, 0); opacity: 0.82; }
+  100% { transform: translate3d(-320px, -18px, 0); opacity: 0; }
+}
+
+@keyframes ribbon-sweep {
+  0%, 100% { transform: translate3d(0, 0, 0) scaleX(0.92); opacity: 0.22; }
+  45% { transform: translate3d(34px, 0, 0) scaleX(1); opacity: 0.86; }
+  70% { transform: translate3d(54px, -4px, 0) scaleX(1.08); opacity: 0.52; }
+}
+
 @media (min-width: 860px) {
   .empty-state-suggestions {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2350,6 +2555,10 @@ pre {
 }
 
 @media (max-width: 960px) {
+  .app-main {
+    padding: 0 10px 10px;
+  }
+
   .chat-status-grid,
   .empty-state-command-deck,
   .empty-state-preview-grid {
@@ -2371,7 +2580,9 @@ pre {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .app-shell-beam::after,
   .app-shell-aura,
+  .app-shell-aura-three,
   .empty-state-card,
   .empty-state-card::after,
   .app-header-button,
@@ -2379,7 +2590,9 @@ pre {
   .motion-stage,
   .motion-shimmer-text.is-active,
   .composer-signal-dot,
-  .chat-column-glow {
+  .chat-column-glow,
+  .chat-column-ribbon,
+  .app-main-chat-shell::after {
     animation: none !important;
     transition: none !important;
     transform: none !important;
