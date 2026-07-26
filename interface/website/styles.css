@@ -97,6 +97,105 @@ pre {
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
+.thinking-orb {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  overflow: visible;
+  color: var(--primary);
+  contain: layout paint;
+}
+
+.thinking-orb-core,
+.thinking-orb-ring,
+.thinking-orb-scan,
+.thinking-orb-dots,
+.thinking-orb-dots i {
+  position: absolute;
+  display: block;
+}
+
+.thinking-orb-core {
+  inset: 36%;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+  animation: orb-core-pulse 1.8s ease-in-out infinite;
+}
+
+.thinking-orb-ring {
+  inset: 10%;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.5;
+}
+
+.thinking-orb-ring-a { animation: orb-ring-spin 3.4s linear infinite; }
+.thinking-orb-ring-b { inset: 22%; opacity: 0.35; animation: orb-ring-spin-reverse 2.2s linear infinite; }
+
+.thinking-orb-dots { inset: 8%; animation: orb-ring-spin 7s linear infinite; }
+
+.thinking-orb-dots i {
+  --dot-angle: calc(var(--orb-index) * 15deg);
+  --dot-radius: 42%;
+  top: calc(50% - 1.5px);
+  left: calc(50% - 1.5px);
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: rotate(var(--dot-angle)) translateY(calc(var(--dot-radius) * -1));
+  opacity: calc(0.35 + (var(--orb-index) % 4) * 0.15);
+}
+
+.thinking-orb-searching .thinking-orb-scan {
+  inset: 8% 48%;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+  animation: orb-scan 1.5s ease-in-out infinite;
+}
+
+.thinking-orb-solving .thinking-orb-dots { animation: orb-solve 1.4s ease-in-out infinite; }
+.thinking-orb-solving .thinking-orb-dots i { transform: rotate(var(--dot-angle)) translateY(calc(var(--dot-radius) * -1)) scaleX(1.8); }
+.thinking-orb-listening .thinking-orb-ring-a { animation: orb-listen 1.1s ease-in-out infinite; }
+.thinking-orb-listening .thinking-orb-ring-b { animation: orb-listen-reverse 1.1s ease-in-out infinite; }
+.thinking-orb-composing .thinking-orb-dots { animation: orb-compose 1.8s ease-in-out infinite; }
+.thinking-orb-shaping .thinking-orb-core { border-radius: 35% 65% 60% 40%; animation: orb-shape 2.4s ease-in-out infinite; }
+.thinking-orb.is-paused * { animation-play-state: paused !important; }
+
+.process-status-word {
+  display: inline-block;
+  background: linear-gradient(100deg, var(--text) 25%, var(--primary) 48%, var(--text) 70%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.process-status.is-live .process-status-word { animation: status-shimmer 1.3s linear infinite; }
+.process-status-dots { display: inline-block; width: 1.25em; overflow: hidden; animation: status-dots 1.2s steps(4, end) infinite; }
+
+@keyframes orb-core-pulse { 0%, 100% { transform: scale(0.75); opacity: 0.65; } 50% { transform: scale(1.15); opacity: 1; } }
+@keyframes orb-ring-spin { to { transform: rotate(360deg); } }
+@keyframes orb-ring-spin-reverse { to { transform: rotate(-360deg); } }
+@keyframes orb-scan { 0%, 100% { transform: translateX(-10px) scaleY(0.7); opacity: 0.25; } 50% { transform: translateX(10px) scaleY(1.15); opacity: 1; } }
+@keyframes orb-solve { 0%, 100% { transform: scale(0.82) rotate(0deg); } 50% { transform: scale(1.08) rotate(180deg); } }
+@keyframes orb-listen { 0%, 100% { transform: scale(0.72, 1.08); } 50% { transform: scale(1.08, 0.72); } }
+@keyframes orb-listen-reverse { 0%, 100% { transform: scale(1.08, 0.72); } 50% { transform: scale(0.72, 1.08); } }
+@keyframes orb-compose { 0%, 100% { transform: rotate(-8deg) scaleX(0.9); } 50% { transform: rotate(8deg) scaleX(1.1); } }
+@keyframes orb-shape { 0%, 100% { border-radius: 50%; transform: rotate(0deg) scale(0.9); } 33% { border-radius: 18%; transform: rotate(120deg) scale(1.05); } 66% { border-radius: 12% 50%; transform: rotate(240deg) scale(0.92); } }
+@keyframes status-shimmer { to { background-position: -220% 0; } }
+@keyframes status-dots { 0% { width: 0.25em; } 33% { width: 0.5em; } 66% { width: 0.8em; } 100% { width: 1.25em; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-orb *, .process-status-word, .process-status-dots { animation: none !important; }
+}
+
+.thinking-trace-row {
+  min-height: 24px;
+}
+
 .glowing-pip {
   box-shadow: 0 0 8px #4fdbc8;
 }

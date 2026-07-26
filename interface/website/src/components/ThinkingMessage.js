@@ -1,6 +1,7 @@
 import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, formatDuration, formatBackendLabel } from "../utils/format.js";
+import { ThinkingOrb, stateForThinkingStep } from "./ThinkingOrb.js";
 
 export function ThinkingMessage({ message }) {
   const { state } = useApp();
@@ -15,6 +16,18 @@ export function ThinkingMessage({ message }) {
   const lastStatus = timelineSteps.length ? timelineSteps[timelineSteps.length - 1].text : "";
   const summary = summarizeSearchCards(searchCards);
   const elapsed = state.isRunning ? formatDuration(Date.now() - state.runStartedAt) : formatDuration(state.latestElapsedMs || 0);
+  const activeStep = timelineSteps[timelineSteps.length - 1] || searchCards[searchCards.length - 1] || { label: headline, text: headline };
+  const orbState = searchCards.length || state.pendingRunMode === "web" || state.pendingRunMode === "knowledge"
+    ? "searching"
+    : stateForThinkingStep(activeStep, message.pending);
+  const statusWord = {
+    working: "Working",
+    searching: "Searching",
+    solving: "Thinking",
+    listening: "Listening",
+    composing: "Composing",
+    shaping: "Shaping",
+  }[orbState];
 
   return React.createElement(
     "div",
@@ -28,6 +41,7 @@ export function ThinkingMessage({ message }) {
           React.createElement(
             "div",
             { className: "flex items-center gap-2" },
+            React.createElement(ThinkingOrb, { state: orbState, size: 64, paused: !message.pending, label: `${headline}: ${orbState}` }),
             React.createElement("span", { className: "material-symbols-outlined text-primary text-[18px]" }, "terminal"),
             React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface uppercase" }, headline)
         ),
@@ -64,7 +78,13 @@ export function ThinkingMessage({ message }) {
         timelineSteps.map((step, i) =>
           React.createElement(
             "div",
-            { key: i, className: "flex gap-4" },
+            { key: i, className: "thinking-trace-row flex gap-3 items-center" },
+            React.createElement(ThinkingOrb, {
+              state: stateForThinkingStep(step, message.pending && i === timelineSteps.length - 1),
+              size: 20,
+              paused: !(message.pending && i === timelineSteps.length - 1),
+              label: `${step.text}: ${stateForThinkingStep(step, message.pending && i === timelineSteps.length - 1)}`,
+            }),
             React.createElement("span", { className: "text-outline w-4 shrink-0" }, i + 1),
             React.createElement("span", null, `[${(step.label || "TRACE").toUpperCase()}] ${step.text}`)
           )
@@ -81,12 +101,12 @@ export function ThinkingMessage({ message }) {
     React.createElement(
       "div",
       { className: "flex items-center gap-3 px-4 py-2 bg-surface-container rounded-full border border-outline-variant w-fit" },
+      React.createElement("span", { className: "material-symbols-outlined text-primary text-[16px]" }, "bolt"),
       React.createElement(
         "span",
-        { className: `material-symbols-outlined text-primary text-[16px]${message.pending ? " animate-pulse" : ""}` },
-        "bolt"
-      ),
-      React.createElement("span", { className: "font-body-md text-body-md text-on-surface" }, lastStatus || (message.pending ? "Processing..." : "Completed"))
+        { className: `font-body-md text-body-md text-on-surface process-status${message.pending ? " is-live" : ""}` },
+        message.pending ? React.createElement(React.Fragment, null, React.createElement("span", { className: "process-status-word" }, statusWord), React.createElement("span", { className: "process-status-dots", "aria-hidden": "true" }, "...")) : (lastStatus || "Completed")
+      )
     )
   );
 }

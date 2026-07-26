@@ -1,6 +1,7 @@
 import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
 import { formatBackendLabel } from "../utils/format.js";
+import { ThinkingOrb } from "./ThinkingOrb.js";
 
 export function Footer() {
   const { state } = useApp();
@@ -21,7 +22,9 @@ export function Footer() {
     React.createElement(
       "div",
       { className: "flex items-center gap-2" },
-      React.createElement("div", { className: `w-2 h-2 rounded-full ${state.isRunning ? "bg-primary glowing-pip animate-pulse" : "bg-primary glowing-pip"}` }),
+      state.isRunning
+        ? React.createElement(ThinkingOrb, { state: state.pendingRunMode === "web" || state.pendingRunMode === "knowledge" ? "searching" : "working", size: 20, label: "Runtime process" })
+        : React.createElement("div", { className: "w-2 h-2 rounded-full bg-primary glowing-pip" }),
       React.createElement(
         "div",
         { className: "flex flex-col" },
