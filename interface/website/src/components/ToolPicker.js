@@ -20,6 +20,7 @@ const USER_VISIBLE_TOOLS = new Set(Object.keys(TOOL_META));
 export function ToolPicker() {
   const { state, dispatch } = useApp();
   const availableTools = (Array.isArray(state.health?.tools) ? state.health.tools : []).filter((toolName) => USER_VISIBLE_TOOLS.has(toolName));
+  const toolReadiness = state.health?.tool_readiness || {};
   const visibleSelectedTools = state.selectedTools.filter((toolName) => USER_VISIBLE_TOOLS.has(toolName));
   const selected = new Set(visibleSelectedTools);
   const [droppingTools, setDroppingTools] = React.useState([]);
@@ -158,7 +159,7 @@ export function ToolPicker() {
                 "div",
                 { className: "tool-picker-grid" },
                 availableTools.map((toolName) => {
-                  const meta = describeTool(toolName);
+                  const meta = describeTool(toolName, toolReadiness[toolName]);
                   return React.createElement(
                     "button",
                     {
@@ -191,7 +192,7 @@ export function ToolPicker() {
   );
 }
 
-function describeTool(toolName) {
+function describeTool(toolName, readiness = {}) {
   const meta = TOOL_META[toolName] || {};
   const fallbackLabel = String(toolName || "")
     .split("_")
@@ -201,7 +202,7 @@ function describeTool(toolName) {
   return {
     icon: meta.icon || "build",
     label: meta.label || fallbackLabel || "Tool",
-    hint: meta.hint || "General workspace action",
+    hint: (typeof readiness.detail === "string" && readiness.detail.trim()) || meta.hint || "General workspace action",
   };
 }
 

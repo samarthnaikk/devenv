@@ -262,7 +262,37 @@ class DevenvWebApp:
         return readiness
 
     def _build_tool_readiness(self) -> dict[str, ToolReadiness]:
-        return {
+        readiness = {
+            "list_directory": ToolReadiness(
+                name="list_directory",
+                ready="list_directory" in self.kernel.tools,
+                detail="Directory inspection is available for mapping folders and top-level workspace structure.",
+            ),
+            "locate_files": ToolReadiness(
+                name="locate_files",
+                ready="locate_files" in self.kernel.tools,
+                detail="Filename and path lookup is available for finding likely files before deeper inspection.",
+            ),
+            "read_file": ToolReadiness(
+                name="read_file",
+                ready="read_file" in self.kernel.tools,
+                detail="Direct file reading is available for opening exact files and reviewing source content.",
+            ),
+            "search_text": ToolReadiness(
+                name="search_text",
+                ready="search_text" in self.kernel.tools,
+                detail="Repo-wide text search is available for finding strings, selectors, and usage sites.",
+            ),
+            "inspect_symbols": ToolReadiness(
+                name="inspect_symbols",
+                ready="inspect_symbols" in self.kernel.tools,
+                detail="Symbol inspection is available for definitions, exports, and structural code lookup.",
+            ),
+            "track_symbol": ToolReadiness(
+                name="track_symbol",
+                ready="track_symbol" in self.kernel.tools,
+                detail="Symbol tracing is available for following a definition through the codebase.",
+            ),
             "web_search": ToolReadiness(
                 name="web_search",
                 ready=True,
@@ -279,6 +309,7 @@ class DevenvWebApp:
                 detail="LaTeX-backed PDF generation is available through the generate_pdf runtime tool.",
             ),
         }
+        return readiness
 
     def _available_models(self, *, current_model: str) -> list[str]:
         configured = os.getenv("DEVENV_AVAILABLE_MODELS", "")

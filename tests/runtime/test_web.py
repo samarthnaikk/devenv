@@ -192,8 +192,10 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertFalse(health["privacy"]["incognito"])
         self.assertIn("setup", health)
         self.assertIn("tool_readiness", health)
+        self.assertIn("read_file", health["tool_readiness"])
         self.assertIn("web_search", health["tool_readiness"])
         self.assertTrue(health["tool_readiness"]["web_search"]["ready"])
+        self.assertTrue(health["tool_readiness"]["read_file"]["ready"])
         self.assertIn("mcp_server", health)
         self.assertIn("codex_backend", health)
         self.assertEqual(health["codex_backend"]["transport"], "responses_mcp")
@@ -221,6 +223,7 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertTrue(health["privacy"]["incognito"])
         self.assertFalse(health["setup"]["ready"] is None)
         self.assertEqual(health["tool_readiness"]["generate_prompt"]["ready"], True)
+        self.assertEqual(health["tool_readiness"]["track_symbol"]["ready"], True)
 
     def test_setup_inspection_exposes_shared_readiness_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
