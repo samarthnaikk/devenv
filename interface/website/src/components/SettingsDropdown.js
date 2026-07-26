@@ -68,6 +68,7 @@ export function SettingsDropdown() {
           className: "settings-panel-shell absolute right-4 top-0 w-72 rounded-[22px] p-4 space-y-4",
           "data-settings-panel": true,
         },
+        React.createElement("span", { className: "settings-panel-ribbon", "aria-hidden": "true" }),
         React.createElement(
           "div",
           { className: "flex items-center justify-between" },

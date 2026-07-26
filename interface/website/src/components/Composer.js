@@ -257,6 +257,7 @@ export function Composer() {
           tone: pendingThinking ? "ocean" : "mono",
           className: "composer-frame relative inset-terminal rounded-[26px] border border-outline-variant p-4",
         },
+        React.createElement("span", { className: "composer-ribbon", "aria-hidden": "true" }),
         React.createElement("div", { className: "composer-backdrop composer-backdrop-one", "aria-hidden": "true" }),
         React.createElement("div", { className: "composer-backdrop composer-backdrop-two", "aria-hidden": "true" }),
         React.createElement(

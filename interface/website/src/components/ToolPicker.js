@@ -149,6 +149,7 @@ export function ToolPicker() {
           React.createElement(
             "div",
             { className: "tool-picker-panel-inner" },
+            React.createElement("span", { className: "tool-picker-panel-ribbon", "aria-hidden": "true" }),
             React.createElement(
               React.Fragment,
               null,

@@ -123,6 +123,7 @@ export function AccessCard() {
     React.createElement(
       BeamFrame,
       { active: state.accessUpdating, tone: "mono", className: "workspace-card-shell workspace-card-shell-access rounded-[22px] overflow-hidden" },
+      React.createElement("span", { className: "workspace-card-ribbon", "aria-hidden": "true" }),
       React.createElement(
         MotionDeck,
         { className: "workspace-status-grid p-3 border-b border-outline-variant/30" },
