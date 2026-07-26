@@ -325,11 +325,24 @@ function humanizeThinkingLine(line, sourceTag = "") {
     return { kind: "web_search_result", title: payload, url: "" };
   }
   if (lowered.includes("queued prompt")) return null;
-  if (lowered.includes("memory context chars")) return { kind: "text", label: "Context", text: "Built the context packet" };
+  if (lowered.includes("memory context chars")) return { kind: "text", label: "Context", text: "Measured the available session context" };
   if (lowered.includes("prior-session")) return null;
   if (lowered.includes("new context")) return null;
-  if (lowered.includes("checkpoint blueprint") || lowered.includes("checkpoint")) return { kind: "text", label: "Reasoning", text: "Reasoned through the next step" };
-  if (lowered.includes("verification passed")) return { kind: "text", label: "Verify", text: "Verified the response" };
+  if (lowered.includes("mapped the request into")) return { kind: "text", label: "Plan", text: line };
+  if (lowered.includes("execution plan")) return { kind: "text", label: "Plan", text: line };
+  if (lowered.includes("distilled context packet")) return { kind: "text", label: "Context", text: line };
+  if (lowered.includes("grounded context packet")) return { kind: "text", label: "Context", text: line };
+  if (lowered.includes("executed the active checkpoint")) return { kind: "text", label: "Run", text: line };
+  if (lowered.includes("recorded runtime output")) return { kind: "text", label: "Trace", text: line };
+  if (lowered.includes("verification confirmed")) return { kind: "text", label: "Verify", text: line };
+  if (lowered.includes("verified the runtime result")) return { kind: "text", label: "Verify", text: line };
+  if (lowered.includes("verification flagged an issue")) return { kind: "text", label: "Verify", text: line };
+  if (lowered.includes("focused on:")) return { kind: "text", label: "Focus", text: line };
+  if (lowered.includes("answer destination:")) return { kind: "text", label: "Output", text: line };
+  if (lowered.includes("touched files recorded:")) return { kind: "text", label: "Files", text: line };
+  if (lowered.includes("planned checkpoints:")) return { kind: "text", label: "Plan", text: line };
+  if (lowered.includes("checkpoint blueprint") || lowered.includes("checkpoint")) return { kind: "text", label: "Plan", text: "Refined the current execution checkpoint" };
+  if (lowered.includes("verification passed")) return { kind: "text", label: "Verify", text: "Verified the runtime result" };
   if (lowered.includes("waiting for runtime response")) return { kind: "text", label: "Runtime", text: "Waiting for the runtime" };
   if (lowered.includes("retrying in")) return { kind: "text", label: "Retry", text: line };
   if (lowered.startsWith("query:") && /github|youtube|reddit|stackoverflow|quora|documentation/i.test(line)) return { kind: "text", label: "Search", text: line.replace(/^query:\s*/i, "") };

@@ -410,10 +410,12 @@ function formatThinkingFromResult(result) {
   const toolSteps = Array.isArray(result.steps) ? result.steps : [];
   if (!toolSteps.length && Array.isArray(result.stage_traces) && result.stage_traces.length) {
     for (const trace of result.stage_traces.slice(0, 5)) {
-      if (trace.summary) lines.push({ source: "ai", message: trace.summary });
+      const summary = summarizeStageTrace(trace);
+      if (summary) lines.push(summary);
       const traceLogs = Array.isArray(trace.logs) ? trace.logs : [];
       for (const log of traceLogs.slice(0, 2)) {
-        if (typeof log === "string" && log.trim()) lines.push({ source: "trace", message: log.trim() });
+        const normalizedLog = summarizeTraceLog(trace.stage, log);
+        if (normalizedLog) lines.push(normalizedLog);
       }
     }
   }
@@ -453,9 +455,93 @@ function formatThinkingFromResult(result) {
     if (step.output) lines.push({ source: "trace", message: step.output.split("\n")[0] });
   }
   if (!lines.length) {
-    lines.push({ source: "ai", message: result.final_response ? "Prepared the final answer" : "Checked Devenv context" });
+    lines.push({ source: "ai", message: result.final_response ? "Finished shaping the response" : "Checked Devenv context" });
   }
   return formatThinkingBlock(lines);
+}
+
+function summarizeStageTrace(trace) {
+  if (!trace || typeof trace !== "object") return null;
+  const stage = String(trace.stage || "").trim().toLowerCase();
+  const payload = trace.payload && typeof trace.payload === "object" ? trace.payload : {};
+  if (stage === "checkpoint_creation") {
+    const checkpointCount = Number(payload.checkpoint_count || 0);
+    const continued = Boolean(payload.continued);
+    return {
+      source: "ai",
+      message: continued
+        ? checkpointCount > 0
+          ? `Reused the active ${checkpointCount}-step execution plan`
+          : "Reused the active execution plan"
+        : checkpointCount > 0
+          ? `Mapped the request into ${checkpointCount} execution step${checkpointCount === 1 ? "" : "s"}`
+          : "Mapped the request into an execution plan",
+    };
+  }
+  if (stage === "context_memory") {
+    const workspaceFacts = Number(payload.workspace_fact_count || 0);
+    return {
+      source: "ai",
+      message: workspaceFacts > 0 ? "Built a grounded context packet from memory and workspace facts" : "Built a distilled context packet",
+    };
+  }
+  if (stage === "metadata") {
+    const touched = Array.isArray(payload.files_touched) ? payload.files_touched : [];
+    const destination = String(payload.output_destination || "").trim();
+    return {
+      source: "ai",
+      message: touched.length
+        ? `Recorded runtime output for ${touched.length} touched file${touched.length === 1 ? "" : "s"}`
+        : destination
+          ? `Recorded runtime output for ${destination.replaceAll("_", " ")}`
+          : "Recorded runtime output details",
+    };
+  }
+  if (stage === "verification") {
+    return {
+      source: "ai",
+      message: trace.success === false ? "Verification flagged an issue" : "Verified the runtime result",
+    };
+  }
+  if (stage === "brain") {
+    return {
+      source: "ai",
+      message: "Executed the active checkpoint",
+    };
+  }
+  if (typeof trace.summary === "string" && trace.summary.trim()) {
+    return { source: "ai", message: trace.summary.trim() };
+  }
+  return null;
+}
+
+function summarizeTraceLog(stage, log) {
+  const text = String(log || "").trim();
+  if (!text) return null;
+  const normalizedStage = String(stage || "").trim().toLowerCase();
+  if (normalizedStage === "metadata") {
+    if (/^Output destination:/i.test(text)) {
+      return { source: "trace", message: text.replace(/^Output destination:\s*/i, "Answer destination: ") };
+    }
+    if (/^Touched files:/i.test(text)) {
+      return { source: "trace", message: text.replace(/^Touched files:\s*/i, "Touched files recorded: ") };
+    }
+  }
+  if (normalizedStage === "context_memory") {
+    if (/^Checkpoint objective:/i.test(text)) {
+      return { source: "trace", message: text.replace(/^Checkpoint objective:\s*/i, "Focused on: ") };
+    }
+    if (/workspace scan/i.test(text)) {
+      return { source: "trace", message: "Scanned the workspace to ground the current step" };
+    }
+  }
+  if (normalizedStage === "checkpoint_creation" && /^Checkpoint count:/i.test(text)) {
+    return { source: "trace", message: text.replace(/^Checkpoint count:\s*/i, "Planned checkpoints: ") };
+  }
+  if (normalizedStage === "verification" && /non-empty answer returned/i.test(text)) {
+    return { source: "trace", message: "Verification confirmed the response was non-empty" };
+  }
+  return { source: "trace", message: text };
 }
 
 function extractKnowledgeResources(output) {
