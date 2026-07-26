@@ -14,6 +14,36 @@ const SUGGESTIONS = [
   "Is this a new context or does it match an older Devenv session?",
 ];
 
+const PLAYBOOKS = [
+  {
+    label: "Repo plan",
+    icon: "account_tree",
+    title: "Map the work before touching code",
+    copy: "Flip straight into plan mode and render a multi-step execution flow for the current repo request.",
+    suggestion: "Plan the UI and runtime fixes needed to make this project feel polished and reliable.",
+    selectedTools: ["list_directory", "search_text", "inspect_symbols"],
+    planMode: true,
+  },
+  {
+    label: "Trace code",
+    icon: "conversion_path",
+    title: "Follow symbols through the workspace",
+    copy: "Bias the turn toward files, search, symbols, and traces so the answer stays grounded in actual code.",
+    suggestion: "Trace how this app decides between memory, planning, tools, and web search.",
+    selectedTools: ["locate_files", "read_file", "search_text", "track_symbol"],
+    planMode: false,
+  },
+  {
+    label: "Live research",
+    icon: "language",
+    title: "Pull current facts and references",
+    copy: "Route the turn into live sources when the answer depends on recent information or external references.",
+    suggestion: "Look up the latest changes in the tools and UI patterns we should borrow from.",
+    selectedTools: ["web_search", "knowledge_search"],
+    planMode: false,
+  },
+];
+
 export function Transcript() {
   const { state, dispatch } = useApp();
   const scrollRef = React.useRef(null);
@@ -89,6 +119,41 @@ export function Transcript() {
               React.createElement("span", { className: "empty-state-title-line" }, "Ship with motion.")
             ),
             React.createElement("div", { className: "max-w-2xl text-center font-body-lg text-body-lg text-on-surface-variant" }, "Ask Devenv to inspect the codebase, route into a plan, or search live sources. The interface stays light, tactile, and traceable while the runtime decides what to use.")
+          ),
+          React.createElement(
+            MotionDeck,
+            { className: "empty-state-command-deck w-full mt-6" },
+            PLAYBOOKS.map((playbook, index) =>
+              React.createElement(
+                MotionReveal,
+                { key: playbook.label, delay: index * 80 },
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "empty-state-command-card text-left",
+                    onClick: () => {
+                      const event = new CustomEvent("opencode-suggestion", { detail: playbook });
+                      window.dispatchEvent(event);
+                    },
+                  },
+                  React.createElement("span", { className: "empty-state-command-kicker" }, playbook.label),
+                  React.createElement(
+                    "div",
+                    { className: "empty-state-command-head" },
+                    React.createElement("span", { className: "material-symbols-outlined text-[19px] text-primary" }, playbook.icon),
+                    React.createElement("strong", null, playbook.title)
+                  ),
+                  React.createElement("p", { className: "empty-state-command-copy" }, playbook.copy),
+                  React.createElement(
+                    "div",
+                    { className: "empty-state-command-footer" },
+                    React.createElement("span", { className: "empty-state-command-pill" }, playbook.planMode ? "Plan mode" : `${playbook.selectedTools.length} routes`),
+                    React.createElement("span", { className: "empty-state-command-launch" }, "Load prompt")
+                  )
+                )
+              )
+            )
           )
         ),
         React.createElement(
@@ -130,7 +195,7 @@ export function Transcript() {
                   type: "button",
                   className: "empty-state-card text-left p-4 bg-surface-container border border-outline-variant rounded-2xl font-body-md text-body-md text-on-surface",
                   onClick: () => {
-                    const event = new CustomEvent("opencode-suggestion", { detail: { suggestion } });
+                    const event = new CustomEvent("opencode-suggestion", { detail: { suggestion, selectedTools: [], planMode: false } });
                     window.dispatchEvent(event);
                   },
                 },

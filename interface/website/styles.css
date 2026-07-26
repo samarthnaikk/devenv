@@ -1747,6 +1747,110 @@ pre {
   box-shadow: 0 30px 80px rgba(20, 35, 33, 0.08);
 }
 
+.empty-state-command-deck {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.empty-state-command-card {
+  position: relative;
+  min-height: 186px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 24px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 74%, transparent);
+  background:
+    radial-gradient(circle at top left, rgba(79, 219, 200, 0.12), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(36, 93, 168, 0.12), transparent 36%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-container-high) 78%, white 22%), color-mix(in srgb, var(--surface) 92%, white 8%));
+  padding: 18px;
+  box-shadow: 0 20px 44px rgba(20, 35, 33, 0.08);
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.empty-state-command-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -16% -42% auto;
+  width: 120px;
+  height: 120px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(79, 219, 200, 0.24), transparent 70%);
+  pointer-events: none;
+  transform: translateY(18px);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.empty-state-command-card:hover {
+  transform: translateY(-6px) rotate(-0.45deg);
+  border-color: color-mix(in srgb, var(--primary) 38%, var(--outline-variant));
+  box-shadow: 0 30px 62px rgba(20, 35, 33, 0.11);
+}
+
+.empty-state-command-card:hover::after {
+  transform: translateY(0);
+}
+
+.empty-state-command-kicker {
+  display: inline-flex;
+  margin-bottom: 14px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.empty-state-command-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.empty-state-command-copy {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.empty-state-command-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.empty-state-command-pill,
+.empty-state-command-launch {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.empty-state-command-pill {
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 62%, transparent);
+  background: color-mix(in srgb, var(--surface) 76%, white 24%);
+  color: var(--muted);
+}
+
+.empty-state-command-launch {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, white 90%);
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--outline-variant));
+}
+
 .empty-state-title {
   display: flex;
   flex-direction: column;
@@ -1945,6 +2049,7 @@ pre {
 
 @media (max-width: 960px) {
   .chat-status-grid,
+  .empty-state-command-deck,
   .empty-state-preview-grid {
     grid-template-columns: 1fr;
   }

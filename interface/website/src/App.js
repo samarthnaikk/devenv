@@ -119,6 +119,13 @@ function AppInner() {
     const handler = (e) => {
       if (e.detail?.suggestion) {
         dispatch({ type: "SET_PROMPT", payload: e.detail.suggestion });
+        if (Array.isArray(e.detail.selectedTools)) {
+          dispatch({ type: "SET_SELECTED_TOOLS", payload: e.detail.selectedTools });
+        }
+        if (typeof e.detail.planMode === "boolean") {
+          dispatch({ type: "SET_PLAN_MODE", payload: e.detail.planMode });
+        }
+        dispatch({ type: "SET_TOOL_PICKER_OPEN", payload: false });
       }
     };
     window.addEventListener("opencode-suggestion", handler);
