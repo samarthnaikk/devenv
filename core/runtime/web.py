@@ -293,6 +293,11 @@ class DevenvWebApp:
                 ready="track_symbol" in self.kernel.tools,
                 detail="Symbol tracing is available for following a definition through the codebase.",
             ),
+            "knowledge_search": ToolReadiness(
+                name="knowledge_search",
+                ready="knowledge_search" in self.kernel.tools,
+                detail="Reference search is available for repos, docs, videos, and discussion threads.",
+            ),
             "web_search": ToolReadiness(
                 name="web_search",
                 ready=True,

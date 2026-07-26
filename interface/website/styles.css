@@ -580,6 +580,21 @@ pre {
     linear-gradient(180deg, color-mix(in srgb, var(--surface-container-high) 88%, white 12%), color-mix(in srgb, var(--surface-container-low) 94%, white 6%));
 }
 
+.tool-picker-tile.is-disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 90%, white 10%), color-mix(in srgb, var(--surface-container-low) 92%, white 8%));
+}
+
+.tool-picker-tile.is-disabled:hover {
+  transform: none;
+  border-color: color-mix(in srgb, var(--outline-variant) 72%, transparent);
+  box-shadow: none;
+}
+
 .tool-picker-tile-icon {
   display: inline-flex;
   align-items: center;
@@ -603,6 +618,15 @@ pre {
   line-height: 1.25;
   color: var(--muted);
   max-width: 16ch;
+}
+
+.tool-picker-tile-state {
+  margin-top: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-dim);
 }
 
 .tool-picker-tile-check {

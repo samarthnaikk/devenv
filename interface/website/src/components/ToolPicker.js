@@ -34,9 +34,15 @@ const USER_VISIBLE_TOOLS = new Set(Object.keys(TOOL_META));
 
 export function ToolPicker() {
   const { state, dispatch } = useApp();
-  const availableTools = (Array.isArray(state.health?.tools) ? state.health.tools : []).filter((toolName) => USER_VISIBLE_TOOLS.has(toolName));
   const toolReadiness = state.health?.tool_readiness || {};
-  const visibleSelectedTools = state.selectedTools.filter((toolName) => USER_VISIBLE_TOOLS.has(toolName));
+  const registeredTools = new Set((Array.isArray(state.health?.tools) ? state.health.tools : []).filter((toolName) => USER_VISIBLE_TOOLS.has(toolName)));
+  const displayTools = Array.from(
+    new Set([
+      ...registeredTools,
+      ...Object.keys(toolReadiness).filter((toolName) => USER_VISIBLE_TOOLS.has(toolName)),
+    ])
+  );
+  const visibleSelectedTools = state.selectedTools.filter((toolName) => USER_VISIBLE_TOOLS.has(toolName) && isToolAvailable(toolName, registeredTools, toolReadiness));
   const selected = new Set(visibleSelectedTools);
   const [droppingTools, setDroppingTools] = React.useState([]);
   const selectedToolsKey = state.selectedTools.join("|");
@@ -77,7 +83,7 @@ export function ToolPicker() {
 
   const selectedTools = Array.from(selected);
   const routeSummary = summarizeRoute(visibleSelectedTools, state.planMode);
-  const groupedTools = groupToolsByCategory(availableTools);
+  const groupedTools = groupToolsByCategory(displayTools);
   const selectedToolChips = selectedTools.map((toolName) => {
     const meta = describeTool(toolName);
     return React.createElement(
@@ -189,13 +195,15 @@ export function ToolPicker() {
                       { className: "tool-picker-grid" },
                       toolNames.map((toolName) => {
                         const meta = describeTool(toolName, toolReadiness[toolName]);
+                        const isAvailable = isToolAvailable(toolName, registeredTools, toolReadiness);
                         return React.createElement(
                           "button",
                           {
                             key: toolName,
                             type: "button",
-                            className: `tool-picker-tile${selected.has(toolName) ? " is-selected" : ""}`,
-                            onClick: () => toggleTool(toolName),
+                            className: `tool-picker-tile${selected.has(toolName) ? " is-selected" : ""}${isAvailable ? "" : " is-disabled"}`,
+                            onClick: () => isAvailable && toggleTool(toolName),
+                            disabled: !isAvailable,
                           },
                           React.createElement(
                             "span",
@@ -204,6 +212,9 @@ export function ToolPicker() {
                           ),
                           React.createElement("span", { className: "tool-picker-tile-label" }, meta.label),
                           React.createElement("span", { className: "tool-picker-tile-hint" }, meta.hint),
+                          !isAvailable
+                            ? React.createElement("span", { className: "tool-picker-tile-state" }, "Unavailable")
+                            : null,
                           selected.has(toolName)
                             ? React.createElement(
                                 "span",
@@ -232,6 +243,11 @@ function groupToolsByCategory(toolNames) {
       toolNames.filter((toolName) => (TOOL_META[toolName]?.category || "workspace") === category),
     ])
     .filter(([, items]) => items.length);
+}
+
+function isToolAvailable(toolName, registeredTools, toolReadiness) {
+  if (registeredTools.has(toolName)) return true;
+  return toolReadiness?.[toolName]?.ready === true;
 }
 
 function describeTool(toolName, readiness = {}) {
