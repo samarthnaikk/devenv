@@ -54,6 +54,7 @@ export function ToolPicker() {
   };
 
   const selectedTools = Array.from(selected);
+  const routeSummary = summarizeRoute(visibleSelectedTools, state.planMode);
   const selectedToolChips = selectedTools.map((toolName) => {
     const meta = describeTool(toolName);
     return React.createElement(
@@ -93,7 +94,7 @@ export function ToolPicker() {
           React.createElement(
             MotionShimmerText,
             { className: "tool-picker-trigger-copy", active: state.toolPickerOpen },
-            selected.size ? `${selected.size} active` : "Pick a route"
+            routeSummary.trigger
           ),
           React.createElement("span", { className: "material-symbols-outlined text-[16px] text-on-surface-variant ml-auto" }, state.toolPickerOpen ? "expand_less" : "expand_more")
         )
@@ -128,8 +129,8 @@ export function ToolPicker() {
                 React.createElement(
                   "div",
                   { className: "tool-picker-panel-copy" },
-                  React.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, "Choose functions"),
-                  React.createElement("span", { className: "text-[11px] leading-5 text-on-surface-variant" }, "Pick tool cards from the tray. Selected ones drop into your active tool row.")
+                  React.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, "Route this turn"),
+                  React.createElement("span", { className: "text-[11px] leading-5 text-on-surface-variant" }, routeSummary.panel)
                 ),
                 React.createElement(
                   "button",
@@ -140,6 +141,12 @@ export function ToolPicker() {
                   },
                   "Clear"
                 )
+              ),
+              React.createElement(
+                "div",
+                { className: "tool-picker-route-note" },
+                React.createElement("span", { className: "tool-picker-route-label" }, state.planMode ? "Plan mode" : "Auto route"),
+                React.createElement("span", { className: "tool-picker-route-copy" }, state.planMode ? "The runtime will inspect the repo and return a flowchart only. Live route cards stay selected for normal turns after you exit plan mode." : "Leave the tray empty to let Devenv choose between memory, live search, and tool-assisted execution.")
               ),
               React.createElement(
                 "div",
@@ -189,5 +196,31 @@ function describeTool(toolName) {
     icon: meta.icon || "build",
     label: meta.label || fallbackLabel || "Tool",
     hint: meta.hint || "General workspace action",
+  };
+}
+
+function summarizeRoute(selectedTools, planMode) {
+  if (planMode) {
+    return {
+      trigger: "Plan flow active",
+      panel: "Plan mode uses repo inspection and blueprint generation first. Route cards remain available for direct turns after planning.",
+    };
+  }
+  if (!selectedTools.length) {
+    return {
+      trigger: "Auto route",
+      panel: "Pick a route card to bias the runtime toward web, knowledge, prompt, or PDF work. Leave everything clear for automatic routing.",
+    };
+  }
+  if (selectedTools.length === 1) {
+    const meta = describeTool(selectedTools[0]);
+    return {
+      trigger: `${meta.label} route`,
+      panel: `This turn is biased toward ${meta.label.toLowerCase()} behavior. You can stack more route cards if the request needs multiple surfaces.`,
+    };
+  }
+  return {
+    trigger: `${selectedTools.length} routes active`,
+    panel: "Multiple route cards are active, so the runtime will constrain itself to those selected surfaces where possible.",
   };
 }

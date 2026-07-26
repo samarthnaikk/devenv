@@ -1,6 +1,6 @@
 import React from "react";
 import { useApp } from "../context/AppContext.js";
-import { formatDuration } from "../utils/format.js";
+import { formatBackendLabel, formatDuration } from "../utils/format.js";
 import { ToolPicker } from "./ToolPicker.js?v=popup3";
 import { validatePlanBlueprint } from "../utils/validation.js";
 import { extractPlanBlueprint, READ_ONLY_PLAN_TOOLS, shouldDisplayPlanResult } from "../utils/plans.js";
@@ -264,8 +264,8 @@ export function Composer() {
           React.createElement(
             "div",
             { className: "composer-topline-pills" },
-            React.createElement("span", { className: "composer-pill" }, state.preferredBackend || "opencode"),
-            React.createElement("span", { className: "composer-pill" }, `${state.selectedTools.length} tool${state.selectedTools.length === 1 ? "" : "s"}`),
+            React.createElement("span", { className: "composer-pill" }, formatBackendLabel(state.preferredBackend || "opencode")),
+            React.createElement("span", { className: "composer-pill" }, describeRouteChip(state)),
             React.createElement("span", { className: "composer-pill" }, state.planMode ? "plan mode" : "direct/auto")
           )
         ),
@@ -684,6 +684,23 @@ function describeComposerState(state, { isCoolingDown, isBudgetBlocked }) {
   if (isCoolingDown) return "Cooling down after a rate limit";
   if (isBudgetBlocked) return "Session budget reached";
   if (state.isRunning) return "Executing the current turn";
-  if (state.planMode) return "Will produce a plan flow before execution";
+  if (state.planMode) return "Will inspect the repo and return a flowchart before execution";
+  if (state.selectedTools.includes("knowledge_search")) return "Biased toward repos, docs, videos, and reference gathering";
+  if (state.selectedTools.includes("web_search")) return "Biased toward live web results and current facts";
+  if (state.selectedTools.includes("generate_pdf")) return "Biased toward producing a polished PDF artifact";
+  if (state.selectedTools.includes("generate_prompt")) return "Biased toward generating a stronger prompt output";
   return "Auto-routes between memory, plan, tools, and live search";
+}
+
+function describeRouteChip(state) {
+  if (state.planMode) return "repo plan";
+  if (!state.selectedTools.length) return "auto route";
+  if (state.selectedTools.length === 1) {
+    const selected = state.selectedTools[0];
+    if (selected === "knowledge_search") return "knowledge route";
+    if (selected === "web_search") return "web route";
+    if (selected === "generate_pdf") return "pdf route";
+    if (selected === "generate_prompt") return "prompt route";
+  }
+  return `${state.selectedTools.length} routes`;
 }
