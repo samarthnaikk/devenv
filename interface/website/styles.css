@@ -3636,13 +3636,14 @@ pre {
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--outline-variant) 72%, transparent);
   box-shadow: 0 18px 54px rgba(20, 35, 33, 0.08);
-  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, box-shadow 220ms ease;
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, box-shadow 220ms ease, background 220ms ease;
+  backdrop-filter: blur(16px);
 }
 
 .message-card:hover {
-  transform: translateY(-3px) rotate(-0.14deg);
-  border-color: color-mix(in srgb, var(--primary) 26%, var(--outline-variant));
-  box-shadow: 0 20px 58px rgba(20, 35, 33, 0.1);
+  transform: translateY(-4px) rotate(-0.18deg) scale(1.003);
+  border-color: color-mix(in srgb, var(--primary) 32%, var(--outline-variant));
+  box-shadow: 0 28px 70px rgba(20, 35, 33, 0.12);
 }
 
 .message-card-orbit {
@@ -3687,6 +3688,8 @@ pre {
 .message-head {
   position: relative;
   z-index: 1;
+  padding-bottom: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 52%, transparent);
 }
 
 .message-title-group {
@@ -3705,24 +3708,45 @@ pre {
 }
 
 .message-type-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
-  padding: 0 9px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--primary) 10%, white 90%);
-  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--outline-variant));
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--primary);
+  min-height: 24px;
+  padding-inline: 10px;
 }
 
 .message-type-pill-user {
   color: var(--text);
-  background: color-mix(in srgb, var(--surface-container-high) 82%, white 18%);
-  border-color: color-mix(in srgb, var(--outline-variant) 60%, transparent);
+}
+
+.message-type-pill-user::before {
+  background: color-mix(in srgb, var(--outline-variant) 78%, transparent);
+}
+
+.message-status-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.message-status-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 60%, transparent);
+  background: color-mix(in srgb, var(--surface) 74%, white 26%);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.46);
+}
+
+.message-status-chip-user {
+  background: color-mix(in srgb, var(--surface-container-high) 76%, white 24%);
 }
 
 .thinking-card {
@@ -3730,7 +3754,8 @@ pre {
   overflow: hidden;
   background:
     radial-gradient(circle at top right, rgba(36, 93, 168, 0.1), transparent 34%),
-    linear-gradient(180deg, color-mix(in srgb, var(--terminal) 90%, white 10%), color-mix(in srgb, var(--surface-container-low) 92%, white 8%));
+    linear-gradient(180deg, color-mix(in srgb, var(--terminal) 86%, white 14%), color-mix(in srgb, var(--surface-container-low) 92%, white 8%));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 22px 54px rgba(20, 35, 33, 0.12);
 }
 
 .thinking-card-ribbon {
@@ -3756,6 +3781,58 @@ pre {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.thinking-runway-bar {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 16px;
+  padding: 11px 14px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 62%, transparent);
+  background:
+    radial-gradient(circle at top right, rgba(79, 219, 200, 0.1), transparent 30%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-container-low) 84%, white 16%), color-mix(in srgb, var(--surface) 92%, white 8%));
+  box-shadow: 0 14px 30px rgba(20, 35, 33, 0.08);
+}
+
+.thinking-runway-bar::after {
+  content: "";
+  position: absolute;
+  inset: auto -14% -48% auto;
+  width: 112px;
+  height: 112px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(36, 93, 168, 0.14), transparent 72%);
+  pointer-events: none;
+}
+
+.thinking-runway-copy {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.thinking-runway-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 10%, white 90%);
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--outline-variant));
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.thinking-runway-text {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .thinking-summary-stack,
@@ -4051,13 +4128,15 @@ pre {
 
 .assistant-message-card {
   background:
-    radial-gradient(circle at top right, rgba(36, 93, 168, 0.08), transparent 34%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, white 8%), color-mix(in srgb, var(--surface-container-low) 96%, white 4%));
+    radial-gradient(circle at top right, rgba(36, 93, 168, 0.1), transparent 34%),
+    radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.6), transparent 22%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 90%, white 10%), color-mix(in srgb, var(--surface-container-low) 95%, white 5%));
 }
 
 .user-message-card {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-container-low) 92%, white 8%), color-mix(in srgb, var(--surface-container) 96%, white 4%));
+    radial-gradient(circle at top left, rgba(8, 121, 107, 0.08), transparent 28%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-container-low) 90%, white 10%), color-mix(in srgb, var(--surface-container) 95%, white 5%));
 }
 
 .message-avatar.assistant-avatar {
@@ -4070,7 +4149,7 @@ pre {
 }
 
 .message-actions {
-  opacity: 0.8;
+  opacity: 0.9;
   transition: opacity 180ms ease, transform 180ms ease;
 }
 
@@ -4091,12 +4170,15 @@ pre {
 
 .message-reply {
   margin-left: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34);
 }
 
 .message-body {
-  margin-top: 14px;
+  margin-top: 16px;
   position: relative;
   z-index: 1;
+  font-size: 14px;
+  line-height: 1.72;
 }
 
 .assistant-markdown.message-body,

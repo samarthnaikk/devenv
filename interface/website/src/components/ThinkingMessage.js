@@ -75,6 +75,16 @@ export function ThinkingMessage({ message }) {
         metricPill(searchCards.length ? "Search" : "Mode", searchCards.length ? `${searchCards.length} live source${searchCards.length === 1 ? "" : "s"}` : headline.replace(/ trace$/i, "")),
         metricPill("Status", message.pending ? statusWord : "Completed")
       ),
+      React.createElement(
+        "div",
+        { className: "thinking-runway-bar" },
+        React.createElement(
+          MotionSwap,
+          { className: "thinking-runway-copy" },
+          React.createElement("span", { className: "thinking-runway-label" }, activeStep.label || "Trace"),
+          React.createElement("span", { className: "thinking-runway-text" }, activeStep.text || headline)
+        )
+      ),
       summary
         ? React.createElement(
             MotionStack,

@@ -1,6 +1,6 @@
 import React from "react";
 import { renderMarkdown } from "../lib/markdown.js";
-import { BeamFrame, MotionReveal, MotionShimmerText, MotionStage } from "./MotionPrimitives.js";
+import { BeamFrame, MotionBadge, MotionReveal, MotionShimmerText, MotionStage } from "./MotionPrimitives.js";
 
 export function AssistantMessage({ message, onCopy, onReply }) {
   return React.createElement(
@@ -25,7 +25,7 @@ export function AssistantMessage({ message, onCopy, onReply }) {
           React.createElement(MotionShimmerText, { className: "font-label-caps text-label-caps text-primary" }, "Devenv"),
           React.createElement("span", { className: "message-kicker" }, "assistant output")
         ),
-        React.createElement("span", { className: "message-type-pill" }, "Answer"),
+        React.createElement(MotionBadge, { className: "message-type-pill message-type-pill-assistant", active: true }, "Answer"),
         React.createElement("div", { className: "ml-auto flex items-center gap-1 message-actions" },
         React.createElement(
           "button",
@@ -57,6 +57,12 @@ export function AssistantMessage({ message, onCopy, onReply }) {
             React.createElement("div", null, message.replyTo.excerpt)
           )
         : null,
+      React.createElement(
+        "div",
+        { className: "message-status-row" },
+        React.createElement("span", { className: "message-status-chip" }, "Grounded response"),
+        React.createElement("span", { className: "message-status-chip" }, "Reply ready")
+      ),
       React.createElement(
         "div",
         {

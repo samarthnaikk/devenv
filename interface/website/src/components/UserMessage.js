@@ -1,6 +1,6 @@
 import React from "react";
 import { escapeHtml } from "../utils/format.js";
-import { MetalSurface, MotionStage } from "./MotionPrimitives.js";
+import { MetalSurface, MotionBadge, MotionStage } from "./MotionPrimitives.js";
 
 export function UserMessage({ message, onCopy, onReply }) {
   return React.createElement(
@@ -29,7 +29,7 @@ export function UserMessage({ message, onCopy, onReply }) {
           React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface" }, "You"),
           React.createElement("span", { className: "message-kicker" }, "prompt")
         ),
-        React.createElement("span", { className: "message-type-pill message-type-pill-user" }, "Input"),
+        React.createElement(MotionBadge, { className: "message-type-pill message-type-pill-user", active: false }, "Input"),
         React.createElement("div", { className: "ml-auto flex items-center gap-1 message-actions" },
         React.createElement(
           "button",
@@ -61,6 +61,12 @@ export function UserMessage({ message, onCopy, onReply }) {
             React.createElement("div", null, message.replyTo.excerpt)
           )
         : null,
+      React.createElement(
+        "div",
+        { className: "message-status-row" },
+        React.createElement("span", { className: "message-status-chip message-status-chip-user" }, "Prompt"),
+        React.createElement("span", { className: "message-status-chip message-status-chip-user" }, "Local shell")
+      ),
       React.createElement(
         "div",
         {
