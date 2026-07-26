@@ -174,6 +174,27 @@ export function ToolPicker() {
               ),
               React.createElement(
                 "div",
+                { className: "tool-picker-summary-rail" },
+                React.createElement(
+                  "span",
+                  { className: "tool-picker-summary-pill" },
+                  `${selectedTools.length || 0} active`
+                ),
+                React.createElement(
+                  "span",
+                  { className: "tool-picker-summary-pill" },
+                  `${groupedTools.length} lanes`
+                ),
+                React.createElement(
+                  "span",
+                  { className: "tool-picker-summary-copy" },
+                  selectedTools.length
+                    ? "Selected routes will constrain this turn."
+                    : "Leave the tray clear to keep routing automatic."
+                )
+              ),
+              React.createElement(
+                "div",
                 { className: "tool-picker-route-note" },
                 React.createElement("span", { className: "tool-picker-route-label" }, state.planMode ? "Plan mode" : "Auto route"),
                 React.createElement("span", { className: "tool-picker-route-copy" }, state.planMode ? "The runtime will inspect the repo and return a flowchart only. Live route cards stay selected for normal turns after you exit plan mode." : "Leave the tray empty to let Devenv choose between memory, live search, and tool-assisted execution.")

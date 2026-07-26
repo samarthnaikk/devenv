@@ -315,15 +315,34 @@ export function Composer() {
           React.createElement("span", { className: "composer-signal-dot" }),
           React.createElement("span", { className: "composer-signal-dot" })
         ),
-        React.createElement("textarea", {
-          ref: textareaRef,
-          className: "composer-input w-full bg-transparent border-none focus:ring-0 font-body-md text-body-md text-on-surface resize-none h-20 placeholder:text-outline outline-none",
-          placeholder,
-          disabled: isDisabled,
-          value: state.prompt,
-          onChange: handleInput,
-          onKeyDown: handleKeyDown,
-        }),
+        React.createElement(
+          "div",
+          { className: "composer-input-shell" },
+          React.createElement("div", { className: "composer-input-orbit composer-input-orbit-one", "aria-hidden": "true" }),
+          React.createElement("div", { className: "composer-input-orbit composer-input-orbit-two", "aria-hidden": "true" }),
+          React.createElement("textarea", {
+            ref: textareaRef,
+            className: "composer-input w-full bg-transparent border-none focus:ring-0 font-body-md text-body-md text-on-surface resize-none h-20 placeholder:text-outline outline-none",
+            placeholder,
+            disabled: isDisabled,
+            value: state.prompt,
+            onChange: handleInput,
+            onKeyDown: handleKeyDown,
+          }),
+          React.createElement(
+            "div",
+            { className: "composer-input-meta" },
+            React.createElement("span", { className: "composer-input-meta-pill" }, state.planMode ? "Blueprint only" : "Live runtime"),
+            React.createElement("span", { className: "composer-input-meta-pill" }, state.selectedTools.length ? `${state.selectedTools.length} route${state.selectedTools.length === 1 ? "" : "s"}` : "Auto route"),
+            React.createElement("span", { className: "composer-input-meta-pill" }, `${state.prompt.trim().length} chars`)
+          )
+        ),
+        React.createElement(
+          MotionSwap,
+          { className: "composer-route-strip" },
+          React.createElement("span", { className: "composer-route-strip-label" }, state.planMode ? "Plan lane" : "Run lane"),
+          React.createElement("span", { className: "composer-route-strip-copy" }, state.selectedTools.length ? describeRouteChip(state) : "Let Devenv decide between memory, tools, and live search.")
+        ),
         React.createElement(
           "div",
           { className: "composer-toolbar flex justify-between items-center mt-2 pt-2 border-t border-outline-variant/30" },
