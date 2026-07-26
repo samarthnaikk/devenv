@@ -3,6 +3,7 @@ import { useApp } from "../context/AppContext.js";
 import { escapeHtml, formatBackendLabel } from "../utils/format.js";
 import { loadPreferredBackend, persistAccess } from "../utils/storage.js";
 import { showToast } from "./Header.js";
+import { BeamFrame, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 const PERFORMANCE_STEPS = ["low", "medium", "high"];
 
@@ -97,19 +98,32 @@ export function AccessCard() {
 
   return React.createElement(
     "section",
-    { className: "space-y-3" },
+    { className: "workspace-card-stack space-y-3" },
     React.createElement(
-      "h3",
-      { className: "font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2" },
-      React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "vpn_key"),
-      "ACCESS & PROVIDERS"
-    ),
-    React.createElement(
-      "div",
-      { className: "bg-surface-container rounded-lg border border-outline-variant overflow-hidden" },
+      MotionReveal,
+      null,
       React.createElement(
         "div",
-        { className: "p-3 border-b border-outline-variant/30 flex justify-between items-center" },
+        { className: "workspace-card-title-row" },
+        React.createElement(
+          "h3",
+          { className: "font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2" },
+          React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "vpn_key"),
+          "ACCESS & PROVIDERS"
+        ),
+        React.createElement(
+          MotionShimmerText,
+          { className: "workspace-card-title-meta", active: state.isRunning },
+          state.accessUpdating ? "Syncing runtime access" : "Consent, backends, and privacy controls"
+        )
+      )
+    ),
+    React.createElement(
+      BeamFrame,
+      { active: state.accessUpdating, tone: "mono", className: "workspace-card-shell workspace-card-shell-access rounded-[22px] overflow-hidden" },
+      React.createElement(
+        "div",
+        { className: "workspace-card-section p-3 border-b border-outline-variant/30 flex justify-between items-center" },
         React.createElement("span", { className: "font-body-md text-body-md" }, "Consent"),
         React.createElement("span", { className: "text-primary material-symbols-outlined text-[18px]" }, "check_circle")
       ),
@@ -117,69 +131,69 @@ export function AccessCard() {
       renderProviderRow("opencode", "OpenCode", opencodeSessionAllowed, "session", state, updateSessionAccess),
       renderBackendRow("opencode", opencodeBackendAllowed, activeBackendLabel, state, updateBackendAccess),
       renderBackendRow("ollama", ollamaBackendAllowed, activeBackendLabel, state, updateBackendAccess),
-      renderBackendRow("codex", codexBackendAllowed, activeBackendLabel, state, updateBackendAccess)
-    ),
-    React.createElement(
-      "div",
-      { className: "space-y-3 pt-2" },
+      renderBackendRow("codex", codexBackendAllowed, activeBackendLabel, state, updateBackendAccess),
       React.createElement(
         "div",
-        { className: "flex flex-col gap-1.5" },
-        React.createElement("label", { className: "font-label-caps text-label-caps text-on-surface-variant" }, "PERFORMANCE MODE"),
+        { className: "workspace-card-section space-y-3 pt-4 px-3 pb-3" },
         React.createElement(
           "div",
-          { className: "rounded-xl border border-outline-variant bg-surface-container-highest px-3 py-3" },
+          { className: "flex flex-col gap-1.5" },
+          React.createElement("label", { className: "font-label-caps text-label-caps text-on-surface-variant" }, "PERFORMANCE MODE"),
           React.createElement(
             "div",
-            { className: "mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.16em] text-on-surface-variant" },
-            React.createElement("span", null, "Low"),
-            React.createElement("span", { className: "text-primary" }, escapeHtml((state.performanceMode || "medium").replace(/^./, (char) => char.toUpperCase()))),
-            React.createElement("span", null, "High")
-          ),
+            { className: "workspace-card-subpanel rounded-xl border border-outline-variant bg-surface-container-highest px-3 py-3" },
+            React.createElement(
+              "div",
+              { className: "mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.16em] text-on-surface-variant" },
+              React.createElement("span", null, "Low"),
+              React.createElement("span", { className: "text-primary" }, escapeHtml((state.performanceMode || "medium").replace(/^./, (char) => char.toUpperCase()))),
+              React.createElement("span", null, "High")
+            ),
+            React.createElement("input", {
+              className: "h-2 w-full cursor-pointer appearance-none rounded-full bg-[linear-gradient(90deg,rgba(79,219,200,0.18),rgba(79,219,200,0.75))] outline-none accent-primary",
+              type: "range",
+              min: "0",
+              max: String(PERFORMANCE_STEPS.length - 1),
+              step: "1",
+              value: String(Math.max(0, PERFORMANCE_STEPS.indexOf(state.performanceMode))),
+              onChange: handlePerformanceChange,
+              "aria-label": "Performance mode",
+            }),
+            React.createElement(
+              "div",
+              { className: "mt-2 grid grid-cols-3 text-[10px] uppercase tracking-[0.14em] text-outline" },
+              React.createElement("span", { className: "text-left" }, "Quiet"),
+              React.createElement("span", { className: "text-center" }, "Balanced"),
+              React.createElement("span", { className: "text-right" }, "Fast")
+            )
+          )
+        ),
+        React.createElement(
+          "label",
+          { className: "workspace-toggle-row flex items-center gap-3 cursor-pointer" },
           React.createElement("input", {
-            className: "h-2 w-full cursor-pointer appearance-none rounded-full bg-[linear-gradient(90deg,rgba(79,219,200,0.18),rgba(79,219,200,0.75))] outline-none accent-primary",
-            type: "range",
-            min: "0",
-            max: String(PERFORMANCE_STEPS.length - 1),
-            step: "1",
-            value: String(Math.max(0, PERFORMANCE_STEPS.indexOf(state.performanceMode))),
-            onChange: handlePerformanceChange,
-            "aria-label": "Performance mode",
+            className: "w-4 h-4 rounded border-outline-variant bg-surface-container text-primary focus:ring-0 focus:ring-offset-0",
+            type: "checkbox",
+            checked: state.privacyMode.incognito,
+            onChange: handleIncognitoToggle,
+          }),
+          React.createElement("span", { className: "font-body-md text-body-md" }, "Incognito")
+        ),
+        React.createElement(
+          "label",
+          { className: "workspace-toggle-row flex items-center gap-3 cursor-pointer" },
+          React.createElement("input", {
+            className: "w-4 h-4 rounded border-outline-variant bg-surface-container text-primary focus:ring-0 focus:ring-offset-0",
+            type: "checkbox",
+            checked: state.planMode,
+            onChange: handlePlanToggle,
           }),
           React.createElement(
             "div",
-            { className: "mt-2 grid grid-cols-3 text-[10px] uppercase tracking-[0.14em] text-outline" },
-            React.createElement("span", { className: "text-left" }, "Quiet"),
-            React.createElement("span", { className: "text-center" }, "Balanced"),
-            React.createElement("span", { className: "text-right" }, "Fast")
+            { className: "flex flex-col" },
+            React.createElement("span", { className: "font-body-md text-body-md" }, "Plan mode"),
+            React.createElement("span", { className: "text-[10px] text-on-surface-variant" }, "Generate a flowchart plan only")
           )
-        )
-      ),
-      React.createElement(
-        "label",
-        { className: "flex items-center gap-3 cursor-pointer" },
-        React.createElement("input", {
-          className: "w-4 h-4 rounded border-outline-variant bg-surface-container text-primary focus:ring-0 focus:ring-offset-0",
-          type: "checkbox",
-          checked: state.privacyMode.incognito,
-          onChange: handleIncognitoToggle,
-        }),
-        React.createElement("span", { className: "font-body-md text-body-md" }, "Incognito")
-      ),
-      React.createElement(
-        "label",
-        { className: "flex items-center gap-3 cursor-pointer" },
-        React.createElement("input", {
-          className: "w-4 h-4 rounded border-outline-variant bg-surface-container text-primary focus:ring-0 focus:ring-offset-0",
-          type: "checkbox",
-          checked: state.planMode,
-          onChange: handlePlanToggle,
-        }),
-        React.createElement(
-          "div",
-          { className: "flex flex-col" },
-          React.createElement("span", { className: "font-body-md text-body-md" }, "Plan mode"),
-          React.createElement("span", { className: "text-[10px] text-on-surface-variant" }, "Generate a flowchart plan only")
         )
       )
     )
@@ -190,7 +204,7 @@ function renderProviderRow(provider, label, allowed, type, state, updateSessionA
   const actionAttr = allowed ? "revoke" : "grant";
   return React.createElement(
     "div",
-    { key: provider, className: "p-3 border-b border-outline-variant/30 flex justify-between items-center" },
+    { key: provider, className: "workspace-card-row p-3 border-b border-outline-variant/30 flex justify-between items-center" },
     React.createElement(
       "div",
       { className: "flex flex-col" },
@@ -215,7 +229,7 @@ function renderBackendRow(backend, allowed, activeBackendLabel, state, updateBac
   const isActive = activeBackendLabel === label;
   return React.createElement(
     "div",
-    { className: "p-3 border-b border-outline-variant/30 flex justify-between items-center" },
+    { className: "workspace-card-row p-3 border-b border-outline-variant/30 flex justify-between items-center" },
     React.createElement(
       "div",
       { className: "flex flex-col" },

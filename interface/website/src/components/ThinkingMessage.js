@@ -2,7 +2,7 @@ import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, formatDuration, formatBackendLabel } from "../utils/format.js";
 import { ThinkingOrb, stateForThinkingStep } from "./ThinkingOrb.js";
-import { BeamFrame, MetalSurface, MotionReveal, MotionSwap } from "./MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionReveal, MotionShimmerText, MotionSwap } from "./MotionPrimitives.js";
 
 export function ThinkingMessage({ message }) {
   const { state } = useApp();
@@ -32,27 +32,36 @@ export function ThinkingMessage({ message }) {
 
   return React.createElement(
     "div",
-    { className: "ml-8 space-y-4" },
+    { className: "thinking-shell ml-8 space-y-4" },
     React.createElement(
       BeamFrame,
-      { active: message.pending, tone: orbState === "searching" ? "ocean" : "mono", className: "inset-terminal rounded-lg border border-outline-variant p-4" },
+      { active: message.pending, tone: orbState === "searching" ? "ocean" : "mono", className: "thinking-card inset-terminal rounded-[24px] border border-outline-variant p-4" },
       React.createElement(
         "div",
-        { className: "flex justify-between items-center mb-4" },
+        { className: "thinking-card-head flex justify-between items-center mb-4" },
+        React.createElement(
+          "div",
+          { className: "flex items-center gap-3 min-w-0" },
+          React.createElement(ThinkingOrb, { state: orbState, size: 64, paused: !message.pending, label: `${headline}: ${orbState}` }),
+          React.createElement("span", { className: "material-symbols-outlined text-primary text-[18px]" }, "terminal"),
           React.createElement(
             "div",
-            { className: "flex items-center gap-2" },
-            React.createElement(ThinkingOrb, { state: orbState, size: 64, paused: !message.pending, label: `${headline}: ${orbState}` }),
-            React.createElement("span", { className: "material-symbols-outlined text-primary text-[18px]" }, "terminal"),
-            React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface uppercase" }, headline)
+            { className: "min-w-0 flex flex-col" },
+            React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface uppercase" }, headline),
+            React.createElement(
+              MotionShimmerText,
+              { className: "thinking-headline-detail", active: message.pending },
+              message.pending ? "Inspecting, routing, and shaping the next response" : "Trace retained for inspection"
+            )
+          )
         ),
         React.createElement(
           "div",
-          { className: "flex items-center gap-2" },
+          { className: "thinking-head-pills flex items-center gap-2" },
           React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface-variant" }, elapsed),
           React.createElement(
             "span",
-            { className: "px-2 py-0.5 rounded bg-secondary-container text-on-secondary-container font-label-caps text-[10px]" },
+            { className: "thinking-pill px-2 py-0.5 rounded bg-secondary-container text-on-secondary-container font-label-caps text-[10px]" },
             formatBackendLabel(state.activeBackend)
           )
         )
@@ -82,15 +91,15 @@ export function ThinkingMessage({ message }) {
             { key: i, delay: i * 35, className: "thinking-trace-row" },
             React.createElement(
               "div",
-              { className: "flex gap-3 items-center" },
-            React.createElement(ThinkingOrb, {
-              state: stateForThinkingStep(step, message.pending && i === timelineSteps.length - 1),
-              size: 20,
-              paused: !(message.pending && i === timelineSteps.length - 1),
-              label: `${step.text}: ${stateForThinkingStep(step, message.pending && i === timelineSteps.length - 1)}`,
-            }),
-            React.createElement("span", { className: "text-outline w-4 shrink-0" }, i + 1),
-            React.createElement("span", null, `[${(step.label || "TRACE").toUpperCase()}] ${step.text}`)
+              { className: "thinking-step-row flex gap-3 items-center" },
+              React.createElement(ThinkingOrb, {
+                state: stateForThinkingStep(step, message.pending && i === timelineSteps.length - 1),
+                size: 20,
+                paused: !(message.pending && i === timelineSteps.length - 1),
+                label: `${step.text}: ${stateForThinkingStep(step, message.pending && i === timelineSteps.length - 1)}`,
+              }),
+              React.createElement("span", { className: "text-outline w-4 shrink-0" }, i + 1),
+              React.createElement("span", null, `[${(step.label || "TRACE").toUpperCase()}] ${step.text}`)
             )
           )
         )
@@ -105,7 +114,7 @@ export function ThinkingMessage({ message }) {
     ),
     React.createElement(
       MetalSurface,
-      { className: "flex items-center gap-3 px-4 py-2 bg-surface-container rounded-full border border-outline-variant w-fit" },
+      { className: "thinking-status-pill flex items-center gap-3 px-4 py-2 bg-surface-container rounded-full border border-outline-variant w-fit" },
       React.createElement("span", { className: "material-symbols-outlined text-primary text-[16px]" }, "bolt"),
       React.createElement(
         "span",
@@ -121,7 +130,7 @@ function renderSearchCard(step, key) {
   const results = Array.isArray(step.results) ? step.results : [];
   return React.createElement(
     "div",
-    { key, className: "border border-outline-variant rounded-xl bg-terminal p-3" },
+    { key, className: "thinking-search-panel border border-outline-variant rounded-xl bg-terminal p-3" },
     React.createElement(
       "div",
       { className: "mb-2 flex items-start justify-between gap-3" },
@@ -195,7 +204,7 @@ function KnowledgeSearchCard({ step }) {
   const sourceMeta = getKnowledgeSourceMeta(step.source);
   return React.createElement(
     "div",
-    { className: "border border-outline-variant rounded-xl bg-terminal p-3" },
+    { className: "thinking-search-panel border border-outline-variant rounded-xl bg-terminal p-3" },
     React.createElement(
       "button",
       {

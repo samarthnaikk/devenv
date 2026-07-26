@@ -2,7 +2,7 @@ import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, formatDuration } from "../utils/format.js";
 import { showToast } from "./Header.js";
-import { MotionNumber } from "./MotionPrimitives.js";
+import { BeamFrame, MotionNumber, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 export function UsageCard() {
   const { state, dispatch } = useApp();
@@ -18,67 +18,84 @@ export function UsageCard() {
 
   return React.createElement(
     "section",
-    { className: "space-y-3" },
+    { className: "workspace-card-stack space-y-3" },
     React.createElement(
-      "h3",
-      { className: "font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2" },
-      React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "analytics"),
-      "USAGE & RUNTIME"
-    ),
-    React.createElement(
-      "div",
-      { className: "grid grid-cols-2 gap-3" },
+      MotionReveal,
+      null,
       React.createElement(
         "div",
-        { className: "p-3 bg-surface-container rounded-lg border border-outline-variant" },
-        React.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Status"),
+        { className: "workspace-card-title-row" },
+        React.createElement(
+          "h3",
+          { className: "font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2" },
+          React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "analytics"),
+          "USAGE & RUNTIME"
+        ),
+        React.createElement(
+          MotionShimmerText,
+          { className: "workspace-card-title-meta", active: state.isRunning },
+          state.isRunning ? "Turn in progress" : "Budget, timing, and session burn"
+        )
+      )
+    ),
+    React.createElement(
+      BeamFrame,
+      { active: state.isRunning, tone: "ocean", className: "workspace-card-shell rounded-[22px] p-3" },
+      React.createElement(
+        "div",
+        { className: "workspace-usage-grid grid grid-cols-2 gap-3" },
         React.createElement(
           "div",
-          { className: "flex items-center gap-2" },
-          React.createElement("div", { className: `w-2 h-2 rounded-full ${statusColor}` }),
-          React.createElement("span", { className: "font-body-md text-body-md font-bold uppercase" }, escapeHtml(statusLabel))
+          { className: "workspace-usage-stat p-3 bg-surface-container rounded-lg border border-outline-variant" },
+          React.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Status"),
+          React.createElement(
+            "div",
+            { className: "flex items-center gap-2" },
+            React.createElement("div", { className: `w-2 h-2 rounded-full ${statusColor}` }),
+            React.createElement("span", { className: "font-body-md text-body-md font-bold uppercase" }, escapeHtml(statusLabel))
+          )
+        ),
+        React.createElement(
+          "div",
+          { className: "workspace-usage-stat p-3 bg-surface-container rounded-lg border border-outline-variant" },
+          React.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Elapsed"),
+          React.createElement("div", { className: "font-body-md text-body-md font-bold" }, React.createElement(MotionNumber, { value: elapsed }))
+        ),
+        React.createElement(
+          "div",
+          { className: "workspace-usage-stat p-3 bg-surface-container rounded-lg border border-outline-variant" },
+          React.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Last request"),
+          React.createElement("div", { className: "font-body-md text-body-md font-bold" }, React.createElement(MotionNumber, { value: formatDuration(state.latestElapsedMs || 0) }))
+        ),
+        React.createElement(
+          "div",
+          { className: "workspace-usage-stat p-3 bg-surface-container rounded-lg border border-outline-variant" },
+          React.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Session total"),
+          React.createElement("div", { className: "font-body-md text-body-md font-bold" }, React.createElement(MotionNumber, { value: `${String(state.sessionUsageTotal || 0)} tokens` }))
         )
       ),
       React.createElement(
         "div",
-        { className: "p-3 bg-surface-container rounded-lg border border-outline-variant" },
-        React.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Elapsed"),
-          React.createElement("div", { className: "font-body-md text-body-md font-bold" }, React.createElement(MotionNumber, { value: elapsed }))
-      ),
-      React.createElement(
-        "div",
-        { className: "p-3 bg-surface-container rounded-lg border border-outline-variant" },
-        React.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Last request"),
-          React.createElement("div", { className: "font-body-md text-body-md font-bold" }, React.createElement(MotionNumber, { value: formatDuration(state.latestElapsedMs || 0) }))
-      ),
-      React.createElement(
-        "div",
-        { className: "p-3 bg-surface-container rounded-lg border border-outline-variant" },
-        React.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Session total"),
-          React.createElement("div", { className: "font-body-md text-body-md font-bold" }, React.createElement(MotionNumber, { value: `${String(state.sessionUsageTotal || 0)} tokens` }))
-      )
-    ),
-    React.createElement(
-      "div",
-      { className: "flex flex-col gap-1.5 pt-2" },
-      React.createElement("label", { className: "font-label-caps text-label-caps text-on-surface-variant" }, "TOKEN BUDGET"),
-      React.createElement(
-        "div",
-        { className: "flex gap-2" },
-        React.createElement("input", {
-          className: "flex-1 bg-surface-container-highest border border-outline-variant rounded-lg font-code-sm text-code-sm px-3 py-2 outline-none focus:border-primary",
-          type: "text",
-          value: state.budgetInput,
-          onChange: (e) => dispatch({ type: "SET_BUDGET_INPUT", payload: e.target.value }),
-        }),
+        { className: "flex flex-col gap-1.5 pt-3" },
+        React.createElement("label", { className: "font-label-caps text-label-caps text-on-surface-variant" }, "TOKEN BUDGET"),
         React.createElement(
-          "button",
-          {
-            type: "button",
-            className: "px-4 py-2 bg-surface-variant text-on-surface rounded-lg font-label-caps text-label-caps hover:bg-outline-variant transition-colors",
-            onClick: applyBudget,
-          },
-          "Apply"
+          "div",
+          { className: "flex gap-2" },
+          React.createElement("input", {
+            className: "flex-1 bg-surface-container-highest border border-outline-variant rounded-lg font-code-sm text-code-sm px-3 py-2 outline-none focus:border-primary",
+            type: "text",
+            value: state.budgetInput,
+            onChange: (e) => dispatch({ type: "SET_BUDGET_INPUT", payload: e.target.value }),
+          }),
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              className: "px-4 py-2 bg-surface-variant text-on-surface rounded-lg font-label-caps text-label-caps hover:bg-outline-variant transition-colors",
+              onClick: applyBudget,
+            },
+            "Apply"
+          )
         )
       )
     )

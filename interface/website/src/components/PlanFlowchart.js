@@ -5,7 +5,7 @@ import ReactFlow, {
 } from "reactflow";
 import { validatePlanBlueprint, normalizeBlueprint } from "../utils/validation.js";
 import { escapeHtml } from "../utils/format.js";
-import { BeamFrame, MotionReveal } from "./MotionPrimitives.js";
+import { BeamFrame, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 function BlueprintNode({ data }) {
   const [showModal, setShowModal] = React.useState(false);
@@ -212,7 +212,7 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
     { active: normalized.nodes.some((node) => node.status === "active"), tone: "ocean", className: "flex flex-col gap-2 w-full max-w-[88rem]" },
     React.createElement(
       "div",
-      { className: "flex items-center gap-2 mb-1" },
+      { className: "plan-header flex items-center gap-2 mb-1 flex-wrap" },
       React.createElement(
         "div",
         { className: "w-6 h-6 rounded-full bg-surface-container-highest flex items-center justify-center" },
@@ -220,18 +220,25 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
       ),
       React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "Execution Plan"),
       React.createElement(
+        MotionShimmerText,
+        { className: "plan-header-copy", active: normalized.nodes.some((node) => node.status === "active") },
+        normalized.nodes.some((node) => node.status === "active")
+          ? "Steps are actively progressing through the graph"
+          : "Blueprint is ready to inspect and execute"
+      ),
+      React.createElement(
         "span",
-        { className: `px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] ${blueprint.verification_passed ? "text-primary" : allDone ? "text-primary" : "text-on-surface-variant"}` },
+        { className: `plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] ${blueprint.verification_passed ? "text-primary" : allDone ? "text-primary" : "text-on-surface-variant"}` },
         blueprint.verification_passed ? "Verified" : allDone ? "Done" : "In progress"
       ),
       React.createElement(
         "span",
-        { className: "px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
+        { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
         mode === "forced" ? "Plan mode" : "Auto-planned"
       ),
       React.createElement(
         "span",
-        { className: "px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
+        { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
         `${normalized.nodes.length} steps`
       )
     ),

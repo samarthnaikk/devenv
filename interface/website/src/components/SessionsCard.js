@@ -2,6 +2,7 @@ import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, escapeAttribute } from "../utils/format.js";
 import { showToast } from "./Header.js";
+import { BeamFrame, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 export function SessionsCard() {
   const { state, dispatch } = useApp();
@@ -39,29 +40,46 @@ export function SessionsCard() {
 
   return React.createElement(
     "section",
-    { className: "space-y-3" },
+    { className: "workspace-card-stack space-y-3" },
     React.createElement(
-      "div",
-      { className: "flex justify-between items-center" },
+      MotionReveal,
+      null,
       React.createElement(
-        "h3",
-        { className: "font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2" },
-        React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "history"),
-        "SESSIONS"
-      ),
-      React.createElement(
-        "button",
-        {
-          type: "button",
-          className: "p-1 hover:text-primary transition-colors text-on-surface-variant",
-          onClick: refreshAllSessions,
-          disabled: state.sessionLoading,
-        },
-        React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "refresh")
+        "div",
+        { className: "workspace-card-title-row flex justify-between items-center" },
+        React.createElement(
+          "div",
+          { className: "min-w-0" },
+          React.createElement(
+            "h3",
+            { className: "font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2" },
+            React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "history"),
+            "SESSIONS"
+          ),
+          React.createElement(
+            MotionShimmerText,
+            { className: "workspace-card-title-meta", active: state.sessionLoading },
+            state.sessionLoading ? "Refreshing visible providers" : "Codex and OpenCode thread history"
+          )
+        ),
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            className: "p-1 hover:text-primary transition-colors text-on-surface-variant",
+            onClick: refreshAllSessions,
+            disabled: state.sessionLoading,
+          },
+          React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "refresh")
+        )
       )
     ),
-    renderSessionRow("codex", "Codex History", codexAllowed, codexVisible, state, dispatch, toggleProviderVisibility, selectSession),
-    renderSessionRow("opencode", "OpenCode History", opencodeAllowed, opencodeVisible, state, dispatch, toggleProviderVisibility, selectSession)
+    React.createElement(
+      BeamFrame,
+      { active: state.sessionLoading, tone: "mono", className: "workspace-card-shell rounded-[22px] overflow-hidden" },
+      renderSessionRow("codex", "Codex History", codexAllowed, codexVisible, state, dispatch, toggleProviderVisibility, selectSession),
+      renderSessionRow("opencode", "OpenCode History", opencodeAllowed, opencodeVisible, state, dispatch, toggleProviderVisibility, selectSession)
+    )
   );
 }
 
@@ -69,7 +87,7 @@ function renderSessionRow(provider, label, allowed, visible, state, dispatch, to
   const sessions = state.providerSessions[provider] || [];
   return React.createElement(
     "div",
-    { key: provider, className: "bg-surface-container rounded-lg border border-outline-variant overflow-hidden" },
+    { key: provider, className: "workspace-card-section bg-surface-container rounded-lg border border-outline-variant overflow-hidden" },
     React.createElement(
       "div",
       { className: "p-3 flex justify-between items-center" },
