@@ -4,6 +4,7 @@ import { formatDuration } from "../utils/format.js";
 import { ToolPicker } from "./ToolPicker.js?v=popup3";
 import { validatePlanBlueprint } from "../utils/validation.js";
 import { extractPlanBlueprint, READ_ONLY_PLAN_TOOLS, shouldDisplayPlanResult } from "../utils/plans.js";
+import { BeamFrame, MetalSurface, MotionReveal, MotionSwap } from "./MotionPrimitives.js";
 
 export function Composer() {
   const { state, dispatch } = useApp();
@@ -52,13 +53,14 @@ export function Composer() {
     dispatch({ type: "SET_REPLY_TARGET", payload: null });
 
     const thinkingId = `thinking-${Date.now()}`;
-    const pendingLogs = state.pendingRunMode === "web"
+    const pendingRunMode = inferPendingRunMode(originalPrompt);
+    const pendingLogs = pendingRunMode === "web"
       ? [
           { source: "tool_call", message: "tool: web_search" },
           { source: "web_search", message: `query: ${originalPrompt}` },
           { source: "ai", message: "Checking live sources for the latest answer" },
         ]
-      : state.pendingRunMode === "knowledge"
+      : pendingRunMode === "knowledge"
         ? [
             { source: "tool_call", message: "tool: knowledge_search" },
             { source: "knowledge_search", message: `query: ${originalPrompt}` },
@@ -231,19 +233,39 @@ export function Composer() {
   return React.createElement(
     "form",
     {
-      className: "p-margin-desktop bg-surface-container-low border-t border-outline-variant",
+      className: "composer-shell p-margin-desktop bg-surface-container-low border-t border-outline-variant",
       onSubmit: handleSubmit,
     },
     React.createElement(
       "div",
       { className: "max-w-4xl mx-auto flex flex-col gap-3" },
       React.createElement(
-        "div",
-        { className: "relative inset-terminal rounded-xl border border-outline-variant p-4 focus-within:border-primary transition-all" },
+        BeamFrame,
+        { active: state.isRunning, tone: pendingThinking ? "ocean" : "mono", className: "composer-frame relative inset-terminal rounded-[26px] border border-outline-variant p-4" },
+        React.createElement(
+          "div",
+          { className: "composer-topline" },
+          React.createElement(
+            "div",
+            { className: "composer-topline-copy" },
+            React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, state.planMode ? "Plan-first" : "Live prompt"),
+            React.createElement("span", { className: "composer-topline-detail text-on-surface-variant" }, describeComposerState(state, { isCoolingDown, isBudgetBlocked }))
+          ),
+          React.createElement(
+            "div",
+            { className: "composer-topline-pills" },
+            React.createElement("span", { className: "composer-pill" }, state.preferredBackend || "opencode"),
+            React.createElement("span", { className: "composer-pill" }, `${state.selectedTools.length} tool${state.selectedTools.length === 1 ? "" : "s"}`),
+            React.createElement("span", { className: "composer-pill" }, state.planMode ? "plan mode" : "direct/auto")
+          )
+        ),
         replyTarget
           ? React.createElement(
-              "div",
-              { className: "mb-3 flex items-start gap-3 rounded-xl border border-primary/30 bg-surface-container px-3 py-2" },
+              MotionReveal,
+              { className: "mb-3" },
+              React.createElement(
+                MetalSurface,
+                { className: "composer-reply flex items-start gap-3 rounded-2xl border border-primary/30 bg-surface-container px-3 py-2" },
               React.createElement("span", { className: "material-symbols-outlined text-primary text-[16px] mt-0.5" }, "reply"),
               React.createElement(
                 "div",
@@ -261,11 +283,12 @@ export function Composer() {
                 },
                 React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "close")
               )
+              )
             )
           : null,
         React.createElement("textarea", {
           ref: textareaRef,
-          className: "w-full bg-transparent border-none focus:ring-0 font-body-md text-body-md text-on-surface resize-none h-20 placeholder:text-outline outline-none",
+          className: "composer-input w-full bg-transparent border-none focus:ring-0 font-body-md text-body-md text-on-surface resize-none h-20 placeholder:text-outline outline-none",
           placeholder,
           disabled: isDisabled,
           value: state.prompt,
@@ -274,21 +297,29 @@ export function Composer() {
         }),
         React.createElement(
           "div",
-          { className: "flex justify-between items-center mt-2 pt-2 border-t border-outline-variant/30" },
+          { className: "composer-toolbar flex justify-between items-center mt-2 pt-2 border-t border-outline-variant/30" },
           React.createElement(
             "div",
-            { className: "flex items-center gap-2" },
-            React.createElement(ToolPicker, null)
+            { className: "composer-toolbar-left flex items-center gap-2" },
+            React.createElement(ToolPicker, null),
+            React.createElement(
+              "div",
+              { className: "composer-hint text-on-surface-variant" },
+              "Enter to type, Cmd/Ctrl+Enter to run"
+            )
           ),
           React.createElement(
             "button",
             {
               type: "submit",
-              className: "px-6 py-2 bg-primary text-on-primary rounded-full font-label-caps text-label-caps font-bold hover:opacity-90 transition-opacity",
+              className: "composer-submit px-6 py-2 rounded-full font-label-caps text-label-caps font-bold",
               disabled: state.isRunning || isDisabled || !state.prompt.trim(),
             },
             state.isRunning
-              ? `Searching${".".repeat((Math.floor(Date.now() / 350) % 3) + 1)}`
+              ? React.createElement(MotionSwap, { className: "items-center gap-2" },
+                  React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, pendingRunMode === "knowledge" ? "hub" : pendingRunMode === "web" ? "public" : "bolt"),
+                  React.createElement("span", null, runningVerbForMode(pendingRunMode))
+                )
               : isCoolingDown
                 ? formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))
                 : isBudgetBlocked
@@ -297,8 +328,9 @@ export function Composer() {
           )
         ),
         state.isRunning && pendingThinking
-          ? React.createElement("div", { className: "mt-2" }, renderRunningTicker(dispatch, state, pendingThinking))
+          ? React.createElement(MotionReveal, { className: "mt-2" }, renderRunningTicker(dispatch, state, pendingThinking))
           : null
+        )
       )
     )
   );
@@ -482,6 +514,7 @@ const KNOWLEDGE_RUNNING_STATUS_FRAMES = [
 ];
 
 function renderRunningTicker(dispatch, state, pendingThinking) {
+  void dispatch;
   const clock = Date.now();
   const content = String(pendingThinking.content || "");
   const useKnowledge = state.pendingRunMode === "knowledge" || /knowledge_search|source:/i.test(content);
@@ -497,16 +530,16 @@ function renderRunningTicker(dispatch, state, pendingThinking) {
     frame = frames[Math.floor(clock / 1200) % frames.length];
   }
   return React.createElement(
-    "span",
-    { className: "inline-flex items-center gap-2 px-4 py-2 bg-surface-container rounded-full border border-outline-variant" },
+    MetalSurface,
+    { className: "composer-running inline-flex items-center gap-2 px-4 py-2 rounded-full border border-outline-variant" },
     React.createElement("span", { className: `material-symbols-outlined text-primary text-[16px] animate-pulse` }, useKnowledge ? "hub" : useGlobe ? "public" : "bolt"),
     React.createElement("span", { className: "font-body-md text-body-md text-on-surface" }, frame),
     React.createElement(
       "span",
       { className: "inline-flex gap-1" },
-      React.createElement("span", { className: "w-1 h-1 rounded-full bg-on-surface/25 animate-bounce", style: { animationDelay: "0s" } }),
-      React.createElement("span", { className: "w-1 h-1 rounded-full bg-on-surface/25 animate-bounce", style: { animationDelay: "0.18s" } }),
-      React.createElement("span", { className: "w-1 h-1 rounded-full bg-on-surface/25 animate-bounce", style: { animationDelay: "0.36s" } })
+      React.createElement("span", { className: "composer-running-dot animate-bounce", style: { animationDelay: "0s" } }),
+      React.createElement("span", { className: "composer-running-dot animate-bounce", style: { animationDelay: "0.18s" } }),
+      React.createElement("span", { className: "composer-running-dot animate-bounce", style: { animationDelay: "0.36s" } })
     )
   );
 }
@@ -535,4 +568,18 @@ function buildRuntimePrompt(prompt, replyTarget) {
 function autosizeComposer(textarea) {
   textarea.style.height = "0px";
   textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 72), 220)}px`;
+}
+
+function runningVerbForMode(mode) {
+  if (mode === "knowledge") return "Researching";
+  if (mode === "web") return "Searching";
+  return "Thinking";
+}
+
+function describeComposerState(state, { isCoolingDown, isBudgetBlocked }) {
+  if (isCoolingDown) return "Cooling down after a rate limit";
+  if (isBudgetBlocked) return "Session budget reached";
+  if (state.isRunning) return "Executing the current turn";
+  if (state.planMode) return "Will produce a plan flow before execution";
+  return "Auto-routes between memory, plan, tools, and live search";
 }

@@ -9,7 +9,7 @@ import { BeamFrame, MotionReveal } from "./MotionPrimitives.js";
 
 function BlueprintNode({ data }) {
   const [showModal, setShowModal] = React.useState(false);
-  const statusColor = data.status === "done" ? "#4fdbc8" : data.status === "active" ? "#facc15" : "#3c4947";
+  const statusColor = data.status === "done" ? "var(--primary)" : data.status === "active" ? "#facc15" : "var(--outline)";
   const statusIcon = data.status === "done" ? "check_circle" : data.status === "active" ? "play_circle" : "circle";
 
   return React.createElement(
@@ -18,23 +18,13 @@ function BlueprintNode({ data }) {
     React.createElement(
       "div",
       {
-        style: {
-          background: "#1e2023",
-          border: `1px solid ${data.status === "active" ? "#4fdbc8" : "#3c4947"}`,
-          borderRadius: "8px",
-          padding: "12px 16px",
-          width: `${data.width || 320}px`,
-          maxWidth: `${data.width || 320}px`,
-          position: "relative",
-          color: "#e2e2e6",
-          fontFamily: "Inter, sans-serif",
-          boxSizing: "border-box",
-        },
+        className: `plan-node-shell${data.status === "active" ? " is-active" : ""}${data.status === "done" ? " is-done" : ""}`,
+        style: { width: `${data.width || 320}px`, maxWidth: `${data.width || 320}px` },
       },
-      React.createElement(Handle, { type: "target", position: Position.Top, style: { background: "#3c4947", width: 8, height: 8 } }),
+      React.createElement(Handle, { type: "target", position: Position.Top, style: { background: "var(--outline)", width: 8, height: 8 } }),
       React.createElement(
         "div",
-        { style: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" } },
+        { className: "plan-node-head" },
         React.createElement(
           "span",
           { style: { fontSize: "16px", color: statusColor } },
@@ -42,70 +32,40 @@ function BlueprintNode({ data }) {
         ),
         React.createElement(
           "span",
-          { style: { fontSize: "10px", padding: "2px 6px", borderRadius: "4px", background: "#282a2d", color: "#859490", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" } },
+          { className: "plan-node-level" },
           `L${data.level}`
         )
       ),
       React.createElement(
         "div",
-        { style: { fontSize: "13px", fontWeight: 500, lineHeight: 1.4, marginBottom: "4px", whiteSpace: "normal", wordBreak: "break-word" } },
+        { className: "plan-node-label" },
         escapeHtml(data.label || "")
       ),
       React.createElement(
         "button",
         {
           type: "button",
-          style: {
-            position: "absolute",
-            top: "8px",
-            right: "8px",
-            background: "none",
-            border: "none",
-            color: "#859490",
-            cursor: "pointer",
-            padding: "2px",
-            fontSize: "14px",
-            lineHeight: 1,
-          },
+          className: "plan-node-info",
           onClick: (e) => { e.stopPropagation(); setShowModal(true); },
           title: "Details",
         },
         React.createElement("span", { className: "material-symbols-outlined", style: { fontSize: "14px" } }, "info")
       ),
-      React.createElement(Handle, { type: "source", position: Position.Bottom, style: { background: "#3c4947", width: 8, height: 8 } })
+      React.createElement(Handle, { type: "source", position: Position.Bottom, style: { background: "var(--outline)", width: 8, height: 8 } })
     ),
     showModal ? React.createElement(
       "div",
-      {
-        style: {
-          position: "fixed", inset: 0, zIndex: 100,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          background: "rgba(0,0,0,0.6)",
-        },
-        onClick: () => setShowModal(false),
-      },
+      { className: "plan-node-modal-backdrop", onClick: () => setShowModal(false) },
       React.createElement(
         "div",
-        {
-          style: {
-            background: "#1e2023", border: "1px solid #3c4947", borderRadius: "8px",
-            padding: "20px", maxWidth: "400px", width: "90%",
-            color: "#e2e2e6", fontFamily: "Inter, sans-serif",
-          },
-          onClick: (e) => e.stopPropagation(),
-        },
-        React.createElement("h3", { style: { margin: "0 0 8px", fontSize: "16px", fontWeight: 600 } }, escapeHtml(data.label || "")),
-        React.createElement("p", { style: { margin: 0, fontSize: "13px", color: "#bbcac6", lineHeight: 1.5 } }, escapeHtml(data.desc || "No description")),
+        { className: "plan-node-modal", onClick: (e) => e.stopPropagation() },
+        React.createElement("h3", { className: "plan-node-modal-title" }, escapeHtml(data.label || "")),
+        React.createElement("p", { className: "plan-node-modal-copy" }, escapeHtml(data.desc || "No description")),
         React.createElement(
           "button",
           {
             type: "button",
-            style: {
-              marginTop: "12px", padding: "6px 16px",
-              background: "#333538", border: "1px solid #3c4947",
-              borderRadius: "6px", color: "#e2e2e6", cursor: "pointer",
-              fontFamily: "Inter, sans-serif", fontSize: "12px",
-            },
+            className: "plan-node-modal-close",
             onClick: () => setShowModal(false),
           },
           "Close"
@@ -277,7 +237,7 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
     ),
       React.createElement(
         "div",
-        { style: { height: "380px", border: "1px solid #3c4947", borderRadius: "8px", background: "#0a0c0e" } },
+        { className: "plan-flow-canvas", style: { height: "380px" } },
         React.createElement(
           ReactFlow,
         {

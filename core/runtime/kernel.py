@@ -309,6 +309,7 @@ class DevenvKernel:
 
         if _is_brief_greeting_prompt(user_prompt):
             fast_response = "Hi. What would you like me to recall or inspect?"
+            self._mark_local_backend_response()
             ai_logs.append("Handled greeting locally without running memory retrieval")
             system_logs.append("Greeting fast path bypassed external session and model usage.")
             conversation.append({"role": "assistant", "content": fast_response})
@@ -336,6 +337,7 @@ class DevenvKernel:
 
         conversation_follow_up = _answer_from_recent_conversation_follow_up(user_prompt, self.ephemeral_history)
         if conversation_follow_up is not None:
+            self._mark_local_backend_response()
             ai_logs.append("Answered referential follow-up from recent conversation")
             system_logs.append("Recent-conversation follow-up fast path bypassed memory retrieval and model usage.")
             conversation.append({"role": "assistant", "content": conversation_follow_up})
@@ -363,6 +365,7 @@ class DevenvKernel:
 
         tool_strategy_response = self._answer_tool_strategy_question(user_prompt, selected_tools=turn_metadata["selected_tools"])
         if tool_strategy_response is not None:
+            self._mark_local_backend_response()
             ai_logs.append("Answered tool-strategy question locally from routing rules")
             system_logs.append("Tool-strategy fast path bypassed memory retrieval and model usage.")
             conversation.append({"role": "assistant", "content": tool_strategy_response})
@@ -540,6 +543,7 @@ class DevenvKernel:
             if direct_memory_answer is None:
                 direct_memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
             if direct_memory_answer is not None:
+                self._mark_local_backend_response()
                 ai_logs.append("Direct memory answer assembled from retrieved context")
                 conversation.append({"role": "assistant", "content": direct_memory_answer})
                 self._finalize_turn(
@@ -1359,6 +1363,7 @@ class DevenvKernel:
             if direct_memory_answer is None:
                 direct_memory_answer = _answer_from_retrieved_memory(user_prompt, raw_memory_context)
             if direct_memory_answer is not None and _should_trust_memory_answer_for_prompt(user_prompt):
+                self._mark_local_backend_response()
                 updated = _mark_checkpoint_completed(
                     blueprint,
                     blueprint.active_task_pointer,
