@@ -5,7 +5,7 @@ import ReactFlow, {
 } from "reactflow";
 import { validatePlanBlueprint, normalizeBlueprint } from "../utils/validation.js";
 import { escapeHtml } from "../utils/format.js";
-import { BeamFrame, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionDeck, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 function BlueprintNode({ data }) {
   const [showModal, setShowModal] = React.useState(false);
@@ -240,8 +240,20 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
         "span",
         { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
         `${normalized.nodes.length} steps`
+      ),
+      React.createElement(
+        "span",
+        { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
+        `${normalized.edges.length} links`
       )
     ),
+      React.createElement(
+        MotionDeck,
+        { className: "plan-summary-grid mb-2" },
+        planStat("Layers", String(new Set(normalized.nodes.map((node) => node.level)).size), "Execution depth across the graph"),
+        planStat("Next", nextActionLabel(normalized.nodes), "The step that should move first"),
+        planStat("State", blueprint.verification_passed ? "Verified" : allDone ? "Done" : normalized.nodes.some((node) => node.status === "active") ? "Running" : "Ready", "Current graph status")
+      ),
       React.createElement(
         "div",
         { className: "plan-flow-canvas", style: { height: "380px" } },
@@ -268,8 +280,31 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
           proOptions: { hideAttribution: true },
         },
         React.createElement(Controls, { showInteractive: false, position: "bottom-right" }),
-        React.createElement(Background, { color: "#1e2023", gap: 20 })
+        React.createElement(Background, { color: "rgba(108, 130, 149, 0.2)", gap: 22, size: 1.2 })
       )
     )
   );
+}
+
+function planStat(label, value, detail) {
+  return React.createElement(
+    MetalSurface,
+    { className: "plan-summary-card" },
+    React.createElement("span", { className: "plan-summary-label" }, label),
+    React.createElement("strong", { className: "plan-summary-value" }, value),
+    React.createElement("span", { className: "plan-summary-detail" }, detail)
+  );
+}
+
+function nextActionLabel(nodes) {
+  const active = nodes.find((node) => node.status === "active");
+  if (active?.label) return truncatePlanStat(active.label);
+  const pending = nodes.find((node) => node.status !== "done");
+  if (pending?.label) return truncatePlanStat(pending.label);
+  return "Complete";
+}
+
+function truncatePlanStat(value) {
+  const text = String(value || "").trim();
+  return text.length > 32 ? `${text.slice(0, 29)}...` : text;
 }
