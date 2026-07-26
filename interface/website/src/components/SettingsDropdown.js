@@ -67,7 +67,7 @@ export function SettingsDropdown() {
 
   return React.createElement(
     "div",
-    { className: "relative z-40" },
+    { className: "settings-panel-root z-40" },
     React.createElement(
       MotionReveal,
       null,
@@ -76,7 +76,7 @@ export function SettingsDropdown() {
         {
           active: false,
           tone: "mono",
-          className: "settings-panel-shell absolute right-4 top-0 w-72 rounded-[22px] p-4 space-y-4",
+          className: "settings-panel-shell fixed right-4 top-24 w-[min(24rem,calc(100vw-1.5rem))] rounded-[22px] p-4 space-y-4",
           "data-settings-panel": true,
         },
         React.createElement("span", { className: "settings-panel-ribbon", "aria-hidden": "true" }),

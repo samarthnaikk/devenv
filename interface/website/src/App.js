@@ -201,7 +201,7 @@ function AppInner() {
 
   return React.createElement(
     "div",
-    { className: "app-shell flex flex-col h-screen overflow-hidden bg-background" },
+    { className: "app-shell flex flex-col min-h-screen bg-background" },
     React.createElement("div", { className: "app-shell-noise", "aria-hidden": "true" }),
     React.createElement("div", { className: "app-shell-orbit app-shell-orbit-one", "aria-hidden": "true" }),
     React.createElement("div", { className: "app-shell-orbit app-shell-orbit-two", "aria-hidden": "true" }),
@@ -216,7 +216,7 @@ function AppInner() {
     state.showSettings ? React.createElement(SettingsDropdown, null) : null,
     React.createElement(
       "main",
-      { className: "app-main flex flex-1 overflow-hidden" },
+      { className: "app-main flex flex-1 items-start" },
       React.createElement(
         MotionStage,
         { axis: "y", className: "app-main-chat flex-1 min-w-0" },

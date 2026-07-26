@@ -30,7 +30,7 @@ export function ChatColumn() {
 
   return React.createElement(
     "section",
-    { className: "chat-column flex-1 min-w-0 flex flex-col h-full bg-background relative" },
+    { className: "chat-column flex-1 min-w-0 flex flex-col bg-background relative" },
     React.createElement("div", { className: "chat-column-grid", "aria-hidden": "true" }),
     React.createElement("div", { className: "chat-column-orbit chat-column-orbit-one", "aria-hidden": "true" }),
     React.createElement("div", { className: "chat-column-orbit chat-column-orbit-two", "aria-hidden": "true" }),

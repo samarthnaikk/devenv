@@ -4,6 +4,9 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
@@ -19,7 +22,6 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
-var __reExport = (target, mod, secondTarget) => (__copyProps(target, mod, "default"), secondTarget && __copyProps(secondTarget, mod, "default"));
 var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
   // If the importer is in node compatibility mode or this is not an ESM
   // file that has been converted to a CommonJS file using a Babel-
@@ -390,9 +392,9 @@ var require_react_development = __commonJS({
               case REACT_LAZY_TYPE: {
                 var lazyComponent = type;
                 var payload = lazyComponent._payload;
-                var init = lazyComponent._init;
+                var init2 = lazyComponent._init;
                 try {
-                  return getComponentNameFromType(init(payload));
+                  return getComponentNameFromType(init2(payload));
                 } catch (x) {
                   return null;
                 }
@@ -514,7 +516,7 @@ var require_react_development = __commonJS({
           }
           return element;
         };
-        function createElement(type, config, children) {
+        function createElement(type, config, children2) {
           var propName;
           var props = {};
           var key = null;
@@ -544,7 +546,7 @@ var require_react_development = __commonJS({
           }
           var childrenLength = arguments.length - 2;
           if (childrenLength === 1) {
-            props.children = children;
+            props.children = children2;
           } else if (childrenLength > 1) {
             var childArray = Array(childrenLength);
             for (var i = 0; i < childrenLength; i++) {
@@ -582,7 +584,7 @@ var require_react_development = __commonJS({
           var newElement = ReactElement(oldElement.type, newKey, oldElement.ref, oldElement._self, oldElement._source, oldElement._owner, oldElement.props);
           return newElement;
         }
-        function cloneElement(element, config, children) {
+        function cloneElement(element, config, children2) {
           if (element === null || element === void 0) {
             throw new Error("React.cloneElement(...): The argument must be a React element, but you passed " + element + ".");
           }
@@ -620,7 +622,7 @@ var require_react_development = __commonJS({
           }
           var childrenLength = arguments.length - 2;
           if (childrenLength === 1) {
-            props.children = children;
+            props.children = children2;
           } else if (childrenLength > 1) {
             var childArray = Array(childrenLength);
             for (var i = 0; i < childrenLength; i++) {
@@ -660,13 +662,13 @@ var require_react_development = __commonJS({
           }
           return index.toString(36);
         }
-        function mapIntoArray(children, array, escapedPrefix, nameSoFar, callback) {
-          var type = typeof children;
+        function mapIntoArray(children2, array2, escapedPrefix, nameSoFar, callback) {
+          var type = typeof children2;
           if (type === "undefined" || type === "boolean") {
-            children = null;
+            children2 = null;
           }
           var invokeCallback = false;
-          if (children === null) {
+          if (children2 === null) {
             invokeCallback = true;
           } else {
             switch (type) {
@@ -675,7 +677,7 @@ var require_react_development = __commonJS({
                 invokeCallback = true;
                 break;
               case "object":
-                switch (children.$$typeof) {
+                switch (children2.$$typeof) {
                   case REACT_ELEMENT_TYPE:
                   case REACT_PORTAL_TYPE:
                     invokeCallback = true;
@@ -683,7 +685,7 @@ var require_react_development = __commonJS({
             }
           }
           if (invokeCallback) {
-            var _child = children;
+            var _child = children2;
             var mappedChild = callback(_child);
             var childKey = nameSoFar === "" ? SEPARATOR + getElementKey(_child, 0) : nameSoFar;
             if (isArray(mappedChild)) {
@@ -691,7 +693,7 @@ var require_react_development = __commonJS({
               if (childKey != null) {
                 escapedChildKey = escapeUserProvidedKey(childKey) + "/";
               }
-              mapIntoArray(mappedChild, array, escapedChildKey, "", function(c) {
+              mapIntoArray(mappedChild, array2, escapedChildKey, "", function(c) {
                 return c;
               });
             } else if (mappedChild != null) {
@@ -713,7 +715,7 @@ var require_react_development = __commonJS({
                   ) : "") + childKey
                 );
               }
-              array.push(mappedChild);
+              array2.push(mappedChild);
             }
             return 1;
           }
@@ -721,16 +723,16 @@ var require_react_development = __commonJS({
           var nextName;
           var subtreeCount = 0;
           var nextNamePrefix = nameSoFar === "" ? SEPARATOR : nameSoFar + SUBSEPARATOR;
-          if (isArray(children)) {
-            for (var i = 0; i < children.length; i++) {
-              child = children[i];
+          if (isArray(children2)) {
+            for (var i = 0; i < children2.length; i++) {
+              child = children2[i];
               nextName = nextNamePrefix + getElementKey(child, i);
-              subtreeCount += mapIntoArray(child, array, escapedPrefix, nextName, callback);
+              subtreeCount += mapIntoArray(child, array2, escapedPrefix, nextName, callback);
             }
           } else {
-            var iteratorFn = getIteratorFn(children);
+            var iteratorFn = getIteratorFn(children2);
             if (typeof iteratorFn === "function") {
-              var iterableChildren = children;
+              var iterableChildren = children2;
               {
                 if (iteratorFn === iterableChildren.entries) {
                   if (!didWarnAboutMaps) {
@@ -745,50 +747,50 @@ var require_react_development = __commonJS({
               while (!(step = iterator.next()).done) {
                 child = step.value;
                 nextName = nextNamePrefix + getElementKey(child, ii++);
-                subtreeCount += mapIntoArray(child, array, escapedPrefix, nextName, callback);
+                subtreeCount += mapIntoArray(child, array2, escapedPrefix, nextName, callback);
               }
             } else if (type === "object") {
-              var childrenString = String(children);
-              throw new Error("Objects are not valid as a React child (found: " + (childrenString === "[object Object]" ? "object with keys {" + Object.keys(children).join(", ") + "}" : childrenString) + "). If you meant to render a collection of children, use an array instead.");
+              var childrenString = String(children2);
+              throw new Error("Objects are not valid as a React child (found: " + (childrenString === "[object Object]" ? "object with keys {" + Object.keys(children2).join(", ") + "}" : childrenString) + "). If you meant to render a collection of children, use an array instead.");
             }
           }
           return subtreeCount;
         }
-        function mapChildren(children, func, context) {
-          if (children == null) {
-            return children;
+        function mapChildren(children2, func, context) {
+          if (children2 == null) {
+            return children2;
           }
           var result = [];
           var count = 0;
-          mapIntoArray(children, result, "", "", function(child) {
+          mapIntoArray(children2, result, "", "", function(child) {
             return func.call(context, child, count++);
           });
           return result;
         }
-        function countChildren(children) {
+        function countChildren(children2) {
           var n = 0;
-          mapChildren(children, function() {
+          mapChildren(children2, function() {
             n++;
           });
           return n;
         }
-        function forEachChildren(children, forEachFunc, forEachContext) {
-          mapChildren(children, function() {
+        function forEachChildren(children2, forEachFunc, forEachContext) {
+          mapChildren(children2, function() {
             forEachFunc.apply(this, arguments);
           }, forEachContext);
         }
-        function toArray(children) {
-          return mapChildren(children, function(child) {
+        function toArray(children2) {
+          return mapChildren(children2, function(child) {
             return child;
           }) || [];
         }
-        function onlyChild(children) {
-          if (!isValidElement(children)) {
+        function onlyChild(children2) {
+          if (!isValidElement(children2)) {
             throw new Error("React.Children.only expected to receive a single React element child.");
           }
-          return children;
+          return children2;
         }
-        function createContext(defaultValue) {
+        function createContext2(defaultValue) {
           var context = {
             $$typeof: REACT_CONTEXT_TYPE,
             // As a workaround to support multiple concurrent renderers, we categorize
@@ -975,7 +977,7 @@ var require_react_development = __commonJS({
           }
           return lazyType;
         }
-        function forwardRef(render) {
+        function forwardRef2(render) {
           {
             if (render != null && render.$$typeof === REACT_MEMO_TYPE) {
               error("forwardRef requires a render function but received a `memo` component. Instead of forwardRef(memo(...)), use memo(forwardRef(...)).");
@@ -1036,7 +1038,7 @@ var require_react_development = __commonJS({
           }
           return false;
         }
-        function memo(type, compare) {
+        function memo4(type, compare) {
           {
             if (!isValidElementType(type)) {
               error("memo: The first argument must be a component. Instead received: %s", type === null ? "null" : typeof type);
@@ -1074,7 +1076,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher;
         }
-        function useContext(Context) {
+        function useContext2(Context) {
           var dispatcher = resolveDispatcher();
           {
             if (Context._context !== void 0) {
@@ -1088,43 +1090,43 @@ var require_react_development = __commonJS({
           }
           return dispatcher.useContext(Context);
         }
-        function useState(initialState) {
+        function useState3(initialState3) {
           var dispatcher = resolveDispatcher();
-          return dispatcher.useState(initialState);
+          return dispatcher.useState(initialState3);
         }
-        function useReducer(reducer, initialArg, init) {
+        function useReducer(reducer, initialArg, init2) {
           var dispatcher = resolveDispatcher();
-          return dispatcher.useReducer(reducer, initialArg, init);
+          return dispatcher.useReducer(reducer, initialArg, init2);
         }
-        function useRef(initialValue) {
+        function useRef3(initialValue) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useRef(initialValue);
         }
-        function useEffect(create, deps) {
+        function useEffect3(create2, deps) {
           var dispatcher = resolveDispatcher();
-          return dispatcher.useEffect(create, deps);
+          return dispatcher.useEffect(create2, deps);
         }
-        function useInsertionEffect(create, deps) {
+        function useInsertionEffect(create2, deps) {
           var dispatcher = resolveDispatcher();
-          return dispatcher.useInsertionEffect(create, deps);
+          return dispatcher.useInsertionEffect(create2, deps);
         }
-        function useLayoutEffect(create, deps) {
+        function useLayoutEffect(create2, deps) {
           var dispatcher = resolveDispatcher();
-          return dispatcher.useLayoutEffect(create, deps);
+          return dispatcher.useLayoutEffect(create2, deps);
         }
-        function useCallback(callback, deps) {
+        function useCallback2(callback, deps) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useCallback(callback, deps);
         }
-        function useMemo(create, deps) {
+        function useMemo2(create2, deps) {
           var dispatcher = resolveDispatcher();
-          return dispatcher.useMemo(create, deps);
+          return dispatcher.useMemo(create2, deps);
         }
-        function useImperativeHandle(ref, create, deps) {
+        function useImperativeHandle(ref, create2, deps) {
           var dispatcher = resolveDispatcher();
-          return dispatcher.useImperativeHandle(ref, create, deps);
+          return dispatcher.useImperativeHandle(ref, create2, deps);
         }
-        function useDebugValue(value, formatterFn) {
+        function useDebugValue2(value, formatterFn) {
           {
             var dispatcher = resolveDispatcher();
             return dispatcher.useDebugValue(value, formatterFn);
@@ -1250,9 +1252,9 @@ var require_react_development = __commonJS({
             return "";
           }
           {
-            var frame = componentFrameCache.get(fn);
-            if (frame !== void 0) {
-              return frame;
+            var frame2 = componentFrameCache.get(fn);
+            if (frame2 !== void 0) {
+              return frame2;
             }
           }
           var control;
@@ -1384,9 +1386,9 @@ var require_react_development = __commonJS({
               case REACT_LAZY_TYPE: {
                 var lazyComponent = type;
                 var payload = lazyComponent._payload;
-                var init = lazyComponent._init;
+                var init2 = lazyComponent._init;
                 try {
-                  return describeUnknownElementTypeFrameInDEV(init(payload), source, ownerFn);
+                  return describeUnknownElementTypeFrameInDEV(init2(payload), source, ownerFn);
                 } catch (x) {
                 }
               }
@@ -1585,7 +1587,7 @@ var require_react_development = __commonJS({
             }
           }
         }
-        function createElementWithValidation(type, props, children) {
+        function createElementWithValidation(type, props, children2) {
           var validType = isValidElementType(type);
           if (!validType) {
             var info = "";
@@ -1651,7 +1653,7 @@ var require_react_development = __commonJS({
           }
           return validatedFactory;
         }
-        function cloneElementWithValidation(element, props, children) {
+        function cloneElementWithValidation(element, props, children2) {
           var newElement = cloneElement.apply(this, arguments);
           for (var i = 2; i < arguments.length; i++) {
             validateChildKeys(arguments[i], newElement.type);
@@ -1868,29 +1870,29 @@ var require_react_development = __commonJS({
         exports.Suspense = REACT_SUSPENSE_TYPE;
         exports.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED = ReactSharedInternals;
         exports.cloneElement = cloneElement$1;
-        exports.createContext = createContext;
+        exports.createContext = createContext2;
         exports.createElement = createElement$1;
         exports.createFactory = createFactory;
         exports.createRef = createRef;
-        exports.forwardRef = forwardRef;
+        exports.forwardRef = forwardRef2;
         exports.isValidElement = isValidElement;
         exports.lazy = lazy;
-        exports.memo = memo;
+        exports.memo = memo4;
         exports.startTransition = startTransition;
         exports.unstable_act = act;
-        exports.useCallback = useCallback;
-        exports.useContext = useContext;
-        exports.useDebugValue = useDebugValue;
+        exports.useCallback = useCallback2;
+        exports.useContext = useContext2;
+        exports.useDebugValue = useDebugValue2;
         exports.useDeferredValue = useDeferredValue;
-        exports.useEffect = useEffect;
+        exports.useEffect = useEffect3;
         exports.useId = useId;
         exports.useImperativeHandle = useImperativeHandle;
         exports.useInsertionEffect = useInsertionEffect;
         exports.useLayoutEffect = useLayoutEffect;
-        exports.useMemo = useMemo;
+        exports.useMemo = useMemo2;
         exports.useReducer = useReducer;
-        exports.useRef = useRef;
-        exports.useState = useState;
+        exports.useRef = useRef3;
+        exports.useState = useState3;
         exports.useSyncExternalStore = useSyncExternalStore;
         exports.useTransition = useTransition;
         exports.version = ReactVersion;
@@ -2032,18 +2034,18 @@ var require_scheduler_development = __commonJS({
         var localSetImmediate = typeof setImmediate !== "undefined" ? setImmediate : null;
         var isInputPending = typeof navigator !== "undefined" && navigator.scheduling !== void 0 && navigator.scheduling.isInputPending !== void 0 ? navigator.scheduling.isInputPending.bind(navigator.scheduling) : null;
         function advanceTimers(currentTime) {
-          var timer = peek(timerQueue);
-          while (timer !== null) {
-            if (timer.callback === null) {
+          var timer2 = peek(timerQueue);
+          while (timer2 !== null) {
+            if (timer2.callback === null) {
               pop(timerQueue);
-            } else if (timer.startTime <= currentTime) {
+            } else if (timer2.startTime <= currentTime) {
               pop(timerQueue);
-              timer.sortIndex = timer.expirationTime;
-              push(taskQueue, timer);
+              timer2.sortIndex = timer2.expirationTime;
+              push(taskQueue, timer2);
             } else {
               return;
             }
-            timer = peek(timerQueue);
+            timer2 = peek(timerQueue);
           }
         }
         function handleTimeout(currentTime) {
@@ -2192,26 +2194,26 @@ var require_scheduler_development = __commonJS({
           } else {
             startTime2 = currentTime;
           }
-          var timeout;
+          var timeout2;
           switch (priorityLevel) {
             case ImmediatePriority:
-              timeout = IMMEDIATE_PRIORITY_TIMEOUT;
+              timeout2 = IMMEDIATE_PRIORITY_TIMEOUT;
               break;
             case UserBlockingPriority:
-              timeout = USER_BLOCKING_PRIORITY_TIMEOUT;
+              timeout2 = USER_BLOCKING_PRIORITY_TIMEOUT;
               break;
             case IdlePriority:
-              timeout = IDLE_PRIORITY_TIMEOUT;
+              timeout2 = IDLE_PRIORITY_TIMEOUT;
               break;
             case LowPriority:
-              timeout = LOW_PRIORITY_TIMEOUT;
+              timeout2 = LOW_PRIORITY_TIMEOUT;
               break;
             case NormalPriority:
             default:
-              timeout = NORMAL_PRIORITY_TIMEOUT;
+              timeout2 = NORMAL_PRIORITY_TIMEOUT;
               break;
           }
-          var expirationTime = startTime2 + timeout;
+          var expirationTime = startTime2 + timeout2;
           var newTask = {
             id: taskIdCounter++,
             callback,
@@ -2386,9 +2388,9 @@ var require_react_dom_development = __commonJS({
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
           __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
         }
-        var React = require_react();
+        var React26 = require_react();
         var Scheduler = require_scheduler();
-        var ReactSharedInternals = React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React26.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         var suppressWarning = false;
         function setSuppressWarning(newSuppressWarning) {
           {
@@ -3316,9 +3318,9 @@ var require_react_dom_development = __commonJS({
             return "";
           }
           {
-            var frame = componentFrameCache.get(fn);
-            if (frame !== void 0) {
-              return frame;
+            var frame2 = componentFrameCache.get(fn);
+            if (frame2 !== void 0) {
+              return frame2;
             }
           }
           var control;
@@ -3455,9 +3457,9 @@ var require_react_dom_development = __commonJS({
               case REACT_LAZY_TYPE: {
                 var lazyComponent = type;
                 var payload = lazyComponent._payload;
-                var init = lazyComponent._init;
+                var init2 = lazyComponent._init;
                 try {
-                  return describeUnknownElementTypeFrameInDEV(init(payload), source, ownerFn);
+                  return describeUnknownElementTypeFrameInDEV(init2(payload), source, ownerFn);
                 } catch (x) {
                 }
               }
@@ -3561,9 +3563,9 @@ var require_react_dom_development = __commonJS({
               case REACT_LAZY_TYPE: {
                 var lazyComponent = type;
                 var payload = lazyComponent._payload;
-                var init = lazyComponent._init;
+                var init2 = lazyComponent._init;
                 try {
-                  return getComponentNameFromType(init(payload));
+                  return getComponentNameFromType(init2(payload));
                 } catch (x) {
                   return null;
                 }
@@ -3758,18 +3760,18 @@ var require_react_dom_development = __commonJS({
           if (node.hasOwnProperty(valueField) || typeof descriptor === "undefined" || typeof descriptor.get !== "function" || typeof descriptor.set !== "function") {
             return;
           }
-          var get2 = descriptor.get, set2 = descriptor.set;
+          var get4 = descriptor.get, set4 = descriptor.set;
           Object.defineProperty(node, valueField, {
             configurable: true,
             get: function() {
-              return get2.call(this);
+              return get4.call(this);
             },
             set: function(value) {
               {
                 checkFormFieldValueStringCoercion(value);
               }
               currentValue = "" + value;
-              set2.call(this, value);
+              set4.call(this, value);
             }
           });
           Object.defineProperty(node, valueField, {
@@ -3995,7 +3997,7 @@ var require_react_dom_development = __commonJS({
           {
             if (props.value == null) {
               if (typeof props.children === "object" && props.children !== null) {
-                React.Children.forEach(props.children, function(child) {
+                React26.Children.forEach(props.children, function(child) {
                   if (child == null) {
                     return;
                   }
@@ -4171,8 +4173,8 @@ var require_react_dom_development = __commonJS({
           }
           var initialValue = props.value;
           if (initialValue == null) {
-            var children = props.children, defaultValue = props.defaultValue;
-            if (children != null) {
+            var children2 = props.children, defaultValue = props.defaultValue;
+            if (children2 != null) {
               {
                 error("Use the `defaultValue` or `value` props instead of setting children on <textarea>.");
               }
@@ -4180,13 +4182,13 @@ var require_react_dom_development = __commonJS({
                 if (defaultValue != null) {
                   throw new Error("If you supply `defaultValue` on a <textarea>, do not pass children.");
                 }
-                if (isArray(children)) {
-                  if (children.length > 1) {
+                if (isArray(children2)) {
+                  if (children2.length > 1) {
                     throw new Error("<textarea> can only have at most one child.");
                   }
-                  children = children[0];
+                  children2 = children2[0];
                 }
-                defaultValue = children;
+                defaultValue = children2;
               }
             }
             if (defaultValue == null) {
@@ -4266,12 +4268,12 @@ var require_react_dom_development = __commonJS({
             if (!("innerHTML" in node)) {
               reusableSVGContainer = reusableSVGContainer || document.createElement("div");
               reusableSVGContainer.innerHTML = "<svg>" + html.valueOf().toString() + "</svg>";
-              var svgNode = reusableSVGContainer.firstChild;
+              var svgNode2 = reusableSVGContainer.firstChild;
               while (node.firstChild) {
                 node.removeChild(node.firstChild);
               }
-              while (svgNode.firstChild) {
-                node.appendChild(svgNode.firstChild);
+              while (svgNode2.firstChild) {
+                node.appendChild(svgNode2.firstChild);
               }
               return;
             }
@@ -4499,11 +4501,11 @@ var require_react_dom_development = __commonJS({
               if (!styles.hasOwnProperty(styleName)) {
                 continue;
               }
-              var styleValue = styles[styleName];
-              if (styleValue != null) {
+              var styleValue2 = styles[styleName];
+              if (styleValue2 != null) {
                 var isCustomProperty = styleName.indexOf("--") === 0;
                 serialized += delimiter + (isCustomProperty ? styleName : hyphenateStyleName(styleName)) + ":";
-                serialized += dangerousStyleValue(styleName, styleValue, isCustomProperty);
+                serialized += dangerousStyleValue(styleName, styleValue2, isCustomProperty);
                 delimiter = ";";
               }
             }
@@ -4511,7 +4513,7 @@ var require_react_dom_development = __commonJS({
           }
         }
         function setValueForStyles(node, styles) {
-          var style2 = node.style;
+          var style3 = node.style;
           for (var styleName in styles) {
             if (!styles.hasOwnProperty(styleName)) {
               continue;
@@ -4522,14 +4524,14 @@ var require_react_dom_development = __commonJS({
                 warnValidStyle$1(styleName, styles[styleName]);
               }
             }
-            var styleValue = dangerousStyleValue(styleName, styles[styleName], isCustomProperty);
+            var styleValue2 = dangerousStyleValue(styleName, styles[styleName], isCustomProperty);
             if (styleName === "float") {
               styleName = "cssFloat";
             }
             if (isCustomProperty) {
-              style2.setProperty(styleName, styleValue);
+              style3.setProperty(styleName, styleValue2);
             } else {
-              style2[styleName] = styleValue;
+              style3[styleName] = styleValue2;
             }
           }
         }
@@ -5678,13 +5680,13 @@ var require_react_dom_development = __commonJS({
             throw new Error("clearCaughtError was called but no error was captured. This error is likely caused by a bug in React. Please file an issue.");
           }
         }
-        function get(key) {
+        function get3(key) {
           return key._reactInternals;
         }
         function has(key) {
           return key._reactInternals !== void 0;
         }
-        function set(key, value) {
+        function set3(key, value) {
           key._reactInternals = value;
         }
         var NoFlags = (
@@ -5853,7 +5855,7 @@ var require_react_dom_development = __commonJS({
               instance._warnedAboutRefsInRender = true;
             }
           }
-          var fiber = get(component);
+          var fiber = get3(component);
           if (!fiber) {
             return false;
           }
@@ -6004,7 +6006,7 @@ var require_react_dom_development = __commonJS({
         var cancelCallback = Scheduler.unstable_cancelCallback;
         var shouldYield = Scheduler.unstable_shouldYield;
         var requestPaint = Scheduler.unstable_requestPaint;
-        var now = Scheduler.unstable_now;
+        var now2 = Scheduler.unstable_now;
         var getCurrentPriorityLevel = Scheduler.unstable_getCurrentPriorityLevel;
         var ImmediatePriority = Scheduler.unstable_ImmediatePriority;
         var UserBlockingPriority = Scheduler.unstable_UserBlockingPriority;
@@ -6052,11 +6054,11 @@ var require_react_dom_development = __commonJS({
             return false;
           }
         }
-        function onScheduleRoot(root2, children) {
+        function onScheduleRoot(root4, children2) {
           {
             if (injectedHook && typeof injectedHook.onScheduleFiberRoot === "function") {
               try {
-                injectedHook.onScheduleFiberRoot(rendererID, root2, children);
+                injectedHook.onScheduleFiberRoot(rendererID, root4, children2);
               } catch (err) {
                 if (!hasLoggedError) {
                   hasLoggedError = true;
@@ -6066,10 +6068,10 @@ var require_react_dom_development = __commonJS({
             }
           }
         }
-        function onCommitRoot(root2, eventPriority) {
+        function onCommitRoot(root4, eventPriority) {
           if (injectedHook && typeof injectedHook.onCommitFiberRoot === "function") {
             try {
-              var didError = (root2.current.flags & DidCapture) === DidCapture;
+              var didError = (root4.current.flags & DidCapture) === DidCapture;
               if (enableProfilerTimer) {
                 var schedulerPriority;
                 switch (eventPriority) {
@@ -6089,9 +6091,9 @@ var require_react_dom_development = __commonJS({
                     schedulerPriority = NormalPriority;
                     break;
                 }
-                injectedHook.onCommitFiberRoot(rendererID, root2, schedulerPriority, didError);
+                injectedHook.onCommitFiberRoot(rendererID, root4, schedulerPriority, didError);
               } else {
-                injectedHook.onCommitFiberRoot(rendererID, root2, void 0, didError);
+                injectedHook.onCommitFiberRoot(rendererID, root4, void 0, didError);
               }
             } catch (err) {
               {
@@ -6103,10 +6105,10 @@ var require_react_dom_development = __commonJS({
             }
           }
         }
-        function onPostCommitRoot(root2) {
+        function onPostCommitRoot(root4) {
           if (injectedHook && typeof injectedHook.onPostCommitFiberRoot === "function") {
             try {
-              injectedHook.onPostCommitFiberRoot(rendererID, root2);
+              injectedHook.onPostCommitFiberRoot(rendererID, root4);
             } catch (err) {
               {
                 if (!hasLoggedError) {
@@ -6605,14 +6607,14 @@ var require_react_dom_development = __commonJS({
               return lanes;
           }
         }
-        function getNextLanes(root2, wipLanes) {
-          var pendingLanes = root2.pendingLanes;
+        function getNextLanes(root4, wipLanes) {
+          var pendingLanes = root4.pendingLanes;
           if (pendingLanes === NoLanes) {
             return NoLanes;
           }
           var nextLanes = NoLanes;
-          var suspendedLanes = root2.suspendedLanes;
-          var pingedLanes = root2.pingedLanes;
+          var suspendedLanes = root4.suspendedLanes;
+          var pingedLanes = root4.pingedLanes;
           var nonIdlePendingLanes = pendingLanes & NonIdleLanes;
           if (nonIdlePendingLanes !== NoLanes) {
             var nonIdleUnblockedLanes = nonIdlePendingLanes & ~suspendedLanes;
@@ -6656,9 +6658,9 @@ var require_react_dom_development = __commonJS({
           if ((nextLanes & InputContinuousLane) !== NoLanes) {
             nextLanes |= pendingLanes & DefaultLane;
           }
-          var entangledLanes = root2.entangledLanes;
+          var entangledLanes = root4.entangledLanes;
           if (entangledLanes !== NoLanes) {
-            var entanglements = root2.entanglements;
+            var entanglements = root4.entanglements;
             var lanes = nextLanes & entangledLanes;
             while (lanes > 0) {
               var index2 = pickArbitraryLaneIndex(lanes);
@@ -6669,8 +6671,8 @@ var require_react_dom_development = __commonJS({
           }
           return nextLanes;
         }
-        function getMostRecentEventTime(root2, lanes) {
-          var eventTimes = root2.eventTimes;
+        function getMostRecentEventTime(root4, lanes) {
+          var eventTimes = root4.eventTimes;
           var mostRecentEventTime = NoTimestamp;
           while (lanes > 0) {
             var index2 = pickArbitraryLaneIndex(lanes);
@@ -6727,11 +6729,11 @@ var require_react_dom_development = __commonJS({
               return NoTimestamp;
           }
         }
-        function markStarvedLanesAsExpired(root2, currentTime) {
-          var pendingLanes = root2.pendingLanes;
-          var suspendedLanes = root2.suspendedLanes;
-          var pingedLanes = root2.pingedLanes;
-          var expirationTimes = root2.expirationTimes;
+        function markStarvedLanesAsExpired(root4, currentTime) {
+          var pendingLanes = root4.pendingLanes;
+          var suspendedLanes = root4.suspendedLanes;
+          var pingedLanes = root4.pingedLanes;
+          var expirationTimes = root4.expirationTimes;
           var lanes = pendingLanes;
           while (lanes > 0) {
             var index2 = pickArbitraryLaneIndex(lanes);
@@ -6742,16 +6744,16 @@ var require_react_dom_development = __commonJS({
                 expirationTimes[index2] = computeExpirationTime(lane, currentTime);
               }
             } else if (expirationTime <= currentTime) {
-              root2.expiredLanes |= lane;
+              root4.expiredLanes |= lane;
             }
             lanes &= ~lane;
           }
         }
-        function getHighestPriorityPendingLanes(root2) {
-          return getHighestPriorityLanes(root2.pendingLanes);
+        function getHighestPriorityPendingLanes(root4) {
+          return getHighestPriorityLanes(root4.pendingLanes);
         }
-        function getLanesToRetrySynchronouslyOnError(root2) {
-          var everythingButOffscreen = root2.pendingLanes & ~OffscreenLane;
+        function getLanesToRetrySynchronouslyOnError(root4) {
+          var everythingButOffscreen = root4.pendingLanes & ~OffscreenLane;
           if (everythingButOffscreen !== NoLanes) {
             return everythingButOffscreen;
           }
@@ -6776,12 +6778,12 @@ var require_react_dom_development = __commonJS({
         function includesOnlyTransitions(lanes) {
           return (lanes & TransitionLanes) === lanes;
         }
-        function includesBlockingLane(root2, lanes) {
+        function includesBlockingLane(root4, lanes) {
           var SyncDefaultLanes = InputContinuousHydrationLane | InputContinuousLane | DefaultHydrationLane | DefaultLane;
           return (lanes & SyncDefaultLanes) !== NoLanes;
         }
-        function includesExpiredLane(root2, lanes) {
-          return (lanes & root2.expiredLanes) !== NoLanes;
+        function includesExpiredLane(root4, lanes) {
+          return (lanes & root4.expiredLanes) !== NoLanes;
         }
         function isTransitionLane(lane) {
           return (lane & TransitionLanes) !== NoLanes;
@@ -6817,14 +6819,14 @@ var require_react_dom_development = __commonJS({
         function includesSomeLane(a, b) {
           return (a & b) !== NoLanes;
         }
-        function isSubsetOfLanes(set2, subset) {
-          return (set2 & subset) === subset;
+        function isSubsetOfLanes(set4, subset) {
+          return (set4 & subset) === subset;
         }
         function mergeLanes(a, b) {
           return a | b;
         }
-        function removeLanes(set2, subset) {
-          return set2 & ~subset;
+        function removeLanes(set4, subset) {
+          return set4 & ~subset;
         }
         function intersectLanes(a, b) {
           return a & b;
@@ -6842,20 +6844,20 @@ var require_react_dom_development = __commonJS({
           }
           return laneMap;
         }
-        function markRootUpdated(root2, updateLane, eventTime) {
-          root2.pendingLanes |= updateLane;
+        function markRootUpdated(root4, updateLane, eventTime) {
+          root4.pendingLanes |= updateLane;
           if (updateLane !== IdleLane) {
-            root2.suspendedLanes = NoLanes;
-            root2.pingedLanes = NoLanes;
+            root4.suspendedLanes = NoLanes;
+            root4.pingedLanes = NoLanes;
           }
-          var eventTimes = root2.eventTimes;
+          var eventTimes = root4.eventTimes;
           var index2 = laneToIndex(updateLane);
           eventTimes[index2] = eventTime;
         }
-        function markRootSuspended(root2, suspendedLanes) {
-          root2.suspendedLanes |= suspendedLanes;
-          root2.pingedLanes &= ~suspendedLanes;
-          var expirationTimes = root2.expirationTimes;
+        function markRootSuspended(root4, suspendedLanes) {
+          root4.suspendedLanes |= suspendedLanes;
+          root4.pingedLanes &= ~suspendedLanes;
+          var expirationTimes = root4.expirationTimes;
           var lanes = suspendedLanes;
           while (lanes > 0) {
             var index2 = pickArbitraryLaneIndex(lanes);
@@ -6864,20 +6866,20 @@ var require_react_dom_development = __commonJS({
             lanes &= ~lane;
           }
         }
-        function markRootPinged(root2, pingedLanes, eventTime) {
-          root2.pingedLanes |= root2.suspendedLanes & pingedLanes;
+        function markRootPinged(root4, pingedLanes, eventTime) {
+          root4.pingedLanes |= root4.suspendedLanes & pingedLanes;
         }
-        function markRootFinished(root2, remainingLanes) {
-          var noLongerPendingLanes = root2.pendingLanes & ~remainingLanes;
-          root2.pendingLanes = remainingLanes;
-          root2.suspendedLanes = NoLanes;
-          root2.pingedLanes = NoLanes;
-          root2.expiredLanes &= remainingLanes;
-          root2.mutableReadLanes &= remainingLanes;
-          root2.entangledLanes &= remainingLanes;
-          var entanglements = root2.entanglements;
-          var eventTimes = root2.eventTimes;
-          var expirationTimes = root2.expirationTimes;
+        function markRootFinished(root4, remainingLanes) {
+          var noLongerPendingLanes = root4.pendingLanes & ~remainingLanes;
+          root4.pendingLanes = remainingLanes;
+          root4.suspendedLanes = NoLanes;
+          root4.pingedLanes = NoLanes;
+          root4.expiredLanes &= remainingLanes;
+          root4.mutableReadLanes &= remainingLanes;
+          root4.entangledLanes &= remainingLanes;
+          var entanglements = root4.entanglements;
+          var eventTimes = root4.eventTimes;
+          var expirationTimes = root4.expirationTimes;
           var lanes = noLongerPendingLanes;
           while (lanes > 0) {
             var index2 = pickArbitraryLaneIndex(lanes);
@@ -6888,9 +6890,9 @@ var require_react_dom_development = __commonJS({
             lanes &= ~lane;
           }
         }
-        function markRootEntangled(root2, entangledLanes) {
-          var rootEntangledLanes = root2.entangledLanes |= entangledLanes;
-          var entanglements = root2.entanglements;
+        function markRootEntangled(root4, entangledLanes) {
+          var rootEntangledLanes = root4.entangledLanes |= entangledLanes;
+          var entanglements = root4.entanglements;
           var lanes = rootEntangledLanes;
           while (lanes) {
             var index2 = pickArbitraryLaneIndex(lanes);
@@ -6905,7 +6907,7 @@ var require_react_dom_development = __commonJS({
             lanes &= ~lane;
           }
         }
-        function getBumpedLaneForHydration(root2, renderLanes2) {
+        function getBumpedLaneForHydration(root4, renderLanes2) {
           var renderLane = getHighestPriorityLane(renderLanes2);
           var lane;
           switch (renderLane) {
@@ -6945,16 +6947,16 @@ var require_react_dom_development = __commonJS({
               lane = NoLane;
               break;
           }
-          if ((lane & (root2.suspendedLanes | renderLanes2)) !== NoLane) {
+          if ((lane & (root4.suspendedLanes | renderLanes2)) !== NoLane) {
             return NoLane;
           }
           return lane;
         }
-        function addFiberToLanesMap(root2, fiber, lanes) {
+        function addFiberToLanesMap(root4, fiber, lanes) {
           if (!isDevToolsPresent) {
             return;
           }
-          var pendingUpdatersLaneMap = root2.pendingUpdatersLaneMap;
+          var pendingUpdatersLaneMap = root4.pendingUpdatersLaneMap;
           while (lanes > 0) {
             var index2 = laneToIndex(lanes);
             var lane = 1 << index2;
@@ -6963,12 +6965,12 @@ var require_react_dom_development = __commonJS({
             lanes &= ~lane;
           }
         }
-        function movePendingFibersToMemoized(root2, lanes) {
+        function movePendingFibersToMemoized(root4, lanes) {
           if (!isDevToolsPresent) {
             return;
           }
-          var pendingUpdatersLaneMap = root2.pendingUpdatersLaneMap;
-          var memoizedUpdaters = root2.memoizedUpdaters;
+          var pendingUpdatersLaneMap = root4.pendingUpdatersLaneMap;
+          var memoizedUpdaters = root4.memoizedUpdaters;
           while (lanes > 0) {
             var index2 = laneToIndex(lanes);
             var lane = 1 << index2;
@@ -6985,7 +6987,7 @@ var require_react_dom_development = __commonJS({
             lanes &= ~lane;
           }
         }
-        function getTransitionsForLanes(root2, lanes) {
+        function getTransitionsForLanes(root4, lanes) {
           {
             return null;
           }
@@ -7032,8 +7034,8 @@ var require_react_dom_development = __commonJS({
           }
           return IdleEventPriority;
         }
-        function isRootDehydrated(root2) {
-          var currentState = root2.current.memoizedState;
+        function isRootDehydrated(root4) {
+          var currentState = root4.current.memoizedState;
           return currentState.isDehydrated;
         }
         var _attemptSynchronousHydration;
@@ -7204,8 +7206,8 @@ var require_react_dom_development = __commonJS({
                   return;
                 }
               } else if (tag === HostRoot) {
-                var root2 = nearestMounted.stateNode;
-                if (isRootDehydrated(root2)) {
+                var root4 = nearestMounted.stateNode;
+                if (isRootDehydrated(root4)) {
                   queuedTarget.blockedOn = getContainerFromFiber(nearestMounted);
                   return;
                 }
@@ -7350,7 +7352,7 @@ var require_react_dom_development = __commonJS({
               break;
             case DefaultEventPriority:
             default:
-              listenerWrapper = dispatchEvent;
+              listenerWrapper = dispatchEvent2;
               break;
           }
           return listenerWrapper.bind(null, domEventName, eventSystemFlags, targetContainer);
@@ -7361,7 +7363,7 @@ var require_react_dom_development = __commonJS({
           ReactCurrentBatchConfig.transition = null;
           try {
             setCurrentUpdatePriority(DiscreteEventPriority);
-            dispatchEvent(domEventName, eventSystemFlags, container, nativeEvent);
+            dispatchEvent2(domEventName, eventSystemFlags, container, nativeEvent);
           } finally {
             setCurrentUpdatePriority(previousPriority);
             ReactCurrentBatchConfig.transition = prevTransition;
@@ -7373,13 +7375,13 @@ var require_react_dom_development = __commonJS({
           ReactCurrentBatchConfig.transition = null;
           try {
             setCurrentUpdatePriority(ContinuousEventPriority);
-            dispatchEvent(domEventName, eventSystemFlags, container, nativeEvent);
+            dispatchEvent2(domEventName, eventSystemFlags, container, nativeEvent);
           } finally {
             setCurrentUpdatePriority(previousPriority);
             ReactCurrentBatchConfig.transition = prevTransition;
           }
         }
-        function dispatchEvent(domEventName, eventSystemFlags, targetContainer, nativeEvent) {
+        function dispatchEvent2(domEventName, eventSystemFlags, targetContainer, nativeEvent) {
           if (!_enabled) {
             return;
           }
@@ -7439,8 +7441,8 @@ var require_react_dom_development = __commonJS({
                 }
                 targetInst = null;
               } else if (tag === HostRoot) {
-                var root2 = nearestMounted.stateNode;
-                if (isRootDehydrated(root2)) {
+                var root4 = nearestMounted.stateNode;
+                if (isRootDehydrated(root4)) {
                   return getContainerFromFiber(nearestMounted);
                 }
                 targetInst = null;
@@ -7576,16 +7578,16 @@ var require_react_dom_development = __commonJS({
           });
           return listener;
         }
-        var root = null;
+        var root3 = null;
         var startText = null;
         var fallbackText = null;
         function initialize(nativeEventTarget) {
-          root = nativeEventTarget;
+          root3 = nativeEventTarget;
           startText = getText();
           return true;
         }
         function reset() {
-          root = null;
+          root3 = null;
           startText = null;
           fallbackText = null;
         }
@@ -7593,32 +7595,32 @@ var require_react_dom_development = __commonJS({
           if (fallbackText) {
             return fallbackText;
           }
-          var start;
+          var start2;
           var startValue = startText;
           var startLength = startValue.length;
           var end;
           var endValue = getText();
           var endLength = endValue.length;
-          for (start = 0; start < startLength; start++) {
-            if (startValue[start] !== endValue[start]) {
+          for (start2 = 0; start2 < startLength; start2++) {
+            if (startValue[start2] !== endValue[start2]) {
               break;
             }
           }
-          var minEnd = startLength - start;
+          var minEnd = startLength - start2;
           for (end = 1; end <= minEnd; end++) {
             if (startValue[startLength - end] !== endValue[endLength - end]) {
               break;
             }
           }
           var sliceTail = end > 1 ? 1 - end : void 0;
-          fallbackText = endValue.slice(start, sliceTail);
+          fallbackText = endValue.slice(start2, sliceTail);
           return fallbackText;
         }
         function getText() {
-          if ("value" in root) {
-            return root.value;
+          if ("value" in root3) {
+            return root3.value;
           }
-          return root.textContent;
+          return root3.textContent;
         }
         function getEventCharCode(nativeEvent) {
           var charCode;
@@ -8435,8 +8437,8 @@ var require_react_dom_development = __commonJS({
             node = node.parentNode;
           }
         }
-        function getNodeForCharacterOffset(root2, offset) {
-          var node = getLeafNode(root2);
+        function getNodeForCharacterOffset(root4, offset) {
+          var node = getLeafNode(root4);
           var nodeStart = 0;
           var nodeEnd = 0;
           while (node) {
@@ -8456,11 +8458,11 @@ var require_react_dom_development = __commonJS({
         function getOffsets(outerNode) {
           var ownerDocument = outerNode.ownerDocument;
           var win = ownerDocument && ownerDocument.defaultView || window;
-          var selection = win.getSelection && win.getSelection();
-          if (!selection || selection.rangeCount === 0) {
+          var selection2 = win.getSelection && win.getSelection();
+          if (!selection2 || selection2.rangeCount === 0) {
             return null;
           }
-          var anchorNode = selection.anchorNode, anchorOffset = selection.anchorOffset, focusNode = selection.focusNode, focusOffset = selection.focusOffset;
+          var anchorNode = selection2.anchorNode, anchorOffset = selection2.anchorOffset, focusNode = selection2.focusNode, focusOffset = selection2.focusOffset;
           try {
             anchorNode.nodeType;
             focusNode.nodeType;
@@ -8471,7 +8473,7 @@ var require_react_dom_development = __commonJS({
         }
         function getModernOffsetsFromPoints(outerNode, anchorNode, anchorOffset, focusNode, focusOffset) {
           var length = 0;
-          var start = -1;
+          var start2 = -1;
           var end = -1;
           var indexWithinAnchor = 0;
           var indexWithinFocus = 0;
@@ -8481,7 +8483,7 @@ var require_react_dom_development = __commonJS({
             var next = null;
             while (true) {
               if (node === anchorNode && (anchorOffset === 0 || node.nodeType === TEXT_NODE)) {
-                start = length + anchorOffset;
+                start2 = length + anchorOffset;
               }
               if (node === focusNode && (focusOffset === 0 || node.nodeType === TEXT_NODE)) {
                 end = length + focusOffset;
@@ -8500,7 +8502,7 @@ var require_react_dom_development = __commonJS({
                 break outer;
               }
               if (parentNode === anchorNode && ++indexWithinAnchor === anchorOffset) {
-                start = length;
+                start2 = length;
               }
               if (parentNode === focusNode && ++indexWithinFocus === focusOffset) {
                 end = length;
@@ -8513,11 +8515,11 @@ var require_react_dom_development = __commonJS({
             }
             node = next;
           }
-          if (start === -1 || end === -1) {
+          if (start2 === -1 || end === -1) {
             return null;
           }
           return {
-            start,
+            start: start2,
             end
           };
         }
@@ -8527,30 +8529,30 @@ var require_react_dom_development = __commonJS({
           if (!win.getSelection) {
             return;
           }
-          var selection = win.getSelection();
+          var selection2 = win.getSelection();
           var length = node.textContent.length;
-          var start = Math.min(offsets.start, length);
-          var end = offsets.end === void 0 ? start : Math.min(offsets.end, length);
-          if (!selection.extend && start > end) {
+          var start2 = Math.min(offsets.start, length);
+          var end = offsets.end === void 0 ? start2 : Math.min(offsets.end, length);
+          if (!selection2.extend && start2 > end) {
             var temp = end;
-            end = start;
-            start = temp;
+            end = start2;
+            start2 = temp;
           }
-          var startMarker = getNodeForCharacterOffset(node, start);
+          var startMarker = getNodeForCharacterOffset(node, start2);
           var endMarker = getNodeForCharacterOffset(node, end);
           if (startMarker && endMarker) {
-            if (selection.rangeCount === 1 && selection.anchorNode === startMarker.node && selection.anchorOffset === startMarker.offset && selection.focusNode === endMarker.node && selection.focusOffset === endMarker.offset) {
+            if (selection2.rangeCount === 1 && selection2.anchorNode === startMarker.node && selection2.anchorOffset === startMarker.offset && selection2.focusNode === endMarker.node && selection2.focusOffset === endMarker.offset) {
               return;
             }
             var range = doc.createRange();
             range.setStart(startMarker.node, startMarker.offset);
-            selection.removeAllRanges();
-            if (start > end) {
-              selection.addRange(range);
-              selection.extend(endMarker.node, endMarker.offset);
+            selection2.removeAllRanges();
+            if (start2 > end) {
+              selection2.addRange(range);
+              selection2.extend(endMarker.node, endMarker.offset);
             } else {
               range.setEnd(endMarker.node, endMarker.offset);
-              selection.addRange(range);
+              selection2.addRange(range);
             }
           }
         }
@@ -8638,28 +8640,28 @@ var require_react_dom_development = __commonJS({
           }
         }
         function getSelection(input) {
-          var selection;
+          var selection2;
           if ("selectionStart" in input) {
-            selection = {
+            selection2 = {
               start: input.selectionStart,
               end: input.selectionEnd
             };
           } else {
-            selection = getOffsets(input);
+            selection2 = getOffsets(input);
           }
-          return selection || {
+          return selection2 || {
             start: 0,
             end: 0
           };
         }
         function setSelection(input, offsets) {
-          var start = offsets.start;
+          var start2 = offsets.start;
           var end = offsets.end;
           if (end === void 0) {
-            end = start;
+            end = start2;
           }
           if ("selectionStart" in input) {
-            input.selectionStart = start;
+            input.selectionStart = start2;
             input.selectionEnd = Math.min(end, input.value.length);
           } else {
             setOffsets(input, offsets);
@@ -8681,12 +8683,12 @@ var require_react_dom_development = __commonJS({
             };
           } else {
             var win = node.ownerDocument && node.ownerDocument.defaultView || window;
-            var selection = win.getSelection();
+            var selection2 = win.getSelection();
             return {
-              anchorNode: selection.anchorNode,
-              anchorOffset: selection.anchorOffset,
-              focusNode: selection.focusNode,
-              focusOffset: selection.focusOffset
+              anchorNode: selection2.anchorNode,
+              anchorOffset: selection2.anchorOffset,
+              focusNode: selection2.focusNode,
+              focusOffset: selection2.focusOffset
             };
           }
         }
@@ -8772,9 +8774,9 @@ var require_react_dom_development = __commonJS({
           transitionend: makePrefixMap("Transition", "TransitionEnd")
         };
         var prefixedEventNames = {};
-        var style = {};
+        var style2 = {};
         if (canUseDOM) {
-          style = document.createElement("div").style;
+          style2 = document.createElement("div").style;
           if (!("AnimationEvent" in window)) {
             delete vendorPrefixes.animationend.animation;
             delete vendorPrefixes.animationiteration.animation;
@@ -8792,7 +8794,7 @@ var require_react_dom_development = __commonJS({
           }
           var prefixMap = vendorPrefixes[eventName];
           for (var styleProp in prefixMap) {
-            if (prefixMap.hasOwnProperty(styleProp) && styleProp in style) {
+            if (prefixMap.hasOwnProperty(styleProp) && styleProp in style2) {
               return prefixedEventNames[eventName] = prefixMap[styleProp];
             }
           }
@@ -9356,10 +9358,10 @@ var require_react_dom_development = __commonJS({
         function getOwnerDocumentFromRootContainer(rootContainerElement) {
           return rootContainerElement.nodeType === DOCUMENT_NODE ? rootContainerElement : rootContainerElement.ownerDocument;
         }
-        function noop() {
+        function noop3() {
         }
         function trapClickOnNonInteractiveElement(node) {
-          node.onclick = noop;
+          node.onclick = noop3;
         }
         function setInitialDOMProperties(tag, domElement, rootContainerElement, nextProps, isCustomComponentTag) {
           for (var propKey in nextProps) {
@@ -10229,8 +10231,8 @@ var require_react_dom_development = __commonJS({
             case DOCUMENT_NODE:
             case DOCUMENT_FRAGMENT_NODE: {
               type = nodeType === DOCUMENT_NODE ? "#document" : "#fragment";
-              var root2 = rootContainerInstance.documentElement;
-              namespace = root2 ? root2.namespaceURI : getChildNamespace(null, "");
+              var root4 = rootContainerInstance.documentElement;
+              namespace = root4 ? root4.namespaceURI : getChildNamespace(null, "");
               break;
             }
             default: {
@@ -10452,11 +10454,11 @@ var require_react_dom_development = __commonJS({
         }
         function hideInstance(instance) {
           instance = instance;
-          var style2 = instance.style;
-          if (typeof style2.setProperty === "function") {
-            style2.setProperty("display", "none", "important");
+          var style3 = instance.style;
+          if (typeof style3.setProperty === "function") {
+            style3.setProperty("display", "none", "important");
           } else {
-            style2.display = "none";
+            style3.display = "none";
           }
         }
         function hideTextInstance(textInstance) {
@@ -11110,8 +11112,8 @@ var require_react_dom_development = __commonJS({
         function getTreeId() {
           var overflow = treeContextOverflow;
           var idWithLeadingBit = treeContextId;
-          var id = idWithLeadingBit & ~getLeadingBit(idWithLeadingBit);
-          return id.toString(32) + overflow;
+          var id2 = idWithLeadingBit & ~getLeadingBit(idWithLeadingBit);
+          return id2.toString(32) + overflow;
         }
         function pushTreeFork(workInProgress2, totalChildren) {
           warnIfNotHydrating();
@@ -11140,9 +11142,9 @@ var require_react_dom_development = __commonJS({
             var restOfBaseLength = baseLength - numberOfOverflowBits;
             var restOfLength = getBitLength(totalChildren) + restOfBaseLength;
             var restOfNewBits = slot << restOfBaseLength;
-            var id = restOfNewBits | restOfBaseId;
+            var id2 = restOfNewBits | restOfBaseId;
             var overflow = newOverflow + baseOverflow;
-            treeContextId = 1 << restOfLength | id;
+            treeContextId = 1 << restOfLength | id2;
             treeContextOverflow = overflow;
           } else {
             var newBits = slot << baseLength;
@@ -11165,8 +11167,8 @@ var require_react_dom_development = __commonJS({
         function getBitLength(number) {
           return 32 - clz32(number);
         }
-        function getLeadingBit(id) {
-          return 1 << getBitLength(id) - 1;
+        function getLeadingBit(id2) {
+          return 1 << getBitLength(id2) - 1;
         }
         function popTreeContext(workInProgress2) {
           while (workInProgress2 === treeForkProvider) {
@@ -11626,12 +11628,12 @@ var require_react_dom_development = __commonJS({
             }
             return maybeStrictRoot;
           };
-          var setToSortedString = function(set2) {
-            var array = [];
-            set2.forEach(function(value) {
-              array.push(value);
+          var setToSortedString = function(set4) {
+            var array2 = [];
+            set4.forEach(function(value) {
+              array2.push(value);
             });
-            return array.sort().join(", ");
+            return array2.sort().join(", ");
           };
           var pendingComponentWillMountWarnings = [];
           var pendingUNSAFE_ComponentWillMountWarnings = [];
@@ -12099,8 +12101,8 @@ var require_react_dom_development = __commonJS({
             parent = parent.return;
           }
           if (node.tag === HostRoot) {
-            var root2 = node.stateNode;
-            return root2;
+            var root4 = node.stateNode;
+            return root4;
           } else {
             return null;
           }
@@ -12181,7 +12183,7 @@ var require_react_dom_development = __commonJS({
             return enqueueConcurrentClassUpdate(fiber, sharedQueue, update, lane);
           }
         }
-        function entangleTransitions(root2, fiber, lane) {
+        function entangleTransitions(root4, fiber, lane) {
           var updateQueue = fiber.updateQueue;
           if (updateQueue === null) {
             return;
@@ -12189,10 +12191,10 @@ var require_react_dom_development = __commonJS({
           var sharedQueue = updateQueue.shared;
           if (isTransitionLane(lane)) {
             var queueLanes = sharedQueue.lanes;
-            queueLanes = intersectLanes(queueLanes, root2.pendingLanes);
+            queueLanes = intersectLanes(queueLanes, root4.pendingLanes);
             var newQueueLanes = mergeLanes(queueLanes, lane);
             sharedQueue.lanes = newQueueLanes;
-            markRootEntangled(root2, newQueueLanes);
+            markRootEntangled(root4, newQueueLanes);
           }
         }
         function enqueueCapturedUpdate(workInProgress2, capturedUpdate) {
@@ -12468,7 +12470,7 @@ var require_react_dom_development = __commonJS({
           }
         }
         var fakeInternalInstance = {};
-        var emptyRefsObject = new React.Component().refs;
+        var emptyRefsObject = new React26.Component().refs;
         var didWarnAboutStateAssignmentForComponent;
         var didWarnAboutUninitializedState;
         var didWarnAboutGetSnapshotBeforeUpdateWithoutDidUpdate;
@@ -12540,7 +12542,7 @@ var require_react_dom_development = __commonJS({
         var classComponentUpdater = {
           isMounted,
           enqueueSetState: function(inst, payload, callback) {
-            var fiber = get(inst);
+            var fiber = get3(inst);
             var eventTime = requestEventTime();
             var lane = requestUpdateLane(fiber);
             var update = createUpdate(eventTime, lane);
@@ -12551,17 +12553,17 @@ var require_react_dom_development = __commonJS({
               }
               update.callback = callback;
             }
-            var root2 = enqueueUpdate(fiber, update, lane);
-            if (root2 !== null) {
-              scheduleUpdateOnFiber(root2, fiber, lane, eventTime);
-              entangleTransitions(root2, fiber, lane);
+            var root4 = enqueueUpdate(fiber, update, lane);
+            if (root4 !== null) {
+              scheduleUpdateOnFiber(root4, fiber, lane, eventTime);
+              entangleTransitions(root4, fiber, lane);
             }
             {
               markStateUpdateScheduled(fiber, lane);
             }
           },
           enqueueReplaceState: function(inst, payload, callback) {
-            var fiber = get(inst);
+            var fiber = get3(inst);
             var eventTime = requestEventTime();
             var lane = requestUpdateLane(fiber);
             var update = createUpdate(eventTime, lane);
@@ -12573,17 +12575,17 @@ var require_react_dom_development = __commonJS({
               }
               update.callback = callback;
             }
-            var root2 = enqueueUpdate(fiber, update, lane);
-            if (root2 !== null) {
-              scheduleUpdateOnFiber(root2, fiber, lane, eventTime);
-              entangleTransitions(root2, fiber, lane);
+            var root4 = enqueueUpdate(fiber, update, lane);
+            if (root4 !== null) {
+              scheduleUpdateOnFiber(root4, fiber, lane, eventTime);
+              entangleTransitions(root4, fiber, lane);
             }
             {
               markStateUpdateScheduled(fiber, lane);
             }
           },
           enqueueForceUpdate: function(inst, callback) {
-            var fiber = get(inst);
+            var fiber = get3(inst);
             var eventTime = requestEventTime();
             var lane = requestUpdateLane(fiber);
             var update = createUpdate(eventTime, lane);
@@ -12594,10 +12596,10 @@ var require_react_dom_development = __commonJS({
               }
               update.callback = callback;
             }
-            var root2 = enqueueUpdate(fiber, update, lane);
-            if (root2 !== null) {
-              scheduleUpdateOnFiber(root2, fiber, lane, eventTime);
-              entangleTransitions(root2, fiber, lane);
+            var root4 = enqueueUpdate(fiber, update, lane);
+            if (root4 !== null) {
+              scheduleUpdateOnFiber(root4, fiber, lane, eventTime);
+              entangleTransitions(root4, fiber, lane);
             }
             {
               markForceUpdateScheduled(fiber, lane);
@@ -12711,7 +12713,7 @@ var require_react_dom_development = __commonJS({
         function adoptClassInstance(workInProgress2, instance) {
           instance.updater = classComponentUpdater;
           workInProgress2.stateNode = instance;
-          set(instance, workInProgress2);
+          set3(instance, workInProgress2);
           {
             instance._reactInternalInstance = fakeInternalInstance;
           }
@@ -13170,8 +13172,8 @@ var require_react_dom_development = __commonJS({
         }
         function resolveLazy(lazyType) {
           var payload = lazyType._payload;
-          var init = lazyType._init;
-          return init(payload);
+          var init2 = lazyType._init;
+          return init2(payload);
         }
         function ChildReconciler(shouldTrackSideEffects) {
           function deleteChild(returnFiber, childToDelete) {
@@ -13323,8 +13325,8 @@ var require_react_dom_development = __commonJS({
                 }
                 case REACT_LAZY_TYPE: {
                   var payload = newChild._payload;
-                  var init = newChild._init;
-                  return createChild(returnFiber, init(payload), lanes);
+                  var init2 = newChild._init;
+                  return createChild(returnFiber, init2(payload), lanes);
                 }
               }
               if (isArray(newChild) || getIteratorFn(newChild)) {
@@ -13367,8 +13369,8 @@ var require_react_dom_development = __commonJS({
                 }
                 case REACT_LAZY_TYPE: {
                   var payload = newChild._payload;
-                  var init = newChild._init;
-                  return updateSlot(returnFiber, oldFiber, init(payload), lanes);
+                  var init2 = newChild._init;
+                  return updateSlot(returnFiber, oldFiber, init2(payload), lanes);
                 }
               }
               if (isArray(newChild) || getIteratorFn(newChild)) {
@@ -13403,8 +13405,8 @@ var require_react_dom_development = __commonJS({
                 }
                 case REACT_LAZY_TYPE:
                   var payload = newChild._payload;
-                  var init = newChild._init;
-                  return updateFromMap(existingChildren, returnFiber, newIdx, init(payload), lanes);
+                  var init2 = newChild._init;
+                  return updateFromMap(existingChildren, returnFiber, newIdx, init2(payload), lanes);
               }
               if (isArray(newChild) || getIteratorFn(newChild)) {
                 var _matchedFiber3 = existingChildren.get(newIdx) || null;
@@ -13445,8 +13447,8 @@ var require_react_dom_development = __commonJS({
                   break;
                 case REACT_LAZY_TYPE:
                   var payload = child._payload;
-                  var init = child._init;
-                  warnOnInvalidKey(init(payload), knownKeys, returnFiber);
+                  var init2 = child._init;
+                  warnOnInvalidKey(init2(payload), knownKeys, returnFiber);
                   break;
               }
             }
@@ -13777,8 +13779,8 @@ var require_react_dom_development = __commonJS({
                   return placeSingleChild(reconcileSinglePortal(returnFiber, currentFirstChild, newChild, lanes));
                 case REACT_LAZY_TYPE:
                   var payload = newChild._payload;
-                  var init = newChild._init;
-                  return reconcileChildFibers2(returnFiber, currentFirstChild, init(payload), lanes);
+                  var init2 = newChild._init;
+                  return reconcileChildFibers2(returnFiber, currentFirstChild, init2(payload), lanes);
               }
               if (isArray(newChild)) {
                 return reconcileChildrenArray(returnFiber, currentFirstChild, newChild, lanes);
@@ -13978,13 +13980,13 @@ var require_react_dom_development = __commonJS({
           }
           workInProgressSources.length = 0;
         }
-        function registerMutableSourceForHydration(root2, mutableSource) {
+        function registerMutableSourceForHydration(root4, mutableSource) {
           var getVersion = mutableSource._getVersion;
           var version = getVersion(mutableSource._source);
-          if (root2.mutableSourceEagerHydrationData == null) {
-            root2.mutableSourceEagerHydrationData = [mutableSource, version];
+          if (root4.mutableSourceEagerHydrationData == null) {
+            root4.mutableSourceEagerHydrationData = [mutableSource, version];
           } else {
-            root2.mutableSourceEagerHydrationData.push(mutableSource, version);
+            root4.mutableSourceEagerHydrationData.push(mutableSource, version);
           }
         }
         var ReactCurrentDispatcher$1 = ReactSharedInternals.ReactCurrentDispatcher, ReactCurrentBatchConfig$2 = ReactSharedInternals.ReactCurrentBatchConfig;
@@ -14105,7 +14107,7 @@ var require_react_dom_development = __commonJS({
               ReactCurrentDispatcher$1.current = HooksDispatcherOnMountInDEV;
             }
           }
-          var children = Component(props, secondArg);
+          var children2 = Component(props, secondArg);
           if (didScheduleRenderPhaseUpdateDuringThisPass) {
             var numberOfReRenders = 0;
             do {
@@ -14125,7 +14127,7 @@ var require_react_dom_development = __commonJS({
                 hookTypesUpdateIndexDev = -1;
               }
               ReactCurrentDispatcher$1.current = HooksDispatcherOnRerenderInDEV;
-              children = Component(props, secondArg);
+              children2 = Component(props, secondArg);
             } while (didScheduleRenderPhaseUpdateDuringThisPass);
           }
           ReactCurrentDispatcher$1.current = ContextOnlyDispatcher;
@@ -14154,7 +14156,7 @@ var require_react_dom_development = __commonJS({
           if (didRenderTooFewHooks) {
             throw new Error("Rendered fewer hooks than expected. This may be caused by an accidental early return statement.");
           }
-          return children;
+          return children2;
         }
         function checkDidRenderIdHook() {
           var didRenderIdHook = localIdCounter !== 0;
@@ -14262,28 +14264,28 @@ var require_react_dom_development = __commonJS({
         function basicStateReducer(state, action) {
           return typeof action === "function" ? action(state) : action;
         }
-        function mountReducer(reducer, initialArg, init) {
+        function mountReducer(reducer, initialArg, init2) {
           var hook = mountWorkInProgressHook();
-          var initialState;
-          if (init !== void 0) {
-            initialState = init(initialArg);
+          var initialState3;
+          if (init2 !== void 0) {
+            initialState3 = init2(initialArg);
           } else {
-            initialState = initialArg;
+            initialState3 = initialArg;
           }
-          hook.memoizedState = hook.baseState = initialState;
+          hook.memoizedState = hook.baseState = initialState3;
           var queue = {
             pending: null,
             interleaved: null,
             lanes: NoLanes,
             dispatch: null,
             lastRenderedReducer: reducer,
-            lastRenderedState: initialState
+            lastRenderedState: initialState3
           };
           hook.queue = queue;
-          var dispatch = queue.dispatch = dispatchReducerAction.bind(null, currentlyRenderingFiber$1, queue);
-          return [hook.memoizedState, dispatch];
+          var dispatch2 = queue.dispatch = dispatchReducerAction.bind(null, currentlyRenderingFiber$1, queue);
+          return [hook.memoizedState, dispatch2];
         }
-        function updateReducer(reducer, initialArg, init) {
+        function updateReducer(reducer, initialArg, init2) {
           var hook = updateWorkInProgressHook();
           var queue = hook.queue;
           if (queue === null) {
@@ -14381,17 +14383,17 @@ var require_react_dom_development = __commonJS({
           } else if (baseQueue === null) {
             queue.lanes = NoLanes;
           }
-          var dispatch = queue.dispatch;
-          return [hook.memoizedState, dispatch];
+          var dispatch2 = queue.dispatch;
+          return [hook.memoizedState, dispatch2];
         }
-        function rerenderReducer(reducer, initialArg, init) {
+        function rerenderReducer(reducer, initialArg, init2) {
           var hook = updateWorkInProgressHook();
           var queue = hook.queue;
           if (queue === null) {
             throw new Error("Should have a queue. This is likely a bug in React. Please file an issue.");
           }
           queue.lastRenderedReducer = reducer;
-          var dispatch = queue.dispatch;
+          var dispatch2 = queue.dispatch;
           var lastRenderPhaseUpdate = queue.pending;
           var newState = hook.memoizedState;
           if (lastRenderPhaseUpdate !== null) {
@@ -14412,7 +14414,7 @@ var require_react_dom_development = __commonJS({
             }
             queue.lastRenderedState = newState;
           }
-          return [newState, dispatch];
+          return [newState, dispatch2];
         }
         function mountMutableSource(source, getSnapshot, subscribe) {
           {
@@ -14453,11 +14455,11 @@ var require_react_dom_development = __commonJS({
                 }
               }
             }
-            var root2 = getWorkInProgressRoot();
-            if (root2 === null) {
+            var root4 = getWorkInProgressRoot();
+            if (root4 === null) {
               throw new Error("Expected a work-in-progress root. This is a bug in React. Please file an issue.");
             }
-            if (!includesBlockingLane(root2, renderLanes)) {
+            if (!includesBlockingLane(root4, renderLanes)) {
               pushStoreConsistencyCheck(fiber, getSnapshot, nextSnapshot);
             }
           }
@@ -14498,11 +14500,11 @@ var require_react_dom_development = __commonJS({
           workInProgressHook !== null && workInProgressHook.memoizedState.tag & HasEffect) {
             fiber.flags |= Passive;
             pushEffect(HasEffect | Passive$1, updateStoreInstance.bind(null, fiber, inst, nextSnapshot, getSnapshot), void 0, null);
-            var root2 = getWorkInProgressRoot();
-            if (root2 === null) {
+            var root4 = getWorkInProgressRoot();
+            if (root4 === null) {
               throw new Error("Expected a work-in-progress root. This is a bug in React. Please file an issue.");
             }
-            if (!includesBlockingLane(root2, renderLanes)) {
+            if (!includesBlockingLane(root4, renderLanes)) {
               pushStoreConsistencyCheck(fiber, getSnapshot, nextSnapshot);
             }
           }
@@ -14554,39 +14556,39 @@ var require_react_dom_development = __commonJS({
           }
         }
         function forceStoreRerender(fiber) {
-          var root2 = enqueueConcurrentRenderForLane(fiber, SyncLane);
-          if (root2 !== null) {
-            scheduleUpdateOnFiber(root2, fiber, SyncLane, NoTimestamp);
+          var root4 = enqueueConcurrentRenderForLane(fiber, SyncLane);
+          if (root4 !== null) {
+            scheduleUpdateOnFiber(root4, fiber, SyncLane, NoTimestamp);
           }
         }
-        function mountState(initialState) {
+        function mountState(initialState3) {
           var hook = mountWorkInProgressHook();
-          if (typeof initialState === "function") {
-            initialState = initialState();
+          if (typeof initialState3 === "function") {
+            initialState3 = initialState3();
           }
-          hook.memoizedState = hook.baseState = initialState;
+          hook.memoizedState = hook.baseState = initialState3;
           var queue = {
             pending: null,
             interleaved: null,
             lanes: NoLanes,
             dispatch: null,
             lastRenderedReducer: basicStateReducer,
-            lastRenderedState: initialState
+            lastRenderedState: initialState3
           };
           hook.queue = queue;
-          var dispatch = queue.dispatch = dispatchSetState.bind(null, currentlyRenderingFiber$1, queue);
-          return [hook.memoizedState, dispatch];
+          var dispatch2 = queue.dispatch = dispatchSetState.bind(null, currentlyRenderingFiber$1, queue);
+          return [hook.memoizedState, dispatch2];
         }
-        function updateState(initialState) {
+        function updateState(initialState3) {
           return updateReducer(basicStateReducer);
         }
-        function rerenderState(initialState) {
+        function rerenderState(initialState3) {
           return rerenderReducer(basicStateReducer);
         }
-        function pushEffect(tag, create, destroy, deps) {
+        function pushEffect(tag, create2, destroy, deps) {
           var effect = {
             tag,
-            create,
+            create: create2,
             destroy,
             deps,
             // Circular
@@ -14624,13 +14626,13 @@ var require_react_dom_development = __commonJS({
           var hook = updateWorkInProgressHook();
           return hook.memoizedState;
         }
-        function mountEffectImpl(fiberFlags, hookFlags, create, deps) {
+        function mountEffectImpl(fiberFlags, hookFlags, create2, deps) {
           var hook = mountWorkInProgressHook();
           var nextDeps = deps === void 0 ? null : deps;
           currentlyRenderingFiber$1.flags |= fiberFlags;
-          hook.memoizedState = pushEffect(HasEffect | hookFlags, create, void 0, nextDeps);
+          hook.memoizedState = pushEffect(HasEffect | hookFlags, create2, void 0, nextDeps);
         }
-        function updateEffectImpl(fiberFlags, hookFlags, create, deps) {
+        function updateEffectImpl(fiberFlags, hookFlags, create2, deps) {
           var hook = updateWorkInProgressHook();
           var nextDeps = deps === void 0 ? null : deps;
           var destroy = void 0;
@@ -14640,31 +14642,31 @@ var require_react_dom_development = __commonJS({
             if (nextDeps !== null) {
               var prevDeps = prevEffect.deps;
               if (areHookInputsEqual(nextDeps, prevDeps)) {
-                hook.memoizedState = pushEffect(hookFlags, create, destroy, nextDeps);
+                hook.memoizedState = pushEffect(hookFlags, create2, destroy, nextDeps);
                 return;
               }
             }
           }
           currentlyRenderingFiber$1.flags |= fiberFlags;
-          hook.memoizedState = pushEffect(HasEffect | hookFlags, create, destroy, nextDeps);
+          hook.memoizedState = pushEffect(HasEffect | hookFlags, create2, destroy, nextDeps);
         }
-        function mountEffect(create, deps) {
+        function mountEffect(create2, deps) {
           if ((currentlyRenderingFiber$1.mode & StrictEffectsMode) !== NoMode) {
-            return mountEffectImpl(MountPassiveDev | Passive | PassiveStatic, Passive$1, create, deps);
+            return mountEffectImpl(MountPassiveDev | Passive | PassiveStatic, Passive$1, create2, deps);
           } else {
-            return mountEffectImpl(Passive | PassiveStatic, Passive$1, create, deps);
+            return mountEffectImpl(Passive | PassiveStatic, Passive$1, create2, deps);
           }
         }
-        function updateEffect(create, deps) {
-          return updateEffectImpl(Passive, Passive$1, create, deps);
+        function updateEffect(create2, deps) {
+          return updateEffectImpl(Passive, Passive$1, create2, deps);
         }
-        function mountInsertionEffect(create, deps) {
-          return mountEffectImpl(Update, Insertion, create, deps);
+        function mountInsertionEffect(create2, deps) {
+          return mountEffectImpl(Update, Insertion, create2, deps);
         }
-        function updateInsertionEffect(create, deps) {
-          return updateEffectImpl(Update, Insertion, create, deps);
+        function updateInsertionEffect(create2, deps) {
+          return updateEffectImpl(Update, Insertion, create2, deps);
         }
-        function mountLayoutEffect(create, deps) {
+        function mountLayoutEffect(create2, deps) {
           var fiberFlags = Update;
           {
             fiberFlags |= LayoutStatic;
@@ -14672,15 +14674,15 @@ var require_react_dom_development = __commonJS({
           if ((currentlyRenderingFiber$1.mode & StrictEffectsMode) !== NoMode) {
             fiberFlags |= MountLayoutDev;
           }
-          return mountEffectImpl(fiberFlags, Layout, create, deps);
+          return mountEffectImpl(fiberFlags, Layout, create2, deps);
         }
-        function updateLayoutEffect(create, deps) {
-          return updateEffectImpl(Update, Layout, create, deps);
+        function updateLayoutEffect(create2, deps) {
+          return updateEffectImpl(Update, Layout, create2, deps);
         }
-        function imperativeHandleEffect(create, ref) {
+        function imperativeHandleEffect(create2, ref) {
           if (typeof ref === "function") {
             var refCallback = ref;
-            var _inst = create();
+            var _inst = create2();
             refCallback(_inst);
             return function() {
               refCallback(null);
@@ -14692,17 +14694,17 @@ var require_react_dom_development = __commonJS({
                 error("Expected useImperativeHandle() first argument to either be a ref callback or React.createRef() object. Instead received: %s.", "an object with keys {" + Object.keys(refObject).join(", ") + "}");
               }
             }
-            var _inst2 = create();
+            var _inst2 = create2();
             refObject.current = _inst2;
             return function() {
               refObject.current = null;
             };
           }
         }
-        function mountImperativeHandle(ref, create, deps) {
+        function mountImperativeHandle(ref, create2, deps) {
           {
-            if (typeof create !== "function") {
-              error("Expected useImperativeHandle() second argument to be a function that creates a handle. Instead received: %s.", create !== null ? typeof create : "null");
+            if (typeof create2 !== "function") {
+              error("Expected useImperativeHandle() second argument to be a function that creates a handle. Instead received: %s.", create2 !== null ? typeof create2 : "null");
             }
           }
           var effectDeps = deps !== null && deps !== void 0 ? deps.concat([ref]) : null;
@@ -14713,16 +14715,16 @@ var require_react_dom_development = __commonJS({
           if ((currentlyRenderingFiber$1.mode & StrictEffectsMode) !== NoMode) {
             fiberFlags |= MountLayoutDev;
           }
-          return mountEffectImpl(fiberFlags, Layout, imperativeHandleEffect.bind(null, create, ref), effectDeps);
+          return mountEffectImpl(fiberFlags, Layout, imperativeHandleEffect.bind(null, create2, ref), effectDeps);
         }
-        function updateImperativeHandle(ref, create, deps) {
+        function updateImperativeHandle(ref, create2, deps) {
           {
-            if (typeof create !== "function") {
-              error("Expected useImperativeHandle() second argument to be a function that creates a handle. Instead received: %s.", create !== null ? typeof create : "null");
+            if (typeof create2 !== "function") {
+              error("Expected useImperativeHandle() second argument to be a function that creates a handle. Instead received: %s.", create2 !== null ? typeof create2 : "null");
             }
           }
           var effectDeps = deps !== null && deps !== void 0 ? deps.concat([ref]) : null;
-          return updateEffectImpl(Update, Layout, imperativeHandleEffect.bind(null, create, ref), effectDeps);
+          return updateEffectImpl(Update, Layout, imperativeHandleEffect.bind(null, create2, ref), effectDeps);
         }
         function mountDebugValue(value, formatterFn) {
         }
@@ -14840,22 +14842,22 @@ var require_react_dom_development = __commonJS({
         }
         function mountTransition() {
           var _mountState = mountState(false), isPending = _mountState[0], setPending = _mountState[1];
-          var start = startTransition.bind(null, setPending);
+          var start2 = startTransition.bind(null, setPending);
           var hook = mountWorkInProgressHook();
-          hook.memoizedState = start;
-          return [isPending, start];
+          hook.memoizedState = start2;
+          return [isPending, start2];
         }
         function updateTransition() {
           var _updateState = updateState(), isPending = _updateState[0];
           var hook = updateWorkInProgressHook();
-          var start = hook.memoizedState;
-          return [isPending, start];
+          var start2 = hook.memoizedState;
+          return [isPending, start2];
         }
         function rerenderTransition() {
           var _rerenderState = rerenderState(), isPending = _rerenderState[0];
           var hook = updateWorkInProgressHook();
-          var start = hook.memoizedState;
-          return [isPending, start];
+          var start2 = hook.memoizedState;
+          return [isPending, start2];
         }
         var isUpdatingOpaqueValueInRenderPhase = false;
         function getIsUpdatingOpaqueValueInRenderPhaseInDEV() {
@@ -14865,28 +14867,28 @@ var require_react_dom_development = __commonJS({
         }
         function mountId() {
           var hook = mountWorkInProgressHook();
-          var root2 = getWorkInProgressRoot();
-          var identifierPrefix = root2.identifierPrefix;
-          var id;
+          var root4 = getWorkInProgressRoot();
+          var identifierPrefix = root4.identifierPrefix;
+          var id2;
           if (getIsHydrating()) {
             var treeId = getTreeId();
-            id = ":" + identifierPrefix + "R" + treeId;
+            id2 = ":" + identifierPrefix + "R" + treeId;
             var localId = localIdCounter++;
             if (localId > 0) {
-              id += "H" + localId.toString(32);
+              id2 += "H" + localId.toString(32);
             }
-            id += ":";
+            id2 += ":";
           } else {
             var globalClientId = globalClientIdCounter++;
-            id = ":" + identifierPrefix + "r" + globalClientId.toString(32) + ":";
+            id2 = ":" + identifierPrefix + "r" + globalClientId.toString(32) + ":";
           }
-          hook.memoizedState = id;
-          return id;
+          hook.memoizedState = id2;
+          return id2;
         }
         function updateId() {
           var hook = updateWorkInProgressHook();
-          var id = hook.memoizedState;
-          return id;
+          var id2 = hook.memoizedState;
+          return id2;
         }
         function dispatchReducerAction(fiber, queue, action) {
           {
@@ -14905,11 +14907,11 @@ var require_react_dom_development = __commonJS({
           if (isRenderPhaseUpdate(fiber)) {
             enqueueRenderPhaseUpdate(queue, update);
           } else {
-            var root2 = enqueueConcurrentHookUpdate(fiber, queue, update, lane);
-            if (root2 !== null) {
+            var root4 = enqueueConcurrentHookUpdate(fiber, queue, update, lane);
+            if (root4 !== null) {
               var eventTime = requestEventTime();
-              scheduleUpdateOnFiber(root2, fiber, lane, eventTime);
-              entangleTransitionUpdate(root2, queue, lane);
+              scheduleUpdateOnFiber(root4, fiber, lane, eventTime);
+              entangleTransitionUpdate(root4, queue, lane);
             }
           }
           markUpdateInDevTools(fiber, lane);
@@ -14957,11 +14959,11 @@ var require_react_dom_development = __commonJS({
                 }
               }
             }
-            var root2 = enqueueConcurrentHookUpdate(fiber, queue, update, lane);
-            if (root2 !== null) {
+            var root4 = enqueueConcurrentHookUpdate(fiber, queue, update, lane);
+            if (root4 !== null) {
               var eventTime = requestEventTime();
-              scheduleUpdateOnFiber(root2, fiber, lane, eventTime);
-              entangleTransitionUpdate(root2, queue, lane);
+              scheduleUpdateOnFiber(root4, fiber, lane, eventTime);
+              entangleTransitionUpdate(root4, queue, lane);
             }
           }
           markUpdateInDevTools(fiber, lane);
@@ -14981,13 +14983,13 @@ var require_react_dom_development = __commonJS({
           }
           queue.pending = update;
         }
-        function entangleTransitionUpdate(root2, queue, lane) {
+        function entangleTransitionUpdate(root4, queue, lane) {
           if (isTransitionLane(lane)) {
             var queueLanes = queue.lanes;
-            queueLanes = intersectLanes(queueLanes, root2.pendingLanes);
+            queueLanes = intersectLanes(queueLanes, root4.pendingLanes);
             var newQueueLanes = mergeLanes(queueLanes, lane);
             queue.lanes = newQueueLanes;
-            markRootEntangled(root2, newQueueLanes);
+            markRootEntangled(root4, newQueueLanes);
           }
         }
         function markUpdateInDevTools(fiber, lane, action) {
@@ -15044,49 +15046,49 @@ var require_react_dom_development = __commonJS({
               mountHookTypesDev();
               return readContext(context);
             },
-            useEffect: function(create, deps) {
+            useEffect: function(create2, deps) {
               currentHookNameInDev = "useEffect";
               mountHookTypesDev();
               checkDepsAreArrayDev(deps);
-              return mountEffect(create, deps);
+              return mountEffect(create2, deps);
             },
-            useImperativeHandle: function(ref, create, deps) {
+            useImperativeHandle: function(ref, create2, deps) {
               currentHookNameInDev = "useImperativeHandle";
               mountHookTypesDev();
               checkDepsAreArrayDev(deps);
-              return mountImperativeHandle(ref, create, deps);
+              return mountImperativeHandle(ref, create2, deps);
             },
-            useInsertionEffect: function(create, deps) {
+            useInsertionEffect: function(create2, deps) {
               currentHookNameInDev = "useInsertionEffect";
               mountHookTypesDev();
               checkDepsAreArrayDev(deps);
-              return mountInsertionEffect(create, deps);
+              return mountInsertionEffect(create2, deps);
             },
-            useLayoutEffect: function(create, deps) {
+            useLayoutEffect: function(create2, deps) {
               currentHookNameInDev = "useLayoutEffect";
               mountHookTypesDev();
               checkDepsAreArrayDev(deps);
-              return mountLayoutEffect(create, deps);
+              return mountLayoutEffect(create2, deps);
             },
-            useMemo: function(create, deps) {
+            useMemo: function(create2, deps) {
               currentHookNameInDev = "useMemo";
               mountHookTypesDev();
               checkDepsAreArrayDev(deps);
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
               try {
-                return mountMemo(create, deps);
+                return mountMemo(create2, deps);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
             },
-            useReducer: function(reducer, initialArg, init) {
+            useReducer: function(reducer, initialArg, init2) {
               currentHookNameInDev = "useReducer";
               mountHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
               try {
-                return mountReducer(reducer, initialArg, init);
+                return mountReducer(reducer, initialArg, init2);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15096,13 +15098,13 @@ var require_react_dom_development = __commonJS({
               mountHookTypesDev();
               return mountRef(initialValue);
             },
-            useState: function(initialState) {
+            useState: function(initialState3) {
               currentHookNameInDev = "useState";
               mountHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
               try {
-                return mountState(initialState);
+                return mountState(initialState3);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15153,44 +15155,44 @@ var require_react_dom_development = __commonJS({
               updateHookTypesDev();
               return readContext(context);
             },
-            useEffect: function(create, deps) {
+            useEffect: function(create2, deps) {
               currentHookNameInDev = "useEffect";
               updateHookTypesDev();
-              return mountEffect(create, deps);
+              return mountEffect(create2, deps);
             },
-            useImperativeHandle: function(ref, create, deps) {
+            useImperativeHandle: function(ref, create2, deps) {
               currentHookNameInDev = "useImperativeHandle";
               updateHookTypesDev();
-              return mountImperativeHandle(ref, create, deps);
+              return mountImperativeHandle(ref, create2, deps);
             },
-            useInsertionEffect: function(create, deps) {
+            useInsertionEffect: function(create2, deps) {
               currentHookNameInDev = "useInsertionEffect";
               updateHookTypesDev();
-              return mountInsertionEffect(create, deps);
+              return mountInsertionEffect(create2, deps);
             },
-            useLayoutEffect: function(create, deps) {
+            useLayoutEffect: function(create2, deps) {
               currentHookNameInDev = "useLayoutEffect";
               updateHookTypesDev();
-              return mountLayoutEffect(create, deps);
+              return mountLayoutEffect(create2, deps);
             },
-            useMemo: function(create, deps) {
+            useMemo: function(create2, deps) {
               currentHookNameInDev = "useMemo";
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
               try {
-                return mountMemo(create, deps);
+                return mountMemo(create2, deps);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
             },
-            useReducer: function(reducer, initialArg, init) {
+            useReducer: function(reducer, initialArg, init2) {
               currentHookNameInDev = "useReducer";
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
               try {
-                return mountReducer(reducer, initialArg, init);
+                return mountReducer(reducer, initialArg, init2);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15200,13 +15202,13 @@ var require_react_dom_development = __commonJS({
               updateHookTypesDev();
               return mountRef(initialValue);
             },
-            useState: function(initialState) {
+            useState: function(initialState3) {
               currentHookNameInDev = "useState";
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
               try {
-                return mountState(initialState);
+                return mountState(initialState3);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15257,44 +15259,44 @@ var require_react_dom_development = __commonJS({
               updateHookTypesDev();
               return readContext(context);
             },
-            useEffect: function(create, deps) {
+            useEffect: function(create2, deps) {
               currentHookNameInDev = "useEffect";
               updateHookTypesDev();
-              return updateEffect(create, deps);
+              return updateEffect(create2, deps);
             },
-            useImperativeHandle: function(ref, create, deps) {
+            useImperativeHandle: function(ref, create2, deps) {
               currentHookNameInDev = "useImperativeHandle";
               updateHookTypesDev();
-              return updateImperativeHandle(ref, create, deps);
+              return updateImperativeHandle(ref, create2, deps);
             },
-            useInsertionEffect: function(create, deps) {
+            useInsertionEffect: function(create2, deps) {
               currentHookNameInDev = "useInsertionEffect";
               updateHookTypesDev();
-              return updateInsertionEffect(create, deps);
+              return updateInsertionEffect(create2, deps);
             },
-            useLayoutEffect: function(create, deps) {
+            useLayoutEffect: function(create2, deps) {
               currentHookNameInDev = "useLayoutEffect";
               updateHookTypesDev();
-              return updateLayoutEffect(create, deps);
+              return updateLayoutEffect(create2, deps);
             },
-            useMemo: function(create, deps) {
+            useMemo: function(create2, deps) {
               currentHookNameInDev = "useMemo";
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
               try {
-                return updateMemo(create, deps);
+                return updateMemo(create2, deps);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
             },
-            useReducer: function(reducer, initialArg, init) {
+            useReducer: function(reducer, initialArg, init2) {
               currentHookNameInDev = "useReducer";
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
               try {
-                return updateReducer(reducer, initialArg, init);
+                return updateReducer(reducer, initialArg, init2);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15304,13 +15306,13 @@ var require_react_dom_development = __commonJS({
               updateHookTypesDev();
               return updateRef();
             },
-            useState: function(initialState) {
+            useState: function(initialState3) {
               currentHookNameInDev = "useState";
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
               try {
-                return updateState(initialState);
+                return updateState(initialState3);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15361,44 +15363,44 @@ var require_react_dom_development = __commonJS({
               updateHookTypesDev();
               return readContext(context);
             },
-            useEffect: function(create, deps) {
+            useEffect: function(create2, deps) {
               currentHookNameInDev = "useEffect";
               updateHookTypesDev();
-              return updateEffect(create, deps);
+              return updateEffect(create2, deps);
             },
-            useImperativeHandle: function(ref, create, deps) {
+            useImperativeHandle: function(ref, create2, deps) {
               currentHookNameInDev = "useImperativeHandle";
               updateHookTypesDev();
-              return updateImperativeHandle(ref, create, deps);
+              return updateImperativeHandle(ref, create2, deps);
             },
-            useInsertionEffect: function(create, deps) {
+            useInsertionEffect: function(create2, deps) {
               currentHookNameInDev = "useInsertionEffect";
               updateHookTypesDev();
-              return updateInsertionEffect(create, deps);
+              return updateInsertionEffect(create2, deps);
             },
-            useLayoutEffect: function(create, deps) {
+            useLayoutEffect: function(create2, deps) {
               currentHookNameInDev = "useLayoutEffect";
               updateHookTypesDev();
-              return updateLayoutEffect(create, deps);
+              return updateLayoutEffect(create2, deps);
             },
-            useMemo: function(create, deps) {
+            useMemo: function(create2, deps) {
               currentHookNameInDev = "useMemo";
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnRerenderInDEV;
               try {
-                return updateMemo(create, deps);
+                return updateMemo(create2, deps);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
             },
-            useReducer: function(reducer, initialArg, init) {
+            useReducer: function(reducer, initialArg, init2) {
               currentHookNameInDev = "useReducer";
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnRerenderInDEV;
               try {
-                return rerenderReducer(reducer, initialArg, init);
+                return rerenderReducer(reducer, initialArg, init2);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15408,13 +15410,13 @@ var require_react_dom_development = __commonJS({
               updateHookTypesDev();
               return updateRef();
             },
-            useState: function(initialState) {
+            useState: function(initialState3) {
               currentHookNameInDev = "useState";
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnRerenderInDEV;
               try {
-                return rerenderState(initialState);
+                return rerenderState(initialState3);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15468,50 +15470,50 @@ var require_react_dom_development = __commonJS({
               mountHookTypesDev();
               return readContext(context);
             },
-            useEffect: function(create, deps) {
+            useEffect: function(create2, deps) {
               currentHookNameInDev = "useEffect";
               warnInvalidHookAccess();
               mountHookTypesDev();
-              return mountEffect(create, deps);
+              return mountEffect(create2, deps);
             },
-            useImperativeHandle: function(ref, create, deps) {
+            useImperativeHandle: function(ref, create2, deps) {
               currentHookNameInDev = "useImperativeHandle";
               warnInvalidHookAccess();
               mountHookTypesDev();
-              return mountImperativeHandle(ref, create, deps);
+              return mountImperativeHandle(ref, create2, deps);
             },
-            useInsertionEffect: function(create, deps) {
+            useInsertionEffect: function(create2, deps) {
               currentHookNameInDev = "useInsertionEffect";
               warnInvalidHookAccess();
               mountHookTypesDev();
-              return mountInsertionEffect(create, deps);
+              return mountInsertionEffect(create2, deps);
             },
-            useLayoutEffect: function(create, deps) {
+            useLayoutEffect: function(create2, deps) {
               currentHookNameInDev = "useLayoutEffect";
               warnInvalidHookAccess();
               mountHookTypesDev();
-              return mountLayoutEffect(create, deps);
+              return mountLayoutEffect(create2, deps);
             },
-            useMemo: function(create, deps) {
+            useMemo: function(create2, deps) {
               currentHookNameInDev = "useMemo";
               warnInvalidHookAccess();
               mountHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
               try {
-                return mountMemo(create, deps);
+                return mountMemo(create2, deps);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
             },
-            useReducer: function(reducer, initialArg, init) {
+            useReducer: function(reducer, initialArg, init2) {
               currentHookNameInDev = "useReducer";
               warnInvalidHookAccess();
               mountHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
               try {
-                return mountReducer(reducer, initialArg, init);
+                return mountReducer(reducer, initialArg, init2);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15522,14 +15524,14 @@ var require_react_dom_development = __commonJS({
               mountHookTypesDev();
               return mountRef(initialValue);
             },
-            useState: function(initialState) {
+            useState: function(initialState3) {
               currentHookNameInDev = "useState";
               warnInvalidHookAccess();
               mountHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnMountInDEV;
               try {
-                return mountState(initialState);
+                return mountState(initialState3);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15589,50 +15591,50 @@ var require_react_dom_development = __commonJS({
               updateHookTypesDev();
               return readContext(context);
             },
-            useEffect: function(create, deps) {
+            useEffect: function(create2, deps) {
               currentHookNameInDev = "useEffect";
               warnInvalidHookAccess();
               updateHookTypesDev();
-              return updateEffect(create, deps);
+              return updateEffect(create2, deps);
             },
-            useImperativeHandle: function(ref, create, deps) {
+            useImperativeHandle: function(ref, create2, deps) {
               currentHookNameInDev = "useImperativeHandle";
               warnInvalidHookAccess();
               updateHookTypesDev();
-              return updateImperativeHandle(ref, create, deps);
+              return updateImperativeHandle(ref, create2, deps);
             },
-            useInsertionEffect: function(create, deps) {
+            useInsertionEffect: function(create2, deps) {
               currentHookNameInDev = "useInsertionEffect";
               warnInvalidHookAccess();
               updateHookTypesDev();
-              return updateInsertionEffect(create, deps);
+              return updateInsertionEffect(create2, deps);
             },
-            useLayoutEffect: function(create, deps) {
+            useLayoutEffect: function(create2, deps) {
               currentHookNameInDev = "useLayoutEffect";
               warnInvalidHookAccess();
               updateHookTypesDev();
-              return updateLayoutEffect(create, deps);
+              return updateLayoutEffect(create2, deps);
             },
-            useMemo: function(create, deps) {
+            useMemo: function(create2, deps) {
               currentHookNameInDev = "useMemo";
               warnInvalidHookAccess();
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
               try {
-                return updateMemo(create, deps);
+                return updateMemo(create2, deps);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
             },
-            useReducer: function(reducer, initialArg, init) {
+            useReducer: function(reducer, initialArg, init2) {
               currentHookNameInDev = "useReducer";
               warnInvalidHookAccess();
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
               try {
-                return updateReducer(reducer, initialArg, init);
+                return updateReducer(reducer, initialArg, init2);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15643,14 +15645,14 @@ var require_react_dom_development = __commonJS({
               updateHookTypesDev();
               return updateRef();
             },
-            useState: function(initialState) {
+            useState: function(initialState3) {
               currentHookNameInDev = "useState";
               warnInvalidHookAccess();
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
               try {
-                return updateState(initialState);
+                return updateState(initialState3);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15710,50 +15712,50 @@ var require_react_dom_development = __commonJS({
               updateHookTypesDev();
               return readContext(context);
             },
-            useEffect: function(create, deps) {
+            useEffect: function(create2, deps) {
               currentHookNameInDev = "useEffect";
               warnInvalidHookAccess();
               updateHookTypesDev();
-              return updateEffect(create, deps);
+              return updateEffect(create2, deps);
             },
-            useImperativeHandle: function(ref, create, deps) {
+            useImperativeHandle: function(ref, create2, deps) {
               currentHookNameInDev = "useImperativeHandle";
               warnInvalidHookAccess();
               updateHookTypesDev();
-              return updateImperativeHandle(ref, create, deps);
+              return updateImperativeHandle(ref, create2, deps);
             },
-            useInsertionEffect: function(create, deps) {
+            useInsertionEffect: function(create2, deps) {
               currentHookNameInDev = "useInsertionEffect";
               warnInvalidHookAccess();
               updateHookTypesDev();
-              return updateInsertionEffect(create, deps);
+              return updateInsertionEffect(create2, deps);
             },
-            useLayoutEffect: function(create, deps) {
+            useLayoutEffect: function(create2, deps) {
               currentHookNameInDev = "useLayoutEffect";
               warnInvalidHookAccess();
               updateHookTypesDev();
-              return updateLayoutEffect(create, deps);
+              return updateLayoutEffect(create2, deps);
             },
-            useMemo: function(create, deps) {
+            useMemo: function(create2, deps) {
               currentHookNameInDev = "useMemo";
               warnInvalidHookAccess();
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
               try {
-                return updateMemo(create, deps);
+                return updateMemo(create2, deps);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
             },
-            useReducer: function(reducer, initialArg, init) {
+            useReducer: function(reducer, initialArg, init2) {
               currentHookNameInDev = "useReducer";
               warnInvalidHookAccess();
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
               try {
-                return rerenderReducer(reducer, initialArg, init);
+                return rerenderReducer(reducer, initialArg, init2);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15764,14 +15766,14 @@ var require_react_dom_development = __commonJS({
               updateHookTypesDev();
               return updateRef();
             },
-            useState: function(initialState) {
+            useState: function(initialState3) {
               currentHookNameInDev = "useState";
               warnInvalidHookAccess();
               updateHookTypesDev();
               var prevDispatcher = ReactCurrentDispatcher$1.current;
               ReactCurrentDispatcher$1.current = InvalidNestedHooksDispatcherOnUpdateInDEV;
               try {
-                return rerenderState(initialState);
+                return rerenderState(initialState3);
               } finally {
                 ReactCurrentDispatcher$1.current = prevDispatcher;
               }
@@ -15875,8 +15877,8 @@ var require_react_dom_development = __commonJS({
             while (parentFiber !== null) {
               switch (parentFiber.tag) {
                 case HostRoot:
-                  var root2 = parentFiber.stateNode;
-                  root2.effectDuration += elapsedTime;
+                  var root4 = parentFiber.stateNode;
+                  root4.effectDuration += elapsedTime;
                   return;
                 case Profiler:
                   var parentStateNode = parentFiber.stateNode;
@@ -15895,9 +15897,9 @@ var require_react_dom_development = __commonJS({
             while (parentFiber !== null) {
               switch (parentFiber.tag) {
                 case HostRoot:
-                  var root2 = parentFiber.stateNode;
-                  if (root2 !== null) {
-                    root2.passiveEffectDuration += elapsedTime;
+                  var root4 = parentFiber.stateNode;
+                  if (root4 !== null) {
+                    root4.passiveEffectDuration += elapsedTime;
                   }
                   return;
                 case Profiler:
@@ -16036,11 +16038,11 @@ var require_react_dom_development = __commonJS({
           }
           return update;
         }
-        function attachPingListener(root2, wakeable, lanes) {
-          var pingCache = root2.pingCache;
+        function attachPingListener(root4, wakeable, lanes) {
+          var pingCache = root4.pingCache;
           var threadIDs;
           if (pingCache === null) {
-            pingCache = root2.pingCache = new PossiblyWeakMap$1();
+            pingCache = root4.pingCache = new PossiblyWeakMap$1();
             threadIDs = /* @__PURE__ */ new Set();
             pingCache.set(wakeable, threadIDs);
           } else {
@@ -16052,16 +16054,16 @@ var require_react_dom_development = __commonJS({
           }
           if (!threadIDs.has(lanes)) {
             threadIDs.add(lanes);
-            var ping = pingSuspendedRoot.bind(null, root2, wakeable, lanes);
+            var ping = pingSuspendedRoot.bind(null, root4, wakeable, lanes);
             {
               if (isDevToolsPresent) {
-                restorePendingUpdaters(root2, lanes);
+                restorePendingUpdaters(root4, lanes);
               }
             }
             wakeable.then(ping, ping);
           }
         }
-        function attachRetryListener(suspenseBoundary, root2, wakeable, lanes) {
+        function attachRetryListener(suspenseBoundary, root4, wakeable, lanes) {
           var wakeables = suspenseBoundary.updateQueue;
           if (wakeables === null) {
             var updateQueue = /* @__PURE__ */ new Set();
@@ -16095,7 +16097,7 @@ var require_react_dom_development = __commonJS({
           } while (node !== null);
           return null;
         }
-        function markSuspenseBoundaryShouldCapture(suspenseBoundary, returnFiber, sourceFiber, root2, rootRenderLanes) {
+        function markSuspenseBoundaryShouldCapture(suspenseBoundary, returnFiber, sourceFiber, root4, rootRenderLanes) {
           if ((suspenseBoundary.mode & ConcurrentMode) === NoMode) {
             if (suspenseBoundary === returnFiber) {
               suspenseBoundary.flags |= ShouldCapture;
@@ -16121,11 +16123,11 @@ var require_react_dom_development = __commonJS({
           suspenseBoundary.lanes = rootRenderLanes;
           return suspenseBoundary;
         }
-        function throwException(root2, returnFiber, sourceFiber, value, rootRenderLanes) {
+        function throwException(root4, returnFiber, sourceFiber, value, rootRenderLanes) {
           sourceFiber.flags |= Incomplete;
           {
             if (isDevToolsPresent) {
-              restorePendingUpdaters(root2, rootRenderLanes);
+              restorePendingUpdaters(root4, rootRenderLanes);
             }
           }
           if (value !== null && typeof value === "object" && typeof value.then === "function") {
@@ -16139,15 +16141,15 @@ var require_react_dom_development = __commonJS({
             var suspenseBoundary = getNearestSuspenseBoundaryToCapture(returnFiber);
             if (suspenseBoundary !== null) {
               suspenseBoundary.flags &= ~ForceClientRender;
-              markSuspenseBoundaryShouldCapture(suspenseBoundary, returnFiber, sourceFiber, root2, rootRenderLanes);
+              markSuspenseBoundaryShouldCapture(suspenseBoundary, returnFiber, sourceFiber, root4, rootRenderLanes);
               if (suspenseBoundary.mode & ConcurrentMode) {
-                attachPingListener(root2, wakeable, rootRenderLanes);
+                attachPingListener(root4, wakeable, rootRenderLanes);
               }
-              attachRetryListener(suspenseBoundary, root2, wakeable);
+              attachRetryListener(suspenseBoundary, root4, wakeable);
               return;
             } else {
               if (!includesSyncLane(rootRenderLanes)) {
-                attachPingListener(root2, wakeable, rootRenderLanes);
+                attachPingListener(root4, wakeable, rootRenderLanes);
                 renderDidSuspendDelayIfPossible();
                 return;
               }
@@ -16162,7 +16164,7 @@ var require_react_dom_development = __commonJS({
                 if ((_suspenseBoundary.flags & ShouldCapture) === NoFlags) {
                   _suspenseBoundary.flags |= ForceClientRender;
                 }
-                markSuspenseBoundaryShouldCapture(_suspenseBoundary, returnFiber, sourceFiber, root2, rootRenderLanes);
+                markSuspenseBoundaryShouldCapture(_suspenseBoundary, returnFiber, sourceFiber, root4, rootRenderLanes);
                 queueHydrationError(createCapturedValueAtFiber(value, sourceFiber));
                 return;
               }
@@ -16359,9 +16361,9 @@ var require_react_dom_development = __commonJS({
               if (outerMemoType.$$typeof === REACT_LAZY_TYPE) {
                 var lazyComponent = outerMemoType;
                 var payload = lazyComponent._payload;
-                var init = lazyComponent._init;
+                var init2 = lazyComponent._init;
                 try {
-                  outerMemoType = init(payload);
+                  outerMemoType = init2(payload);
                 } catch (x) {
                   outerMemoType = null;
                 }
@@ -16656,13 +16658,13 @@ var require_react_dom_development = __commonJS({
           return workInProgress2.child;
         }
         function pushHostRootContext(workInProgress2) {
-          var root2 = workInProgress2.stateNode;
-          if (root2.pendingContext) {
-            pushTopLevelContextObject(workInProgress2, root2.pendingContext, root2.pendingContext !== root2.context);
-          } else if (root2.context) {
-            pushTopLevelContextObject(workInProgress2, root2.context, false);
+          var root4 = workInProgress2.stateNode;
+          if (root4.pendingContext) {
+            pushTopLevelContextObject(workInProgress2, root4.pendingContext, root4.pendingContext !== root4.context);
+          } else if (root4.context) {
+            pushTopLevelContextObject(workInProgress2, root4.context, false);
           }
-          pushHostContainer(workInProgress2, root2.containerInfo);
+          pushHostContainer(workInProgress2, root4.containerInfo);
         }
         function updateHostRoot(current2, workInProgress2, renderLanes2) {
           pushHostRootContext(workInProgress2);
@@ -16675,7 +16677,7 @@ var require_react_dom_development = __commonJS({
           cloneUpdateQueue(current2, workInProgress2);
           processUpdateQueue(workInProgress2, nextProps, null, renderLanes2);
           var nextState = workInProgress2.memoizedState;
-          var root2 = workInProgress2.stateNode;
+          var root4 = workInProgress2.stateNode;
           var nextChildren = nextState.element;
           if (prevState.isDehydrated) {
             var overrideState = {
@@ -16750,8 +16752,8 @@ var require_react_dom_development = __commonJS({
           var props = workInProgress2.pendingProps;
           var lazyComponent = elementType;
           var payload = lazyComponent._payload;
-          var init = lazyComponent._init;
-          var Component = init(payload);
+          var init2 = lazyComponent._init;
+          var Component = init2(payload);
           workInProgress2.type = Component;
           var resolvedTag = workInProgress2.tag = resolveLazyComponentTag(Component);
           var resolvedProps = resolveDefaultProps(Component, props);
@@ -17256,14 +17258,14 @@ var require_react_dom_development = __commonJS({
             }
             var hasContextChanged2 = includesSomeLane(renderLanes2, current2.childLanes);
             if (didReceiveUpdate || hasContextChanged2) {
-              var root2 = getWorkInProgressRoot();
-              if (root2 !== null) {
-                var attemptHydrationAtLane = getBumpedLaneForHydration(root2, renderLanes2);
+              var root4 = getWorkInProgressRoot();
+              if (root4 !== null) {
+                var attemptHydrationAtLane = getBumpedLaneForHydration(root4, renderLanes2);
                 if (attemptHydrationAtLane !== NoLane && attemptHydrationAtLane !== suspenseState.retryLane) {
                   suspenseState.retryLane = attemptHydrationAtLane;
                   var eventTime = NoTimestamp;
                   enqueueConcurrentRenderForLane(current2, attemptHydrationAtLane);
-                  scheduleUpdateOnFiber(root2, current2, attemptHydrationAtLane, eventTime);
+                  scheduleUpdateOnFiber(root4, current2, attemptHydrationAtLane, eventTime);
                 }
               }
               renderDidSuspendDelayIfPossible();
@@ -17402,19 +17404,19 @@ var require_react_dom_development = __commonJS({
           }
           return true;
         }
-        function validateSuspenseListChildren(children, revealOrder) {
+        function validateSuspenseListChildren(children2, revealOrder) {
           {
-            if ((revealOrder === "forwards" || revealOrder === "backwards") && children !== void 0 && children !== null && children !== false) {
-              if (isArray(children)) {
-                for (var i = 0; i < children.length; i++) {
-                  if (!validateSuspenseListNestedChild(children[i], i)) {
+            if ((revealOrder === "forwards" || revealOrder === "backwards") && children2 !== void 0 && children2 !== null && children2 !== false) {
+              if (isArray(children2)) {
+                for (var i = 0; i < children2.length; i++) {
+                  if (!validateSuspenseListNestedChild(children2[i], i)) {
                     return;
                   }
                 }
               } else {
-                var iteratorFn = getIteratorFn(children);
+                var iteratorFn = getIteratorFn(children2);
                 if (typeof iteratorFn === "function") {
-                  var childrenIterator = iteratorFn.call(children);
+                  var childrenIterator = iteratorFn.call(children2);
                   if (childrenIterator) {
                     var step = childrenIterator.next();
                     var _i = 0;
@@ -17708,7 +17710,7 @@ var require_react_dom_development = __commonJS({
           switch (workInProgress2.tag) {
             case HostRoot:
               pushHostRootContext(workInProgress2);
-              var root2 = workInProgress2.stateNode;
+              var root4 = workInProgress2.stateNode;
               resetHydrationState();
               break;
             case HostComponent:
@@ -18358,7 +18360,7 @@ var require_react_dom_development = __commonJS({
                       row = row.sibling;
                     }
                   }
-                  if (renderState.tail !== null && now() > getRenderTargetTime()) {
+                  if (renderState.tail !== null && now2() > getRenderTargetTime()) {
                     workInProgress2.flags |= DidCapture;
                     didSuspendAlready = true;
                     cutOffTailIfNeeded(renderState, false);
@@ -18387,7 +18389,7 @@ var require_react_dom_development = __commonJS({
                     // The time it took to render last row is greater than the remaining
                     // time we have to render. So rendering one more row would likely
                     // exceed it.
-                    now() * 2 - renderState.renderingStartTime > getRenderTargetTime() && renderLanes2 !== OffscreenLane
+                    now2() * 2 - renderState.renderingStartTime > getRenderTargetTime() && renderLanes2 !== OffscreenLane
                   ) {
                     workInProgress2.flags |= DidCapture;
                     didSuspendAlready = true;
@@ -18412,7 +18414,7 @@ var require_react_dom_development = __commonJS({
                 var next = renderState.tail;
                 renderState.rendering = next;
                 renderState.tail = next.sibling;
-                renderState.renderingStartTime = now();
+                renderState.renderingStartTime = now2();
                 next.sibling = null;
                 var suspenseContext = suspenseStackCursor.current;
                 if (didSuspendAlready) {
@@ -18484,7 +18486,7 @@ var require_react_dom_development = __commonJS({
               return null;
             }
             case HostRoot: {
-              var root2 = workInProgress2.stateNode;
+              var root4 = workInProgress2.stateNode;
               popHostContainer(workInProgress2);
               popTopLevelContextObject(workInProgress2);
               resetWorkInProgressVersions();
@@ -18550,7 +18552,7 @@ var require_react_dom_development = __commonJS({
               break;
             }
             case HostRoot: {
-              var root2 = interruptedWork.stateNode;
+              var root4 = interruptedWork.stateNode;
               popHostContainer(interruptedWork);
               popTopLevelContextObject(interruptedWork);
               resetWorkInProgressVersions();
@@ -18677,8 +18679,8 @@ var require_react_dom_development = __commonJS({
         }
         var focusedInstanceHandle = null;
         var shouldFireAfterActiveInstanceBlur = false;
-        function commitBeforeMutationEffects(root2, firstChild) {
-          focusedInstanceHandle = prepareForCommit(root2.containerInfo);
+        function commitBeforeMutationEffects(root4, firstChild) {
+          focusedInstanceHandle = prepareForCommit(root4.containerInfo);
           nextEffect = firstChild;
           commitBeforeMutationEffects_begin();
           var shouldFire = shouldFireAfterActiveInstanceBlur;
@@ -18757,8 +18759,8 @@ var require_react_dom_development = __commonJS({
               }
               case HostRoot: {
                 {
-                  var root2 = finishedWork.stateNode;
-                  clearContainer(root2.containerInfo);
+                  var root4 = finishedWork.stateNode;
+                  clearContainer(root4.containerInfo);
                 }
                 break;
               }
@@ -18831,13 +18833,13 @@ var require_react_dom_development = __commonJS({
                     markComponentLayoutEffectMountStarted(finishedWork);
                   }
                 }
-                var create = effect.create;
+                var create2 = effect.create;
                 {
                   if ((flags & Insertion) !== NoFlags$1) {
                     setIsRunningInsertionEffect(true);
                   }
                 }
-                effect.destroy = create();
+                effect.destroy = create2();
                 {
                   if ((flags & Insertion) !== NoFlags$1) {
                     setIsRunningInsertionEffect(false);
@@ -18883,7 +18885,7 @@ var require_react_dom_development = __commonJS({
               switch (finishedWork.tag) {
                 case Profiler: {
                   var passiveEffectDuration = finishedWork.stateNode.passiveEffectDuration;
-                  var _finishedWork$memoize = finishedWork.memoizedProps, id = _finishedWork$memoize.id, onPostCommit = _finishedWork$memoize.onPostCommit;
+                  var _finishedWork$memoize = finishedWork.memoizedProps, id2 = _finishedWork$memoize.id, onPostCommit = _finishedWork$memoize.onPostCommit;
                   var commitTime2 = getCommitTime();
                   var phase = finishedWork.alternate === null ? "mount" : "update";
                   {
@@ -18892,14 +18894,14 @@ var require_react_dom_development = __commonJS({
                     }
                   }
                   if (typeof onPostCommit === "function") {
-                    onPostCommit(id, phase, passiveEffectDuration, commitTime2);
+                    onPostCommit(id2, phase, passiveEffectDuration, commitTime2);
                   }
                   var parentFiber = finishedWork.return;
                   outer: while (parentFiber !== null) {
                     switch (parentFiber.tag) {
                       case HostRoot:
-                        var root2 = parentFiber.stateNode;
-                        root2.passiveEffectDuration += passiveEffectDuration;
+                        var root4 = parentFiber.stateNode;
+                        root4.passiveEffectDuration += passiveEffectDuration;
                         break outer;
                       case Profiler:
                         var parentStateNode = parentFiber.stateNode;
@@ -19057,8 +19059,8 @@ var require_react_dom_development = __commonJS({
                     outer: while (parentFiber !== null) {
                       switch (parentFiber.tag) {
                         case HostRoot:
-                          var root2 = parentFiber.stateNode;
-                          root2.effectDuration += effectDuration;
+                          var root4 = parentFiber.stateNode;
+                          root4.effectDuration += effectDuration;
                           break outer;
                         case Profiler:
                           var parentStateNode = parentFiber.stateNode;
@@ -19374,7 +19376,7 @@ var require_react_dom_development = __commonJS({
         }
         var hostParent = null;
         var hostParentIsContainer = false;
-        function commitDeletionEffects(root2, returnFiber, deletedFiber) {
+        function commitDeletionEffects(root4, returnFiber, deletedFiber) {
           {
             var parent = returnFiber;
             findParent: while (parent !== null) {
@@ -19400,7 +19402,7 @@ var require_react_dom_development = __commonJS({
             if (hostParent === null) {
               throw new Error("Expected to find a host parent. This error is likely caused by a bug in React. Please file an issue.");
             }
-            commitDeletionEffectsOnFiber(root2, returnFiber, deletedFiber);
+            commitDeletionEffectsOnFiber(root4, returnFiber, deletedFiber);
             hostParent = null;
             hostParentIsContainer = false;
           }
@@ -19583,22 +19585,22 @@ var require_react_dom_development = __commonJS({
             });
           }
         }
-        function commitMutationEffects(root2, finishedWork, committedLanes) {
+        function commitMutationEffects(root4, finishedWork, committedLanes) {
           inProgressLanes = committedLanes;
-          inProgressRoot = root2;
+          inProgressRoot = root4;
           setCurrentFiber(finishedWork);
-          commitMutationEffectsOnFiber(finishedWork, root2);
+          commitMutationEffectsOnFiber(finishedWork, root4);
           setCurrentFiber(finishedWork);
           inProgressLanes = null;
           inProgressRoot = null;
         }
-        function recursivelyTraverseMutationEffects(root2, parentFiber, lanes) {
+        function recursivelyTraverseMutationEffects(root4, parentFiber, lanes) {
           var deletions = parentFiber.deletions;
           if (deletions !== null) {
             for (var i = 0; i < deletions.length; i++) {
               var childToDelete = deletions[i];
               try {
-                commitDeletionEffects(root2, parentFiber, childToDelete);
+                commitDeletionEffects(root4, parentFiber, childToDelete);
               } catch (error2) {
                 captureCommitPhaseError(childToDelete, parentFiber, error2);
               }
@@ -19609,13 +19611,13 @@ var require_react_dom_development = __commonJS({
             var child = parentFiber.child;
             while (child !== null) {
               setCurrentFiber(child);
-              commitMutationEffectsOnFiber(child, root2);
+              commitMutationEffectsOnFiber(child, root4);
               child = child.sibling;
             }
           }
           setCurrentFiber(prevDebugFiber);
         }
-        function commitMutationEffectsOnFiber(finishedWork, root2, lanes) {
+        function commitMutationEffectsOnFiber(finishedWork, root4, lanes) {
           var current2 = finishedWork.alternate;
           var flags = finishedWork.flags;
           switch (finishedWork.tag) {
@@ -19623,7 +19625,7 @@ var require_react_dom_development = __commonJS({
             case ForwardRef:
             case MemoComponent:
             case SimpleMemoComponent: {
-              recursivelyTraverseMutationEffects(root2, finishedWork);
+              recursivelyTraverseMutationEffects(root4, finishedWork);
               commitReconciliationEffects(finishedWork);
               if (flags & Update) {
                 try {
@@ -19651,7 +19653,7 @@ var require_react_dom_development = __commonJS({
               return;
             }
             case ClassComponent: {
-              recursivelyTraverseMutationEffects(root2, finishedWork);
+              recursivelyTraverseMutationEffects(root4, finishedWork);
               commitReconciliationEffects(finishedWork);
               if (flags & Ref) {
                 if (current2 !== null) {
@@ -19661,7 +19663,7 @@ var require_react_dom_development = __commonJS({
               return;
             }
             case HostComponent: {
-              recursivelyTraverseMutationEffects(root2, finishedWork);
+              recursivelyTraverseMutationEffects(root4, finishedWork);
               commitReconciliationEffects(finishedWork);
               if (flags & Ref) {
                 if (current2 !== null) {
@@ -19698,7 +19700,7 @@ var require_react_dom_development = __commonJS({
               return;
             }
             case HostText: {
-              recursivelyTraverseMutationEffects(root2, finishedWork);
+              recursivelyTraverseMutationEffects(root4, finishedWork);
               commitReconciliationEffects(finishedWork);
               if (flags & Update) {
                 {
@@ -19718,7 +19720,7 @@ var require_react_dom_development = __commonJS({
               return;
             }
             case HostRoot: {
-              recursivelyTraverseMutationEffects(root2, finishedWork);
+              recursivelyTraverseMutationEffects(root4, finishedWork);
               commitReconciliationEffects(finishedWork);
               if (flags & Update) {
                 {
@@ -19726,7 +19728,7 @@ var require_react_dom_development = __commonJS({
                     var prevRootState = current2.memoizedState;
                     if (prevRootState.isDehydrated) {
                       try {
-                        commitHydratedContainer(root2.containerInfo);
+                        commitHydratedContainer(root4.containerInfo);
                       } catch (error2) {
                         captureCommitPhaseError(finishedWork, finishedWork.return, error2);
                       }
@@ -19737,12 +19739,12 @@ var require_react_dom_development = __commonJS({
               return;
             }
             case HostPortal: {
-              recursivelyTraverseMutationEffects(root2, finishedWork);
+              recursivelyTraverseMutationEffects(root4, finishedWork);
               commitReconciliationEffects(finishedWork);
               return;
             }
             case SuspenseComponent: {
-              recursivelyTraverseMutationEffects(root2, finishedWork);
+              recursivelyTraverseMutationEffects(root4, finishedWork);
               commitReconciliationEffects(finishedWork);
               var offscreenFiber = finishedWork.child;
               if (offscreenFiber.flags & Visibility) {
@@ -19775,10 +19777,10 @@ var require_react_dom_development = __commonJS({
               ) {
                 var prevOffscreenSubtreeWasHidden = offscreenSubtreeWasHidden;
                 offscreenSubtreeWasHidden = prevOffscreenSubtreeWasHidden || _wasHidden;
-                recursivelyTraverseMutationEffects(root2, finishedWork);
+                recursivelyTraverseMutationEffects(root4, finishedWork);
                 offscreenSubtreeWasHidden = prevOffscreenSubtreeWasHidden;
               } else {
-                recursivelyTraverseMutationEffects(root2, finishedWork);
+                recursivelyTraverseMutationEffects(root4, finishedWork);
               }
               commitReconciliationEffects(finishedWork);
               if (flags & Visibility) {
@@ -19809,7 +19811,7 @@ var require_react_dom_development = __commonJS({
               return;
             }
             case SuspenseListComponent: {
-              recursivelyTraverseMutationEffects(root2, finishedWork);
+              recursivelyTraverseMutationEffects(root4, finishedWork);
               commitReconciliationEffects(finishedWork);
               if (flags & Update) {
                 attachSuspenseRetryListeners(finishedWork);
@@ -19820,7 +19822,7 @@ var require_react_dom_development = __commonJS({
               return;
             }
             default: {
-              recursivelyTraverseMutationEffects(root2, finishedWork);
+              recursivelyTraverseMutationEffects(root4, finishedWork);
               commitReconciliationEffects(finishedWork);
               return;
             }
@@ -19840,15 +19842,15 @@ var require_react_dom_development = __commonJS({
             finishedWork.flags &= ~Hydrating;
           }
         }
-        function commitLayoutEffects(finishedWork, root2, committedLanes) {
+        function commitLayoutEffects(finishedWork, root4, committedLanes) {
           inProgressLanes = committedLanes;
-          inProgressRoot = root2;
+          inProgressRoot = root4;
           nextEffect = finishedWork;
-          commitLayoutEffects_begin(finishedWork, root2, committedLanes);
+          commitLayoutEffects_begin(finishedWork, root4, committedLanes);
           inProgressLanes = null;
           inProgressRoot = null;
         }
-        function commitLayoutEffects_begin(subtreeRoot, root2, committedLanes) {
+        function commitLayoutEffects_begin(subtreeRoot, root4, committedLanes) {
           var isModernRoot = (subtreeRoot.mode & ConcurrentMode) !== NoMode;
           while (nextEffect !== null) {
             var fiber = nextEffect;
@@ -19857,7 +19859,7 @@ var require_react_dom_development = __commonJS({
               var isHidden = fiber.memoizedState !== null;
               var newOffscreenSubtreeIsHidden = isHidden || offscreenSubtreeIsHidden;
               if (newOffscreenSubtreeIsHidden) {
-                commitLayoutMountEffects_complete(subtreeRoot, root2, committedLanes);
+                commitLayoutMountEffects_complete(subtreeRoot, root4, committedLanes);
                 continue;
               } else {
                 var current2 = fiber.alternate;
@@ -19877,7 +19879,7 @@ var require_react_dom_development = __commonJS({
                   commitLayoutEffects_begin(
                     child,
                     // New root; bubble back up to here and stop.
-                    root2,
+                    root4,
                     committedLanes
                   );
                   child = child.sibling;
@@ -19885,7 +19887,7 @@ var require_react_dom_development = __commonJS({
                 nextEffect = fiber;
                 offscreenSubtreeIsHidden = prevOffscreenSubtreeIsHidden;
                 offscreenSubtreeWasHidden = prevOffscreenSubtreeWasHidden;
-                commitLayoutMountEffects_complete(subtreeRoot, root2, committedLanes);
+                commitLayoutMountEffects_complete(subtreeRoot, root4, committedLanes);
                 continue;
               }
             }
@@ -19893,18 +19895,18 @@ var require_react_dom_development = __commonJS({
               firstChild.return = fiber;
               nextEffect = firstChild;
             } else {
-              commitLayoutMountEffects_complete(subtreeRoot, root2, committedLanes);
+              commitLayoutMountEffects_complete(subtreeRoot, root4, committedLanes);
             }
           }
         }
-        function commitLayoutMountEffects_complete(subtreeRoot, root2, committedLanes) {
+        function commitLayoutMountEffects_complete(subtreeRoot, root4, committedLanes) {
           while (nextEffect !== null) {
             var fiber = nextEffect;
             if ((fiber.flags & LayoutMask) !== NoFlags) {
               var current2 = fiber.alternate;
               setCurrentFiber(fiber);
               try {
-                commitLayoutEffectOnFiber(root2, current2, fiber, committedLanes);
+                commitLayoutEffectOnFiber(root4, current2, fiber, committedLanes);
               } catch (error2) {
                 captureCommitPhaseError(fiber, fiber.return, error2);
               }
@@ -20031,11 +20033,11 @@ var require_react_dom_development = __commonJS({
             nextEffect = fiber.return;
           }
         }
-        function commitPassiveMountEffects(root2, finishedWork, committedLanes, committedTransitions) {
+        function commitPassiveMountEffects(root4, finishedWork, committedLanes, committedTransitions) {
           nextEffect = finishedWork;
-          commitPassiveMountEffects_begin(finishedWork, root2, committedLanes, committedTransitions);
+          commitPassiveMountEffects_begin(finishedWork, root4, committedLanes, committedTransitions);
         }
-        function commitPassiveMountEffects_begin(subtreeRoot, root2, committedLanes, committedTransitions) {
+        function commitPassiveMountEffects_begin(subtreeRoot, root4, committedLanes, committedTransitions) {
           while (nextEffect !== null) {
             var fiber = nextEffect;
             var firstChild = fiber.child;
@@ -20043,17 +20045,17 @@ var require_react_dom_development = __commonJS({
               firstChild.return = fiber;
               nextEffect = firstChild;
             } else {
-              commitPassiveMountEffects_complete(subtreeRoot, root2, committedLanes, committedTransitions);
+              commitPassiveMountEffects_complete(subtreeRoot, root4, committedLanes, committedTransitions);
             }
           }
         }
-        function commitPassiveMountEffects_complete(subtreeRoot, root2, committedLanes, committedTransitions) {
+        function commitPassiveMountEffects_complete(subtreeRoot, root4, committedLanes, committedTransitions) {
           while (nextEffect !== null) {
             var fiber = nextEffect;
             if ((fiber.flags & Passive) !== NoFlags) {
               setCurrentFiber(fiber);
               try {
-                commitPassiveMountOnFiber(root2, fiber, committedLanes, committedTransitions);
+                commitPassiveMountOnFiber(root4, fiber, committedLanes, committedTransitions);
               } catch (error2) {
                 captureCommitPhaseError(fiber, fiber.return, error2);
               }
@@ -20384,7 +20386,7 @@ var require_react_dom_development = __commonJS({
         var RENDER_TIMEOUT_MS = 500;
         var workInProgressTransitions = null;
         function resetRenderTimer() {
-          workInProgressRootRenderTargetTime = now() + RENDER_TIMEOUT_MS;
+          workInProgressRootRenderTargetTime = now2() + RENDER_TIMEOUT_MS;
         }
         function getRenderTargetTime() {
           return workInProgressRootRenderTargetTime;
@@ -20413,12 +20415,12 @@ var require_react_dom_development = __commonJS({
         }
         function requestEventTime() {
           if ((executionContext & (RenderContext | CommitContext)) !== NoContext) {
-            return now();
+            return now2();
           }
           if (currentEventTime !== NoTimestamp) {
             return currentEventTime;
           }
-          currentEventTime = now();
+          currentEventTime = now2();
           return currentEventTime;
         }
         function requestUpdateLane(fiber) {
@@ -20431,11 +20433,11 @@ var require_react_dom_development = __commonJS({
           var isTransition = requestCurrentTransition() !== NoTransition;
           if (isTransition) {
             if (ReactCurrentBatchConfig$3.transition !== null) {
-              var transition = ReactCurrentBatchConfig$3.transition;
-              if (!transition._updatedFibers) {
-                transition._updatedFibers = /* @__PURE__ */ new Set();
+              var transition2 = ReactCurrentBatchConfig$3.transition;
+              if (!transition2._updatedFibers) {
+                transition2._updatedFibers = /* @__PURE__ */ new Set();
               }
-              transition._updatedFibers.add(fiber);
+              transition2._updatedFibers.add(fiber);
             }
             if (currentEventTransitionLane === NoLane) {
               currentEventTransitionLane = claimNextTransitionLane();
@@ -20456,7 +20458,7 @@ var require_react_dom_development = __commonJS({
           }
           return claimNextRetryLane();
         }
-        function scheduleUpdateOnFiber(root2, fiber, lane, eventTime) {
+        function scheduleUpdateOnFiber(root4, fiber, lane, eventTime) {
           checkForNestedUpdates();
           {
             if (isRunningInsertionEffect) {
@@ -20468,25 +20470,25 @@ var require_react_dom_development = __commonJS({
               didScheduleUpdateDuringPassiveEffects = true;
             }
           }
-          markRootUpdated(root2, lane, eventTime);
-          if ((executionContext & RenderContext) !== NoLanes && root2 === workInProgressRoot) {
+          markRootUpdated(root4, lane, eventTime);
+          if ((executionContext & RenderContext) !== NoLanes && root4 === workInProgressRoot) {
             warnAboutRenderPhaseUpdatesInDEV(fiber);
           } else {
             {
               if (isDevToolsPresent) {
-                addFiberToLanesMap(root2, fiber, lane);
+                addFiberToLanesMap(root4, fiber, lane);
               }
             }
             warnIfUpdatesNotWrappedWithActDEV(fiber);
-            if (root2 === workInProgressRoot) {
+            if (root4 === workInProgressRoot) {
               if ((executionContext & RenderContext) === NoContext) {
                 workInProgressRootInterleavedUpdatedLanes = mergeLanes(workInProgressRootInterleavedUpdatedLanes, lane);
               }
               if (workInProgressRootExitStatus === RootSuspendedWithDelay) {
-                markRootSuspended$1(root2, workInProgressRootRenderLanes);
+                markRootSuspended$1(root4, workInProgressRootRenderLanes);
               }
             }
-            ensureRootIsScheduled(root2, eventTime);
+            ensureRootIsScheduled(root4, eventTime);
             if (lane === SyncLane && executionContext === NoContext && (fiber.mode & ConcurrentMode) === NoMode && // Treat `act` as if it's inside `batchedUpdates`, even in legacy mode.
             !ReactCurrentActQueue$1.isBatchingLegacy) {
               resetRenderTimer();
@@ -20494,11 +20496,11 @@ var require_react_dom_development = __commonJS({
             }
           }
         }
-        function scheduleInitialHydrationOnRoot(root2, lane, eventTime) {
-          var current2 = root2.current;
+        function scheduleInitialHydrationOnRoot(root4, lane, eventTime) {
+          var current2 = root4.current;
           current2.lanes = lane;
-          markRootUpdated(root2, lane, eventTime);
-          ensureRootIsScheduled(root2, eventTime);
+          markRootUpdated(root4, lane, eventTime);
+          ensureRootIsScheduled(root4, eventTime);
         }
         function isUnsafeClassRenderPhaseUpdate(fiber) {
           return (
@@ -20507,20 +20509,20 @@ var require_react_dom_development = __commonJS({
             (executionContext & RenderContext) !== NoContext
           );
         }
-        function ensureRootIsScheduled(root2, currentTime) {
-          var existingCallbackNode = root2.callbackNode;
-          markStarvedLanesAsExpired(root2, currentTime);
-          var nextLanes = getNextLanes(root2, root2 === workInProgressRoot ? workInProgressRootRenderLanes : NoLanes);
+        function ensureRootIsScheduled(root4, currentTime) {
+          var existingCallbackNode = root4.callbackNode;
+          markStarvedLanesAsExpired(root4, currentTime);
+          var nextLanes = getNextLanes(root4, root4 === workInProgressRoot ? workInProgressRootRenderLanes : NoLanes);
           if (nextLanes === NoLanes) {
             if (existingCallbackNode !== null) {
               cancelCallback$1(existingCallbackNode);
             }
-            root2.callbackNode = null;
-            root2.callbackPriority = NoLane;
+            root4.callbackNode = null;
+            root4.callbackPriority = NoLane;
             return;
           }
           var newCallbackPriority = getHighestPriorityLane(nextLanes);
-          var existingCallbackPriority = root2.callbackPriority;
+          var existingCallbackPriority = root4.callbackPriority;
           if (existingCallbackPriority === newCallbackPriority && // Special case related to `act`. If the currently scheduled task is a
           // Scheduler task, rather than an `act` task, cancel it and re-scheduled
           // on the `act` queue.
@@ -20537,13 +20539,13 @@ var require_react_dom_development = __commonJS({
           }
           var newCallbackNode;
           if (newCallbackPriority === SyncLane) {
-            if (root2.tag === LegacyRoot) {
+            if (root4.tag === LegacyRoot) {
               if (ReactCurrentActQueue$1.isBatchingLegacy !== null) {
                 ReactCurrentActQueue$1.didScheduleLegacyUpdate = true;
               }
-              scheduleLegacySyncCallback(performSyncWorkOnRoot.bind(null, root2));
+              scheduleLegacySyncCallback(performSyncWorkOnRoot.bind(null, root4));
             } else {
-              scheduleSyncCallback(performSyncWorkOnRoot.bind(null, root2));
+              scheduleSyncCallback(performSyncWorkOnRoot.bind(null, root4));
             }
             {
               if (ReactCurrentActQueue$1.current !== null) {
@@ -20576,12 +20578,12 @@ var require_react_dom_development = __commonJS({
                 schedulerPriorityLevel = NormalPriority;
                 break;
             }
-            newCallbackNode = scheduleCallback$1(schedulerPriorityLevel, performConcurrentWorkOnRoot.bind(null, root2));
+            newCallbackNode = scheduleCallback$1(schedulerPriorityLevel, performConcurrentWorkOnRoot.bind(null, root4));
           }
-          root2.callbackPriority = newCallbackPriority;
-          root2.callbackNode = newCallbackNode;
+          root4.callbackPriority = newCallbackPriority;
+          root4.callbackNode = newCallbackNode;
         }
-        function performConcurrentWorkOnRoot(root2, didTimeout) {
+        function performConcurrentWorkOnRoot(root4, didTimeout) {
           {
             resetNestedUpdateFlag();
           }
@@ -20590,77 +20592,77 @@ var require_react_dom_development = __commonJS({
           if ((executionContext & (RenderContext | CommitContext)) !== NoContext) {
             throw new Error("Should not already be working.");
           }
-          var originalCallbackNode = root2.callbackNode;
+          var originalCallbackNode = root4.callbackNode;
           var didFlushPassiveEffects = flushPassiveEffects();
           if (didFlushPassiveEffects) {
-            if (root2.callbackNode !== originalCallbackNode) {
+            if (root4.callbackNode !== originalCallbackNode) {
               return null;
             }
           }
-          var lanes = getNextLanes(root2, root2 === workInProgressRoot ? workInProgressRootRenderLanes : NoLanes);
+          var lanes = getNextLanes(root4, root4 === workInProgressRoot ? workInProgressRootRenderLanes : NoLanes);
           if (lanes === NoLanes) {
             return null;
           }
-          var shouldTimeSlice = !includesBlockingLane(root2, lanes) && !includesExpiredLane(root2, lanes) && !didTimeout;
-          var exitStatus = shouldTimeSlice ? renderRootConcurrent(root2, lanes) : renderRootSync(root2, lanes);
+          var shouldTimeSlice = !includesBlockingLane(root4, lanes) && !includesExpiredLane(root4, lanes) && !didTimeout;
+          var exitStatus = shouldTimeSlice ? renderRootConcurrent(root4, lanes) : renderRootSync(root4, lanes);
           if (exitStatus !== RootInProgress) {
             if (exitStatus === RootErrored) {
-              var errorRetryLanes = getLanesToRetrySynchronouslyOnError(root2);
+              var errorRetryLanes = getLanesToRetrySynchronouslyOnError(root4);
               if (errorRetryLanes !== NoLanes) {
                 lanes = errorRetryLanes;
-                exitStatus = recoverFromConcurrentError(root2, errorRetryLanes);
+                exitStatus = recoverFromConcurrentError(root4, errorRetryLanes);
               }
             }
             if (exitStatus === RootFatalErrored) {
               var fatalError = workInProgressRootFatalError;
-              prepareFreshStack(root2, NoLanes);
-              markRootSuspended$1(root2, lanes);
-              ensureRootIsScheduled(root2, now());
+              prepareFreshStack(root4, NoLanes);
+              markRootSuspended$1(root4, lanes);
+              ensureRootIsScheduled(root4, now2());
               throw fatalError;
             }
             if (exitStatus === RootDidNotComplete) {
-              markRootSuspended$1(root2, lanes);
+              markRootSuspended$1(root4, lanes);
             } else {
-              var renderWasConcurrent = !includesBlockingLane(root2, lanes);
-              var finishedWork = root2.current.alternate;
+              var renderWasConcurrent = !includesBlockingLane(root4, lanes);
+              var finishedWork = root4.current.alternate;
               if (renderWasConcurrent && !isRenderConsistentWithExternalStores(finishedWork)) {
-                exitStatus = renderRootSync(root2, lanes);
+                exitStatus = renderRootSync(root4, lanes);
                 if (exitStatus === RootErrored) {
-                  var _errorRetryLanes = getLanesToRetrySynchronouslyOnError(root2);
+                  var _errorRetryLanes = getLanesToRetrySynchronouslyOnError(root4);
                   if (_errorRetryLanes !== NoLanes) {
                     lanes = _errorRetryLanes;
-                    exitStatus = recoverFromConcurrentError(root2, _errorRetryLanes);
+                    exitStatus = recoverFromConcurrentError(root4, _errorRetryLanes);
                   }
                 }
                 if (exitStatus === RootFatalErrored) {
                   var _fatalError = workInProgressRootFatalError;
-                  prepareFreshStack(root2, NoLanes);
-                  markRootSuspended$1(root2, lanes);
-                  ensureRootIsScheduled(root2, now());
+                  prepareFreshStack(root4, NoLanes);
+                  markRootSuspended$1(root4, lanes);
+                  ensureRootIsScheduled(root4, now2());
                   throw _fatalError;
                 }
               }
-              root2.finishedWork = finishedWork;
-              root2.finishedLanes = lanes;
-              finishConcurrentRender(root2, exitStatus, lanes);
+              root4.finishedWork = finishedWork;
+              root4.finishedLanes = lanes;
+              finishConcurrentRender(root4, exitStatus, lanes);
             }
           }
-          ensureRootIsScheduled(root2, now());
-          if (root2.callbackNode === originalCallbackNode) {
-            return performConcurrentWorkOnRoot.bind(null, root2);
+          ensureRootIsScheduled(root4, now2());
+          if (root4.callbackNode === originalCallbackNode) {
+            return performConcurrentWorkOnRoot.bind(null, root4);
           }
           return null;
         }
-        function recoverFromConcurrentError(root2, errorRetryLanes) {
+        function recoverFromConcurrentError(root4, errorRetryLanes) {
           var errorsFromFirstAttempt = workInProgressRootConcurrentErrors;
-          if (isRootDehydrated(root2)) {
-            var rootWorkInProgress = prepareFreshStack(root2, errorRetryLanes);
+          if (isRootDehydrated(root4)) {
+            var rootWorkInProgress = prepareFreshStack(root4, errorRetryLanes);
             rootWorkInProgress.flags |= ForceClientRender;
             {
-              errorHydratingContainer(root2.containerInfo);
+              errorHydratingContainer(root4.containerInfo);
             }
           }
-          var exitStatus = renderRootSync(root2, errorRetryLanes);
+          var exitStatus = renderRootSync(root4, errorRetryLanes);
           if (exitStatus !== RootErrored) {
             var errorsFromSecondAttempt = workInProgressRootRecoverableErrors;
             workInProgressRootRecoverableErrors = errorsFromFirstAttempt;
@@ -20677,7 +20679,7 @@ var require_react_dom_development = __commonJS({
             workInProgressRootRecoverableErrors.push.apply(workInProgressRootRecoverableErrors, errors);
           }
         }
-        function finishConcurrentRender(root2, exitStatus, lanes) {
+        function finishConcurrentRender(root4, exitStatus, lanes) {
           switch (exitStatus) {
             case RootInProgress:
             case RootFatalErrored: {
@@ -20687,52 +20689,52 @@ var require_react_dom_development = __commonJS({
             // statement, but eslint doesn't know about invariant, so it complains
             // if I do. eslint-disable-next-line no-fallthrough
             case RootErrored: {
-              commitRoot(root2, workInProgressRootRecoverableErrors, workInProgressTransitions);
+              commitRoot(root4, workInProgressRootRecoverableErrors, workInProgressTransitions);
               break;
             }
             case RootSuspended: {
-              markRootSuspended$1(root2, lanes);
+              markRootSuspended$1(root4, lanes);
               if (includesOnlyRetries(lanes) && // do not delay if we're inside an act() scope
               !shouldForceFlushFallbacksInDEV()) {
-                var msUntilTimeout = globalMostRecentFallbackTime + FALLBACK_THROTTLE_MS - now();
+                var msUntilTimeout = globalMostRecentFallbackTime + FALLBACK_THROTTLE_MS - now2();
                 if (msUntilTimeout > 10) {
-                  var nextLanes = getNextLanes(root2, NoLanes);
+                  var nextLanes = getNextLanes(root4, NoLanes);
                   if (nextLanes !== NoLanes) {
                     break;
                   }
-                  var suspendedLanes = root2.suspendedLanes;
+                  var suspendedLanes = root4.suspendedLanes;
                   if (!isSubsetOfLanes(suspendedLanes, lanes)) {
                     var eventTime = requestEventTime();
-                    markRootPinged(root2, suspendedLanes);
+                    markRootPinged(root4, suspendedLanes);
                     break;
                   }
-                  root2.timeoutHandle = scheduleTimeout(commitRoot.bind(null, root2, workInProgressRootRecoverableErrors, workInProgressTransitions), msUntilTimeout);
+                  root4.timeoutHandle = scheduleTimeout(commitRoot.bind(null, root4, workInProgressRootRecoverableErrors, workInProgressTransitions), msUntilTimeout);
                   break;
                 }
               }
-              commitRoot(root2, workInProgressRootRecoverableErrors, workInProgressTransitions);
+              commitRoot(root4, workInProgressRootRecoverableErrors, workInProgressTransitions);
               break;
             }
             case RootSuspendedWithDelay: {
-              markRootSuspended$1(root2, lanes);
+              markRootSuspended$1(root4, lanes);
               if (includesOnlyTransitions(lanes)) {
                 break;
               }
               if (!shouldForceFlushFallbacksInDEV()) {
-                var mostRecentEventTime = getMostRecentEventTime(root2, lanes);
+                var mostRecentEventTime = getMostRecentEventTime(root4, lanes);
                 var eventTimeMs = mostRecentEventTime;
-                var timeElapsedMs = now() - eventTimeMs;
+                var timeElapsedMs = now2() - eventTimeMs;
                 var _msUntilTimeout = jnd(timeElapsedMs) - timeElapsedMs;
                 if (_msUntilTimeout > 10) {
-                  root2.timeoutHandle = scheduleTimeout(commitRoot.bind(null, root2, workInProgressRootRecoverableErrors, workInProgressTransitions), _msUntilTimeout);
+                  root4.timeoutHandle = scheduleTimeout(commitRoot.bind(null, root4, workInProgressRootRecoverableErrors, workInProgressTransitions), _msUntilTimeout);
                   break;
                 }
               }
-              commitRoot(root2, workInProgressRootRecoverableErrors, workInProgressTransitions);
+              commitRoot(root4, workInProgressRootRecoverableErrors, workInProgressTransitions);
               break;
             }
             case RootCompleted: {
-              commitRoot(root2, workInProgressRootRecoverableErrors, workInProgressTransitions);
+              commitRoot(root4, workInProgressRootRecoverableErrors, workInProgressTransitions);
               break;
             }
             default: {
@@ -20783,12 +20785,12 @@ var require_react_dom_development = __commonJS({
           }
           return true;
         }
-        function markRootSuspended$1(root2, suspendedLanes) {
+        function markRootSuspended$1(root4, suspendedLanes) {
           suspendedLanes = removeLanes(suspendedLanes, workInProgressRootPingedLanes);
           suspendedLanes = removeLanes(suspendedLanes, workInProgressRootInterleavedUpdatedLanes);
-          markRootSuspended(root2, suspendedLanes);
+          markRootSuspended(root4, suspendedLanes);
         }
-        function performSyncWorkOnRoot(root2) {
+        function performSyncWorkOnRoot(root4) {
           {
             syncNestedUpdateFlag();
           }
@@ -20796,40 +20798,40 @@ var require_react_dom_development = __commonJS({
             throw new Error("Should not already be working.");
           }
           flushPassiveEffects();
-          var lanes = getNextLanes(root2, NoLanes);
+          var lanes = getNextLanes(root4, NoLanes);
           if (!includesSomeLane(lanes, SyncLane)) {
-            ensureRootIsScheduled(root2, now());
+            ensureRootIsScheduled(root4, now2());
             return null;
           }
-          var exitStatus = renderRootSync(root2, lanes);
-          if (root2.tag !== LegacyRoot && exitStatus === RootErrored) {
-            var errorRetryLanes = getLanesToRetrySynchronouslyOnError(root2);
+          var exitStatus = renderRootSync(root4, lanes);
+          if (root4.tag !== LegacyRoot && exitStatus === RootErrored) {
+            var errorRetryLanes = getLanesToRetrySynchronouslyOnError(root4);
             if (errorRetryLanes !== NoLanes) {
               lanes = errorRetryLanes;
-              exitStatus = recoverFromConcurrentError(root2, errorRetryLanes);
+              exitStatus = recoverFromConcurrentError(root4, errorRetryLanes);
             }
           }
           if (exitStatus === RootFatalErrored) {
             var fatalError = workInProgressRootFatalError;
-            prepareFreshStack(root2, NoLanes);
-            markRootSuspended$1(root2, lanes);
-            ensureRootIsScheduled(root2, now());
+            prepareFreshStack(root4, NoLanes);
+            markRootSuspended$1(root4, lanes);
+            ensureRootIsScheduled(root4, now2());
             throw fatalError;
           }
           if (exitStatus === RootDidNotComplete) {
             throw new Error("Root did not complete. This is a bug in React.");
           }
-          var finishedWork = root2.current.alternate;
-          root2.finishedWork = finishedWork;
-          root2.finishedLanes = lanes;
-          commitRoot(root2, workInProgressRootRecoverableErrors, workInProgressTransitions);
-          ensureRootIsScheduled(root2, now());
+          var finishedWork = root4.current.alternate;
+          root4.finishedWork = finishedWork;
+          root4.finishedLanes = lanes;
+          commitRoot(root4, workInProgressRootRecoverableErrors, workInProgressTransitions);
+          ensureRootIsScheduled(root4, now2());
           return null;
         }
-        function flushRoot(root2, lanes) {
+        function flushRoot(root4, lanes) {
           if (lanes !== NoLanes) {
-            markRootEntangled(root2, mergeLanes(lanes, SyncLane));
-            ensureRootIsScheduled(root2, now());
+            markRootEntangled(root4, mergeLanes(lanes, SyncLane));
+            ensureRootIsScheduled(root4, now2());
             if ((executionContext & (RenderContext | CommitContext)) === NoContext) {
               resetRenderTimer();
               flushSyncCallbacks();
@@ -20902,12 +20904,12 @@ var require_react_dom_development = __commonJS({
           subtreeRenderLanes = subtreeRenderLanesCursor.current;
           pop(subtreeRenderLanesCursor, fiber);
         }
-        function prepareFreshStack(root2, lanes) {
-          root2.finishedWork = null;
-          root2.finishedLanes = NoLanes;
-          var timeoutHandle = root2.timeoutHandle;
+        function prepareFreshStack(root4, lanes) {
+          root4.finishedWork = null;
+          root4.finishedLanes = NoLanes;
+          var timeoutHandle = root4.timeoutHandle;
           if (timeoutHandle !== noTimeout) {
-            root2.timeoutHandle = noTimeout;
+            root4.timeoutHandle = noTimeout;
             cancelTimeout(timeoutHandle);
           }
           if (workInProgress !== null) {
@@ -20918,8 +20920,8 @@ var require_react_dom_development = __commonJS({
               interruptedWork = interruptedWork.return;
             }
           }
-          workInProgressRoot = root2;
-          var rootWorkInProgress = createWorkInProgress(root2.current, null);
+          workInProgressRoot = root4;
+          var rootWorkInProgress = createWorkInProgress(root4.current, null);
           workInProgress = rootWorkInProgress;
           workInProgressRootRenderLanes = subtreeRenderLanes = workInProgressRootIncludedLanes = lanes;
           workInProgressRootExitStatus = RootInProgress;
@@ -20935,7 +20937,7 @@ var require_react_dom_development = __commonJS({
           }
           return rootWorkInProgress;
         }
-        function handleError(root2, thrownValue) {
+        function handleError(root4, thrownValue) {
           do {
             var erroredWork = workInProgress;
             try {
@@ -20961,7 +20963,7 @@ var require_react_dom_development = __commonJS({
                   markComponentErrored(erroredWork, thrownValue, workInProgressRootRenderLanes);
                 }
               }
-              throwException(root2, erroredWork.return, erroredWork, thrownValue, workInProgressRootRenderLanes);
+              throwException(root4, erroredWork.return, erroredWork, thrownValue, workInProgressRootRenderLanes);
               completeUnitOfWork(erroredWork);
             } catch (yetAnotherThrownValue) {
               thrownValue = yetAnotherThrownValue;
@@ -20989,7 +20991,7 @@ var require_react_dom_development = __commonJS({
           ReactCurrentDispatcher$2.current = prevDispatcher;
         }
         function markCommitTimeOfFallback() {
-          globalMostRecentFallbackTime = now();
+          globalMostRecentFallbackTime = now2();
         }
         function markSkippedUpdateLanes(lane) {
           workInProgressRootSkippedLanes = mergeLanes(lane, workInProgressRootSkippedLanes);
@@ -21020,23 +21022,23 @@ var require_react_dom_development = __commonJS({
         function renderHasNotSuspendedYet() {
           return workInProgressRootExitStatus === RootInProgress;
         }
-        function renderRootSync(root2, lanes) {
+        function renderRootSync(root4, lanes) {
           var prevExecutionContext = executionContext;
           executionContext |= RenderContext;
           var prevDispatcher = pushDispatcher();
-          if (workInProgressRoot !== root2 || workInProgressRootRenderLanes !== lanes) {
+          if (workInProgressRoot !== root4 || workInProgressRootRenderLanes !== lanes) {
             {
               if (isDevToolsPresent) {
-                var memoizedUpdaters = root2.memoizedUpdaters;
+                var memoizedUpdaters = root4.memoizedUpdaters;
                 if (memoizedUpdaters.size > 0) {
-                  restorePendingUpdaters(root2, workInProgressRootRenderLanes);
+                  restorePendingUpdaters(root4, workInProgressRootRenderLanes);
                   memoizedUpdaters.clear();
                 }
-                movePendingFibersToMemoized(root2, lanes);
+                movePendingFibersToMemoized(root4, lanes);
               }
             }
             workInProgressTransitions = getTransitionsForLanes();
-            prepareFreshStack(root2, lanes);
+            prepareFreshStack(root4, lanes);
           }
           {
             markRenderStarted(lanes);
@@ -21046,7 +21048,7 @@ var require_react_dom_development = __commonJS({
               workLoopSync();
               break;
             } catch (thrownValue) {
-              handleError(root2, thrownValue);
+              handleError(root4, thrownValue);
             }
           } while (true);
           resetContextDependencies();
@@ -21067,24 +21069,24 @@ var require_react_dom_development = __commonJS({
             performUnitOfWork(workInProgress);
           }
         }
-        function renderRootConcurrent(root2, lanes) {
+        function renderRootConcurrent(root4, lanes) {
           var prevExecutionContext = executionContext;
           executionContext |= RenderContext;
           var prevDispatcher = pushDispatcher();
-          if (workInProgressRoot !== root2 || workInProgressRootRenderLanes !== lanes) {
+          if (workInProgressRoot !== root4 || workInProgressRootRenderLanes !== lanes) {
             {
               if (isDevToolsPresent) {
-                var memoizedUpdaters = root2.memoizedUpdaters;
+                var memoizedUpdaters = root4.memoizedUpdaters;
                 if (memoizedUpdaters.size > 0) {
-                  restorePendingUpdaters(root2, workInProgressRootRenderLanes);
+                  restorePendingUpdaters(root4, workInProgressRootRenderLanes);
                   memoizedUpdaters.clear();
                 }
-                movePendingFibersToMemoized(root2, lanes);
+                movePendingFibersToMemoized(root4, lanes);
               }
             }
             workInProgressTransitions = getTransitionsForLanes();
             resetRenderTimer();
-            prepareFreshStack(root2, lanes);
+            prepareFreshStack(root4, lanes);
           }
           {
             markRenderStarted(lanes);
@@ -21094,7 +21096,7 @@ var require_react_dom_development = __commonJS({
               workLoopConcurrent();
               break;
             } catch (thrownValue) {
-              handleError(root2, thrownValue);
+              handleError(root4, thrownValue);
             }
           } while (true);
           resetContextDependencies();
@@ -21198,20 +21200,20 @@ var require_react_dom_development = __commonJS({
             workInProgressRootExitStatus = RootCompleted;
           }
         }
-        function commitRoot(root2, recoverableErrors, transitions) {
+        function commitRoot(root4, recoverableErrors, transitions) {
           var previousUpdateLanePriority = getCurrentUpdatePriority();
           var prevTransition = ReactCurrentBatchConfig$3.transition;
           try {
             ReactCurrentBatchConfig$3.transition = null;
             setCurrentUpdatePriority(DiscreteEventPriority);
-            commitRootImpl(root2, recoverableErrors, transitions, previousUpdateLanePriority);
+            commitRootImpl(root4, recoverableErrors, transitions, previousUpdateLanePriority);
           } finally {
             ReactCurrentBatchConfig$3.transition = prevTransition;
             setCurrentUpdatePriority(previousUpdateLanePriority);
           }
           return null;
         }
-        function commitRootImpl(root2, recoverableErrors, transitions, renderPriorityLevel) {
+        function commitRootImpl(root4, recoverableErrors, transitions, renderPriorityLevel) {
           do {
             flushPassiveEffects();
           } while (rootWithPendingPassiveEffects !== null);
@@ -21219,8 +21221,8 @@ var require_react_dom_development = __commonJS({
           if ((executionContext & (RenderContext | CommitContext)) !== NoContext) {
             throw new Error("Should not already be working.");
           }
-          var finishedWork = root2.finishedWork;
-          var lanes = root2.finishedLanes;
+          var finishedWork = root4.finishedWork;
+          var lanes = root4.finishedLanes;
           {
             markCommitStarted(lanes);
           }
@@ -21236,16 +21238,16 @@ var require_react_dom_development = __commonJS({
               }
             }
           }
-          root2.finishedWork = null;
-          root2.finishedLanes = NoLanes;
-          if (finishedWork === root2.current) {
+          root4.finishedWork = null;
+          root4.finishedLanes = NoLanes;
+          if (finishedWork === root4.current) {
             throw new Error("Cannot commit the same tree as before. This error is likely caused by a bug in React. Please file an issue.");
           }
-          root2.callbackNode = null;
-          root2.callbackPriority = NoLane;
+          root4.callbackNode = null;
+          root4.callbackPriority = NoLane;
           var remainingLanes = mergeLanes(finishedWork.lanes, finishedWork.childLanes);
-          markRootFinished(root2, remainingLanes);
-          if (root2 === workInProgressRoot) {
+          markRootFinished(root4, remainingLanes);
+          if (root4 === workInProgressRoot) {
             workInProgressRoot = null;
             workInProgress = null;
             workInProgressRootRenderLanes = NoLanes;
@@ -21270,17 +21272,17 @@ var require_react_dom_development = __commonJS({
             var prevExecutionContext = executionContext;
             executionContext |= CommitContext;
             ReactCurrentOwner$2.current = null;
-            var shouldFireAfterActiveInstanceBlur2 = commitBeforeMutationEffects(root2, finishedWork);
+            var shouldFireAfterActiveInstanceBlur2 = commitBeforeMutationEffects(root4, finishedWork);
             {
               recordCommitTime();
             }
-            commitMutationEffects(root2, finishedWork, lanes);
-            resetAfterCommit(root2.containerInfo);
-            root2.current = finishedWork;
+            commitMutationEffects(root4, finishedWork, lanes);
+            resetAfterCommit(root4.containerInfo);
+            root4.current = finishedWork;
             {
               markLayoutEffectsStarted(lanes);
             }
-            commitLayoutEffects(finishedWork, root2, lanes);
+            commitLayoutEffects(finishedWork, root4, lanes);
             {
               markLayoutEffectsStopped();
             }
@@ -21289,7 +21291,7 @@ var require_react_dom_development = __commonJS({
             setCurrentUpdatePriority(previousPriority);
             ReactCurrentBatchConfig$3.transition = prevTransition;
           } else {
-            root2.current = finishedWork;
+            root4.current = finishedWork;
             {
               recordCommitTime();
             }
@@ -21297,7 +21299,7 @@ var require_react_dom_development = __commonJS({
           var rootDidHavePassiveEffects = rootDoesHavePassiveEffects;
           if (rootDoesHavePassiveEffects) {
             rootDoesHavePassiveEffects = false;
-            rootWithPendingPassiveEffects = root2;
+            rootWithPendingPassiveEffects = root4;
             pendingPassiveEffectsLanes = lanes;
           } else {
             {
@@ -21305,27 +21307,27 @@ var require_react_dom_development = __commonJS({
               rootWithPassiveNestedUpdates = null;
             }
           }
-          remainingLanes = root2.pendingLanes;
+          remainingLanes = root4.pendingLanes;
           if (remainingLanes === NoLanes) {
             legacyErrorBoundariesThatAlreadyFailed = null;
           }
           {
             if (!rootDidHavePassiveEffects) {
-              commitDoubleInvokeEffectsInDEV(root2.current, false);
+              commitDoubleInvokeEffectsInDEV(root4.current, false);
             }
           }
           onCommitRoot(finishedWork.stateNode, renderPriorityLevel);
           {
             if (isDevToolsPresent) {
-              root2.memoizedUpdaters.clear();
+              root4.memoizedUpdaters.clear();
             }
           }
           {
             onCommitRoot$1();
           }
-          ensureRootIsScheduled(root2, now());
+          ensureRootIsScheduled(root4, now2());
           if (recoverableErrors !== null) {
-            var onRecoverableError = root2.onRecoverableError;
+            var onRecoverableError = root4.onRecoverableError;
             for (var i = 0; i < recoverableErrors.length; i++) {
               var recoverableError = recoverableErrors[i];
               var componentStack = recoverableError.stack;
@@ -21342,19 +21344,19 @@ var require_react_dom_development = __commonJS({
             firstUncaughtError = null;
             throw error$1;
           }
-          if (includesSomeLane(pendingPassiveEffectsLanes, SyncLane) && root2.tag !== LegacyRoot) {
+          if (includesSomeLane(pendingPassiveEffectsLanes, SyncLane) && root4.tag !== LegacyRoot) {
             flushPassiveEffects();
           }
-          remainingLanes = root2.pendingLanes;
+          remainingLanes = root4.pendingLanes;
           if (includesSomeLane(remainingLanes, SyncLane)) {
             {
               markNestedUpdateScheduled();
             }
-            if (root2 === rootWithNestedUpdates) {
+            if (root4 === rootWithNestedUpdates) {
               nestedUpdateCount++;
             } else {
               nestedUpdateCount = 0;
-              rootWithNestedUpdates = root2;
+              rootWithNestedUpdates = root4;
             }
           } else {
             nestedUpdateCount = 0;
@@ -21400,7 +21402,7 @@ var require_react_dom_development = __commonJS({
           }
           var transitions = pendingPassiveTransitions;
           pendingPassiveTransitions = null;
-          var root2 = rootWithPendingPassiveEffects;
+          var root4 = rootWithPendingPassiveEffects;
           var lanes = pendingPassiveEffectsLanes;
           rootWithPendingPassiveEffects = null;
           pendingPassiveEffectsLanes = NoLanes;
@@ -21416,31 +21418,31 @@ var require_react_dom_development = __commonJS({
           }
           var prevExecutionContext = executionContext;
           executionContext |= CommitContext;
-          commitPassiveUnmountEffects(root2.current);
-          commitPassiveMountEffects(root2, root2.current, lanes, transitions);
+          commitPassiveUnmountEffects(root4.current);
+          commitPassiveMountEffects(root4, root4.current, lanes, transitions);
           {
             var profilerEffects = pendingPassiveProfilerEffects;
             pendingPassiveProfilerEffects = [];
             for (var i = 0; i < profilerEffects.length; i++) {
               var _fiber = profilerEffects[i];
-              commitPassiveEffectDurations(root2, _fiber);
+              commitPassiveEffectDurations(root4, _fiber);
             }
           }
           {
             markPassiveEffectsStopped();
           }
           {
-            commitDoubleInvokeEffectsInDEV(root2.current, true);
+            commitDoubleInvokeEffectsInDEV(root4.current, true);
           }
           executionContext = prevExecutionContext;
           flushSyncCallbacks();
           {
             if (didScheduleUpdateDuringPassiveEffects) {
-              if (root2 === rootWithPassiveNestedUpdates) {
+              if (root4 === rootWithPassiveNestedUpdates) {
                 nestedPassiveUpdateCount++;
               } else {
                 nestedPassiveUpdateCount = 0;
-                rootWithPassiveNestedUpdates = root2;
+                rootWithPassiveNestedUpdates = root4;
               }
             } else {
               nestedPassiveUpdateCount = 0;
@@ -21448,9 +21450,9 @@ var require_react_dom_development = __commonJS({
             isFlushingPassiveEffects = false;
             didScheduleUpdateDuringPassiveEffects = false;
           }
-          onPostCommitRoot(root2);
+          onPostCommitRoot(root4);
           {
-            var stateNode = root2.current.stateNode;
+            var stateNode = root4.current.stateNode;
             stateNode.effectDuration = 0;
             stateNode.passiveEffectDuration = 0;
           }
@@ -21476,11 +21478,11 @@ var require_react_dom_development = __commonJS({
         function captureCommitPhaseErrorOnRoot(rootFiber, sourceFiber, error2) {
           var errorInfo = createCapturedValueAtFiber(error2, sourceFiber);
           var update = createRootErrorUpdate(rootFiber, errorInfo, SyncLane);
-          var root2 = enqueueUpdate(rootFiber, update, SyncLane);
+          var root4 = enqueueUpdate(rootFiber, update, SyncLane);
           var eventTime = requestEventTime();
-          if (root2 !== null) {
-            markRootUpdated(root2, SyncLane, eventTime);
-            ensureRootIsScheduled(root2, eventTime);
+          if (root4 !== null) {
+            markRootUpdated(root4, SyncLane, eventTime);
+            ensureRootIsScheduled(root4, eventTime);
           }
         }
         function captureCommitPhaseError(sourceFiber, nearestMountedAncestor, error$1) {
@@ -21506,11 +21508,11 @@ var require_react_dom_development = __commonJS({
               if (typeof ctor.getDerivedStateFromError === "function" || typeof instance.componentDidCatch === "function" && !isAlreadyFailedLegacyErrorBoundary(instance)) {
                 var errorInfo = createCapturedValueAtFiber(error$1, sourceFiber);
                 var update = createClassErrorUpdate(fiber, errorInfo, SyncLane);
-                var root2 = enqueueUpdate(fiber, update, SyncLane);
+                var root4 = enqueueUpdate(fiber, update, SyncLane);
                 var eventTime = requestEventTime();
-                if (root2 !== null) {
-                  markRootUpdated(root2, SyncLane, eventTime);
-                  ensureRootIsScheduled(root2, eventTime);
+                if (root4 !== null) {
+                  markRootUpdated(root4, SyncLane, eventTime);
+                  ensureRootIsScheduled(root4, eventTime);
                 }
                 return;
               }
@@ -21521,32 +21523,32 @@ var require_react_dom_development = __commonJS({
             error("Internal React error: Attempted to capture a commit phase error inside a detached tree. This indicates a bug in React. Likely causes include deleting the same fiber more than once, committing an already-finished tree, or an inconsistent return pointer.\n\nError message:\n\n%s", error$1);
           }
         }
-        function pingSuspendedRoot(root2, wakeable, pingedLanes) {
-          var pingCache = root2.pingCache;
+        function pingSuspendedRoot(root4, wakeable, pingedLanes) {
+          var pingCache = root4.pingCache;
           if (pingCache !== null) {
             pingCache.delete(wakeable);
           }
           var eventTime = requestEventTime();
-          markRootPinged(root2, pingedLanes);
-          warnIfSuspenseResolutionNotWrappedWithActDEV(root2);
-          if (workInProgressRoot === root2 && isSubsetOfLanes(workInProgressRootRenderLanes, pingedLanes)) {
-            if (workInProgressRootExitStatus === RootSuspendedWithDelay || workInProgressRootExitStatus === RootSuspended && includesOnlyRetries(workInProgressRootRenderLanes) && now() - globalMostRecentFallbackTime < FALLBACK_THROTTLE_MS) {
-              prepareFreshStack(root2, NoLanes);
+          markRootPinged(root4, pingedLanes);
+          warnIfSuspenseResolutionNotWrappedWithActDEV(root4);
+          if (workInProgressRoot === root4 && isSubsetOfLanes(workInProgressRootRenderLanes, pingedLanes)) {
+            if (workInProgressRootExitStatus === RootSuspendedWithDelay || workInProgressRootExitStatus === RootSuspended && includesOnlyRetries(workInProgressRootRenderLanes) && now2() - globalMostRecentFallbackTime < FALLBACK_THROTTLE_MS) {
+              prepareFreshStack(root4, NoLanes);
             } else {
               workInProgressRootPingedLanes = mergeLanes(workInProgressRootPingedLanes, pingedLanes);
             }
           }
-          ensureRootIsScheduled(root2, eventTime);
+          ensureRootIsScheduled(root4, eventTime);
         }
         function retryTimedOutBoundary(boundaryFiber, retryLane) {
           if (retryLane === NoLane) {
             retryLane = requestRetryLane(boundaryFiber);
           }
           var eventTime = requestEventTime();
-          var root2 = enqueueConcurrentRenderForLane(boundaryFiber, retryLane);
-          if (root2 !== null) {
-            markRootUpdated(root2, retryLane, eventTime);
-            ensureRootIsScheduled(root2, eventTime);
+          var root4 = enqueueConcurrentRenderForLane(boundaryFiber, retryLane);
+          if (root4 !== null) {
+            markRootUpdated(root4, retryLane, eventTime);
+            ensureRootIsScheduled(root4, eventTime);
           }
         }
         function retryDehydratedSuspenseBoundary(boundaryFiber) {
@@ -21735,12 +21737,12 @@ var require_react_dom_development = __commonJS({
             }
           }
         }
-        function restorePendingUpdaters(root2, lanes) {
+        function restorePendingUpdaters(root4, lanes) {
           {
             if (isDevToolsPresent) {
-              var memoizedUpdaters = root2.memoizedUpdaters;
+              var memoizedUpdaters = root4.memoizedUpdaters;
               memoizedUpdaters.forEach(function(schedulingFiber) {
-                addFiberToLanesMap(root2, schedulingFiber, lanes);
+                addFiberToLanesMap(root4, schedulingFiber, lanes);
               });
             }
           }
@@ -21798,9 +21800,9 @@ var require_react_dom_development = __commonJS({
             }
           }
         }
-        function warnIfSuspenseResolutionNotWrappedWithActDEV(root2) {
+        function warnIfSuspenseResolutionNotWrappedWithActDEV(root4) {
           {
-            if (root2.tag !== LegacyRoot && isConcurrentActEnvironment() && ReactCurrentActQueue$1.current === null) {
+            if (root4.tag !== LegacyRoot && isConcurrentActEnvironment() && ReactCurrentActQueue$1.current === null) {
               error("A suspended resource finished loading inside a test, but the event was not wrapped in act(...).\n\nWhen testing, code that resolves suspended data should be wrapped into act(...):\n\nact(() => {\n  /* finish loading suspended data */\n});\n/* assert on the output */\n\nThis ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act");
             }
           }
@@ -21924,7 +21926,7 @@ var require_react_dom_development = __commonJS({
             failedBoundaries.add(fiber);
           }
         }
-        var scheduleRefresh = function(root2, update) {
+        var scheduleRefresh = function(root4, update) {
           {
             if (resolveFamily === null) {
               return;
@@ -21932,18 +21934,18 @@ var require_react_dom_development = __commonJS({
             var staleFamilies = update.staleFamilies, updatedFamilies = update.updatedFamilies;
             flushPassiveEffects();
             flushSync(function() {
-              scheduleFibersWithFamiliesRecursively(root2.current, updatedFamilies, staleFamilies);
+              scheduleFibersWithFamiliesRecursively(root4.current, updatedFamilies, staleFamilies);
             });
           }
         };
-        var scheduleRoot = function(root2, element) {
+        var scheduleRoot = function(root4, element) {
           {
-            if (root2.context !== emptyContextObject) {
+            if (root4.context !== emptyContextObject) {
               return;
             }
             flushPassiveEffects();
             flushSync(function() {
-              updateContainer(element, root2, null, null);
+              updateContainer(element, root4, null, null);
             });
           }
         };
@@ -22002,13 +22004,13 @@ var require_react_dom_development = __commonJS({
             }
           }
         }
-        var findHostInstancesForRefresh = function(root2, families) {
+        var findHostInstancesForRefresh = function(root4, families) {
           {
             var hostInstances = /* @__PURE__ */ new Set();
             var types = new Set(families.map(function(family) {
               return family.current;
             }));
-            findHostInstancesForMatchingFibersRecursively(root2.current, types, hostInstances);
+            findHostInstancesForMatchingFibersRecursively(root4.current, types, hostInstances);
             return hostInstances;
           }
         };
@@ -22561,10 +22563,10 @@ var require_react_dom_development = __commonJS({
           }
         }
         function createFiberRoot(containerInfo, tag, hydrate2, initialChildren, hydrationCallbacks, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError, transitionCallbacks) {
-          var root2 = new FiberRootNode(containerInfo, tag, hydrate2, identifierPrefix, onRecoverableError);
+          var root4 = new FiberRootNode(containerInfo, tag, hydrate2, identifierPrefix, onRecoverableError);
           var uninitializedFiber = createHostRootFiber(tag, isStrictMode);
-          root2.current = uninitializedFiber;
-          uninitializedFiber.stateNode = root2;
+          root4.current = uninitializedFiber;
+          uninitializedFiber.stateNode = root4;
           {
             var _initialState = {
               element: initialChildren,
@@ -22577,10 +22579,10 @@ var require_react_dom_development = __commonJS({
             uninitializedFiber.memoizedState = _initialState;
           }
           initializeUpdateQueue(uninitializedFiber);
-          return root2;
+          return root4;
         }
         var ReactVersion = "18.2.0";
-        function createPortal(children, containerInfo, implementation) {
+        function createPortal2(children2, containerInfo, implementation) {
           var key = arguments.length > 3 && arguments[3] !== void 0 ? arguments[3] : null;
           {
             checkKeyStringCoercion(key);
@@ -22589,7 +22591,7 @@ var require_react_dom_development = __commonJS({
             // This tag allow us to uniquely identify this as a React Portal
             $$typeof: REACT_PORTAL_TYPE,
             key: key == null ? null : "" + key,
-            children,
+            children: children2,
             containerInfo,
             implementation
           };
@@ -22604,7 +22606,7 @@ var require_react_dom_development = __commonJS({
           if (!parentComponent) {
             return emptyContextObject;
           }
-          var fiber = get(parentComponent);
+          var fiber = get3(parentComponent);
           var parentContext = findCurrentUnmaskedContext(fiber);
           if (fiber.tag === ClassComponent) {
             var Component = fiber.type;
@@ -22616,7 +22618,7 @@ var require_react_dom_development = __commonJS({
         }
         function findHostInstanceWithWarning(component, methodName) {
           {
-            var fiber = get(component);
+            var fiber = get3(component);
             if (fiber === void 0) {
               if (typeof component.render === "function") {
                 throw new Error("Unable to find node on an unmounted component.");
@@ -22660,16 +22662,16 @@ var require_react_dom_development = __commonJS({
         }
         function createHydrationContainer(initialChildren, callback, containerInfo, tag, hydrationCallbacks, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError, transitionCallbacks) {
           var hydrate2 = true;
-          var root2 = createFiberRoot(containerInfo, tag, hydrate2, initialChildren, hydrationCallbacks, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError);
-          root2.context = getContextForSubtree(null);
-          var current2 = root2.current;
+          var root4 = createFiberRoot(containerInfo, tag, hydrate2, initialChildren, hydrationCallbacks, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError);
+          root4.context = getContextForSubtree(null);
+          var current2 = root4.current;
           var eventTime = requestEventTime();
           var lane = requestUpdateLane(current2);
           var update = createUpdate(eventTime, lane);
           update.callback = callback !== void 0 && callback !== null ? callback : null;
           enqueueUpdate(current2, update, lane);
-          scheduleInitialHydrationOnRoot(root2, lane, eventTime);
-          return root2;
+          scheduleInitialHydrationOnRoot(root4, lane, eventTime);
+          return root4;
         }
         function updateContainer(element, container, parentComponent, callback) {
           {
@@ -22706,10 +22708,10 @@ var require_react_dom_development = __commonJS({
             }
             update.callback = callback;
           }
-          var root2 = enqueueUpdate(current$1, update, lane);
-          if (root2 !== null) {
-            scheduleUpdateOnFiber(root2, current$1, lane, eventTime);
-            entangleTransitions(root2, current$1, lane);
+          var root4 = enqueueUpdate(current$1, update, lane);
+          if (root4 !== null) {
+            scheduleUpdateOnFiber(root4, current$1, lane, eventTime);
+            entangleTransitions(root4, current$1, lane);
           }
           return lane;
         }
@@ -22728,19 +22730,19 @@ var require_react_dom_development = __commonJS({
         function attemptSynchronousHydration$1(fiber) {
           switch (fiber.tag) {
             case HostRoot: {
-              var root2 = fiber.stateNode;
-              if (isRootDehydrated(root2)) {
-                var lanes = getHighestPriorityPendingLanes(root2);
-                flushRoot(root2, lanes);
+              var root4 = fiber.stateNode;
+              if (isRootDehydrated(root4)) {
+                var lanes = getHighestPriorityPendingLanes(root4);
+                flushRoot(root4, lanes);
               }
               break;
             }
             case SuspenseComponent: {
               flushSync(function() {
-                var root3 = enqueueConcurrentRenderForLane(fiber, SyncLane);
-                if (root3 !== null) {
+                var root5 = enqueueConcurrentRenderForLane(fiber, SyncLane);
+                if (root5 !== null) {
                   var eventTime = requestEventTime();
-                  scheduleUpdateOnFiber(root3, fiber, SyncLane, eventTime);
+                  scheduleUpdateOnFiber(root5, fiber, SyncLane, eventTime);
                 }
               });
               var retryLane = SyncLane;
@@ -22767,10 +22769,10 @@ var require_react_dom_development = __commonJS({
             return;
           }
           var lane = SelectiveHydrationLane;
-          var root2 = enqueueConcurrentRenderForLane(fiber, lane);
-          if (root2 !== null) {
+          var root4 = enqueueConcurrentRenderForLane(fiber, lane);
+          if (root4 !== null) {
             var eventTime = requestEventTime();
-            scheduleUpdateOnFiber(root2, fiber, lane, eventTime);
+            scheduleUpdateOnFiber(root4, fiber, lane, eventTime);
           }
           markRetryLaneIfNotHydrated(fiber, lane);
         }
@@ -22779,10 +22781,10 @@ var require_react_dom_development = __commonJS({
             return;
           }
           var lane = requestUpdateLane(fiber);
-          var root2 = enqueueConcurrentRenderForLane(fiber, lane);
-          if (root2 !== null) {
+          var root4 = enqueueConcurrentRenderForLane(fiber, lane);
+          if (root4 !== null) {
             var eventTime = requestEventTime();
-            scheduleUpdateOnFiber(root2, fiber, lane, eventTime);
+            scheduleUpdateOnFiber(root4, fiber, lane, eventTime);
           }
           markRetryLaneIfNotHydrated(fiber, lane);
         }
@@ -22880,50 +22882,50 @@ var require_react_dom_development = __commonJS({
           var copyWithSet = function(obj, path, value) {
             return copyWithSetImpl(obj, path, 0, value);
           };
-          var findHook = function(fiber, id) {
+          var findHook = function(fiber, id2) {
             var currentHook2 = fiber.memoizedState;
-            while (currentHook2 !== null && id > 0) {
+            while (currentHook2 !== null && id2 > 0) {
               currentHook2 = currentHook2.next;
-              id--;
+              id2--;
             }
             return currentHook2;
           };
-          overrideHookState = function(fiber, id, path, value) {
-            var hook = findHook(fiber, id);
+          overrideHookState = function(fiber, id2, path, value) {
+            var hook = findHook(fiber, id2);
             if (hook !== null) {
               var newState = copyWithSet(hook.memoizedState, path, value);
               hook.memoizedState = newState;
               hook.baseState = newState;
               fiber.memoizedProps = assign({}, fiber.memoizedProps);
-              var root2 = enqueueConcurrentRenderForLane(fiber, SyncLane);
-              if (root2 !== null) {
-                scheduleUpdateOnFiber(root2, fiber, SyncLane, NoTimestamp);
+              var root4 = enqueueConcurrentRenderForLane(fiber, SyncLane);
+              if (root4 !== null) {
+                scheduleUpdateOnFiber(root4, fiber, SyncLane, NoTimestamp);
               }
             }
           };
-          overrideHookStateDeletePath = function(fiber, id, path) {
-            var hook = findHook(fiber, id);
+          overrideHookStateDeletePath = function(fiber, id2, path) {
+            var hook = findHook(fiber, id2);
             if (hook !== null) {
               var newState = copyWithDelete(hook.memoizedState, path);
               hook.memoizedState = newState;
               hook.baseState = newState;
               fiber.memoizedProps = assign({}, fiber.memoizedProps);
-              var root2 = enqueueConcurrentRenderForLane(fiber, SyncLane);
-              if (root2 !== null) {
-                scheduleUpdateOnFiber(root2, fiber, SyncLane, NoTimestamp);
+              var root4 = enqueueConcurrentRenderForLane(fiber, SyncLane);
+              if (root4 !== null) {
+                scheduleUpdateOnFiber(root4, fiber, SyncLane, NoTimestamp);
               }
             }
           };
-          overrideHookStateRenamePath = function(fiber, id, oldPath, newPath) {
-            var hook = findHook(fiber, id);
+          overrideHookStateRenamePath = function(fiber, id2, oldPath, newPath) {
+            var hook = findHook(fiber, id2);
             if (hook !== null) {
               var newState = copyWithRename(hook.memoizedState, oldPath, newPath);
               hook.memoizedState = newState;
               hook.baseState = newState;
               fiber.memoizedProps = assign({}, fiber.memoizedProps);
-              var root2 = enqueueConcurrentRenderForLane(fiber, SyncLane);
-              if (root2 !== null) {
-                scheduleUpdateOnFiber(root2, fiber, SyncLane, NoTimestamp);
+              var root4 = enqueueConcurrentRenderForLane(fiber, SyncLane);
+              if (root4 !== null) {
+                scheduleUpdateOnFiber(root4, fiber, SyncLane, NoTimestamp);
               }
             }
           };
@@ -22932,9 +22934,9 @@ var require_react_dom_development = __commonJS({
             if (fiber.alternate) {
               fiber.alternate.pendingProps = fiber.pendingProps;
             }
-            var root2 = enqueueConcurrentRenderForLane(fiber, SyncLane);
-            if (root2 !== null) {
-              scheduleUpdateOnFiber(root2, fiber, SyncLane, NoTimestamp);
+            var root4 = enqueueConcurrentRenderForLane(fiber, SyncLane);
+            if (root4 !== null) {
+              scheduleUpdateOnFiber(root4, fiber, SyncLane, NoTimestamp);
             }
           };
           overridePropsDeletePath = function(fiber, path) {
@@ -22942,9 +22944,9 @@ var require_react_dom_development = __commonJS({
             if (fiber.alternate) {
               fiber.alternate.pendingProps = fiber.pendingProps;
             }
-            var root2 = enqueueConcurrentRenderForLane(fiber, SyncLane);
-            if (root2 !== null) {
-              scheduleUpdateOnFiber(root2, fiber, SyncLane, NoTimestamp);
+            var root4 = enqueueConcurrentRenderForLane(fiber, SyncLane);
+            if (root4 !== null) {
+              scheduleUpdateOnFiber(root4, fiber, SyncLane, NoTimestamp);
             }
           };
           overridePropsRenamePath = function(fiber, oldPath, newPath) {
@@ -22952,15 +22954,15 @@ var require_react_dom_development = __commonJS({
             if (fiber.alternate) {
               fiber.alternate.pendingProps = fiber.pendingProps;
             }
-            var root2 = enqueueConcurrentRenderForLane(fiber, SyncLane);
-            if (root2 !== null) {
-              scheduleUpdateOnFiber(root2, fiber, SyncLane, NoTimestamp);
+            var root4 = enqueueConcurrentRenderForLane(fiber, SyncLane);
+            if (root4 !== null) {
+              scheduleUpdateOnFiber(root4, fiber, SyncLane, NoTimestamp);
             }
           };
           scheduleUpdate = function(fiber) {
-            var root2 = enqueueConcurrentRenderForLane(fiber, SyncLane);
-            if (root2 !== null) {
-              scheduleUpdateOnFiber(root2, fiber, SyncLane, NoTimestamp);
+            var root4 = enqueueConcurrentRenderForLane(fiber, SyncLane);
+            if (root4 !== null) {
+              scheduleUpdateOnFiber(root4, fiber, SyncLane, NoTimestamp);
             }
           };
           setErrorHandler = function(newShouldErrorImpl) {
@@ -23025,9 +23027,9 @@ var require_react_dom_development = __commonJS({
         function ReactDOMRoot(internalRoot) {
           this._internalRoot = internalRoot;
         }
-        ReactDOMHydrationRoot.prototype.render = ReactDOMRoot.prototype.render = function(children) {
-          var root2 = this._internalRoot;
-          if (root2 === null) {
+        ReactDOMHydrationRoot.prototype.render = ReactDOMRoot.prototype.render = function(children2) {
+          var root4 = this._internalRoot;
+          if (root4 === null) {
             throw new Error("Cannot update an unmounted root.");
           }
           {
@@ -23038,9 +23040,9 @@ var require_react_dom_development = __commonJS({
             } else if (typeof arguments[1] !== "undefined") {
               error("You passed a second argument to root.render(...) but it only accepts one argument.");
             }
-            var container = root2.containerInfo;
+            var container = root4.containerInfo;
             if (container.nodeType !== COMMENT_NODE) {
-              var hostInstance = findHostInstanceWithNoPortals(root2.current);
+              var hostInstance = findHostInstanceWithNoPortals(root4.current);
               if (hostInstance) {
                 if (hostInstance.parentNode !== container) {
                   error("render(...): It looks like the React-rendered content of the root container was removed without using React. This is not supported and will cause errors. Instead, call root.unmount() to empty a root's container.");
@@ -23048,7 +23050,7 @@ var require_react_dom_development = __commonJS({
               }
             }
           }
-          updateContainer(children, root2, null, null);
+          updateContainer(children2, root4, null, null);
         };
         ReactDOMHydrationRoot.prototype.unmount = ReactDOMRoot.prototype.unmount = function() {
           {
@@ -23056,17 +23058,17 @@ var require_react_dom_development = __commonJS({
               error("unmount(...): does not support a callback argument. To execute a side effect after rendering, declare it in a component body with useEffect().");
             }
           }
-          var root2 = this._internalRoot;
-          if (root2 !== null) {
+          var root4 = this._internalRoot;
+          if (root4 !== null) {
             this._internalRoot = null;
-            var container = root2.containerInfo;
+            var container = root4.containerInfo;
             {
               if (isAlreadyRendering()) {
                 error("Attempted to synchronously unmount a root while React was already rendering. React cannot finish unmounting the root until the current render has completed, which may lead to a race condition.");
               }
             }
             flushSync(function() {
-              updateContainer(null, root2, null, null);
+              updateContainer(null, root4, null, null);
             });
             unmarkContainerAsRoot(container);
           }
@@ -23104,11 +23106,11 @@ var require_react_dom_development = __commonJS({
               transitionCallbacks = options2.transitionCallbacks;
             }
           }
-          var root2 = createContainer(container, ConcurrentRoot, null, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError);
-          markContainerAsRoot(root2.current, container);
+          var root4 = createContainer(container, ConcurrentRoot, null, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError);
+          markContainerAsRoot(root4.current, container);
           var rootContainerElement = container.nodeType === COMMENT_NODE ? container.parentNode : container;
           listenToAllSupportedEvents(rootContainerElement);
-          return new ReactDOMRoot(root2);
+          return new ReactDOMRoot(root4);
         }
         function ReactDOMHydrationRoot(internalRoot) {
           this._internalRoot = internalRoot;
@@ -23146,16 +23148,16 @@ var require_react_dom_development = __commonJS({
               onRecoverableError = options2.onRecoverableError;
             }
           }
-          var root2 = createHydrationContainer(initialChildren, null, container, ConcurrentRoot, hydrationCallbacks, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError);
-          markContainerAsRoot(root2.current, container);
+          var root4 = createHydrationContainer(initialChildren, null, container, ConcurrentRoot, hydrationCallbacks, isStrictMode, concurrentUpdatesByDefaultOverride, identifierPrefix, onRecoverableError);
+          markContainerAsRoot(root4.current, container);
           listenToAllSupportedEvents(container);
           if (mutableSources) {
             for (var i = 0; i < mutableSources.length; i++) {
               var mutableSource = mutableSources[i];
-              registerMutableSourceForHydration(root2, mutableSource);
+              registerMutableSourceForHydration(root4, mutableSource);
             }
           }
-          return new ReactDOMHydrationRoot(root2);
+          return new ReactDOMHydrationRoot(root4);
         }
         function isValidContainer(node) {
           return !!(node && (node.nodeType === ELEMENT_NODE || node.nodeType === DOCUMENT_NODE || node.nodeType === DOCUMENT_FRAGMENT_NODE || !disableCommentsAsDOMContainers));
@@ -23217,11 +23219,11 @@ var require_react_dom_development = __commonJS({
             if (typeof callback === "function") {
               var originalCallback = callback;
               callback = function() {
-                var instance = getPublicRootInstance(root2);
+                var instance = getPublicRootInstance(root4);
                 originalCallback.call(instance);
               };
             }
-            var root2 = createHydrationContainer(
+            var root4 = createHydrationContainer(
               initialChildren,
               callback,
               container,
@@ -23236,12 +23238,12 @@ var require_react_dom_development = __commonJS({
               // identifierPrefix
               noopOnRecoverableError
             );
-            container._reactRootContainer = root2;
-            markContainerAsRoot(root2.current, container);
+            container._reactRootContainer = root4;
+            markContainerAsRoot(root4.current, container);
             var rootContainerElement = container.nodeType === COMMENT_NODE ? container.parentNode : container;
             listenToAllSupportedEvents(rootContainerElement);
             flushSync();
-            return root2;
+            return root4;
           } else {
             var rootSibling;
             while (rootSibling = container.lastChild) {
@@ -23284,27 +23286,27 @@ var require_react_dom_development = __commonJS({
             }
           }
         }
-        function legacyRenderSubtreeIntoContainer(parentComponent, children, container, forceHydrate, callback) {
+        function legacyRenderSubtreeIntoContainer(parentComponent, children2, container, forceHydrate, callback) {
           {
             topLevelUpdateWarnings(container);
             warnOnInvalidCallback$1(callback === void 0 ? null : callback, "render");
           }
           var maybeRoot = container._reactRootContainer;
-          var root2;
+          var root4;
           if (!maybeRoot) {
-            root2 = legacyCreateRootFromDOMContainer(container, children, parentComponent, callback, forceHydrate);
+            root4 = legacyCreateRootFromDOMContainer(container, children2, parentComponent, callback, forceHydrate);
           } else {
-            root2 = maybeRoot;
+            root4 = maybeRoot;
             if (typeof callback === "function") {
               var originalCallback = callback;
               callback = function() {
-                var instance = getPublicRootInstance(root2);
+                var instance = getPublicRootInstance(root4);
                 originalCallback.call(instance);
               };
             }
-            updateContainer(children, root2, parentComponent, callback);
+            updateContainer(children2, root4, parentComponent, callback);
           }
-          return getPublicRootInstance(root2);
+          return getPublicRootInstance(root4);
         }
         function findDOMNode(componentOrElement) {
           {
@@ -23420,12 +23422,12 @@ var require_react_dom_development = __commonJS({
         }
         setRestoreImplementation(restoreControlledState$3);
         setBatchingImplementation(batchedUpdates$1, discreteUpdates, flushSync);
-        function createPortal$1(children, container) {
+        function createPortal$1(children2, container) {
           var key = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : null;
           if (!isValidContainer(container)) {
             throw new Error("Target container is not a DOM element.");
           }
-          return createPortal(children, container, null, key);
+          return createPortal2(children2, container, null, key);
         }
         function renderSubtreeIntoContainer(parentComponent, element, containerNode, callback) {
           return unstable_renderSubtreeIntoContainer(parentComponent, element, containerNode, callback);
@@ -23540,17 +23542,12830 @@ var require_client = __commonJS({
   }
 });
 
-// vendor-entries/react-dom-client.js
-var react_dom_client_exports = {};
-__export(react_dom_client_exports, {
-  default: () => import_client.default
+// src/utils/storage.js
+function loadTheme() {
+  try {
+    const stored = window.localStorage.getItem(STORAGE_THEME_KEY);
+    return stored === "dark" ? "dark" : "light";
+  } catch {
+    return "light";
+  }
+}
+function persistTheme(theme) {
+  try {
+    window.localStorage.setItem(STORAGE_THEME_KEY, theme === "dark" ? "dark" : "light");
+  } catch {
+  }
+}
+function loadPersistedAccess() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_ACCESS_KEY);
+    if (!raw) return { session_access: {}, backend_access: {} };
+    const payload = JSON.parse(raw);
+    return typeof payload === "object" && payload ? payload : { session_access: {}, backend_access: {} };
+  } catch {
+    return { session_access: {}, backend_access: {} };
+  }
+}
+function persistAccess(accessPolicy) {
+  try {
+    window.localStorage.setItem(STORAGE_ACCESS_KEY, JSON.stringify(accessPolicy));
+  } catch {
+  }
+}
+function persistPreferredBackend(value) {
+  try {
+    window.localStorage.setItem(STORAGE_BACKEND_KEY, value);
+  } catch {
+  }
+}
+function loadPreferredBackend() {
+  try {
+    return window.localStorage.getItem(STORAGE_BACKEND_KEY) || "opencode";
+  } catch {
+    return "opencode";
+  }
+}
+function persistPreferredModels(value) {
+  try {
+    window.localStorage.setItem(STORAGE_MODELS_KEY, JSON.stringify(value || {}));
+  } catch {
+  }
+}
+function loadPreferredModels() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_MODELS_KEY);
+    if (!raw) return {};
+    const payload = JSON.parse(raw);
+    return typeof payload === "object" && payload ? payload : {};
+  } catch {
+    return {};
+  }
+}
+function persistSetupState(value) {
+  try {
+    window.localStorage.setItem(STORAGE_SETUP_KEY, value ? "done" : "pending");
+  } catch {
+  }
+}
+function loadSetupState() {
+  try {
+    return window.localStorage.getItem(STORAGE_SETUP_KEY) === "done";
+  } catch {
+    return false;
+  }
+}
+var STORAGE_THEME_KEY, STORAGE_ACCESS_KEY, STORAGE_BACKEND_KEY, STORAGE_MODELS_KEY, STORAGE_SETUP_KEY;
+var init_storage = __esm({
+  "src/utils/storage.js"() {
+    STORAGE_THEME_KEY = "devenv-ui-theme";
+    STORAGE_ACCESS_KEY = "devenv-ui-access";
+    STORAGE_BACKEND_KEY = "devenv-ui-backend";
+    STORAGE_MODELS_KEY = "devenv-ui-models";
+    STORAGE_SETUP_KEY = "devenv-ui-setup";
+  }
 });
+
+// src/context/AppContext.js
+function appReducer(state, action) {
+  switch (action.type) {
+    case "SET_HEALTH":
+      return { ...state, health: action.payload };
+    case "SET_BOOT_ERROR":
+      return { ...state, bootError: action.payload };
+    case "SET_HEALTH_META":
+      return { ...state, healthMeta: action.payload };
+    case "SET_PROMPT":
+      return { ...state, prompt: action.payload };
+    case "SET_TRANSCRIPT":
+      return { ...state, transcript: action.payload };
+    case "APPEND_TRANSCRIPT":
+      return { ...state, transcript: [...state.transcript, action.payload] };
+    case "UPDATE_TRANSCRIPT_ENTRY":
+      return {
+        ...state,
+        transcript: state.transcript.map(
+          (entry) => entry.id === action.payload.id ? { ...entry, ...action.payload.updates } : entry
+        )
+      };
+    case "SET_IS_RUNNING":
+      return { ...state, isRunning: action.payload };
+    case "SET_RUN_STARTED_AT":
+      return { ...state, runStartedAt: action.payload };
+    case "SET_CLOCK":
+      return { ...state, clock: action.payload };
+    case "SET_USAGE_WINDOW":
+      return { ...state, usageWindow: action.payload };
+    case "SET_RATE_LIMIT_INFO":
+      return { ...state, rateLimitInfo: action.payload };
+    case "SET_TOAST":
+      return { ...state, toast: action.payload };
+    case "SET_THEME":
+      return { ...state, theme: action.payload };
+    case "SET_ACCESS_POLICY":
+      return { ...state, accessPolicy: action.payload };
+    case "SET_ACCESS_UPDATING":
+      return { ...state, accessUpdating: action.payload };
+    case "SET_BACKENDS":
+      return { ...state, backends: action.payload };
+    case "SET_ACTIVE_BACKEND":
+      return { ...state, activeBackend: action.payload };
+    case "SET_PREFERRED_BACKEND":
+      return { ...state, preferredBackend: action.payload };
+    case "SET_SELECTED_PROVIDER":
+      return { ...state, selectedProvider: action.payload };
+    case "SET_VISIBLE_SESSION_PROVIDERS":
+      return { ...state, visibleSessionProviders: { ...state.visibleSessionProviders, [action.payload.provider]: action.payload.visible } };
+    case "SET_PROVIDER_SESSIONS":
+      return { ...state, providerSessions: { ...state.providerSessions, [action.payload.provider]: action.payload.sessions } };
+    case "SET_SELECTED_SESSION_ID":
+      return { ...state, selectedSessionId: action.payload };
+    case "SET_SESSION_DETAILS":
+      return { ...state, sessionDetails: { ...state.sessionDetails, [action.payload.key]: action.payload.details } };
+    case "SET_SESSION_LOADING":
+      return { ...state, sessionLoading: action.payload };
+    case "SET_PERFORMANCE_MODE":
+      return { ...state, performanceMode: action.payload };
+    case "SET_PRIVACY_MODE":
+      return { ...state, privacyMode: { ...state.privacyMode, ...action.payload } };
+    case "SET_BUDGET_TOKENS":
+      return { ...state, sessionBudgetTokens: action.payload };
+    case "SET_BUDGET_INPUT":
+      return { ...state, budgetInput: action.payload };
+    case "SET_SESSION_USAGE_TOTAL":
+      return { ...state, sessionUsageTotal: action.payload };
+    case "SET_LATEST_TURN_TOKENS":
+      return { ...state, latestTurnTokens: action.payload };
+    case "SET_LATEST_ELAPSED_MS":
+      return { ...state, latestElapsedMs: action.payload };
+    case "SET_HEALTH_REFRESH_PENDING":
+      return { ...state, healthRefreshPending: action.payload };
+    case "SET_PENDING_RUN_MODE":
+      return { ...state, pendingRunMode: action.payload };
+    case "SET_SELECTED_TOOLS":
+      return { ...state, selectedTools: action.payload };
+    case "SET_TOOL_PICKER_OPEN":
+      return { ...state, toolPickerOpen: action.payload };
+    case "SET_PLAN_MODE":
+      return { ...state, planMode: action.payload, planBlueprint: action.payload ? state.planBlueprint : null };
+    case "SET_PLAN_BLUEPRINT":
+      return { ...state, planBlueprint: action.payload };
+    case "SET_REPLY_TARGET":
+      return { ...state, replyTarget: action.payload };
+    case "SET_SHOW_SETTINGS":
+      return { ...state, showSettings: action.payload };
+    case "SET_SIDEBAR_COLLAPSED":
+      return { ...state, sidebarCollapsed: action.payload };
+    case "SET_SETUP_COMPLETE":
+      return { ...state, setupComplete: action.payload };
+    case "SET_RETRIEVAL_STATUS":
+      return { ...state, retrievalStatus: action.payload };
+    default:
+      return state;
+  }
+}
+function AppProvider({ children: children2 }) {
+  const [state, dispatch2] = import_react.default.useReducer(appReducer, initialState);
+  import_react.default.useEffect(() => {
+    document.body.dataset.theme = state.theme;
+  }, [state.theme]);
+  const value = import_react.default.useMemo(() => ({ state, dispatch: dispatch2 }), [state]);
+  return import_react.default.createElement(AppContext.Provider, { value }, children2);
+}
+function useApp() {
+  const context = import_react.default.useContext(AppContext);
+  if (!context) {
+    throw new Error("useApp must be used within AppProvider");
+  }
+  return context;
+}
+var import_react, initialState, AppContext;
+var init_AppContext = __esm({
+  "src/context/AppContext.js"() {
+    import_react = __toESM(require_react(), 1);
+    init_storage();
+    initialState = {
+      health: null,
+      prompt: "",
+      transcript: [],
+      isRunning: false,
+      bootError: "",
+      healthMeta: { provider: "", model: "", availableModels: [], availableModelsByBackend: {}, selectedModelsByBackend: loadPreferredModels() },
+      usageWindow: [],
+      rateLimitInfo: null,
+      clock: Date.now(),
+      theme: loadTheme(),
+      toast: "",
+      retrievalStatus: {
+        mode: "new_context",
+        label: "New context",
+        detail: "No prior Devenv session has been reused yet."
+      },
+      accessPolicy: { session_access: { codex: false, opencode: false }, backend_access: { opencode: false, ollama: false, llama_cpp: false, codex: false } },
+      persistedAccess: loadPersistedAccess(),
+      backends: {},
+      activeBackend: "opencode",
+      preferredBackend: loadPreferredBackend(),
+      selectedProvider: "codex",
+      visibleSessionProviders: { codex: false, opencode: false },
+      providerSessions: { codex: [], opencode: [] },
+      selectedSessionId: "",
+      sessionDetails: {},
+      sessionLoading: false,
+      accessUpdating: false,
+      performanceMode: "medium",
+      privacyMode: { no_memory: false, incognito: false },
+      sessionBudgetTokens: 25e3,
+      budgetInput: "25000",
+      sessionUsageTotal: 0,
+      latestTurnTokens: 0,
+      latestElapsedMs: 0,
+      runStartedAt: 0,
+      healthRefreshPending: false,
+      pendingRunMode: "direct",
+      selectedTools: [],
+      toolPickerOpen: false,
+      planMode: false,
+      planBlueprint: null,
+      replyTarget: null,
+      showSettings: false,
+      sidebarCollapsed: false,
+      setupComplete: loadSetupState()
+    };
+    AppContext = import_react.default.createContext(null);
+  }
+});
+
+// src/utils/format.js
+function formatBackendLabel(value) {
+  if (value === "opencode") return "OpenCode";
+  if (value === "ollama") return "Ollama";
+  if (value === "llama_cpp") return "llama.cpp";
+  if (value === "codex") return "Codex";
+  return String(value || "Unknown");
+}
+function formatDuration(milliseconds) {
+  const totalSeconds = Math.max(Math.ceil(milliseconds / 1e3), 0);
+  const seconds = totalSeconds % 60;
+  const minutes = Math.floor(totalSeconds / 60);
+  return minutes ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+}
+function escapeHtml(value) {
+  return String(value || "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+var init_format = __esm({
+  "src/utils/format.js"() {
+  }
+});
+
+// src/components/MotionPrimitives.js
+function BeamFrame({ children: children2, active = true, tone = "ocean", className = "", ...props }) {
+  return import_react2.default.createElement(
+    "div",
+    { className: `motion-beam motion-beam-${tone}${active ? " is-active" : ""} ${className}`.trim(), ...props },
+    import_react2.default.createElement("span", { className: "motion-beam-track", "aria-hidden": "true" }),
+    children2
+  );
+}
+function MetalSurface({ children: children2, className = "", ...props }) {
+  return import_react2.default.createElement(
+    "div",
+    { className: `motion-metal ${className}`.trim(), ...props },
+    import_react2.default.createElement("span", { className: "motion-metal-sheen", "aria-hidden": "true" }),
+    children2
+  );
+}
+function MotionReveal({ children: children2, delay = 0, className = "", style: style2 = null, ...props }) {
+  return import_react2.default.createElement(
+    "div",
+    { className: `motion-reveal ${className}`.trim(), style: { ...style2 || {}, "--motion-delay": `${delay}ms` }, ...props },
+    children2
+  );
+}
+function MotionSwap({ children: children2, className = "", ...props }) {
+  return import_react2.default.createElement("span", { className: `motion-swap ${className}`.trim(), ...props }, children2);
+}
+function MotionNumber({ value, className = "", ...props }) {
+  return import_react2.default.createElement("span", { className: `motion-number ${className}`.trim(), key: String(value), ...props }, String(value));
+}
+function MotionDeck({ children: children2, className = "", ...props }) {
+  return import_react2.default.createElement("div", { className: `motion-deck ${className}`.trim(), ...props }, children2);
+}
+function MotionStage({ children: children2, className = "", delay = 0, axis = "y", style: style2 = null, ...props }) {
+  return import_react2.default.createElement(
+    "div",
+    {
+      className: `motion-stage motion-stage-${axis} ${className}`.trim(),
+      style: { ...style2 || {}, "--motion-delay": `${delay}ms` },
+      ...props
+    },
+    children2
+  );
+}
+function MotionShimmerText({ children: children2, className = "", active = true, ...props }) {
+  return import_react2.default.createElement(
+    "span",
+    {
+      className: `motion-shimmer-text${active ? " is-active" : ""} ${className}`.trim(),
+      ...props
+    },
+    children2
+  );
+}
+function MotionStack({ children: children2, className = "", ...props }) {
+  return import_react2.default.createElement("div", { className: `motion-stack ${className}`.trim(), ...props }, children2);
+}
+function MotionTilt({ children: children2, className = "", ...props }) {
+  return import_react2.default.createElement(
+    "div",
+    { className: `motion-tilt ${className}`.trim(), ...props },
+    import_react2.default.createElement("span", { className: "motion-tilt-glare", "aria-hidden": "true" }),
+    children2
+  );
+}
+function MotionBadge({ children: children2, className = "", active = false, ...props }) {
+  return import_react2.default.createElement(
+    "span",
+    { className: `motion-badge${active ? " is-active" : ""} ${className}`.trim(), ...props },
+    children2
+  );
+}
+var import_react2;
+var init_MotionPrimitives = __esm({
+  "src/components/MotionPrimitives.js"() {
+    import_react2 = __toESM(require_react(), 1);
+  }
+});
+
+// src/api.js
+var api_exports = {};
+__export(api_exports, {
+  callTool: () => callTool,
+  fetchContextSession: () => fetchContextSession,
+  fetchContextSessions: () => fetchContextSessions,
+  fetchContextSources: () => fetchContextSources,
+  fetchFile: () => fetchFile,
+  fetchFiles: () => fetchFiles,
+  fetchHealth: () => fetchHealth,
+  prepareContextPrompt: () => prepareContextPrompt,
+  resetPlanState: () => resetPlanState,
+  resetThread: () => resetThread,
+  runPlan: () => runPlan,
+  runTurn: () => runTurn,
+  updateBackendAccess: () => updateBackendAccess,
+  updateModel: () => updateModel,
+  updatePerformance: () => updatePerformance,
+  updatePrivacy: () => updatePrivacy,
+  updateSessionAccess: () => updateSessionAccess
+});
+async function fetchHealth() {
+  return request("/api/health");
+}
+async function updateModel(model, backend = null) {
+  return request("/api/model", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, backend })
+  });
+}
+async function fetchContextSources() {
+  return request("/api/context-sources");
+}
+async function fetchContextSessions(provider) {
+  return request(`/api/context-sources/${encodeURIComponent(provider)}/sessions`);
+}
+async function fetchContextSession(provider, sessionId) {
+  return request(`/api/context-sources/${encodeURIComponent(provider)}/sessions/${encodeURIComponent(sessionId)}`);
+}
+async function prepareContextPrompt(payload) {
+  return request("/api/context-builder/prepare", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+async function fetchFiles(path = "") {
+  const query = path ? `?path=${encodeURIComponent(path)}` : "";
+  return request(`/api/files${query}`);
+}
+async function fetchFile(path) {
+  const query = `?path=${encodeURIComponent(path)}`;
+  return request(`/api/file${query}`);
+}
+async function runTurn({
+  prompt,
+  planningMode = "auto",
+  continuePlan = false,
+  localOnly = false,
+  selectedTools = [],
+  sessionBudgetTokens = null,
+  backendPreference = "opencode"
+}) {
+  return request("/api/turn", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt,
+      planning_mode: planningMode,
+      continue_plan: continuePlan,
+      local_only: localOnly,
+      selected_tools: selectedTools,
+      session_budget_tokens: sessionBudgetTokens,
+      backend_preference: backendPreference
+    })
+  });
+}
+async function runPlan({
+  prompt,
+  localOnly = false,
+  selectedTools = [],
+  backendPreference = "opencode",
+  maxConsecutiveTools = null
+}) {
+  return request("/api/plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt,
+      local_only: localOnly,
+      selected_tools: selectedTools,
+      backend_preference: backendPreference,
+      max_consecutive_tools: maxConsecutiveTools
+    })
+  });
+}
+async function resetThread() {
+  return request("/api/thread/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+}
+async function resetPlanState() {
+  return request("/api/plan/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({})
+  });
+}
+async function updateSessionAccess(provider, allowed) {
+  return request("/api/session-access", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider, allowed })
+  });
+}
+async function updateBackendAccess(backend, allowed) {
+  return request("/api/backend-access", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ backend, allowed })
+  });
+}
+async function updatePerformance(performanceMode) {
+  return request("/api/performance", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ performance_mode: performanceMode })
+  });
+}
+async function updatePrivacy({ no_memory, incognito }) {
+  return request("/api/privacy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ no_memory: Boolean(no_memory), incognito: Boolean(incognito) })
+  });
+}
+async function callTool({ toolName, arguments: args }) {
+  return request("/api/tool", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tool_name: toolName, arguments: args })
+  });
+}
+async function request(url, options = {}) {
+  const response = await fetch(url, options);
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || `Request failed with status ${response.status}`);
+  }
+  return payload;
+}
+var init_api = __esm({
+  "src/api.js"() {
+  }
+});
+
+// src/components/Header.js
+var Header_exports = {};
+__export(Header_exports, {
+  Header: () => Header,
+  showToast: () => showToast
+});
+function Header() {
+  const { state, dispatch: dispatch2 } = useApp();
+  const activeBackend = formatBackendLabel(state.activeBackend || state.preferredBackend || "opencode");
+  const routeLabel = summarizeHeaderRoute(state.selectedTools, state.planMode);
+  const statusLabel = state.isRunning ? "Live" : state.planMode ? "Plan" : "Direct";
+  const laneLabel = state.planMode ? "Blueprint lane" : state.isRunning ? "Runtime lane" : "Ready lane";
+  const laneCopy = state.isRunning ? `Routing this turn through ${activeBackend} with visible tool and trace feedback.` : state.planMode ? "Repo-aware plan mode keeps the next turn staged as a flow before execution." : "The shell stays light and direct until the prompt actually needs tools, memory, or live search.";
+  const toggleSettings = () => {
+    dispatch2({ type: "SET_SHOW_SETTINGS", payload: !state.showSettings });
+  };
+  const newThread = async () => {
+    try {
+      const { resetThread: resetThread2 } = await Promise.resolve().then(() => (init_api(), api_exports));
+      await resetThread2();
+    } catch {
+    }
+    dispatch2({ type: "SET_PROMPT", payload: "" });
+    dispatch2({ type: "SET_TRANSCRIPT", payload: [] });
+    dispatch2({ type: "SET_TOOL_PICKER_OPEN", payload: false });
+    dispatch2({ type: "SET_SELECTED_TOOLS", payload: [] });
+    dispatch2({ type: "SET_PLAN_BLUEPRINT", payload: null });
+    dispatch2({ type: "SET_SESSION_USAGE_TOTAL", payload: 0 });
+    dispatch2({ type: "SET_LATEST_TURN_TOKENS", payload: 0 });
+    dispatch2({ type: "SET_LATEST_ELAPSED_MS", payload: 0 });
+    dispatch2({
+      type: "SET_RETRIEVAL_STATUS",
+      payload: { mode: "new_context", label: "New context", detail: "No prior Devenv session has been reused yet." }
+    });
+    showToast(dispatch2, "Started a new retrieval thread");
+  };
+  const copyThread = async () => {
+    if (!state.transcript.length) {
+      showToast(dispatch2, "Nothing to copy yet");
+      return;
+    }
+    const transcriptText = state.transcript.map((entry) => {
+      const role = entry.role === "user" ? "You" : "Devenv";
+      return `${role}
+${String(entry.content || "").trim()}`;
+    }).join("\n\n");
+    try {
+      await navigator.clipboard.writeText(transcriptText);
+      showToast(dispatch2, "Thread copied");
+    } catch {
+      showToast(dispatch2, "Clipboard access failed");
+    }
+  };
+  return import_react3.default.createElement(
+    "header",
+    { className: "app-header flex justify-between items-center px-margin-desktop w-full z-50 shrink-0" },
+    import_react3.default.createElement(
+      MotionReveal,
+      { className: "min-w-0" },
+      import_react3.default.createElement(
+        BeamFrame,
+        { active: state.isRunning, tone: "ocean", className: "app-header-brand rounded-2xl px-3 py-2" },
+        import_react3.default.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-one", "aria-hidden": "true" }),
+        import_react3.default.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-two", "aria-hidden": "true" }),
+        import_react3.default.createElement("span", { className: "app-header-brand-grid", "aria-hidden": "true" }),
+        import_react3.default.createElement(
+          "div",
+          { className: "app-header-brand-inner flex items-center gap-4" },
+          import_react3.default.createElement(
+            "div",
+            { className: "app-header-mark" },
+            import_react3.default.createElement(
+              MotionSwap,
+              { className: "items-center justify-center" },
+              import_react3.default.createElement("span", { className: "material-symbols-outlined text-[18px]" }, state.isRunning ? "bolt" : "auto_awesome")
+            )
+          ),
+          import_react3.default.createElement(
+            "div",
+            { className: "flex flex-col gap-1 min-w-0" },
+            import_react3.default.createElement("span", { className: "font-headline-md text-headline-md font-bold text-on-surface" }, "Devenv"),
+            import_react3.default.createElement(
+              "div",
+              { className: "app-header-pills" },
+              import_react3.default.createElement(
+                MotionDeck,
+                { className: "app-header-pill-deck" },
+                import_react3.default.createElement(
+                  MotionBadge,
+                  { className: "app-header-pill app-header-pill-live", active: state.isRunning },
+                  state.isRunning ? "Live turn" : "Shell ready"
+                ),
+                import_react3.default.createElement("span", { className: "app-header-pill" }, activeBackend),
+                import_react3.default.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
+                import_react3.default.createElement("span", { className: "app-header-pill" }, routeLabel)
+              )
+            ),
+            import_react3.default.createElement(
+              "div",
+              { className: "app-header-statusline text-on-surface-variant" },
+              import_react3.default.createElement(
+                MotionShimmerText,
+                { active: state.isRunning, className: "app-header-statuscopy" },
+                state.isRunning ? `Running through ${activeBackend}` : state.planMode ? "Planning with grounded files and read-only tools first" : describeHeaderStatus(state.selectedTools)
+              )
+            ),
+            import_react3.default.createElement(
+              MetalSurface,
+              { className: "app-header-route-runway" },
+              import_react3.default.createElement("span", { className: "app-header-route-beam", "aria-hidden": "true" }),
+              import_react3.default.createElement(
+                "div",
+                { className: "app-header-route-head" },
+                import_react3.default.createElement(
+                  "span",
+                  { className: `app-header-route-pip${state.isRunning ? " is-live" : ""}`, "aria-hidden": "true" }
+                ),
+                import_react3.default.createElement("span", { className: "app-header-route-kicker" }, laneLabel),
+                import_react3.default.createElement("span", { className: "app-header-route-divider", "aria-hidden": "true" }),
+                import_react3.default.createElement("strong", { className: "app-header-route-value" }, routeLabel)
+              ),
+              import_react3.default.createElement("div", { className: "app-header-route-copy" }, laneCopy)
+            )
+          )
+        )
+      )
+    ),
+    import_react3.default.createElement(
+      MotionReveal,
+      { delay: 90 },
+      import_react3.default.createElement(
+        MetalSurface,
+        { className: "app-header-actions flex items-center gap-2 rounded-2xl px-2 py-2" },
+        import_react3.default.createElement("span", { className: "app-header-actions-glow", "aria-hidden": "true" }),
+        import_react3.default.createElement(
+          "button",
+          {
+            type: "button",
+            "data-action": "toggle-settings",
+            className: `app-header-button icon-button p-2 rounded-2xl text-on-surface-variant ${state.showSettings ? "is-active text-primary" : ""}`,
+            onClick: toggleSettings,
+            "aria-label": "Settings"
+          },
+          import_react3.default.createElement("span", { className: "material-symbols-outlined text-[20px]" }, "settings")
+        ),
+        import_react3.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "app-header-button solid-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
+            onClick: newThread
+          },
+          "New"
+        ),
+        import_react3.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "app-header-button ghost-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
+            onClick: copyThread
+          },
+          "Copy"
+        )
+      )
+    )
+  );
+}
+function showToast(dispatch2, message) {
+  dispatch2({ type: "SET_TOAST", payload: message });
+  if (toastTimeoutId) window.clearTimeout(toastTimeoutId);
+  toastTimeoutId = window.setTimeout(() => {
+    dispatch2({ type: "SET_TOAST", payload: "" });
+  }, 1600);
+}
+function summarizeHeaderRoute(selectedTools, planMode) {
+  if (planMode) return "Repo plan";
+  const tools = Array.isArray(selectedTools) ? selectedTools : [];
+  if (!tools.length) return "Auto route";
+  if (tools.includes("track_symbol")) return "Trace route";
+  if (tools.includes("inspect_symbols")) return "Symbols route";
+  if (tools.includes("search_text")) return "Search route";
+  if (tools.includes("read_file")) return "Read route";
+  if (tools.includes("locate_files")) return "Locate route";
+  if (tools.includes("list_directory")) return "Files route";
+  if (tools.includes("knowledge_search")) return "Knowledge route";
+  if (tools.includes("web_search")) return "Web route";
+  if (tools.includes("generate_pdf")) return "PDF route";
+  if (tools.includes("generate_prompt")) return "Prompt route";
+  return `${tools.length} routes`;
+}
+function describeHeaderStatus(selectedTools) {
+  const tools = Array.isArray(selectedTools) ? selectedTools : [];
+  if (!tools.length) return "Light shell, direct answers, and tools only when the task actually needs them";
+  if (tools.includes("track_symbol")) return "Following one symbol through the codebase before answering";
+  if (tools.includes("inspect_symbols")) return "Inspecting definitions, exports, and structure first";
+  if (tools.includes("search_text")) return "Scanning the repo for strings and usage sites first";
+  if (tools.includes("read_file")) return "Opening exact files before answering or planning";
+  if (tools.includes("locate_files")) return "Finding the right files before deeper inspection";
+  if (tools.includes("list_directory")) return "Mapping folders and workspace structure first";
+  if (tools.includes("knowledge_search")) return "Pulling external references, repos, docs, and threads";
+  if (tools.includes("web_search")) return "Biasing toward current web results and live facts";
+  if (tools.includes("generate_pdf")) return "Preparing a polished PDF artifact instead of only chat output";
+  if (tools.includes("generate_prompt")) return "Preparing a stronger prompt output for the task";
+  return "Constraining the runtime to the selected surfaces";
+}
+var import_react3, toastTimeoutId;
+var init_Header = __esm({
+  "src/components/Header.js"() {
+    import_react3 = __toESM(require_react(), 1);
+    init_AppContext();
+    init_format();
+    init_MotionPrimitives();
+    toastTimeoutId = null;
+  }
+});
+
+// node_modules/use-sync-external-store/cjs/use-sync-external-store-shim.development.js
+var require_use_sync_external_store_shim_development = __commonJS({
+  "node_modules/use-sync-external-store/cjs/use-sync-external-store-shim.development.js"(exports) {
+    "use strict";
+    (function() {
+      function is(x, y) {
+        return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
+      }
+      function useSyncExternalStore$2(subscribe, getSnapshot) {
+        didWarnOld18Alpha || void 0 === React26.startTransition || (didWarnOld18Alpha = true, console.error(
+          "You are using an outdated, pre-release alpha of React 18 that does not support useSyncExternalStore. The use-sync-external-store shim will not work correctly. Upgrade to a newer pre-release."
+        ));
+        var value = getSnapshot();
+        if (!didWarnUncachedGetSnapshot) {
+          var cachedValue = getSnapshot();
+          objectIs(value, cachedValue) || (console.error(
+            "The result of getSnapshot should be cached to avoid an infinite loop"
+          ), didWarnUncachedGetSnapshot = true);
+        }
+        cachedValue = useState3({
+          inst: { value, getSnapshot }
+        });
+        var inst = cachedValue[0].inst, forceUpdate = cachedValue[1];
+        useLayoutEffect(
+          function() {
+            inst.value = value;
+            inst.getSnapshot = getSnapshot;
+            checkIfSnapshotChanged(inst) && forceUpdate({ inst });
+          },
+          [subscribe, value, getSnapshot]
+        );
+        useEffect3(
+          function() {
+            checkIfSnapshotChanged(inst) && forceUpdate({ inst });
+            return subscribe(function() {
+              checkIfSnapshotChanged(inst) && forceUpdate({ inst });
+            });
+          },
+          [subscribe]
+        );
+        useDebugValue2(value);
+        return value;
+      }
+      function checkIfSnapshotChanged(inst) {
+        var latestGetSnapshot = inst.getSnapshot;
+        inst = inst.value;
+        try {
+          var nextValue = latestGetSnapshot();
+          return !objectIs(inst, nextValue);
+        } catch (error) {
+          return true;
+        }
+      }
+      function useSyncExternalStore$1(subscribe, getSnapshot) {
+        return getSnapshot();
+      }
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
+      var React26 = require_react(), objectIs = "function" === typeof Object.is ? Object.is : is, useState3 = React26.useState, useEffect3 = React26.useEffect, useLayoutEffect = React26.useLayoutEffect, useDebugValue2 = React26.useDebugValue, didWarnOld18Alpha = false, didWarnUncachedGetSnapshot = false, shim = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
+      exports.useSyncExternalStore = void 0 !== React26.useSyncExternalStore ? React26.useSyncExternalStore : shim;
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
+    })();
+  }
+});
+
+// node_modules/use-sync-external-store/shim/index.js
+var require_shim = __commonJS({
+  "node_modules/use-sync-external-store/shim/index.js"(exports, module) {
+    "use strict";
+    if (false) {
+      module.exports = null;
+    } else {
+      module.exports = require_use_sync_external_store_shim_development();
+    }
+  }
+});
+
+// node_modules/use-sync-external-store/cjs/use-sync-external-store-shim/with-selector.development.js
+var require_with_selector_development = __commonJS({
+  "node_modules/use-sync-external-store/cjs/use-sync-external-store-shim/with-selector.development.js"(exports) {
+    "use strict";
+    (function() {
+      function is(x, y) {
+        return x === y && (0 !== x || 1 / x === 1 / y) || x !== x && y !== y;
+      }
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
+      var React26 = require_react(), shim = require_shim(), objectIs = "function" === typeof Object.is ? Object.is : is, useSyncExternalStore = shim.useSyncExternalStore, useRef3 = React26.useRef, useEffect3 = React26.useEffect, useMemo2 = React26.useMemo, useDebugValue2 = React26.useDebugValue;
+      exports.useSyncExternalStoreWithSelector = function(subscribe, getSnapshot, getServerSnapshot, selector3, isEqual) {
+        var instRef = useRef3(null);
+        if (null === instRef.current) {
+          var inst = { hasValue: false, value: null };
+          instRef.current = inst;
+        } else inst = instRef.current;
+        instRef = useMemo2(
+          function() {
+            function memoizedSelector(nextSnapshot) {
+              if (!hasMemo) {
+                hasMemo = true;
+                memoizedSnapshot = nextSnapshot;
+                nextSnapshot = selector3(nextSnapshot);
+                if (void 0 !== isEqual && inst.hasValue) {
+                  var currentSelection = inst.value;
+                  if (isEqual(currentSelection, nextSnapshot))
+                    return memoizedSelection = currentSelection;
+                }
+                return memoizedSelection = nextSnapshot;
+              }
+              currentSelection = memoizedSelection;
+              if (objectIs(memoizedSnapshot, nextSnapshot))
+                return currentSelection;
+              var nextSelection = selector3(nextSnapshot);
+              if (void 0 !== isEqual && isEqual(currentSelection, nextSelection))
+                return memoizedSnapshot = nextSnapshot, currentSelection;
+              memoizedSnapshot = nextSnapshot;
+              return memoizedSelection = nextSelection;
+            }
+            var hasMemo = false, memoizedSnapshot, memoizedSelection, maybeGetServerSnapshot = void 0 === getServerSnapshot ? null : getServerSnapshot;
+            return [
+              function() {
+                return memoizedSelector(getSnapshot());
+              },
+              null === maybeGetServerSnapshot ? void 0 : function() {
+                return memoizedSelector(maybeGetServerSnapshot());
+              }
+            ];
+          },
+          [getSnapshot, getServerSnapshot, selector3, isEqual]
+        );
+        var value = useSyncExternalStore(subscribe, instRef[0], instRef[1]);
+        useEffect3(
+          function() {
+            inst.hasValue = true;
+            inst.value = value;
+          },
+          [value]
+        );
+        useDebugValue2(value);
+        return value;
+      };
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
+    })();
+  }
+});
+
+// node_modules/use-sync-external-store/shim/with-selector.js
+var require_with_selector = __commonJS({
+  "node_modules/use-sync-external-store/shim/with-selector.js"(exports, module) {
+    "use strict";
+    if (false) {
+      module.exports = null;
+    } else {
+      module.exports = require_with_selector_development();
+    }
+  }
+});
+
+// src/index.js
+var import_react26 = __toESM(require_react(), 1);
 var import_client = __toESM(require_client(), 1);
-__reExport(react_dom_client_exports, __toESM(require_client(), 1));
-var export_default = import_client.default;
-export {
-  export_default as default
+
+// src/App.js
+var import_react25 = __toESM(require_react(), 1);
+init_AppContext();
+init_Header();
+
+// src/components/SettingsDropdown.js
+var import_react4 = __toESM(require_react(), 1);
+init_AppContext();
+init_format();
+init_storage();
+init_MotionPrimitives();
+function SettingsDropdown() {
+  const { state, dispatch: dispatch2 } = useApp();
+  const preferredBackend = state.preferredBackend || "opencode";
+  const backendModelMap = state.healthMeta.selectedModelsByBackend || {};
+  const backendCatalog = state.healthMeta.availableModelsByBackend || {};
+  const models = backendCatalog[preferredBackend]?.length ? backendCatalog[preferredBackend] : state.healthMeta.availableModels.length ? state.healthMeta.availableModels : [backendModelMap[preferredBackend] || state.healthMeta.model || "opencode/claude-sonnet-4"];
+  const currentModel = backendModelMap[preferredBackend] || state.healthMeta.model || models[0];
+  const backendStatus = state.backends?.[preferredBackend] || null;
+  const backendDetail = backendStatus?.detail || "";
+  const isBackendAvailable = backendStatus ? backendStatus.available !== false : true;
+  const routeSummary = state.planMode ? "Plan mode keeps the next turn in blueprint-first flow." : !state.selectedTools.length ? "Auto route lets Devenv choose memory, tools, or live search." : `${state.selectedTools.length} route${state.selectedTools.length === 1 ? "" : "s"} will constrain the next turn.`;
+  const handleModelChange = async (event) => {
+    const model = event.target.value;
+    if (!model) return;
+    try {
+      const { updateModel: updateModel2 } = await Promise.resolve().then(() => (init_api(), api_exports));
+      const result = await updateModel2(model, preferredBackend);
+      dispatch2({
+        type: "SET_HEALTH_META",
+        payload: {
+          provider: result.ai_provider || state.healthMeta.provider,
+          model: result.ai_model || model,
+          availableModels: result.available_models || state.healthMeta.availableModels,
+          availableModelsByBackend: result.available_models_by_backend || state.healthMeta.availableModelsByBackend,
+          selectedModelsByBackend: result.selected_models_by_backend || state.healthMeta.selectedModelsByBackend
+        }
+      });
+      persistPreferredModels(result.selected_models_by_backend || { ...state.healthMeta.selectedModelsByBackend, [preferredBackend]: model });
+      const { showToast: showToast2 } = await Promise.resolve().then(() => (init_Header(), Header_exports));
+      showToast2(dispatch2, `${formatBackendLabel(preferredBackend)} model switched to ${model.split("/").pop()}`);
+    } catch (err) {
+      const { showToast: showToast2 } = await Promise.resolve().then(() => (init_Header(), Header_exports));
+      showToast2(dispatch2, "Failed to switch model: " + err.message);
+    }
+  };
+  const handleBackendChange = (event) => {
+    const next = event.target.value || "opencode";
+    dispatch2({ type: "SET_PREFERRED_BACKEND", payload: next });
+    persistPreferredBackend(next);
+  };
+  const closeSettings = () => {
+    dispatch2({ type: "SET_SHOW_SETTINGS", payload: false });
+  };
+  const toggleTheme = () => {
+    const nextTheme = state.theme === "dark" ? "light" : "dark";
+    dispatch2({ type: "SET_THEME", payload: nextTheme });
+    persistTheme(nextTheme);
+  };
+  return import_react4.default.createElement(
+    "div",
+    { className: "settings-panel-root z-40" },
+    import_react4.default.createElement(
+      MotionReveal,
+      null,
+      import_react4.default.createElement(
+        BeamFrame,
+        {
+          active: false,
+          tone: "mono",
+          className: "settings-panel-shell fixed right-4 top-24 w-[min(24rem,calc(100vw-1.5rem))] rounded-[22px] p-4 space-y-4",
+          "data-settings-panel": true
+        },
+        import_react4.default.createElement("span", { className: "settings-panel-ribbon", "aria-hidden": "true" }),
+        import_react4.default.createElement("span", { className: "settings-panel-orbit settings-panel-orbit-one", "aria-hidden": "true" }),
+        import_react4.default.createElement("span", { className: "settings-panel-orbit settings-panel-orbit-two", "aria-hidden": "true" }),
+        import_react4.default.createElement(
+          "div",
+          { className: "flex items-center justify-between" },
+          import_react4.default.createElement(
+            "div",
+            { className: "flex flex-col gap-1" },
+            import_react4.default.createElement("h3", { className: "font-label-caps text-label-caps text-on-surface-variant" }, "Settings"),
+            import_react4.default.createElement(
+              MotionShimmerText,
+              { className: "settings-panel-copy", active: state.isRunning },
+              "Preferred backend and model routing"
+            )
+          ),
+          import_react4.default.createElement(
+            "button",
+            {
+              type: "button",
+              className: "p-1 rounded hover:bg-surface-variant transition-colors text-on-surface-variant",
+              onClick: closeSettings,
+              "aria-label": "Close settings"
+            },
+            import_react4.default.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "close")
+          )
+        ),
+        import_react4.default.createElement(
+          "div",
+          { className: "settings-panel-section space-y-1.5" },
+          import_react4.default.createElement("label", { className: "font-label-caps text-[11px] text-on-surface-variant block" }, "Preferred Backend"),
+          import_react4.default.createElement(
+            "select",
+            {
+              className: "w-full bg-surface-container-highest border border-outline-variant rounded-lg font-body-md text-body-md text-on-surface p-2 outline-none focus:border-primary",
+              value: preferredBackend,
+              onChange: handleBackendChange
+            },
+            ["opencode", "ollama", "llama_cpp", "codex"].map(
+              (backend) => import_react4.default.createElement("option", { key: backend, value: backend }, formatBackendLabel(backend))
+            )
+          )
+        ),
+        import_react4.default.createElement(
+          MotionDeck,
+          { className: "settings-preview-deck" },
+          import_react4.default.createElement(
+            MotionTilt,
+            null,
+            import_react4.default.createElement(
+              "div",
+              { className: "settings-preview-card" },
+              import_react4.default.createElement("span", { className: "settings-preview-kicker" }, "Route"),
+              import_react4.default.createElement("strong", { className: "settings-preview-title" }, state.planMode ? "Blueprint first" : "Adaptive runtime"),
+              import_react4.default.createElement("p", { className: "settings-preview-copy" }, routeSummary)
+            )
+          ),
+          import_react4.default.createElement(
+            MotionTilt,
+            null,
+            import_react4.default.createElement(
+              "div",
+              { className: "settings-preview-card settings-preview-card-theme" },
+              import_react4.default.createElement("span", { className: "settings-preview-kicker" }, "Theme"),
+              import_react4.default.createElement("strong", { className: "settings-preview-title" }, state.theme === "light" ? "Light shell active" : "Dark shell active"),
+              import_react4.default.createElement(
+                "div",
+                { className: "settings-preview-swatches", "aria-hidden": "true" },
+                import_react4.default.createElement("span", { className: "settings-preview-swatch settings-preview-swatch-ocean" }),
+                import_react4.default.createElement("span", { className: "settings-preview-swatch settings-preview-swatch-mint" }),
+                import_react4.default.createElement("span", { className: "settings-preview-swatch settings-preview-swatch-paper" })
+              )
+            )
+          )
+        ),
+        import_react4.default.createElement(
+          MotionDeck,
+          { className: "settings-status-grid" },
+          import_react4.default.createElement(MotionTilt, null, statusChip("Preferred", formatBackendLabel(preferredBackend))),
+          import_react4.default.createElement(MotionTilt, null, statusChip("Active", formatBackendLabel(state.activeBackend || preferredBackend))),
+          import_react4.default.createElement(MotionTilt, null, statusChip("Model", compactModelName(currentModel)))
+        ),
+        import_react4.default.createElement(
+          "div",
+          { className: "settings-panel-section space-y-3" },
+          import_react4.default.createElement(
+            "div",
+            { className: "flex items-center justify-between gap-3" },
+            import_react4.default.createElement(
+              "div",
+              { className: "flex flex-col gap-1 min-w-0" },
+              import_react4.default.createElement("span", { className: "font-label-caps text-[11px] text-on-surface-variant block" }, "Theme"),
+              import_react4.default.createElement(
+                MotionShimmerText,
+                { className: "settings-theme-copy", active: state.theme === "light" },
+                state.theme === "light" ? "Light shell with glass, beam, and paper highlights" : "Dark shell with calmer contrast and the same motion system"
+              )
+            ),
+            import_react4.default.createElement(
+              "button",
+              {
+                type: "button",
+                className: `theme-toggle${state.theme === "light" ? " is-light" : " is-dark"}`,
+                onClick: toggleTheme,
+                "aria-label": `Switch to ${state.theme === "light" ? "dark" : "light"} theme`
+              },
+              import_react4.default.createElement(
+                "span",
+                { className: "theme-toggle-track" },
+                import_react4.default.createElement("span", { className: "material-symbols-outlined theme-toggle-icon theme-toggle-icon-light" }, "light_mode"),
+                import_react4.default.createElement("span", { className: "material-symbols-outlined theme-toggle-icon theme-toggle-icon-dark" }, "dark_mode"),
+                import_react4.default.createElement("span", { className: "theme-toggle-thumb" })
+              )
+            )
+          ),
+          import_react4.default.createElement(
+            "div",
+            { className: "settings-theme-row" },
+            themeChip("Light", "Default shell", state.theme === "light"),
+            themeChip("Dark", "Optional contrast", state.theme === "dark")
+          )
+        ),
+        import_react4.default.createElement(
+          "div",
+          { className: "settings-panel-section space-y-1.5" },
+          import_react4.default.createElement("label", { className: "font-label-caps text-[11px] text-on-surface-variant block" }, "Model"),
+          import_react4.default.createElement(
+            "select",
+            {
+              className: "w-full bg-surface-container-highest border border-outline-variant rounded-lg font-body-md text-body-md text-on-surface p-2 outline-none focus:border-primary",
+              value: currentModel,
+              onChange: handleModelChange,
+              disabled: !isBackendAvailable
+            },
+            models.map(
+              (m) => import_react4.default.createElement("option", { key: m, value: m }, m)
+            )
+          ),
+          import_react4.default.createElement(
+            "div",
+            { className: `text-[11px] ${isBackendAvailable ? "text-on-surface-variant" : "text-error"}` },
+            isBackendAvailable ? backendDetail || `Choose a ${formatBackendLabel(preferredBackend)} model.` : backendDetail || `${formatBackendLabel(preferredBackend)} is unavailable.`
+          )
+        ),
+        import_react4.default.createElement(
+          "div",
+          { className: "settings-panel-section pt-2 border-t border-outline-variant/30" },
+          import_react4.default.createElement("div", { className: "font-label-caps text-[11px] text-on-surface-variant" }, "Backend"),
+          import_react4.default.createElement("div", { className: "font-body-md text-body-md text-on-surface mt-0.5" }, `${formatBackendLabel(state.activeBackend)} active`),
+          import_react4.default.createElement("div", { className: "settings-panel-footnote" }, routeSummary)
+        )
+      )
+    )
+  );
+}
+function statusChip(label, value) {
+  return import_react4.default.createElement(
+    "div",
+    { className: "settings-status-chip" },
+    import_react4.default.createElement("span", { className: "settings-status-label" }, label),
+    import_react4.default.createElement("strong", { className: "settings-status-value" }, value)
+  );
+}
+function themeChip(label, detail, active) {
+  return import_react4.default.createElement(
+    MotionBadge,
+    { className: `settings-theme-chip${active ? " is-selected" : ""}`, active },
+    import_react4.default.createElement("strong", null, label),
+    import_react4.default.createElement("span", null, detail)
+  );
+}
+function compactModelName(value) {
+  const text = String(value || "").trim();
+  if (!text) return "Auto";
+  const last = text.split("/").pop() || text;
+  return last.length > 18 ? `${last.slice(0, 15)}...` : last;
+}
+
+// src/components/ChatColumn.js
+var import_react18 = __toESM(require_react(), 1);
+init_AppContext();
+
+// src/components/Transcript.js
+var import_react15 = __toESM(require_react(), 1);
+init_AppContext();
+
+// src/components/UserMessage.js
+var import_react5 = __toESM(require_react(), 1);
+init_format();
+init_MotionPrimitives();
+function UserMessage({ message, onCopy, onReply }) {
+  return import_react5.default.createElement(
+    MotionStage,
+    { axis: "x", className: "flex flex-col gap-2 max-w-3xl motion-user-entry message-stack-user" },
+    import_react5.default.createElement(
+      MetalSurface,
+      { className: "message-card user-message-card rounded-[24px] p-4" },
+      import_react5.default.createElement("span", { className: "message-card-orbit", "aria-hidden": "true" }),
+      import_react5.default.createElement("span", { className: "message-card-ribbon message-card-ribbon-user", "aria-hidden": "true" }),
+      import_react5.default.createElement(
+        "div",
+        { className: "message-head flex items-center gap-2" },
+        import_react5.default.createElement(
+          "div",
+          { className: "message-avatar user-avatar w-7 h-7 rounded-full flex items-center justify-center" },
+          import_react5.default.createElement(
+            "span",
+            { className: "material-symbols-outlined text-[14px] text-on-surface" },
+            "person"
+          )
+        ),
+        import_react5.default.createElement(
+          "div",
+          { className: "message-title-group" },
+          import_react5.default.createElement("span", { className: "font-label-caps text-label-caps text-on-surface" }, "You"),
+          import_react5.default.createElement("span", { className: "message-kicker" }, "prompt")
+        ),
+        import_react5.default.createElement(MotionBadge, { className: "message-type-pill message-type-pill-user", active: false }, "Input"),
+        import_react5.default.createElement(
+          "div",
+          { className: "ml-auto flex items-center gap-1 message-actions" },
+          import_react5.default.createElement(
+            "button",
+            {
+              type: "button",
+              className: "message-action p-1 rounded hover:bg-surface-container transition-colors text-on-surface-variant",
+              onClick: onReply,
+              title: "Reply"
+            },
+            import_react5.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "reply")
+          ),
+          import_react5.default.createElement(
+            "button",
+            {
+              type: "button",
+              className: "message-action p-1 rounded hover:bg-surface-container transition-colors text-on-surface-variant",
+              onClick: onCopy,
+              title: "Copy"
+            },
+            import_react5.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "content_copy")
+          )
+        )
+      ),
+      message.replyTo ? import_react5.default.createElement(
+        "div",
+        { className: "message-reply mt-3 rounded-2xl border border-outline-variant/70 bg-surface-container px-3 py-2 text-[12px] text-on-surface-variant" },
+        import_react5.default.createElement("div", { className: "mb-1 font-label-caps text-label-caps text-primary" }, `Replying to ${message.replyTo.author}`),
+        import_react5.default.createElement("div", null, message.replyTo.excerpt)
+      ) : null,
+      import_react5.default.createElement(
+        "div",
+        { className: "message-status-row" },
+        import_react5.default.createElement("span", { className: "message-status-chip message-status-chip-user" }, "Prompt"),
+        import_react5.default.createElement("span", { className: "message-status-chip message-status-chip-user" }, "Local shell")
+      ),
+      import_react5.default.createElement(
+        "div",
+        {
+          className: "font-body-lg text-body-lg text-on-surface message-body",
+          dangerouslySetInnerHTML: { __html: renderRichText(message.content) }
+        }
+      )
+    )
+  );
+}
+function renderRichText(content) {
+  const text = String(content || "");
+  if (text.includes("```")) {
+    return text.split(/```/).map((chunk, index) => index % 2 ? `<pre><code>${escapeHtml(chunk.replace(/^\w+\n/, ""))}</code></pre>` : renderParagraphs(chunk)).join("");
+  }
+  return renderParagraphs(text);
+}
+function renderParagraphs(text) {
+  return String(text || "").split(/\n{2,}/).map((block) => {
+    const trimmed = block.trim();
+    if (!trimmed) return "";
+    if (/^#{1,3}\s+/.test(trimmed)) {
+      return trimmed.split("\n").map((line) => {
+        const match = line.match(/^(#{1,3})\s+(.*)$/);
+        if (!match) return `<p>${renderInlineMarkdown(line)}</p>`;
+        return `<h${match[1].length}>${renderInlineMarkdown(match[2])}</h${match[1].length}>`;
+      }).join("");
+    }
+    if (trimmed.startsWith("- ")) {
+      return `<ul>${trimmed.split("\n").map((line) => `<li>${renderInlineMarkdown(line.replace(/^- /, ""))}</li>`).join("")}</ul>`;
+    }
+    if (/^\d+\.\s/.test(trimmed)) {
+      return `<ol>${trimmed.split("\n").map((line) => `<li>${renderInlineMarkdown(line.replace(/^\d+\.\s/, ""))}</li>`).join("")}</ol>`;
+    }
+    if (trimmed.startsWith("> ")) {
+      return `<blockquote>${trimmed.split("\n").map((line) => renderInlineMarkdown(line.replace(/^>\s?/, ""))).join("<br />")}</blockquote>`;
+    }
+    return `<p>${trimmed.split("\n").map((line) => renderInlineMarkdown(line)).join("<br />")}</p>`;
+  }).join("");
+}
+function renderInlineMarkdown(text) {
+  return escapeHtml(text || "").replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>').replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^\*])\*([^*]+)\*/g, "$1<em>$2</em>").replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+// src/components/ThinkingMessage.js?v=trace2
+var import_react7 = __toESM(require_react(), 1);
+init_AppContext();
+init_format();
+
+// src/components/ThinkingOrb.js
+var import_react6 = __toESM(require_react(), 1);
+var ORB_STATES = /* @__PURE__ */ new Set(["working", "searching", "solving", "listening", "composing", "shaping"]);
+var DOTS = Array.from({ length: 24 }, (_, index) => index);
+function ThinkingOrb({ state = "working", size = 20, paused = false, label, className = "" }) {
+  const orbState = ORB_STATES.has(state) ? state : "working";
+  const dimension = size === 64 ? 64 : 20;
+  return import_react6.default.createElement(
+    "span",
+    {
+      className: `thinking-orb thinking-orb-${orbState}${paused ? " is-paused" : ""} ${className}`.trim(),
+      style: { width: `${dimension}px`, height: `${dimension}px` },
+      role: "img",
+      "aria-label": label || `${orbState} process`
+    },
+    import_react6.default.createElement("span", { className: "thinking-orb-core" }),
+    import_react6.default.createElement("span", { className: "thinking-orb-ring thinking-orb-ring-a" }),
+    import_react6.default.createElement("span", { className: "thinking-orb-ring thinking-orb-ring-b" }),
+    import_react6.default.createElement("span", { className: "thinking-orb-scan" }),
+    import_react6.default.createElement(
+      "span",
+      { className: "thinking-orb-dots", "aria-hidden": "true" },
+      DOTS.map((index) => import_react6.default.createElement("i", { key: index, style: { "--orb-index": index } }))
+    )
+  );
+}
+function stateForThinkingStep(step, pending) {
+  const kind = String(step?.kind || "").toLowerCase();
+  const label = String(step?.label || "").toLowerCase();
+  const text = String(step?.text || "").toLowerCase();
+  if (kind.includes("search") || label.includes("search") || text.includes("search")) return "searching";
+  if (label.includes("verify") || text.includes("verified")) return "shaping";
+  if (label.includes("context") || label.includes("reason") || text.includes("reason")) return "solving";
+  if (kind === "tool_call") return "working";
+  if (pending && (label.includes("runtime") || text.includes("waiting"))) return "listening";
+  if (!pending && (label.includes("trace") || text.includes("prepared"))) return "composing";
+  return pending ? "working" : "listening";
+}
+
+// src/components/ThinkingMessage.js?v=trace2
+init_MotionPrimitives();
+function ThinkingMessage({ message }) {
+  const { state } = useApp();
+  const steps = parseThinkingEntries(message.content);
+  const pendingKnowledgeSearch = state.pendingRunMode === "knowledge" || steps.some((step) => step.kind === "knowledge_search");
+  const pendingWebSearch = state.pendingRunMode === "web" || steps.some((step) => step.kind === "web_search");
+  const headline = message.pending ? pendingKnowledgeSearch ? "Live knowledge search" : pendingWebSearch ? "Live web search" : "Live tool trace" : pendingKnowledgeSearch ? "Knowledge search trace" : pendingWebSearch ? "Web search trace" : "Tool trace";
+  const searchCards = steps.filter((step) => step.kind === "web_search" || step.kind === "knowledge_search");
+  const timelineSteps = steps.filter((step) => step.kind !== "web_search" && step.kind !== "knowledge_search");
+  const lastStatus = timelineSteps.length ? timelineSteps[timelineSteps.length - 1].text : "";
+  const summary = summarizeSearchCards(searchCards);
+  const elapsed = state.isRunning ? formatDuration(Date.now() - state.runStartedAt) : formatDuration(state.latestElapsedMs || 0);
+  const activeStep = timelineSteps[timelineSteps.length - 1] || searchCards[searchCards.length - 1] || { label: headline, text: headline };
+  const orbState = searchCards.length || state.pendingRunMode === "web" || state.pendingRunMode === "knowledge" ? "searching" : stateForThinkingStep(activeStep, message.pending);
+  const statusWord = {
+    working: "Working",
+    searching: "Searching",
+    solving: "Thinking",
+    listening: "Listening",
+    composing: "Composing",
+    shaping: "Shaping"
+  }[orbState];
+  const groupedTimeline = groupTimelineSteps(timelineSteps);
+  return import_react7.default.createElement(
+    MotionStage,
+    { className: "thinking-shell ml-8 space-y-4", delay: 70 },
+    import_react7.default.createElement(
+      BeamFrame,
+      { active: message.pending, tone: orbState === "searching" ? "ocean" : "mono", className: "thinking-card inset-terminal rounded-[24px] border border-outline-variant p-4" },
+      import_react7.default.createElement("span", { className: "thinking-card-ribbon", "aria-hidden": "true" }),
+      import_react7.default.createElement("span", { className: "thinking-card-orbit thinking-card-orbit-one", "aria-hidden": "true" }),
+      import_react7.default.createElement("span", { className: "thinking-card-orbit thinking-card-orbit-two", "aria-hidden": "true" }),
+      import_react7.default.createElement("span", { className: "thinking-card-grid", "aria-hidden": "true" }),
+      import_react7.default.createElement(
+        "div",
+        { className: "thinking-card-head flex justify-between items-center mb-4" },
+        import_react7.default.createElement(
+          "div",
+          { className: "flex items-center gap-3 min-w-0" },
+          import_react7.default.createElement(ThinkingOrb, { state: orbState, size: 64, paused: !message.pending, label: `${headline}: ${orbState}` }),
+          import_react7.default.createElement("span", { className: "material-symbols-outlined text-primary text-[18px]" }, "terminal"),
+          import_react7.default.createElement(
+            "div",
+            { className: "min-w-0 flex flex-col" },
+            import_react7.default.createElement("span", { className: "font-label-caps text-label-caps text-on-surface uppercase" }, headline),
+            import_react7.default.createElement(
+              MotionShimmerText,
+              { className: "thinking-headline-detail", active: message.pending },
+              message.pending ? "Inspecting, routing, and shaping the next response" : "Trace retained for inspection"
+            )
+          )
+        ),
+        import_react7.default.createElement(
+          "div",
+          { className: "thinking-head-pills flex items-center gap-2" },
+          import_react7.default.createElement("span", { className: "font-label-caps text-label-caps text-on-surface-variant" }, elapsed),
+          import_react7.default.createElement(
+            "span",
+            { className: "thinking-pill px-2 py-0.5 rounded bg-secondary-container text-on-secondary-container font-label-caps text-[10px]" },
+            formatBackendLabel(state.activeBackend)
+          )
+        )
+      ),
+      import_react7.default.createElement(
+        MotionDeck,
+        { className: "thinking-metrics mb-4" },
+        metricPill("Trace", `${timelineSteps.length} step${timelineSteps.length === 1 ? "" : "s"}`),
+        metricPill(searchCards.length ? "Search" : "Mode", searchCards.length ? `${searchCards.length} live source${searchCards.length === 1 ? "" : "s"}` : headline.replace(/ trace$/i, "")),
+        metricPill("Status", message.pending ? statusWord : "Completed")
+      ),
+      import_react7.default.createElement(
+        "div",
+        { className: "thinking-runway-bar" },
+        import_react7.default.createElement(
+          MotionSwap,
+          { className: "thinking-runway-copy" },
+          import_react7.default.createElement(
+            "div",
+            { className: "thinking-runway-head" },
+            import_react7.default.createElement("span", { className: `thinking-runway-pip${message.pending ? " is-live" : ""}`, "aria-hidden": "true" }),
+            import_react7.default.createElement("span", { className: "thinking-runway-label" }, activeStep.label || "Trace")
+          ),
+          import_react7.default.createElement("span", { className: "thinking-runway-text" }, activeStep.text || headline)
+        )
+      ),
+      summary ? import_react7.default.createElement(
+        MotionStack,
+        { className: "thinking-summary-stack mb-4" },
+        import_react7.default.createElement(
+          MotionDeck,
+          { className: "thinking-summary-deck" },
+          summary.map(
+            (item, index) => import_react7.default.createElement(
+              "div",
+              {
+                key: `${item.label}-${index}`,
+                className: "rounded-full border border-outline-variant bg-surface-container px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-on-surface-variant"
+              },
+              `${item.label}: ${item.value}`
+            )
+          )
+        )
+      ) : null,
+      import_react7.default.createElement(
+        "div",
+        { className: "thinking-timeline space-y-3 font-code-sm text-code-sm text-on-surface-variant" },
+        groupedTimeline.map(
+          (group, groupIndex) => import_react7.default.createElement(
+            MotionReveal,
+            { key: `${group.label}-${groupIndex}`, delay: groupIndex * 55, className: "thinking-trace-row" },
+            import_react7.default.createElement(
+              "section",
+              { className: "thinking-trace-group" },
+              import_react7.default.createElement(
+                "div",
+                { className: "thinking-trace-group-head" },
+                import_react7.default.createElement("span", { className: "thinking-trace-group-label" }, group.label),
+                import_react7.default.createElement("span", { className: "thinking-trace-group-count" }, `${group.steps.length} event${group.steps.length === 1 ? "" : "s"}`)
+              ),
+              import_react7.default.createElement(
+                "div",
+                { className: "thinking-trace-group-body" },
+                group.steps.map(
+                  ({ step, absoluteIndex }, localIndex) => import_react7.default.createElement(
+                    MotionReveal,
+                    { key: `${group.label}-${absoluteIndex}`, delay: localIndex * 28 },
+                    import_react7.default.createElement(
+                      "div",
+                      { className: "thinking-step-row flex gap-3 items-start" },
+                      import_react7.default.createElement("span", { className: "thinking-step-rail", "aria-hidden": "true" }),
+                      import_react7.default.createElement(ThinkingOrb, {
+                        state: stateForThinkingStep(step, message.pending && absoluteIndex === timelineSteps.length - 1),
+                        size: 20,
+                        paused: !(message.pending && absoluteIndex === timelineSteps.length - 1),
+                        label: `${step.text}: ${stateForThinkingStep(step, message.pending && absoluteIndex === timelineSteps.length - 1)}`
+                      }),
+                      import_react7.default.createElement("span", { className: "thinking-step-index" }, absoluteIndex + 1),
+                      import_react7.default.createElement(
+                        "div",
+                        { className: "thinking-step-copy" },
+                        import_react7.default.createElement(
+                          "div",
+                          { className: "thinking-step-meta" },
+                          import_react7.default.createElement("span", { className: "thinking-step-tag" }, step.label || "Trace"),
+                          import_react7.default.createElement("span", { className: "thinking-step-state" }, describeStepState(step, message.pending && absoluteIndex === timelineSteps.length - 1))
+                        ),
+                        import_react7.default.createElement("div", { className: "thinking-step-text" }, step.text)
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      ),
+      searchCards.length ? import_react7.default.createElement(
+        "div",
+        { className: "space-y-2 mt-3 thinking-results-zone" },
+        searchCards.map(
+          (step, i) => import_react7.default.createElement(
+            MotionStack,
+            { key: `${step.kind}-${i}`, className: "thinking-result-stack" },
+            step.kind === "knowledge_search" ? renderKnowledgeCard(step, i) : renderSearchCard(step, i)
+          )
+        )
+      ) : null
+    ),
+    import_react7.default.createElement(
+      MetalSurface,
+      { className: "thinking-status-pill flex items-center gap-3 px-4 py-2 bg-surface-container rounded-full border border-outline-variant w-fit" },
+      import_react7.default.createElement("span", { className: "material-symbols-outlined text-primary text-[16px]" }, "bolt"),
+      import_react7.default.createElement(
+        "span",
+        { className: `font-body-md text-body-md text-on-surface process-status${message.pending ? " is-live" : ""}` },
+        message.pending ? import_react7.default.createElement(MotionSwap, null, import_react7.default.createElement("span", { className: "process-status-word" }, statusWord), import_react7.default.createElement("span", { className: "process-status-dots", "aria-hidden": "true" }, "...")) : lastStatus || "Completed"
+      )
+    )
+  );
+}
+function metricPill(label, value) {
+  return import_react7.default.createElement(
+    "div",
+    { className: "thinking-metric-pill" },
+    import_react7.default.createElement("span", { className: "thinking-metric-label" }, label),
+    import_react7.default.createElement("strong", { className: "thinking-metric-value" }, value)
+  );
+}
+function renderSearchCard(step, key) {
+  const query = String(step.query || "").trim();
+  const results = Array.isArray(step.results) ? step.results : [];
+  return import_react7.default.createElement(
+    MotionReveal,
+    { key, className: "thinking-search-wrap" },
+    import_react7.default.createElement(
+      "div",
+      { className: "thinking-search-panel border border-outline-variant rounded-xl bg-terminal p-3" },
+      import_react7.default.createElement(
+        "div",
+        { className: "mb-2 flex items-start justify-between gap-3" },
+        import_react7.default.createElement(
+          "div",
+          { className: "min-w-0" },
+          import_react7.default.createElement(
+            "div",
+            { className: "mb-1 flex items-center gap-2" },
+            import_react7.default.createElement("span", { className: "material-symbols-outlined text-primary text-[16px]" }, "public"),
+            import_react7.default.createElement("strong", { className: "font-code-sm text-code-sm text-on-surface" }, "Web search")
+          ),
+          import_react7.default.createElement("div", { className: "font-code-sm text-code-sm text-on-surface-variant break-words" }, query || "Web search")
+        ),
+        import_react7.default.createElement(
+          "span",
+          { className: "shrink-0 rounded-full bg-surface-container-highest px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-on-surface-variant" },
+          `${results.length} result${results.length === 1 ? "" : "s"}`
+        )
+      ),
+      results.length ? import_react7.default.createElement(
+        "div",
+        { className: "space-y-2 thinking-result-list" },
+        results.map(
+          (item, ri) => import_react7.default.createElement(
+            "div",
+            { key: ri, className: "thinking-result-card rounded-lg border border-outline-variant/70 bg-surface-container-low px-3 py-2" },
+            import_react7.default.createElement("div", { className: "font-body-md text-body-md text-on-surface" }, item.title || item.url || "Result"),
+            item.url ? import_react7.default.createElement(
+              "a",
+              { className: "mt-1 block break-all font-code-sm text-code-sm text-primary/70 hover:text-primary", href: item.url, target: "_blank", rel: "noreferrer" },
+              item.url
+            ) : null
+          )
+        )
+      ) : import_react7.default.createElement("div", { className: "font-code-sm text-code-sm text-on-surface-variant" }, "Search completed.")
+    )
+  );
+}
+function summarizeSearchCards(cards) {
+  const validCards = Array.isArray(cards) ? cards : [];
+  if (!validCards.length) return [];
+  const resultCount = validCards.reduce((total, card) => total + (Array.isArray(card.results) ? card.results.length : 0), 0);
+  const sourceCount = new Set(
+    validCards.map((card) => card.kind === "knowledge_search" ? String(card.source || "general").toLowerCase() : "web").filter(Boolean)
+  ).size;
+  const query = validCards.find((card) => String(card.query || "").trim())?.query || "";
+  const summary = [
+    { label: "Results", value: String(resultCount) },
+    { label: "Sources", value: String(sourceCount) }
+  ];
+  if (query) {
+    summary.unshift({ label: "Focus", value: query.length > 52 ? `${query.slice(0, 49)}...` : query });
+  }
+  return summary;
+}
+function renderKnowledgeCard(step, key) {
+  return import_react7.default.createElement(KnowledgeSearchCard, { key, step });
+}
+function KnowledgeSearchCard({ step }) {
+  const [open, setOpen] = import_react7.default.useState(true);
+  const results = Array.isArray(step.results) ? step.results : [];
+  const sourceMeta = getKnowledgeSourceMeta(step.source);
+  return import_react7.default.createElement(
+    MotionReveal,
+    { className: "thinking-search-wrap" },
+    import_react7.default.createElement(
+      "div",
+      { className: "thinking-search-panel border border-outline-variant rounded-xl bg-terminal p-3" },
+      import_react7.default.createElement(
+        "button",
+        {
+          type: "button",
+          className: "w-full flex items-center justify-between gap-3 text-left",
+          onClick: () => setOpen((value) => !value)
+        },
+        import_react7.default.createElement(
+          "div",
+          { className: "flex items-center gap-3 min-w-0" },
+          import_react7.default.createElement("span", { className: "material-symbols-outlined text-primary text-[16px]" }, "public"),
+          import_react7.default.createElement("span", { className: "material-symbols-outlined text-primary text-[18px]" }, sourceMeta.icon),
+          import_react7.default.createElement(
+            "div",
+            { className: "min-w-0" },
+            import_react7.default.createElement("div", { className: "font-label-caps text-label-caps text-on-surface uppercase" }, sourceMeta.label),
+            import_react7.default.createElement("div", { className: "font-code-sm text-code-sm text-on-surface-variant truncate" }, step.query || "Source query not available")
+          )
+        ),
+        import_react7.default.createElement(
+          "div",
+          { className: "flex items-center gap-2 shrink-0" },
+          import_react7.default.createElement("span", { className: "px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" }, `${results.length} result${results.length === 1 ? "" : "s"}`),
+          import_react7.default.createElement("span", { className: "material-symbols-outlined text-on-surface-variant text-[18px]" }, open ? "expand_less" : "expand_more")
+        )
+      ),
+      open ? import_react7.default.createElement(
+        "div",
+        { className: "mt-3 space-y-2" },
+        results.length ? results.map(
+          (item, index) => import_react7.default.createElement(
+            "div",
+            { key: `${step.source}-${index}`, className: "thinking-result-card rounded-lg border border-outline-variant/70 bg-surface-container-low px-3 py-2" },
+            import_react7.default.createElement("div", { className: "font-body-md text-body-md text-on-surface" }, item.title || item.url || "Result"),
+            item.url ? import_react7.default.createElement("a", { className: "block mt-1 font-code-sm text-code-sm text-primary/70 hover:text-primary break-all", href: item.url, target: "_blank", rel: "noreferrer" }, item.url) : null
+          )
+        ) : import_react7.default.createElement("div", { className: "font-code-sm text-code-sm text-on-surface-variant" }, "No results yet for this source.")
+      ) : null
+    )
+  );
+}
+function groupTimelineSteps(steps) {
+  const groups = [];
+  steps.forEach((step, absoluteIndex) => {
+    const label = String(step.label || "Trace").trim() || "Trace";
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup && lastGroup.label === label) {
+      lastGroup.steps.push({ step, absoluteIndex });
+      return;
+    }
+    groups.push({ label, steps: [{ step, absoluteIndex }] });
+  });
+  return groups;
+}
+function describeStepState(step, isLive) {
+  if (isLive) return "live";
+  const state = stateForThinkingStep(step, false);
+  if (state === "searching") return "search";
+  if (state === "working") return "run";
+  if (state === "listening") return "input";
+  if (state === "composing") return "compose";
+  if (state === "shaping") return "shape";
+  return "done";
+}
+function parseThinkingEntries(content) {
+  const entries = String(content || "").split("\n").map((line) => line.replace(/^```(?:text)?/, "").replace(/```$/, "").trim()).filter(Boolean).map((line) => {
+    const match = line.match(/^([A-Z_]+)\s+(.*)$/);
+    return {
+      source: match ? match[1] : "",
+      body: match ? match[2] : line
+    };
+  }).map(({ source, body }) => humanizeThinkingLine(body, source)).filter(Boolean).map((entry) => typeof entry === "string" ? { kind: "text", text: entry } : entry);
+  return normalizeThinkingEntries(entries);
+}
+function humanizeThinkingLine(line, sourceTag = "") {
+  const lowered = line.toLowerCase();
+  if (lowered.startsWith("tool:")) {
+    const toolName = line.replace(/^tool:\s*/i, "").trim();
+    return { kind: "tool_call", toolName, label: "Tool", text: `Calling ${toolName}` };
+  }
+  if (lowered.startsWith("query:")) {
+    const query = line.replace(/^query:\s*/i, "").trim();
+    return sourceTag === "KNOWLEDGE_SEARCH" ? { kind: "knowledge_search_query", query, results: [], label: "Search" } : { kind: "web_search", query, results: [], label: "Search" };
+  }
+  if (lowered.startsWith("source:")) {
+    const parsed = safeParseJson(line.replace(/^source:\s*/i, "").trim());
+    if (parsed && typeof parsed.source === "string") {
+      return { kind: "knowledge_source", source: parsed.source, query: String(parsed.query || "").trim() };
+    }
+  }
+  if (lowered.startsWith("result:")) {
+    const payload = line.replace(/^result:\s*/i, "").trim();
+    if (payload.startsWith("{")) {
+      const parsed = safeParseJson(payload);
+      if (parsed && typeof parsed.source === "string") {
+        return {
+          kind: "knowledge_search_result",
+          source: parsed.source,
+          title: String(parsed.title || ""),
+          url: String(parsed.url || ""),
+          query: String(parsed.query || "")
+        };
+      }
+    }
+    const splitIndex = payload.lastIndexOf(" - http");
+    if (splitIndex >= 0) {
+      return { kind: "web_search_result", title: payload.slice(0, splitIndex).trim(), url: payload.slice(splitIndex + 3).trim() };
+    }
+    return { kind: "web_search_result", title: payload, url: "" };
+  }
+  if (lowered.includes("queued prompt")) return null;
+  if (lowered.includes("memory context chars")) return { kind: "text", label: "Context", text: "Measured the available session context" };
+  if (lowered.includes("prior-session")) return null;
+  if (lowered.includes("new context")) return null;
+  if (lowered.includes("mapped the request into")) return { kind: "text", label: "Plan", text: line };
+  if (lowered.includes("execution plan")) return { kind: "text", label: "Plan", text: line };
+  if (lowered.includes("distilled context packet")) return { kind: "text", label: "Context", text: line };
+  if (lowered.includes("grounded context packet")) return { kind: "text", label: "Context", text: line };
+  if (lowered.includes("executed the active checkpoint")) return { kind: "text", label: "Run", text: line };
+  if (lowered.includes("recorded runtime output")) return { kind: "text", label: "Trace", text: line };
+  if (lowered.includes("verification confirmed")) return { kind: "text", label: "Verify", text: line };
+  if (lowered.includes("verified the runtime result")) return { kind: "text", label: "Verify", text: line };
+  if (lowered.includes("verification flagged an issue")) return { kind: "text", label: "Verify", text: line };
+  if (lowered.includes("focused on:")) return { kind: "text", label: "Focus", text: line };
+  if (lowered.includes("answer destination:")) return { kind: "text", label: "Output", text: line };
+  if (lowered.includes("touched files recorded:")) return { kind: "text", label: "Files", text: line };
+  if (lowered.includes("planned checkpoints:")) return { kind: "text", label: "Plan", text: line };
+  if (lowered.includes("checkpoint blueprint") || lowered.includes("checkpoint")) return { kind: "text", label: "Plan", text: "Refined the current execution checkpoint" };
+  if (lowered.includes("verification passed")) return { kind: "text", label: "Verify", text: "Verified the runtime result" };
+  if (lowered.includes("waiting for runtime response")) return { kind: "text", label: "Runtime", text: "Waiting for the runtime" };
+  if (lowered.includes("retrying in")) return { kind: "text", label: "Retry", text: line };
+  if (lowered.startsWith("query:") && /github|youtube|reddit|stackoverflow|quora|documentation/i.test(line)) return { kind: "text", label: "Search", text: line.replace(/^query:\s*/i, "") };
+  return { kind: "text", label: "Trace", text: line };
+}
+function normalizeThinkingEntries(entries) {
+  const normalized = [];
+  let activeSearch = null;
+  let activeKnowledge = null;
+  let pendingKnowledgeQuery = "";
+  for (const entry of entries) {
+    if (entry.kind === "web_search") {
+      activeKnowledge = null;
+      pendingKnowledgeQuery = "";
+      activeSearch = { kind: "web_search", label: "Search", text: `Searching for ${entry.query || "a live source"}`, query: entry.query || "", results: [] };
+      normalized.push(activeSearch);
+      continue;
+    }
+    if (entry.kind === "web_search_result") {
+      if (activeSearch) activeSearch.results.push({ title: entry.title || "", url: entry.url || "" });
+      continue;
+    }
+    if (entry.kind === "knowledge_search_query") {
+      activeSearch = null;
+      activeKnowledge = null;
+      pendingKnowledgeQuery = entry.query || "";
+      continue;
+    }
+    if (entry.kind === "knowledge_source") {
+      activeSearch = null;
+      activeKnowledge = { kind: "knowledge_search", source: entry.source || "general", query: entry.query || pendingKnowledgeQuery || "", results: [] };
+      normalized.push(activeKnowledge);
+      continue;
+    }
+    if (entry.kind === "knowledge_search_result") {
+      if (!activeKnowledge || activeKnowledge.source !== entry.source) {
+        activeKnowledge = { kind: "knowledge_search", source: entry.source || "general", query: entry.query || pendingKnowledgeQuery || "", results: [] };
+        normalized.push(activeKnowledge);
+      }
+      activeKnowledge.results.push({ title: entry.title || "", url: entry.url || "" });
+      continue;
+    }
+    activeSearch = null;
+    activeKnowledge = null;
+    pendingKnowledgeQuery = "";
+    normalized.push(entry);
+  }
+  return normalized;
+}
+function safeParseJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+function getKnowledgeSourceMeta(source) {
+  switch (String(source || "").toLowerCase()) {
+    case "github":
+      return { label: "GitHub", icon: "deployed_code" };
+    case "youtube":
+      return { label: "YouTube", icon: "smart_display" };
+    case "reddit":
+      return { label: "Reddit", icon: "forum" };
+    case "stackoverflow":
+      return { label: "Stack Overflow", icon: "code_blocks" };
+    case "documentation":
+      return { label: "Documentation", icon: "description" };
+    case "quora":
+      return { label: "Quora", icon: "contact_support" };
+    default:
+      return { label: "Web", icon: "travel_explore" };
+  }
+}
+
+// src/components/AssistantMessage.js
+var import_react8 = __toESM(require_react(), 1);
+
+// src/lib/markdown.js
+function renderMarkdown(markdown) {
+  const escaped = escapeHtml2(markdown || "");
+  const withCodeBlocks = escaped.replace(/```([\s\S]*?)```/g, (_, code) => `<pre><code>${code.trim()}</code></pre>`);
+  const withInlineCode = withCodeBlocks.replace(/`([^`]+)`/g, "<code>$1</code>");
+  const withLinks = withInlineCode.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  const withStrong = withLinks.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  const withEmphasis = withStrong.replace(/(^|[^\*])\*([^*]+)\*/g, "$1<em>$2</em>");
+  const withHeadings = withEmphasis.replace(/^### (.*)$/gm, "<h3>$1</h3>").replace(/^## (.*)$/gm, "<h2>$1</h2>").replace(/^# (.*)$/gm, "<h1>$1</h1>");
+  const withBlockquotes = withHeadings.replace(/(?:^> .*(?:\n|$))+?/gm, (block) => {
+    const lines = block.trim().split("\n").map((line) => line.replace(/^>\s?/, "")).join("<br />");
+    return `<blockquote>${lines}</blockquote>`;
+  });
+  const withOrderedLists = withBlockquotes.replace(/(?:^\d+\. .*(?:\n|$))+?/gm, (block) => {
+    const items = block.trim().split("\n").map((line) => `<li>${line.replace(/^\d+\. /, "")}</li>`).join("");
+    return `<ol>${items}</ol>`;
+  });
+  const withLists = withOrderedLists.replace(/(?:^- .*(?:\n|$))+?/gm, (block) => {
+    const items = block.trim().split("\n").map((line) => `<li>${line.replace(/^- /, "")}</li>`).join("");
+    return `<ul>${items}</ul>`;
+  });
+  return withLists.split(/\n{2,}/).map((chunk) => {
+    if (chunk.startsWith("<")) {
+      return chunk;
+    }
+    return `<p>${chunk.replace(/\n/g, "<br />")}</p>`;
+  }).join("");
+}
+function escapeHtml2(value) {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+// src/components/AssistantMessage.js
+init_MotionPrimitives();
+function AssistantMessage({ message, onCopy, onReply }) {
+  const diagnostics = message.diagnostics || {};
+  const statusChips = [
+    diagnostics.sourceLabel,
+    diagnostics.routeLabel,
+    diagnostics.backendLabel,
+    diagnostics.toolLabel,
+    diagnostics.retrievalLabel
+  ].filter(Boolean);
+  const evidenceItems = Array.isArray(diagnostics.evidenceItems) ? diagnostics.evidenceItems : [];
+  return import_react8.default.createElement(
+    MotionStage,
+    { axis: "x", className: "message-stack flex flex-col gap-2 max-w-3xl message-stack-assistant" },
+    import_react8.default.createElement(
+      BeamFrame,
+      { active: false, tone: "ocean", className: "message-card assistant-message-card rounded-[24px] p-4" },
+      import_react8.default.createElement("span", { className: "message-card-orbit", "aria-hidden": "true" }),
+      import_react8.default.createElement("span", { className: "message-card-orbit message-card-orbit-secondary", "aria-hidden": "true" }),
+      import_react8.default.createElement("span", { className: "message-card-ribbon message-card-ribbon-assistant", "aria-hidden": "true" }),
+      import_react8.default.createElement("span", { className: "message-card-grid", "aria-hidden": "true" }),
+      import_react8.default.createElement(
+        "div",
+        { className: "message-head flex items-center gap-2" },
+        import_react8.default.createElement(
+          "div",
+          { className: "message-avatar assistant-avatar w-7 h-7 rounded-full flex items-center justify-center" },
+          import_react8.default.createElement("span", { className: "material-symbols-outlined text-on-primary text-[14px]" }, "auto_awesome")
+        ),
+        import_react8.default.createElement(
+          "div",
+          { className: "message-title-group" },
+          import_react8.default.createElement(MotionShimmerText, { className: "font-label-caps text-label-caps text-primary" }, "Devenv"),
+          import_react8.default.createElement("span", { className: "message-kicker" }, diagnostics.kicker || "assistant output")
+        ),
+        import_react8.default.createElement(MotionBadge, { className: "message-type-pill message-type-pill-assistant", active: true }, diagnostics.badgeLabel || "Answer"),
+        import_react8.default.createElement(
+          "div",
+          { className: "ml-auto flex items-center gap-1 message-actions" },
+          import_react8.default.createElement(
+            "button",
+            {
+              type: "button",
+              className: "message-action p-1 rounded hover:bg-surface-container transition-colors text-on-surface-variant",
+              onClick: onReply,
+              title: "Reply"
+            },
+            import_react8.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "reply")
+          ),
+          import_react8.default.createElement(
+            "button",
+            {
+              type: "button",
+              className: "message-action p-1 rounded hover:bg-surface-container transition-colors text-on-surface-variant",
+              onClick: onCopy,
+              title: "Copy"
+            },
+            import_react8.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "content_copy")
+          )
+        )
+      ),
+      message.replyTo ? import_react8.default.createElement(
+        "div",
+        { className: "message-reply mt-3 rounded-2xl border border-outline-variant/70 bg-surface-container px-3 py-2 text-[12px] text-on-surface-variant" },
+        import_react8.default.createElement("div", { className: "mb-1 font-label-caps text-label-caps text-primary" }, `Replying to ${message.replyTo.author}`),
+        import_react8.default.createElement("div", null, message.replyTo.excerpt)
+      ) : null,
+      import_react8.default.createElement(
+        "div",
+        { className: "message-status-row" },
+        ...statusChips.map((chip) => import_react8.default.createElement("span", { key: chip, className: "message-status-chip" }, chip))
+      ),
+      import_react8.default.createElement(
+        MetalSurface,
+        { className: "message-runway" },
+        import_react8.default.createElement("span", { className: "message-runway-beam", "aria-hidden": "true" }),
+        import_react8.default.createElement(
+          "div",
+          { className: "message-runway-head" },
+          import_react8.default.createElement("span", { className: "message-runway-kicker" }, diagnostics.sourceLabel || "Answer"),
+          import_react8.default.createElement("span", { className: "message-runway-divider", "aria-hidden": "true" }),
+          import_react8.default.createElement("strong", { className: "message-runway-value" }, diagnostics.routeLabel || "Direct route")
+        ),
+        import_react8.default.createElement(
+          "div",
+          { className: "message-runway-copy" },
+          evidenceItems.length ? `${evidenceItems.length} live source${evidenceItems.length === 1 ? "" : "s"} surfaced directly in the answer card.` : diagnostics.toolLabel ? `${diagnostics.toolLabel} shaped this response path.` : "Direct answer path with runtime provenance kept visible."
+        )
+      ),
+      diagnostics.detail ? import_react8.default.createElement("div", { className: "message-status-copy" }, diagnostics.detail) : null,
+      evidenceItems.length ? import_react8.default.createElement(
+        "div",
+        { className: "message-evidence-grid" },
+        evidenceItems.map(
+          (item) => import_react8.default.createElement(
+            "a",
+            {
+              key: `${item.label}-${item.title}-${item.url}`,
+              className: `message-evidence-card is-${item.kind || "web"}`,
+              href: item.url,
+              target: "_blank",
+              rel: "noreferrer"
+            },
+            import_react8.default.createElement("span", { className: "message-evidence-label" }, item.label || "Source"),
+            import_react8.default.createElement("strong", { className: "message-evidence-title" }, item.title),
+            import_react8.default.createElement("span", { className: "message-evidence-url" }, item.url.replace(/^https?:\/\//, ""))
+          )
+        )
+      ) : null,
+      import_react8.default.createElement(
+        "div",
+        {
+          className: "font-body-lg text-body-lg text-on-surface leading-relaxed markdown-body assistant-markdown message-body",
+          dangerouslySetInnerHTML: { __html: renderMarkdown(String(message.content || "")) }
+        }
+      )
+    )
+  );
+}
+
+// src/components/ErrorMessage.js
+var import_react9 = __toESM(require_react(), 1);
+init_format();
+init_MotionPrimitives();
+function ErrorMessage({ message, onCopy, onReply }) {
+  const diagnostics = message.diagnostics || {};
+  const railPills = [
+    diagnostics.sourceLabel || "Needs attention",
+    diagnostics.routeLabel,
+    diagnostics.backendLabel
+  ].filter(Boolean).slice(0, 3);
+  return import_react9.default.createElement(
+    MotionReveal,
+    { className: "error-message-shell max-w-3xl", delay: 110 },
+    import_react9.default.createElement(
+      BeamFrame,
+      { tone: "ember", className: "error-message-beam" },
+      import_react9.default.createElement(
+        MetalSurface,
+        { className: "error-message-panel" },
+        import_react9.default.createElement(
+          "div",
+          { className: "flex items-center gap-2" },
+          import_react9.default.createElement(
+            "div",
+            { className: "error-message-icon" },
+            import_react9.default.createElement("span", { className: "material-symbols-outlined text-[14px] text-on-error" }, "error")
+          ),
+          import_react9.default.createElement(MotionBadge, { className: "error-message-pill", active: true }, diagnostics.badgeLabel || "Error"),
+          import_react9.default.createElement(
+            "div",
+            { className: "ml-auto flex items-center gap-1" },
+            import_react9.default.createElement(
+              "button",
+              {
+                type: "button",
+                className: "p-1 rounded hover:bg-surface-container transition-colors text-on-surface-variant",
+                onClick: onReply,
+                title: "Reply"
+              },
+              import_react9.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "reply")
+            ),
+            import_react9.default.createElement(
+              "button",
+              {
+                type: "button",
+                className: "p-1 rounded hover:bg-surface-container transition-colors text-on-surface-variant",
+                onClick: onCopy,
+                title: "Copy"
+              },
+              import_react9.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "content_copy")
+            )
+          )
+        ),
+        message.replyTo ? import_react9.default.createElement(
+          "div",
+          { className: "error-message-reply" },
+          import_react9.default.createElement("div", { className: "mb-1 font-label-caps text-label-caps text-error" }, `Replying to ${message.replyTo.author}`),
+          import_react9.default.createElement("div", null, message.replyTo.excerpt)
+        ) : null,
+        import_react9.default.createElement(
+          "div",
+          { className: "error-message-rail" },
+          ...railPills.map((pill) => import_react9.default.createElement("span", { key: pill, className: "error-message-rail-pill" }, pill)),
+          import_react9.default.createElement("span", { className: "error-message-rail-copy" }, diagnostics.detail || "This response surfaced an execution or validation issue instead of a normal answer.")
+        ),
+        import_react9.default.createElement(
+          "div",
+          {
+            className: "font-body-lg text-body-lg text-error error-message-copy",
+            dangerouslySetInnerHTML: { __html: renderRichText2(message.content) }
+          }
+        )
+      )
+    )
+  );
+}
+function renderRichText2(content) {
+  const text = String(content || "");
+  if (text.includes("```")) {
+    return text.split(/```/).map((chunk, index) => index % 2 ? `<pre><code>${escapeHtml(chunk.replace(/^\w+\n/, ""))}</code></pre>` : renderParagraphs2(chunk)).join("");
+  }
+  return renderParagraphs2(text);
+}
+function renderParagraphs2(text) {
+  return String(text || "").split(/\n{2,}/).map((block) => {
+    const trimmed = block.trim();
+    if (!trimmed) return "";
+    if (/^#{1,3}\s+/.test(trimmed)) {
+      return trimmed.split("\n").map((line) => {
+        const match = line.match(/^(#{1,3})\s+(.*)$/);
+        if (!match) return `<p>${renderInlineMarkdown2(line)}</p>`;
+        return `<h${match[1].length}>${renderInlineMarkdown2(match[2])}</h${match[1].length}>`;
+      }).join("");
+    }
+    if (trimmed.startsWith("- ")) {
+      return `<ul>${trimmed.split("\n").map((line) => `<li>${renderInlineMarkdown2(line.replace(/^- /, ""))}</li>`).join("")}</ul>`;
+    }
+    if (/^\d+\.\s/.test(trimmed)) {
+      return `<ol>${trimmed.split("\n").map((line) => `<li>${renderInlineMarkdown2(line.replace(/^\d+\.\s/, ""))}</li>`).join("")}</ol>`;
+    }
+    return `<p>${trimmed.split("\n").map((line) => renderInlineMarkdown2(line)).join("<br />")}</p>`;
+  }).join("");
+}
+function renderInlineMarkdown2(text) {
+  return escapeHtml(text || "").replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>').replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^\*])\*([^*]+)\*/g, "$1<em>$2</em>").replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+// src/components/PlanFlowchart.js?v=flow4
+var import_react14 = __toESM(require_react(), 1);
+
+// node_modules/@reactflow/core/dist/esm/index.mjs
+var import_react11 = __toESM(require_react(), 1);
+
+// node_modules/classcat/index.js
+function cc(names) {
+  if (typeof names === "string" || typeof names === "number") return "" + names;
+  let out = "";
+  if (Array.isArray(names)) {
+    for (let i = 0, tmp; i < names.length; i++) {
+      if ((tmp = cc(names[i])) !== "") {
+        out += (out && " ") + tmp;
+      }
+    }
+  } else {
+    for (let k in names) {
+      if (names[k]) out += (out && " ") + k;
+    }
+  }
+  return out;
+}
+
+// node_modules/zustand/esm/traditional.mjs
+var import_react10 = __toESM(require_react(), 1);
+var import_with_selector = __toESM(require_with_selector(), 1);
+
+// node_modules/zustand/esm/vanilla.mjs
+var createStoreImpl = (createState) => {
+  let state;
+  const listeners = /* @__PURE__ */ new Set();
+  const setState = (partial, replace) => {
+    const nextState = typeof partial === "function" ? partial(state) : partial;
+    if (!Object.is(nextState, state)) {
+      const previousState = state;
+      state = (replace != null ? replace : typeof nextState !== "object" || nextState === null) ? nextState : Object.assign({}, state, nextState);
+      listeners.forEach((listener) => listener(state, previousState));
+    }
+  };
+  const getState = () => state;
+  const getInitialState = () => initialState3;
+  const subscribe = (listener) => {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  };
+  const destroy = () => {
+    if ((import.meta.env ? import.meta.env.MODE : void 0) !== "production") {
+      console.warn(
+        "[DEPRECATED] The `destroy` method will be unsupported in a future version. Instead use unsubscribe function returned by subscribe. Everything will be garbage-collected if store is garbage-collected."
+      );
+    }
+    listeners.clear();
+  };
+  const api = { setState, getState, getInitialState, subscribe, destroy };
+  const initialState3 = state = createState(setState, getState, api);
+  return api;
 };
+var createStore = (createState) => createState ? createStoreImpl(createState) : createStoreImpl;
+
+// node_modules/zustand/esm/traditional.mjs
+var { useDebugValue } = import_react10.default;
+var { useSyncExternalStoreWithSelector } = import_with_selector.default;
+var identity = (arg) => arg;
+function useStoreWithEqualityFn(api, selector3 = identity, equalityFn) {
+  const slice = useSyncExternalStoreWithSelector(
+    api.subscribe,
+    api.getState,
+    api.getServerState || api.getInitialState,
+    selector3,
+    equalityFn
+  );
+  useDebugValue(slice);
+  return slice;
+}
+var createWithEqualityFnImpl = (createState, defaultEqualityFn) => {
+  const api = createStore(createState);
+  const useBoundStoreWithEqualityFn = (selector3, equalityFn = defaultEqualityFn) => useStoreWithEqualityFn(api, selector3, equalityFn);
+  Object.assign(useBoundStoreWithEqualityFn, api);
+  return useBoundStoreWithEqualityFn;
+};
+var createWithEqualityFn = (createState, defaultEqualityFn) => createState ? createWithEqualityFnImpl(createState, defaultEqualityFn) : createWithEqualityFnImpl;
+
+// node_modules/zustand/esm/shallow.mjs
+function shallow$1(objA, objB) {
+  if (Object.is(objA, objB)) {
+    return true;
+  }
+  if (typeof objA !== "object" || objA === null || typeof objB !== "object" || objB === null) {
+    return false;
+  }
+  if (objA instanceof Map && objB instanceof Map) {
+    if (objA.size !== objB.size) return false;
+    for (const [key, value] of objA) {
+      if (!Object.is(value, objB.get(key))) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (objA instanceof Set && objB instanceof Set) {
+    if (objA.size !== objB.size) return false;
+    for (const value of objA) {
+      if (!objB.has(value)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  const keysA = Object.keys(objA);
+  if (keysA.length !== Object.keys(objB).length) {
+    return false;
+  }
+  for (const keyA of keysA) {
+    if (!Object.prototype.hasOwnProperty.call(objB, keyA) || !Object.is(objA[keyA], objB[keyA])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// node_modules/d3-dispatch/src/dispatch.js
+var noop = { value: () => {
+} };
+function dispatch() {
+  for (var i = 0, n = arguments.length, _ = {}, t; i < n; ++i) {
+    if (!(t = arguments[i] + "") || t in _ || /[\s.]/.test(t)) throw new Error("illegal type: " + t);
+    _[t] = [];
+  }
+  return new Dispatch(_);
+}
+function Dispatch(_) {
+  this._ = _;
+}
+function parseTypenames(typenames, types) {
+  return typenames.trim().split(/^|\s+/).map(function(t) {
+    var name = "", i = t.indexOf(".");
+    if (i >= 0) name = t.slice(i + 1), t = t.slice(0, i);
+    if (t && !types.hasOwnProperty(t)) throw new Error("unknown type: " + t);
+    return { type: t, name };
+  });
+}
+Dispatch.prototype = dispatch.prototype = {
+  constructor: Dispatch,
+  on: function(typename, callback) {
+    var _ = this._, T = parseTypenames(typename + "", _), t, i = -1, n = T.length;
+    if (arguments.length < 2) {
+      while (++i < n) if ((t = (typename = T[i]).type) && (t = get(_[t], typename.name))) return t;
+      return;
+    }
+    if (callback != null && typeof callback !== "function") throw new Error("invalid callback: " + callback);
+    while (++i < n) {
+      if (t = (typename = T[i]).type) _[t] = set(_[t], typename.name, callback);
+      else if (callback == null) for (t in _) _[t] = set(_[t], typename.name, null);
+    }
+    return this;
+  },
+  copy: function() {
+    var copy = {}, _ = this._;
+    for (var t in _) copy[t] = _[t].slice();
+    return new Dispatch(copy);
+  },
+  call: function(type, that) {
+    if ((n = arguments.length - 2) > 0) for (var args = new Array(n), i = 0, n, t; i < n; ++i) args[i] = arguments[i + 2];
+    if (!this._.hasOwnProperty(type)) throw new Error("unknown type: " + type);
+    for (t = this._[type], i = 0, n = t.length; i < n; ++i) t[i].value.apply(that, args);
+  },
+  apply: function(type, that, args) {
+    if (!this._.hasOwnProperty(type)) throw new Error("unknown type: " + type);
+    for (var t = this._[type], i = 0, n = t.length; i < n; ++i) t[i].value.apply(that, args);
+  }
+};
+function get(type, name) {
+  for (var i = 0, n = type.length, c; i < n; ++i) {
+    if ((c = type[i]).name === name) {
+      return c.value;
+    }
+  }
+}
+function set(type, name, callback) {
+  for (var i = 0, n = type.length; i < n; ++i) {
+    if (type[i].name === name) {
+      type[i] = noop, type = type.slice(0, i).concat(type.slice(i + 1));
+      break;
+    }
+  }
+  if (callback != null) type.push({ name, value: callback });
+  return type;
+}
+var dispatch_default = dispatch;
+
+// node_modules/d3-selection/src/namespaces.js
+var xhtml = "http://www.w3.org/1999/xhtml";
+var namespaces_default = {
+  svg: "http://www.w3.org/2000/svg",
+  xhtml,
+  xlink: "http://www.w3.org/1999/xlink",
+  xml: "http://www.w3.org/XML/1998/namespace",
+  xmlns: "http://www.w3.org/2000/xmlns/"
+};
+
+// node_modules/d3-selection/src/namespace.js
+function namespace_default(name) {
+  var prefix = name += "", i = prefix.indexOf(":");
+  if (i >= 0 && (prefix = name.slice(0, i)) !== "xmlns") name = name.slice(i + 1);
+  return namespaces_default.hasOwnProperty(prefix) ? { space: namespaces_default[prefix], local: name } : name;
+}
+
+// node_modules/d3-selection/src/creator.js
+function creatorInherit(name) {
+  return function() {
+    var document2 = this.ownerDocument, uri = this.namespaceURI;
+    return uri === xhtml && document2.documentElement.namespaceURI === xhtml ? document2.createElement(name) : document2.createElementNS(uri, name);
+  };
+}
+function creatorFixed(fullname) {
+  return function() {
+    return this.ownerDocument.createElementNS(fullname.space, fullname.local);
+  };
+}
+function creator_default(name) {
+  var fullname = namespace_default(name);
+  return (fullname.local ? creatorFixed : creatorInherit)(fullname);
+}
+
+// node_modules/d3-selection/src/selector.js
+function none() {
+}
+function selector_default(selector3) {
+  return selector3 == null ? none : function() {
+    return this.querySelector(selector3);
+  };
+}
+
+// node_modules/d3-selection/src/selection/select.js
+function select_default(select) {
+  if (typeof select !== "function") select = selector_default(select);
+  for (var groups = this._groups, m = groups.length, subgroups = new Array(m), j = 0; j < m; ++j) {
+    for (var group = groups[j], n = group.length, subgroup = subgroups[j] = new Array(n), node, subnode, i = 0; i < n; ++i) {
+      if ((node = group[i]) && (subnode = select.call(node, node.__data__, i, group))) {
+        if ("__data__" in node) subnode.__data__ = node.__data__;
+        subgroup[i] = subnode;
+      }
+    }
+  }
+  return new Selection(subgroups, this._parents);
+}
+
+// node_modules/d3-selection/src/array.js
+function array(x) {
+  return x == null ? [] : Array.isArray(x) ? x : Array.from(x);
+}
+
+// node_modules/d3-selection/src/selectorAll.js
+function empty() {
+  return [];
+}
+function selectorAll_default(selector3) {
+  return selector3 == null ? empty : function() {
+    return this.querySelectorAll(selector3);
+  };
+}
+
+// node_modules/d3-selection/src/selection/selectAll.js
+function arrayAll(select) {
+  return function() {
+    return array(select.apply(this, arguments));
+  };
+}
+function selectAll_default(select) {
+  if (typeof select === "function") select = arrayAll(select);
+  else select = selectorAll_default(select);
+  for (var groups = this._groups, m = groups.length, subgroups = [], parents = [], j = 0; j < m; ++j) {
+    for (var group = groups[j], n = group.length, node, i = 0; i < n; ++i) {
+      if (node = group[i]) {
+        subgroups.push(select.call(node, node.__data__, i, group));
+        parents.push(node);
+      }
+    }
+  }
+  return new Selection(subgroups, parents);
+}
+
+// node_modules/d3-selection/src/matcher.js
+function matcher_default(selector3) {
+  return function() {
+    return this.matches(selector3);
+  };
+}
+function childMatcher(selector3) {
+  return function(node) {
+    return node.matches(selector3);
+  };
+}
+
+// node_modules/d3-selection/src/selection/selectChild.js
+var find = Array.prototype.find;
+function childFind(match) {
+  return function() {
+    return find.call(this.children, match);
+  };
+}
+function childFirst() {
+  return this.firstElementChild;
+}
+function selectChild_default(match) {
+  return this.select(match == null ? childFirst : childFind(typeof match === "function" ? match : childMatcher(match)));
+}
+
+// node_modules/d3-selection/src/selection/selectChildren.js
+var filter = Array.prototype.filter;
+function children() {
+  return Array.from(this.children);
+}
+function childrenFilter(match) {
+  return function() {
+    return filter.call(this.children, match);
+  };
+}
+function selectChildren_default(match) {
+  return this.selectAll(match == null ? children : childrenFilter(typeof match === "function" ? match : childMatcher(match)));
+}
+
+// node_modules/d3-selection/src/selection/filter.js
+function filter_default(match) {
+  if (typeof match !== "function") match = matcher_default(match);
+  for (var groups = this._groups, m = groups.length, subgroups = new Array(m), j = 0; j < m; ++j) {
+    for (var group = groups[j], n = group.length, subgroup = subgroups[j] = [], node, i = 0; i < n; ++i) {
+      if ((node = group[i]) && match.call(node, node.__data__, i, group)) {
+        subgroup.push(node);
+      }
+    }
+  }
+  return new Selection(subgroups, this._parents);
+}
+
+// node_modules/d3-selection/src/selection/sparse.js
+function sparse_default(update) {
+  return new Array(update.length);
+}
+
+// node_modules/d3-selection/src/selection/enter.js
+function enter_default() {
+  return new Selection(this._enter || this._groups.map(sparse_default), this._parents);
+}
+function EnterNode(parent, datum2) {
+  this.ownerDocument = parent.ownerDocument;
+  this.namespaceURI = parent.namespaceURI;
+  this._next = null;
+  this._parent = parent;
+  this.__data__ = datum2;
+}
+EnterNode.prototype = {
+  constructor: EnterNode,
+  appendChild: function(child) {
+    return this._parent.insertBefore(child, this._next);
+  },
+  insertBefore: function(child, next) {
+    return this._parent.insertBefore(child, next);
+  },
+  querySelector: function(selector3) {
+    return this._parent.querySelector(selector3);
+  },
+  querySelectorAll: function(selector3) {
+    return this._parent.querySelectorAll(selector3);
+  }
+};
+
+// node_modules/d3-selection/src/constant.js
+function constant_default(x) {
+  return function() {
+    return x;
+  };
+}
+
+// node_modules/d3-selection/src/selection/data.js
+function bindIndex(parent, group, enter, update, exit, data) {
+  var i = 0, node, groupLength = group.length, dataLength = data.length;
+  for (; i < dataLength; ++i) {
+    if (node = group[i]) {
+      node.__data__ = data[i];
+      update[i] = node;
+    } else {
+      enter[i] = new EnterNode(parent, data[i]);
+    }
+  }
+  for (; i < groupLength; ++i) {
+    if (node = group[i]) {
+      exit[i] = node;
+    }
+  }
+}
+function bindKey(parent, group, enter, update, exit, data, key) {
+  var i, node, nodeByKeyValue = /* @__PURE__ */ new Map(), groupLength = group.length, dataLength = data.length, keyValues = new Array(groupLength), keyValue;
+  for (i = 0; i < groupLength; ++i) {
+    if (node = group[i]) {
+      keyValues[i] = keyValue = key.call(node, node.__data__, i, group) + "";
+      if (nodeByKeyValue.has(keyValue)) {
+        exit[i] = node;
+      } else {
+        nodeByKeyValue.set(keyValue, node);
+      }
+    }
+  }
+  for (i = 0; i < dataLength; ++i) {
+    keyValue = key.call(parent, data[i], i, data) + "";
+    if (node = nodeByKeyValue.get(keyValue)) {
+      update[i] = node;
+      node.__data__ = data[i];
+      nodeByKeyValue.delete(keyValue);
+    } else {
+      enter[i] = new EnterNode(parent, data[i]);
+    }
+  }
+  for (i = 0; i < groupLength; ++i) {
+    if ((node = group[i]) && nodeByKeyValue.get(keyValues[i]) === node) {
+      exit[i] = node;
+    }
+  }
+}
+function datum(node) {
+  return node.__data__;
+}
+function data_default(value, key) {
+  if (!arguments.length) return Array.from(this, datum);
+  var bind = key ? bindKey : bindIndex, parents = this._parents, groups = this._groups;
+  if (typeof value !== "function") value = constant_default(value);
+  for (var m = groups.length, update = new Array(m), enter = new Array(m), exit = new Array(m), j = 0; j < m; ++j) {
+    var parent = parents[j], group = groups[j], groupLength = group.length, data = arraylike(value.call(parent, parent && parent.__data__, j, parents)), dataLength = data.length, enterGroup = enter[j] = new Array(dataLength), updateGroup = update[j] = new Array(dataLength), exitGroup = exit[j] = new Array(groupLength);
+    bind(parent, group, enterGroup, updateGroup, exitGroup, data, key);
+    for (var i0 = 0, i1 = 0, previous, next; i0 < dataLength; ++i0) {
+      if (previous = enterGroup[i0]) {
+        if (i0 >= i1) i1 = i0 + 1;
+        while (!(next = updateGroup[i1]) && ++i1 < dataLength) ;
+        previous._next = next || null;
+      }
+    }
+  }
+  update = new Selection(update, parents);
+  update._enter = enter;
+  update._exit = exit;
+  return update;
+}
+function arraylike(data) {
+  return typeof data === "object" && "length" in data ? data : Array.from(data);
+}
+
+// node_modules/d3-selection/src/selection/exit.js
+function exit_default() {
+  return new Selection(this._exit || this._groups.map(sparse_default), this._parents);
+}
+
+// node_modules/d3-selection/src/selection/join.js
+function join_default(onenter, onupdate, onexit) {
+  var enter = this.enter(), update = this, exit = this.exit();
+  if (typeof onenter === "function") {
+    enter = onenter(enter);
+    if (enter) enter = enter.selection();
+  } else {
+    enter = enter.append(onenter + "");
+  }
+  if (onupdate != null) {
+    update = onupdate(update);
+    if (update) update = update.selection();
+  }
+  if (onexit == null) exit.remove();
+  else onexit(exit);
+  return enter && update ? enter.merge(update).order() : update;
+}
+
+// node_modules/d3-selection/src/selection/merge.js
+function merge_default(context) {
+  var selection2 = context.selection ? context.selection() : context;
+  for (var groups0 = this._groups, groups1 = selection2._groups, m0 = groups0.length, m1 = groups1.length, m = Math.min(m0, m1), merges = new Array(m0), j = 0; j < m; ++j) {
+    for (var group0 = groups0[j], group1 = groups1[j], n = group0.length, merge = merges[j] = new Array(n), node, i = 0; i < n; ++i) {
+      if (node = group0[i] || group1[i]) {
+        merge[i] = node;
+      }
+    }
+  }
+  for (; j < m0; ++j) {
+    merges[j] = groups0[j];
+  }
+  return new Selection(merges, this._parents);
+}
+
+// node_modules/d3-selection/src/selection/order.js
+function order_default() {
+  for (var groups = this._groups, j = -1, m = groups.length; ++j < m; ) {
+    for (var group = groups[j], i = group.length - 1, next = group[i], node; --i >= 0; ) {
+      if (node = group[i]) {
+        if (next && node.compareDocumentPosition(next) ^ 4) next.parentNode.insertBefore(node, next);
+        next = node;
+      }
+    }
+  }
+  return this;
+}
+
+// node_modules/d3-selection/src/selection/sort.js
+function sort_default(compare) {
+  if (!compare) compare = ascending;
+  function compareNode(a, b) {
+    return a && b ? compare(a.__data__, b.__data__) : !a - !b;
+  }
+  for (var groups = this._groups, m = groups.length, sortgroups = new Array(m), j = 0; j < m; ++j) {
+    for (var group = groups[j], n = group.length, sortgroup = sortgroups[j] = new Array(n), node, i = 0; i < n; ++i) {
+      if (node = group[i]) {
+        sortgroup[i] = node;
+      }
+    }
+    sortgroup.sort(compareNode);
+  }
+  return new Selection(sortgroups, this._parents).order();
+}
+function ascending(a, b) {
+  return a < b ? -1 : a > b ? 1 : a >= b ? 0 : NaN;
+}
+
+// node_modules/d3-selection/src/selection/call.js
+function call_default() {
+  var callback = arguments[0];
+  arguments[0] = this;
+  callback.apply(null, arguments);
+  return this;
+}
+
+// node_modules/d3-selection/src/selection/nodes.js
+function nodes_default() {
+  return Array.from(this);
+}
+
+// node_modules/d3-selection/src/selection/node.js
+function node_default() {
+  for (var groups = this._groups, j = 0, m = groups.length; j < m; ++j) {
+    for (var group = groups[j], i = 0, n = group.length; i < n; ++i) {
+      var node = group[i];
+      if (node) return node;
+    }
+  }
+  return null;
+}
+
+// node_modules/d3-selection/src/selection/size.js
+function size_default() {
+  let size = 0;
+  for (const node of this) ++size;
+  return size;
+}
+
+// node_modules/d3-selection/src/selection/empty.js
+function empty_default() {
+  return !this.node();
+}
+
+// node_modules/d3-selection/src/selection/each.js
+function each_default(callback) {
+  for (var groups = this._groups, j = 0, m = groups.length; j < m; ++j) {
+    for (var group = groups[j], i = 0, n = group.length, node; i < n; ++i) {
+      if (node = group[i]) callback.call(node, node.__data__, i, group);
+    }
+  }
+  return this;
+}
+
+// node_modules/d3-selection/src/selection/attr.js
+function attrRemove(name) {
+  return function() {
+    this.removeAttribute(name);
+  };
+}
+function attrRemoveNS(fullname) {
+  return function() {
+    this.removeAttributeNS(fullname.space, fullname.local);
+  };
+}
+function attrConstant(name, value) {
+  return function() {
+    this.setAttribute(name, value);
+  };
+}
+function attrConstantNS(fullname, value) {
+  return function() {
+    this.setAttributeNS(fullname.space, fullname.local, value);
+  };
+}
+function attrFunction(name, value) {
+  return function() {
+    var v = value.apply(this, arguments);
+    if (v == null) this.removeAttribute(name);
+    else this.setAttribute(name, v);
+  };
+}
+function attrFunctionNS(fullname, value) {
+  return function() {
+    var v = value.apply(this, arguments);
+    if (v == null) this.removeAttributeNS(fullname.space, fullname.local);
+    else this.setAttributeNS(fullname.space, fullname.local, v);
+  };
+}
+function attr_default(name, value) {
+  var fullname = namespace_default(name);
+  if (arguments.length < 2) {
+    var node = this.node();
+    return fullname.local ? node.getAttributeNS(fullname.space, fullname.local) : node.getAttribute(fullname);
+  }
+  return this.each((value == null ? fullname.local ? attrRemoveNS : attrRemove : typeof value === "function" ? fullname.local ? attrFunctionNS : attrFunction : fullname.local ? attrConstantNS : attrConstant)(fullname, value));
+}
+
+// node_modules/d3-selection/src/window.js
+function window_default(node) {
+  return node.ownerDocument && node.ownerDocument.defaultView || node.document && node || node.defaultView;
+}
+
+// node_modules/d3-selection/src/selection/style.js
+function styleRemove(name) {
+  return function() {
+    this.style.removeProperty(name);
+  };
+}
+function styleConstant(name, value, priority) {
+  return function() {
+    this.style.setProperty(name, value, priority);
+  };
+}
+function styleFunction(name, value, priority) {
+  return function() {
+    var v = value.apply(this, arguments);
+    if (v == null) this.style.removeProperty(name);
+    else this.style.setProperty(name, v, priority);
+  };
+}
+function style_default(name, value, priority) {
+  return arguments.length > 1 ? this.each((value == null ? styleRemove : typeof value === "function" ? styleFunction : styleConstant)(name, value, priority == null ? "" : priority)) : styleValue(this.node(), name);
+}
+function styleValue(node, name) {
+  return node.style.getPropertyValue(name) || window_default(node).getComputedStyle(node, null).getPropertyValue(name);
+}
+
+// node_modules/d3-selection/src/selection/property.js
+function propertyRemove(name) {
+  return function() {
+    delete this[name];
+  };
+}
+function propertyConstant(name, value) {
+  return function() {
+    this[name] = value;
+  };
+}
+function propertyFunction(name, value) {
+  return function() {
+    var v = value.apply(this, arguments);
+    if (v == null) delete this[name];
+    else this[name] = v;
+  };
+}
+function property_default(name, value) {
+  return arguments.length > 1 ? this.each((value == null ? propertyRemove : typeof value === "function" ? propertyFunction : propertyConstant)(name, value)) : this.node()[name];
+}
+
+// node_modules/d3-selection/src/selection/classed.js
+function classArray(string) {
+  return string.trim().split(/^|\s+/);
+}
+function classList(node) {
+  return node.classList || new ClassList(node);
+}
+function ClassList(node) {
+  this._node = node;
+  this._names = classArray(node.getAttribute("class") || "");
+}
+ClassList.prototype = {
+  add: function(name) {
+    var i = this._names.indexOf(name);
+    if (i < 0) {
+      this._names.push(name);
+      this._node.setAttribute("class", this._names.join(" "));
+    }
+  },
+  remove: function(name) {
+    var i = this._names.indexOf(name);
+    if (i >= 0) {
+      this._names.splice(i, 1);
+      this._node.setAttribute("class", this._names.join(" "));
+    }
+  },
+  contains: function(name) {
+    return this._names.indexOf(name) >= 0;
+  }
+};
+function classedAdd(node, names) {
+  var list = classList(node), i = -1, n = names.length;
+  while (++i < n) list.add(names[i]);
+}
+function classedRemove(node, names) {
+  var list = classList(node), i = -1, n = names.length;
+  while (++i < n) list.remove(names[i]);
+}
+function classedTrue(names) {
+  return function() {
+    classedAdd(this, names);
+  };
+}
+function classedFalse(names) {
+  return function() {
+    classedRemove(this, names);
+  };
+}
+function classedFunction(names, value) {
+  return function() {
+    (value.apply(this, arguments) ? classedAdd : classedRemove)(this, names);
+  };
+}
+function classed_default(name, value) {
+  var names = classArray(name + "");
+  if (arguments.length < 2) {
+    var list = classList(this.node()), i = -1, n = names.length;
+    while (++i < n) if (!list.contains(names[i])) return false;
+    return true;
+  }
+  return this.each((typeof value === "function" ? classedFunction : value ? classedTrue : classedFalse)(names, value));
+}
+
+// node_modules/d3-selection/src/selection/text.js
+function textRemove() {
+  this.textContent = "";
+}
+function textConstant(value) {
+  return function() {
+    this.textContent = value;
+  };
+}
+function textFunction(value) {
+  return function() {
+    var v = value.apply(this, arguments);
+    this.textContent = v == null ? "" : v;
+  };
+}
+function text_default(value) {
+  return arguments.length ? this.each(value == null ? textRemove : (typeof value === "function" ? textFunction : textConstant)(value)) : this.node().textContent;
+}
+
+// node_modules/d3-selection/src/selection/html.js
+function htmlRemove() {
+  this.innerHTML = "";
+}
+function htmlConstant(value) {
+  return function() {
+    this.innerHTML = value;
+  };
+}
+function htmlFunction(value) {
+  return function() {
+    var v = value.apply(this, arguments);
+    this.innerHTML = v == null ? "" : v;
+  };
+}
+function html_default(value) {
+  return arguments.length ? this.each(value == null ? htmlRemove : (typeof value === "function" ? htmlFunction : htmlConstant)(value)) : this.node().innerHTML;
+}
+
+// node_modules/d3-selection/src/selection/raise.js
+function raise() {
+  if (this.nextSibling) this.parentNode.appendChild(this);
+}
+function raise_default() {
+  return this.each(raise);
+}
+
+// node_modules/d3-selection/src/selection/lower.js
+function lower() {
+  if (this.previousSibling) this.parentNode.insertBefore(this, this.parentNode.firstChild);
+}
+function lower_default() {
+  return this.each(lower);
+}
+
+// node_modules/d3-selection/src/selection/append.js
+function append_default(name) {
+  var create2 = typeof name === "function" ? name : creator_default(name);
+  return this.select(function() {
+    return this.appendChild(create2.apply(this, arguments));
+  });
+}
+
+// node_modules/d3-selection/src/selection/insert.js
+function constantNull() {
+  return null;
+}
+function insert_default(name, before) {
+  var create2 = typeof name === "function" ? name : creator_default(name), select = before == null ? constantNull : typeof before === "function" ? before : selector_default(before);
+  return this.select(function() {
+    return this.insertBefore(create2.apply(this, arguments), select.apply(this, arguments) || null);
+  });
+}
+
+// node_modules/d3-selection/src/selection/remove.js
+function remove() {
+  var parent = this.parentNode;
+  if (parent) parent.removeChild(this);
+}
+function remove_default() {
+  return this.each(remove);
+}
+
+// node_modules/d3-selection/src/selection/clone.js
+function selection_cloneShallow() {
+  var clone = this.cloneNode(false), parent = this.parentNode;
+  return parent ? parent.insertBefore(clone, this.nextSibling) : clone;
+}
+function selection_cloneDeep() {
+  var clone = this.cloneNode(true), parent = this.parentNode;
+  return parent ? parent.insertBefore(clone, this.nextSibling) : clone;
+}
+function clone_default(deep) {
+  return this.select(deep ? selection_cloneDeep : selection_cloneShallow);
+}
+
+// node_modules/d3-selection/src/selection/datum.js
+function datum_default(value) {
+  return arguments.length ? this.property("__data__", value) : this.node().__data__;
+}
+
+// node_modules/d3-selection/src/selection/on.js
+function contextListener(listener) {
+  return function(event) {
+    listener.call(this, event, this.__data__);
+  };
+}
+function parseTypenames2(typenames) {
+  return typenames.trim().split(/^|\s+/).map(function(t) {
+    var name = "", i = t.indexOf(".");
+    if (i >= 0) name = t.slice(i + 1), t = t.slice(0, i);
+    return { type: t, name };
+  });
+}
+function onRemove(typename) {
+  return function() {
+    var on = this.__on;
+    if (!on) return;
+    for (var j = 0, i = -1, m = on.length, o; j < m; ++j) {
+      if (o = on[j], (!typename.type || o.type === typename.type) && o.name === typename.name) {
+        this.removeEventListener(o.type, o.listener, o.options);
+      } else {
+        on[++i] = o;
+      }
+    }
+    if (++i) on.length = i;
+    else delete this.__on;
+  };
+}
+function onAdd(typename, value, options) {
+  return function() {
+    var on = this.__on, o, listener = contextListener(value);
+    if (on) for (var j = 0, m = on.length; j < m; ++j) {
+      if ((o = on[j]).type === typename.type && o.name === typename.name) {
+        this.removeEventListener(o.type, o.listener, o.options);
+        this.addEventListener(o.type, o.listener = listener, o.options = options);
+        o.value = value;
+        return;
+      }
+    }
+    this.addEventListener(typename.type, listener, options);
+    o = { type: typename.type, name: typename.name, value, listener, options };
+    if (!on) this.__on = [o];
+    else on.push(o);
+  };
+}
+function on_default(typename, value, options) {
+  var typenames = parseTypenames2(typename + ""), i, n = typenames.length, t;
+  if (arguments.length < 2) {
+    var on = this.node().__on;
+    if (on) for (var j = 0, m = on.length, o; j < m; ++j) {
+      for (i = 0, o = on[j]; i < n; ++i) {
+        if ((t = typenames[i]).type === o.type && t.name === o.name) {
+          return o.value;
+        }
+      }
+    }
+    return;
+  }
+  on = value ? onAdd : onRemove;
+  for (i = 0; i < n; ++i) this.each(on(typenames[i], value, options));
+  return this;
+}
+
+// node_modules/d3-selection/src/selection/dispatch.js
+function dispatchEvent(node, type, params) {
+  var window2 = window_default(node), event = window2.CustomEvent;
+  if (typeof event === "function") {
+    event = new event(type, params);
+  } else {
+    event = window2.document.createEvent("Event");
+    if (params) event.initEvent(type, params.bubbles, params.cancelable), event.detail = params.detail;
+    else event.initEvent(type, false, false);
+  }
+  node.dispatchEvent(event);
+}
+function dispatchConstant(type, params) {
+  return function() {
+    return dispatchEvent(this, type, params);
+  };
+}
+function dispatchFunction(type, params) {
+  return function() {
+    return dispatchEvent(this, type, params.apply(this, arguments));
+  };
+}
+function dispatch_default2(type, params) {
+  return this.each((typeof params === "function" ? dispatchFunction : dispatchConstant)(type, params));
+}
+
+// node_modules/d3-selection/src/selection/iterator.js
+function* iterator_default() {
+  for (var groups = this._groups, j = 0, m = groups.length; j < m; ++j) {
+    for (var group = groups[j], i = 0, n = group.length, node; i < n; ++i) {
+      if (node = group[i]) yield node;
+    }
+  }
+}
+
+// node_modules/d3-selection/src/selection/index.js
+var root = [null];
+function Selection(groups, parents) {
+  this._groups = groups;
+  this._parents = parents;
+}
+function selection() {
+  return new Selection([[document.documentElement]], root);
+}
+function selection_selection() {
+  return this;
+}
+Selection.prototype = selection.prototype = {
+  constructor: Selection,
+  select: select_default,
+  selectAll: selectAll_default,
+  selectChild: selectChild_default,
+  selectChildren: selectChildren_default,
+  filter: filter_default,
+  data: data_default,
+  enter: enter_default,
+  exit: exit_default,
+  join: join_default,
+  merge: merge_default,
+  selection: selection_selection,
+  order: order_default,
+  sort: sort_default,
+  call: call_default,
+  nodes: nodes_default,
+  node: node_default,
+  size: size_default,
+  empty: empty_default,
+  each: each_default,
+  attr: attr_default,
+  style: style_default,
+  property: property_default,
+  classed: classed_default,
+  text: text_default,
+  html: html_default,
+  raise: raise_default,
+  lower: lower_default,
+  append: append_default,
+  insert: insert_default,
+  remove: remove_default,
+  clone: clone_default,
+  datum: datum_default,
+  on: on_default,
+  dispatch: dispatch_default2,
+  [Symbol.iterator]: iterator_default
+};
+var selection_default = selection;
+
+// node_modules/d3-selection/src/select.js
+function select_default2(selector3) {
+  return typeof selector3 === "string" ? new Selection([[document.querySelector(selector3)]], [document.documentElement]) : new Selection([[selector3]], root);
+}
+
+// node_modules/d3-selection/src/sourceEvent.js
+function sourceEvent_default(event) {
+  let sourceEvent;
+  while (sourceEvent = event.sourceEvent) event = sourceEvent;
+  return event;
+}
+
+// node_modules/d3-selection/src/pointer.js
+function pointer_default(event, node) {
+  event = sourceEvent_default(event);
+  if (node === void 0) node = event.currentTarget;
+  if (node) {
+    var svg = node.ownerSVGElement || node;
+    if (svg.createSVGPoint) {
+      var point = svg.createSVGPoint();
+      point.x = event.clientX, point.y = event.clientY;
+      point = point.matrixTransform(node.getScreenCTM().inverse());
+      return [point.x, point.y];
+    }
+    if (node.getBoundingClientRect) {
+      var rect = node.getBoundingClientRect();
+      return [event.clientX - rect.left - node.clientLeft, event.clientY - rect.top - node.clientTop];
+    }
+  }
+  return [event.pageX, event.pageY];
+}
+
+// node_modules/d3-drag/src/noevent.js
+var nonpassive = { passive: false };
+var nonpassivecapture = { capture: true, passive: false };
+function nopropagation(event) {
+  event.stopImmediatePropagation();
+}
+function noevent_default(event) {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+// node_modules/d3-drag/src/nodrag.js
+function nodrag_default(view) {
+  var root3 = view.document.documentElement, selection2 = select_default2(view).on("dragstart.drag", noevent_default, nonpassivecapture);
+  if ("onselectstart" in root3) {
+    selection2.on("selectstart.drag", noevent_default, nonpassivecapture);
+  } else {
+    root3.__noselect = root3.style.MozUserSelect;
+    root3.style.MozUserSelect = "none";
+  }
+}
+function yesdrag(view, noclick) {
+  var root3 = view.document.documentElement, selection2 = select_default2(view).on("dragstart.drag", null);
+  if (noclick) {
+    selection2.on("click.drag", noevent_default, nonpassivecapture);
+    setTimeout(function() {
+      selection2.on("click.drag", null);
+    }, 0);
+  }
+  if ("onselectstart" in root3) {
+    selection2.on("selectstart.drag", null);
+  } else {
+    root3.style.MozUserSelect = root3.__noselect;
+    delete root3.__noselect;
+  }
+}
+
+// node_modules/d3-drag/src/constant.js
+var constant_default2 = (x) => () => x;
+
+// node_modules/d3-drag/src/event.js
+function DragEvent(type, {
+  sourceEvent,
+  subject,
+  target,
+  identifier,
+  active,
+  x,
+  y,
+  dx,
+  dy,
+  dispatch: dispatch2
+}) {
+  Object.defineProperties(this, {
+    type: { value: type, enumerable: true, configurable: true },
+    sourceEvent: { value: sourceEvent, enumerable: true, configurable: true },
+    subject: { value: subject, enumerable: true, configurable: true },
+    target: { value: target, enumerable: true, configurable: true },
+    identifier: { value: identifier, enumerable: true, configurable: true },
+    active: { value: active, enumerable: true, configurable: true },
+    x: { value: x, enumerable: true, configurable: true },
+    y: { value: y, enumerable: true, configurable: true },
+    dx: { value: dx, enumerable: true, configurable: true },
+    dy: { value: dy, enumerable: true, configurable: true },
+    _: { value: dispatch2 }
+  });
+}
+DragEvent.prototype.on = function() {
+  var value = this._.on.apply(this._, arguments);
+  return value === this._ ? this : value;
+};
+
+// node_modules/d3-drag/src/drag.js
+function defaultFilter(event) {
+  return !event.ctrlKey && !event.button;
+}
+function defaultContainer() {
+  return this.parentNode;
+}
+function defaultSubject(event, d) {
+  return d == null ? { x: event.x, y: event.y } : d;
+}
+function defaultTouchable() {
+  return navigator.maxTouchPoints || "ontouchstart" in this;
+}
+function drag_default() {
+  var filter2 = defaultFilter, container = defaultContainer, subject = defaultSubject, touchable = defaultTouchable, gestures = {}, listeners = dispatch_default("start", "drag", "end"), active = 0, mousedownx, mousedowny, mousemoving, touchending, clickDistance2 = 0;
+  function drag(selection2) {
+    selection2.on("mousedown.drag", mousedowned).filter(touchable).on("touchstart.drag", touchstarted).on("touchmove.drag", touchmoved, nonpassive).on("touchend.drag touchcancel.drag", touchended).style("touch-action", "none").style("-webkit-tap-highlight-color", "rgba(0,0,0,0)");
+  }
+  function mousedowned(event, d) {
+    if (touchending || !filter2.call(this, event, d)) return;
+    var gesture = beforestart(this, container.call(this, event, d), event, d, "mouse");
+    if (!gesture) return;
+    select_default2(event.view).on("mousemove.drag", mousemoved, nonpassivecapture).on("mouseup.drag", mouseupped, nonpassivecapture);
+    nodrag_default(event.view);
+    nopropagation(event);
+    mousemoving = false;
+    mousedownx = event.clientX;
+    mousedowny = event.clientY;
+    gesture("start", event);
+  }
+  function mousemoved(event) {
+    noevent_default(event);
+    if (!mousemoving) {
+      var dx = event.clientX - mousedownx, dy = event.clientY - mousedowny;
+      mousemoving = dx * dx + dy * dy > clickDistance2;
+    }
+    gestures.mouse("drag", event);
+  }
+  function mouseupped(event) {
+    select_default2(event.view).on("mousemove.drag mouseup.drag", null);
+    yesdrag(event.view, mousemoving);
+    noevent_default(event);
+    gestures.mouse("end", event);
+  }
+  function touchstarted(event, d) {
+    if (!filter2.call(this, event, d)) return;
+    var touches = event.changedTouches, c = container.call(this, event, d), n = touches.length, i, gesture;
+    for (i = 0; i < n; ++i) {
+      if (gesture = beforestart(this, c, event, d, touches[i].identifier, touches[i])) {
+        nopropagation(event);
+        gesture("start", event, touches[i]);
+      }
+    }
+  }
+  function touchmoved(event) {
+    var touches = event.changedTouches, n = touches.length, i, gesture;
+    for (i = 0; i < n; ++i) {
+      if (gesture = gestures[touches[i].identifier]) {
+        noevent_default(event);
+        gesture("drag", event, touches[i]);
+      }
+    }
+  }
+  function touchended(event) {
+    var touches = event.changedTouches, n = touches.length, i, gesture;
+    if (touchending) clearTimeout(touchending);
+    touchending = setTimeout(function() {
+      touchending = null;
+    }, 500);
+    for (i = 0; i < n; ++i) {
+      if (gesture = gestures[touches[i].identifier]) {
+        nopropagation(event);
+        gesture("end", event, touches[i]);
+      }
+    }
+  }
+  function beforestart(that, container2, event, d, identifier, touch) {
+    var dispatch2 = listeners.copy(), p = pointer_default(touch || event, container2), dx, dy, s;
+    if ((s = subject.call(that, new DragEvent("beforestart", {
+      sourceEvent: event,
+      target: drag,
+      identifier,
+      active,
+      x: p[0],
+      y: p[1],
+      dx: 0,
+      dy: 0,
+      dispatch: dispatch2
+    }), d)) == null) return;
+    dx = s.x - p[0] || 0;
+    dy = s.y - p[1] || 0;
+    return function gesture(type, event2, touch2) {
+      var p0 = p, n;
+      switch (type) {
+        case "start":
+          gestures[identifier] = gesture, n = active++;
+          break;
+        case "end":
+          delete gestures[identifier], --active;
+        // falls through
+        case "drag":
+          p = pointer_default(touch2 || event2, container2), n = active;
+          break;
+      }
+      dispatch2.call(
+        type,
+        that,
+        new DragEvent(type, {
+          sourceEvent: event2,
+          subject: s,
+          target: drag,
+          identifier,
+          active: n,
+          x: p[0] + dx,
+          y: p[1] + dy,
+          dx: p[0] - p0[0],
+          dy: p[1] - p0[1],
+          dispatch: dispatch2
+        }),
+        d
+      );
+    };
+  }
+  drag.filter = function(_) {
+    return arguments.length ? (filter2 = typeof _ === "function" ? _ : constant_default2(!!_), drag) : filter2;
+  };
+  drag.container = function(_) {
+    return arguments.length ? (container = typeof _ === "function" ? _ : constant_default2(_), drag) : container;
+  };
+  drag.subject = function(_) {
+    return arguments.length ? (subject = typeof _ === "function" ? _ : constant_default2(_), drag) : subject;
+  };
+  drag.touchable = function(_) {
+    return arguments.length ? (touchable = typeof _ === "function" ? _ : constant_default2(!!_), drag) : touchable;
+  };
+  drag.on = function() {
+    var value = listeners.on.apply(listeners, arguments);
+    return value === listeners ? drag : value;
+  };
+  drag.clickDistance = function(_) {
+    return arguments.length ? (clickDistance2 = (_ = +_) * _, drag) : Math.sqrt(clickDistance2);
+  };
+  return drag;
+}
+
+// node_modules/d3-color/src/define.js
+function define_default(constructor, factory, prototype) {
+  constructor.prototype = factory.prototype = prototype;
+  prototype.constructor = constructor;
+}
+function extend(parent, definition) {
+  var prototype = Object.create(parent.prototype);
+  for (var key in definition) prototype[key] = definition[key];
+  return prototype;
+}
+
+// node_modules/d3-color/src/color.js
+function Color() {
+}
+var darker = 0.7;
+var brighter = 1 / darker;
+var reI = "\\s*([+-]?\\d+)\\s*";
+var reN = "\\s*([+-]?(?:\\d*\\.)?\\d+(?:[eE][+-]?\\d+)?)\\s*";
+var reP = "\\s*([+-]?(?:\\d*\\.)?\\d+(?:[eE][+-]?\\d+)?)%\\s*";
+var reHex = /^#([0-9a-f]{3,8})$/;
+var reRgbInteger = new RegExp(`^rgb\\(${reI},${reI},${reI}\\)$`);
+var reRgbPercent = new RegExp(`^rgb\\(${reP},${reP},${reP}\\)$`);
+var reRgbaInteger = new RegExp(`^rgba\\(${reI},${reI},${reI},${reN}\\)$`);
+var reRgbaPercent = new RegExp(`^rgba\\(${reP},${reP},${reP},${reN}\\)$`);
+var reHslPercent = new RegExp(`^hsl\\(${reN},${reP},${reP}\\)$`);
+var reHslaPercent = new RegExp(`^hsla\\(${reN},${reP},${reP},${reN}\\)$`);
+var named = {
+  aliceblue: 15792383,
+  antiquewhite: 16444375,
+  aqua: 65535,
+  aquamarine: 8388564,
+  azure: 15794175,
+  beige: 16119260,
+  bisque: 16770244,
+  black: 0,
+  blanchedalmond: 16772045,
+  blue: 255,
+  blueviolet: 9055202,
+  brown: 10824234,
+  burlywood: 14596231,
+  cadetblue: 6266528,
+  chartreuse: 8388352,
+  chocolate: 13789470,
+  coral: 16744272,
+  cornflowerblue: 6591981,
+  cornsilk: 16775388,
+  crimson: 14423100,
+  cyan: 65535,
+  darkblue: 139,
+  darkcyan: 35723,
+  darkgoldenrod: 12092939,
+  darkgray: 11119017,
+  darkgreen: 25600,
+  darkgrey: 11119017,
+  darkkhaki: 12433259,
+  darkmagenta: 9109643,
+  darkolivegreen: 5597999,
+  darkorange: 16747520,
+  darkorchid: 10040012,
+  darkred: 9109504,
+  darksalmon: 15308410,
+  darkseagreen: 9419919,
+  darkslateblue: 4734347,
+  darkslategray: 3100495,
+  darkslategrey: 3100495,
+  darkturquoise: 52945,
+  darkviolet: 9699539,
+  deeppink: 16716947,
+  deepskyblue: 49151,
+  dimgray: 6908265,
+  dimgrey: 6908265,
+  dodgerblue: 2003199,
+  firebrick: 11674146,
+  floralwhite: 16775920,
+  forestgreen: 2263842,
+  fuchsia: 16711935,
+  gainsboro: 14474460,
+  ghostwhite: 16316671,
+  gold: 16766720,
+  goldenrod: 14329120,
+  gray: 8421504,
+  green: 32768,
+  greenyellow: 11403055,
+  grey: 8421504,
+  honeydew: 15794160,
+  hotpink: 16738740,
+  indianred: 13458524,
+  indigo: 4915330,
+  ivory: 16777200,
+  khaki: 15787660,
+  lavender: 15132410,
+  lavenderblush: 16773365,
+  lawngreen: 8190976,
+  lemonchiffon: 16775885,
+  lightblue: 11393254,
+  lightcoral: 15761536,
+  lightcyan: 14745599,
+  lightgoldenrodyellow: 16448210,
+  lightgray: 13882323,
+  lightgreen: 9498256,
+  lightgrey: 13882323,
+  lightpink: 16758465,
+  lightsalmon: 16752762,
+  lightseagreen: 2142890,
+  lightskyblue: 8900346,
+  lightslategray: 7833753,
+  lightslategrey: 7833753,
+  lightsteelblue: 11584734,
+  lightyellow: 16777184,
+  lime: 65280,
+  limegreen: 3329330,
+  linen: 16445670,
+  magenta: 16711935,
+  maroon: 8388608,
+  mediumaquamarine: 6737322,
+  mediumblue: 205,
+  mediumorchid: 12211667,
+  mediumpurple: 9662683,
+  mediumseagreen: 3978097,
+  mediumslateblue: 8087790,
+  mediumspringgreen: 64154,
+  mediumturquoise: 4772300,
+  mediumvioletred: 13047173,
+  midnightblue: 1644912,
+  mintcream: 16121850,
+  mistyrose: 16770273,
+  moccasin: 16770229,
+  navajowhite: 16768685,
+  navy: 128,
+  oldlace: 16643558,
+  olive: 8421376,
+  olivedrab: 7048739,
+  orange: 16753920,
+  orangered: 16729344,
+  orchid: 14315734,
+  palegoldenrod: 15657130,
+  palegreen: 10025880,
+  paleturquoise: 11529966,
+  palevioletred: 14381203,
+  papayawhip: 16773077,
+  peachpuff: 16767673,
+  peru: 13468991,
+  pink: 16761035,
+  plum: 14524637,
+  powderblue: 11591910,
+  purple: 8388736,
+  rebeccapurple: 6697881,
+  red: 16711680,
+  rosybrown: 12357519,
+  royalblue: 4286945,
+  saddlebrown: 9127187,
+  salmon: 16416882,
+  sandybrown: 16032864,
+  seagreen: 3050327,
+  seashell: 16774638,
+  sienna: 10506797,
+  silver: 12632256,
+  skyblue: 8900331,
+  slateblue: 6970061,
+  slategray: 7372944,
+  slategrey: 7372944,
+  snow: 16775930,
+  springgreen: 65407,
+  steelblue: 4620980,
+  tan: 13808780,
+  teal: 32896,
+  thistle: 14204888,
+  tomato: 16737095,
+  turquoise: 4251856,
+  violet: 15631086,
+  wheat: 16113331,
+  white: 16777215,
+  whitesmoke: 16119285,
+  yellow: 16776960,
+  yellowgreen: 10145074
+};
+define_default(Color, color, {
+  copy(channels) {
+    return Object.assign(new this.constructor(), this, channels);
+  },
+  displayable() {
+    return this.rgb().displayable();
+  },
+  hex: color_formatHex,
+  // Deprecated! Use color.formatHex.
+  formatHex: color_formatHex,
+  formatHex8: color_formatHex8,
+  formatHsl: color_formatHsl,
+  formatRgb: color_formatRgb,
+  toString: color_formatRgb
+});
+function color_formatHex() {
+  return this.rgb().formatHex();
+}
+function color_formatHex8() {
+  return this.rgb().formatHex8();
+}
+function color_formatHsl() {
+  return hslConvert(this).formatHsl();
+}
+function color_formatRgb() {
+  return this.rgb().formatRgb();
+}
+function color(format) {
+  var m, l;
+  format = (format + "").trim().toLowerCase();
+  return (m = reHex.exec(format)) ? (l = m[1].length, m = parseInt(m[1], 16), l === 6 ? rgbn(m) : l === 3 ? new Rgb(m >> 8 & 15 | m >> 4 & 240, m >> 4 & 15 | m & 240, (m & 15) << 4 | m & 15, 1) : l === 8 ? rgba(m >> 24 & 255, m >> 16 & 255, m >> 8 & 255, (m & 255) / 255) : l === 4 ? rgba(m >> 12 & 15 | m >> 8 & 240, m >> 8 & 15 | m >> 4 & 240, m >> 4 & 15 | m & 240, ((m & 15) << 4 | m & 15) / 255) : null) : (m = reRgbInteger.exec(format)) ? new Rgb(m[1], m[2], m[3], 1) : (m = reRgbPercent.exec(format)) ? new Rgb(m[1] * 255 / 100, m[2] * 255 / 100, m[3] * 255 / 100, 1) : (m = reRgbaInteger.exec(format)) ? rgba(m[1], m[2], m[3], m[4]) : (m = reRgbaPercent.exec(format)) ? rgba(m[1] * 255 / 100, m[2] * 255 / 100, m[3] * 255 / 100, m[4]) : (m = reHslPercent.exec(format)) ? hsla(m[1], m[2] / 100, m[3] / 100, 1) : (m = reHslaPercent.exec(format)) ? hsla(m[1], m[2] / 100, m[3] / 100, m[4]) : named.hasOwnProperty(format) ? rgbn(named[format]) : format === "transparent" ? new Rgb(NaN, NaN, NaN, 0) : null;
+}
+function rgbn(n) {
+  return new Rgb(n >> 16 & 255, n >> 8 & 255, n & 255, 1);
+}
+function rgba(r, g, b, a) {
+  if (a <= 0) r = g = b = NaN;
+  return new Rgb(r, g, b, a);
+}
+function rgbConvert(o) {
+  if (!(o instanceof Color)) o = color(o);
+  if (!o) return new Rgb();
+  o = o.rgb();
+  return new Rgb(o.r, o.g, o.b, o.opacity);
+}
+function rgb(r, g, b, opacity) {
+  return arguments.length === 1 ? rgbConvert(r) : new Rgb(r, g, b, opacity == null ? 1 : opacity);
+}
+function Rgb(r, g, b, opacity) {
+  this.r = +r;
+  this.g = +g;
+  this.b = +b;
+  this.opacity = +opacity;
+}
+define_default(Rgb, rgb, extend(Color, {
+  brighter(k) {
+    k = k == null ? brighter : Math.pow(brighter, k);
+    return new Rgb(this.r * k, this.g * k, this.b * k, this.opacity);
+  },
+  darker(k) {
+    k = k == null ? darker : Math.pow(darker, k);
+    return new Rgb(this.r * k, this.g * k, this.b * k, this.opacity);
+  },
+  rgb() {
+    return this;
+  },
+  clamp() {
+    return new Rgb(clampi(this.r), clampi(this.g), clampi(this.b), clampa(this.opacity));
+  },
+  displayable() {
+    return -0.5 <= this.r && this.r < 255.5 && (-0.5 <= this.g && this.g < 255.5) && (-0.5 <= this.b && this.b < 255.5) && (0 <= this.opacity && this.opacity <= 1);
+  },
+  hex: rgb_formatHex,
+  // Deprecated! Use color.formatHex.
+  formatHex: rgb_formatHex,
+  formatHex8: rgb_formatHex8,
+  formatRgb: rgb_formatRgb,
+  toString: rgb_formatRgb
+}));
+function rgb_formatHex() {
+  return `#${hex(this.r)}${hex(this.g)}${hex(this.b)}`;
+}
+function rgb_formatHex8() {
+  return `#${hex(this.r)}${hex(this.g)}${hex(this.b)}${hex((isNaN(this.opacity) ? 1 : this.opacity) * 255)}`;
+}
+function rgb_formatRgb() {
+  const a = clampa(this.opacity);
+  return `${a === 1 ? "rgb(" : "rgba("}${clampi(this.r)}, ${clampi(this.g)}, ${clampi(this.b)}${a === 1 ? ")" : `, ${a})`}`;
+}
+function clampa(opacity) {
+  return isNaN(opacity) ? 1 : Math.max(0, Math.min(1, opacity));
+}
+function clampi(value) {
+  return Math.max(0, Math.min(255, Math.round(value) || 0));
+}
+function hex(value) {
+  value = clampi(value);
+  return (value < 16 ? "0" : "") + value.toString(16);
+}
+function hsla(h, s, l, a) {
+  if (a <= 0) h = s = l = NaN;
+  else if (l <= 0 || l >= 1) h = s = NaN;
+  else if (s <= 0) h = NaN;
+  return new Hsl(h, s, l, a);
+}
+function hslConvert(o) {
+  if (o instanceof Hsl) return new Hsl(o.h, o.s, o.l, o.opacity);
+  if (!(o instanceof Color)) o = color(o);
+  if (!o) return new Hsl();
+  if (o instanceof Hsl) return o;
+  o = o.rgb();
+  var r = o.r / 255, g = o.g / 255, b = o.b / 255, min = Math.min(r, g, b), max = Math.max(r, g, b), h = NaN, s = max - min, l = (max + min) / 2;
+  if (s) {
+    if (r === max) h = (g - b) / s + (g < b) * 6;
+    else if (g === max) h = (b - r) / s + 2;
+    else h = (r - g) / s + 4;
+    s /= l < 0.5 ? max + min : 2 - max - min;
+    h *= 60;
+  } else {
+    s = l > 0 && l < 1 ? 0 : h;
+  }
+  return new Hsl(h, s, l, o.opacity);
+}
+function hsl(h, s, l, opacity) {
+  return arguments.length === 1 ? hslConvert(h) : new Hsl(h, s, l, opacity == null ? 1 : opacity);
+}
+function Hsl(h, s, l, opacity) {
+  this.h = +h;
+  this.s = +s;
+  this.l = +l;
+  this.opacity = +opacity;
+}
+define_default(Hsl, hsl, extend(Color, {
+  brighter(k) {
+    k = k == null ? brighter : Math.pow(brighter, k);
+    return new Hsl(this.h, this.s, this.l * k, this.opacity);
+  },
+  darker(k) {
+    k = k == null ? darker : Math.pow(darker, k);
+    return new Hsl(this.h, this.s, this.l * k, this.opacity);
+  },
+  rgb() {
+    var h = this.h % 360 + (this.h < 0) * 360, s = isNaN(h) || isNaN(this.s) ? 0 : this.s, l = this.l, m2 = l + (l < 0.5 ? l : 1 - l) * s, m1 = 2 * l - m2;
+    return new Rgb(
+      hsl2rgb(h >= 240 ? h - 240 : h + 120, m1, m2),
+      hsl2rgb(h, m1, m2),
+      hsl2rgb(h < 120 ? h + 240 : h - 120, m1, m2),
+      this.opacity
+    );
+  },
+  clamp() {
+    return new Hsl(clamph(this.h), clampt(this.s), clampt(this.l), clampa(this.opacity));
+  },
+  displayable() {
+    return (0 <= this.s && this.s <= 1 || isNaN(this.s)) && (0 <= this.l && this.l <= 1) && (0 <= this.opacity && this.opacity <= 1);
+  },
+  formatHsl() {
+    const a = clampa(this.opacity);
+    return `${a === 1 ? "hsl(" : "hsla("}${clamph(this.h)}, ${clampt(this.s) * 100}%, ${clampt(this.l) * 100}%${a === 1 ? ")" : `, ${a})`}`;
+  }
+}));
+function clamph(value) {
+  value = (value || 0) % 360;
+  return value < 0 ? value + 360 : value;
+}
+function clampt(value) {
+  return Math.max(0, Math.min(1, value || 0));
+}
+function hsl2rgb(h, m1, m2) {
+  return (h < 60 ? m1 + (m2 - m1) * h / 60 : h < 180 ? m2 : h < 240 ? m1 + (m2 - m1) * (240 - h) / 60 : m1) * 255;
+}
+
+// node_modules/d3-interpolate/src/basis.js
+function basis(t1, v0, v1, v2, v3) {
+  var t2 = t1 * t1, t3 = t2 * t1;
+  return ((1 - 3 * t1 + 3 * t2 - t3) * v0 + (4 - 6 * t2 + 3 * t3) * v1 + (1 + 3 * t1 + 3 * t2 - 3 * t3) * v2 + t3 * v3) / 6;
+}
+function basis_default(values) {
+  var n = values.length - 1;
+  return function(t) {
+    var i = t <= 0 ? t = 0 : t >= 1 ? (t = 1, n - 1) : Math.floor(t * n), v1 = values[i], v2 = values[i + 1], v0 = i > 0 ? values[i - 1] : 2 * v1 - v2, v3 = i < n - 1 ? values[i + 2] : 2 * v2 - v1;
+    return basis((t - i / n) * n, v0, v1, v2, v3);
+  };
+}
+
+// node_modules/d3-interpolate/src/basisClosed.js
+function basisClosed_default(values) {
+  var n = values.length;
+  return function(t) {
+    var i = Math.floor(((t %= 1) < 0 ? ++t : t) * n), v0 = values[(i + n - 1) % n], v1 = values[i % n], v2 = values[(i + 1) % n], v3 = values[(i + 2) % n];
+    return basis((t - i / n) * n, v0, v1, v2, v3);
+  };
+}
+
+// node_modules/d3-interpolate/src/constant.js
+var constant_default3 = (x) => () => x;
+
+// node_modules/d3-interpolate/src/color.js
+function linear(a, d) {
+  return function(t) {
+    return a + t * d;
+  };
+}
+function exponential(a, b, y) {
+  return a = Math.pow(a, y), b = Math.pow(b, y) - a, y = 1 / y, function(t) {
+    return Math.pow(a + t * b, y);
+  };
+}
+function gamma(y) {
+  return (y = +y) === 1 ? nogamma : function(a, b) {
+    return b - a ? exponential(a, b, y) : constant_default3(isNaN(a) ? b : a);
+  };
+}
+function nogamma(a, b) {
+  var d = b - a;
+  return d ? linear(a, d) : constant_default3(isNaN(a) ? b : a);
+}
+
+// node_modules/d3-interpolate/src/rgb.js
+var rgb_default = function rgbGamma(y) {
+  var color2 = gamma(y);
+  function rgb2(start2, end) {
+    var r = color2((start2 = rgb(start2)).r, (end = rgb(end)).r), g = color2(start2.g, end.g), b = color2(start2.b, end.b), opacity = nogamma(start2.opacity, end.opacity);
+    return function(t) {
+      start2.r = r(t);
+      start2.g = g(t);
+      start2.b = b(t);
+      start2.opacity = opacity(t);
+      return start2 + "";
+    };
+  }
+  rgb2.gamma = rgbGamma;
+  return rgb2;
+}(1);
+function rgbSpline(spline) {
+  return function(colors) {
+    var n = colors.length, r = new Array(n), g = new Array(n), b = new Array(n), i, color2;
+    for (i = 0; i < n; ++i) {
+      color2 = rgb(colors[i]);
+      r[i] = color2.r || 0;
+      g[i] = color2.g || 0;
+      b[i] = color2.b || 0;
+    }
+    r = spline(r);
+    g = spline(g);
+    b = spline(b);
+    color2.opacity = 1;
+    return function(t) {
+      color2.r = r(t);
+      color2.g = g(t);
+      color2.b = b(t);
+      return color2 + "";
+    };
+  };
+}
+var rgbBasis = rgbSpline(basis_default);
+var rgbBasisClosed = rgbSpline(basisClosed_default);
+
+// node_modules/d3-interpolate/src/number.js
+function number_default(a, b) {
+  return a = +a, b = +b, function(t) {
+    return a * (1 - t) + b * t;
+  };
+}
+
+// node_modules/d3-interpolate/src/string.js
+var reA = /[-+]?(?:\d+\.?\d*|\.?\d+)(?:[eE][-+]?\d+)?/g;
+var reB = new RegExp(reA.source, "g");
+function zero(b) {
+  return function() {
+    return b;
+  };
+}
+function one(b) {
+  return function(t) {
+    return b(t) + "";
+  };
+}
+function string_default(a, b) {
+  var bi = reA.lastIndex = reB.lastIndex = 0, am, bm, bs, i = -1, s = [], q = [];
+  a = a + "", b = b + "";
+  while ((am = reA.exec(a)) && (bm = reB.exec(b))) {
+    if ((bs = bm.index) > bi) {
+      bs = b.slice(bi, bs);
+      if (s[i]) s[i] += bs;
+      else s[++i] = bs;
+    }
+    if ((am = am[0]) === (bm = bm[0])) {
+      if (s[i]) s[i] += bm;
+      else s[++i] = bm;
+    } else {
+      s[++i] = null;
+      q.push({ i, x: number_default(am, bm) });
+    }
+    bi = reB.lastIndex;
+  }
+  if (bi < b.length) {
+    bs = b.slice(bi);
+    if (s[i]) s[i] += bs;
+    else s[++i] = bs;
+  }
+  return s.length < 2 ? q[0] ? one(q[0].x) : zero(b) : (b = q.length, function(t) {
+    for (var i2 = 0, o; i2 < b; ++i2) s[(o = q[i2]).i] = o.x(t);
+    return s.join("");
+  });
+}
+
+// node_modules/d3-interpolate/src/transform/decompose.js
+var degrees = 180 / Math.PI;
+var identity2 = {
+  translateX: 0,
+  translateY: 0,
+  rotate: 0,
+  skewX: 0,
+  scaleX: 1,
+  scaleY: 1
+};
+function decompose_default(a, b, c, d, e, f) {
+  var scaleX, scaleY, skewX;
+  if (scaleX = Math.sqrt(a * a + b * b)) a /= scaleX, b /= scaleX;
+  if (skewX = a * c + b * d) c -= a * skewX, d -= b * skewX;
+  if (scaleY = Math.sqrt(c * c + d * d)) c /= scaleY, d /= scaleY, skewX /= scaleY;
+  if (a * d < b * c) a = -a, b = -b, skewX = -skewX, scaleX = -scaleX;
+  return {
+    translateX: e,
+    translateY: f,
+    rotate: Math.atan2(b, a) * degrees,
+    skewX: Math.atan(skewX) * degrees,
+    scaleX,
+    scaleY
+  };
+}
+
+// node_modules/d3-interpolate/src/transform/parse.js
+var svgNode;
+function parseCss(value) {
+  const m = new (typeof DOMMatrix === "function" ? DOMMatrix : WebKitCSSMatrix)(value + "");
+  return m.isIdentity ? identity2 : decompose_default(m.a, m.b, m.c, m.d, m.e, m.f);
+}
+function parseSvg(value) {
+  if (value == null) return identity2;
+  if (!svgNode) svgNode = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  svgNode.setAttribute("transform", value);
+  if (!(value = svgNode.transform.baseVal.consolidate())) return identity2;
+  value = value.matrix;
+  return decompose_default(value.a, value.b, value.c, value.d, value.e, value.f);
+}
+
+// node_modules/d3-interpolate/src/transform/index.js
+function interpolateTransform(parse, pxComma, pxParen, degParen) {
+  function pop(s) {
+    return s.length ? s.pop() + " " : "";
+  }
+  function translate(xa, ya, xb, yb, s, q) {
+    if (xa !== xb || ya !== yb) {
+      var i = s.push("translate(", null, pxComma, null, pxParen);
+      q.push({ i: i - 4, x: number_default(xa, xb) }, { i: i - 2, x: number_default(ya, yb) });
+    } else if (xb || yb) {
+      s.push("translate(" + xb + pxComma + yb + pxParen);
+    }
+  }
+  function rotate(a, b, s, q) {
+    if (a !== b) {
+      if (a - b > 180) b += 360;
+      else if (b - a > 180) a += 360;
+      q.push({ i: s.push(pop(s) + "rotate(", null, degParen) - 2, x: number_default(a, b) });
+    } else if (b) {
+      s.push(pop(s) + "rotate(" + b + degParen);
+    }
+  }
+  function skewX(a, b, s, q) {
+    if (a !== b) {
+      q.push({ i: s.push(pop(s) + "skewX(", null, degParen) - 2, x: number_default(a, b) });
+    } else if (b) {
+      s.push(pop(s) + "skewX(" + b + degParen);
+    }
+  }
+  function scale(xa, ya, xb, yb, s, q) {
+    if (xa !== xb || ya !== yb) {
+      var i = s.push(pop(s) + "scale(", null, ",", null, ")");
+      q.push({ i: i - 4, x: number_default(xa, xb) }, { i: i - 2, x: number_default(ya, yb) });
+    } else if (xb !== 1 || yb !== 1) {
+      s.push(pop(s) + "scale(" + xb + "," + yb + ")");
+    }
+  }
+  return function(a, b) {
+    var s = [], q = [];
+    a = parse(a), b = parse(b);
+    translate(a.translateX, a.translateY, b.translateX, b.translateY, s, q);
+    rotate(a.rotate, b.rotate, s, q);
+    skewX(a.skewX, b.skewX, s, q);
+    scale(a.scaleX, a.scaleY, b.scaleX, b.scaleY, s, q);
+    a = b = null;
+    return function(t) {
+      var i = -1, n = q.length, o;
+      while (++i < n) s[(o = q[i]).i] = o.x(t);
+      return s.join("");
+    };
+  };
+}
+var interpolateTransformCss = interpolateTransform(parseCss, "px, ", "px)", "deg)");
+var interpolateTransformSvg = interpolateTransform(parseSvg, ", ", ")", ")");
+
+// node_modules/d3-interpolate/src/zoom.js
+var epsilon2 = 1e-12;
+function cosh(x) {
+  return ((x = Math.exp(x)) + 1 / x) / 2;
+}
+function sinh(x) {
+  return ((x = Math.exp(x)) - 1 / x) / 2;
+}
+function tanh(x) {
+  return ((x = Math.exp(2 * x)) - 1) / (x + 1);
+}
+var zoom_default = function zoomRho(rho, rho2, rho4) {
+  function zoom(p0, p1) {
+    var ux0 = p0[0], uy0 = p0[1], w0 = p0[2], ux1 = p1[0], uy1 = p1[1], w1 = p1[2], dx = ux1 - ux0, dy = uy1 - uy0, d2 = dx * dx + dy * dy, i, S;
+    if (d2 < epsilon2) {
+      S = Math.log(w1 / w0) / rho;
+      i = function(t) {
+        return [
+          ux0 + t * dx,
+          uy0 + t * dy,
+          w0 * Math.exp(rho * t * S)
+        ];
+      };
+    } else {
+      var d1 = Math.sqrt(d2), b0 = (w1 * w1 - w0 * w0 + rho4 * d2) / (2 * w0 * rho2 * d1), b1 = (w1 * w1 - w0 * w0 - rho4 * d2) / (2 * w1 * rho2 * d1), r0 = Math.log(Math.sqrt(b0 * b0 + 1) - b0), r1 = Math.log(Math.sqrt(b1 * b1 + 1) - b1);
+      S = (r1 - r0) / rho;
+      i = function(t) {
+        var s = t * S, coshr0 = cosh(r0), u = w0 / (rho2 * d1) * (coshr0 * tanh(rho * s + r0) - sinh(r0));
+        return [
+          ux0 + u * dx,
+          uy0 + u * dy,
+          w0 * coshr0 / cosh(rho * s + r0)
+        ];
+      };
+    }
+    i.duration = S * 1e3 * rho / Math.SQRT2;
+    return i;
+  }
+  zoom.rho = function(_) {
+    var _1 = Math.max(1e-3, +_), _2 = _1 * _1, _4 = _2 * _2;
+    return zoomRho(_1, _2, _4);
+  };
+  return zoom;
+}(Math.SQRT2, 2, 4);
+
+// node_modules/d3-timer/src/timer.js
+var frame = 0;
+var timeout = 0;
+var interval = 0;
+var pokeDelay = 1e3;
+var taskHead;
+var taskTail;
+var clockLast = 0;
+var clockNow = 0;
+var clockSkew = 0;
+var clock = typeof performance === "object" && performance.now ? performance : Date;
+var setFrame = typeof window === "object" && window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : function(f) {
+  setTimeout(f, 17);
+};
+function now() {
+  return clockNow || (setFrame(clearNow), clockNow = clock.now() + clockSkew);
+}
+function clearNow() {
+  clockNow = 0;
+}
+function Timer() {
+  this._call = this._time = this._next = null;
+}
+Timer.prototype = timer.prototype = {
+  constructor: Timer,
+  restart: function(callback, delay, time) {
+    if (typeof callback !== "function") throw new TypeError("callback is not a function");
+    time = (time == null ? now() : +time) + (delay == null ? 0 : +delay);
+    if (!this._next && taskTail !== this) {
+      if (taskTail) taskTail._next = this;
+      else taskHead = this;
+      taskTail = this;
+    }
+    this._call = callback;
+    this._time = time;
+    sleep();
+  },
+  stop: function() {
+    if (this._call) {
+      this._call = null;
+      this._time = Infinity;
+      sleep();
+    }
+  }
+};
+function timer(callback, delay, time) {
+  var t = new Timer();
+  t.restart(callback, delay, time);
+  return t;
+}
+function timerFlush() {
+  now();
+  ++frame;
+  var t = taskHead, e;
+  while (t) {
+    if ((e = clockNow - t._time) >= 0) t._call.call(void 0, e);
+    t = t._next;
+  }
+  --frame;
+}
+function wake() {
+  clockNow = (clockLast = clock.now()) + clockSkew;
+  frame = timeout = 0;
+  try {
+    timerFlush();
+  } finally {
+    frame = 0;
+    nap();
+    clockNow = 0;
+  }
+}
+function poke() {
+  var now2 = clock.now(), delay = now2 - clockLast;
+  if (delay > pokeDelay) clockSkew -= delay, clockLast = now2;
+}
+function nap() {
+  var t0, t1 = taskHead, t2, time = Infinity;
+  while (t1) {
+    if (t1._call) {
+      if (time > t1._time) time = t1._time;
+      t0 = t1, t1 = t1._next;
+    } else {
+      t2 = t1._next, t1._next = null;
+      t1 = t0 ? t0._next = t2 : taskHead = t2;
+    }
+  }
+  taskTail = t0;
+  sleep(time);
+}
+function sleep(time) {
+  if (frame) return;
+  if (timeout) timeout = clearTimeout(timeout);
+  var delay = time - clockNow;
+  if (delay > 24) {
+    if (time < Infinity) timeout = setTimeout(wake, time - clock.now() - clockSkew);
+    if (interval) interval = clearInterval(interval);
+  } else {
+    if (!interval) clockLast = clock.now(), interval = setInterval(poke, pokeDelay);
+    frame = 1, setFrame(wake);
+  }
+}
+
+// node_modules/d3-timer/src/timeout.js
+function timeout_default(callback, delay, time) {
+  var t = new Timer();
+  delay = delay == null ? 0 : +delay;
+  t.restart((elapsed) => {
+    t.stop();
+    callback(elapsed + delay);
+  }, delay, time);
+  return t;
+}
+
+// node_modules/d3-transition/src/transition/schedule.js
+var emptyOn = dispatch_default("start", "end", "cancel", "interrupt");
+var emptyTween = [];
+var CREATED = 0;
+var SCHEDULED = 1;
+var STARTING = 2;
+var STARTED = 3;
+var RUNNING = 4;
+var ENDING = 5;
+var ENDED = 6;
+function schedule_default(node, name, id2, index, group, timing) {
+  var schedules = node.__transition;
+  if (!schedules) node.__transition = {};
+  else if (id2 in schedules) return;
+  create(node, id2, {
+    name,
+    index,
+    // For context during callback.
+    group,
+    // For context during callback.
+    on: emptyOn,
+    tween: emptyTween,
+    time: timing.time,
+    delay: timing.delay,
+    duration: timing.duration,
+    ease: timing.ease,
+    timer: null,
+    state: CREATED
+  });
+}
+function init(node, id2) {
+  var schedule = get2(node, id2);
+  if (schedule.state > CREATED) throw new Error("too late; already scheduled");
+  return schedule;
+}
+function set2(node, id2) {
+  var schedule = get2(node, id2);
+  if (schedule.state > STARTED) throw new Error("too late; already running");
+  return schedule;
+}
+function get2(node, id2) {
+  var schedule = node.__transition;
+  if (!schedule || !(schedule = schedule[id2])) throw new Error("transition not found");
+  return schedule;
+}
+function create(node, id2, self) {
+  var schedules = node.__transition, tween;
+  schedules[id2] = self;
+  self.timer = timer(schedule, 0, self.time);
+  function schedule(elapsed) {
+    self.state = SCHEDULED;
+    self.timer.restart(start2, self.delay, self.time);
+    if (self.delay <= elapsed) start2(elapsed - self.delay);
+  }
+  function start2(elapsed) {
+    var i, j, n, o;
+    if (self.state !== SCHEDULED) return stop();
+    for (i in schedules) {
+      o = schedules[i];
+      if (o.name !== self.name) continue;
+      if (o.state === STARTED) return timeout_default(start2);
+      if (o.state === RUNNING) {
+        o.state = ENDED;
+        o.timer.stop();
+        o.on.call("interrupt", node, node.__data__, o.index, o.group);
+        delete schedules[i];
+      } else if (+i < id2) {
+        o.state = ENDED;
+        o.timer.stop();
+        o.on.call("cancel", node, node.__data__, o.index, o.group);
+        delete schedules[i];
+      }
+    }
+    timeout_default(function() {
+      if (self.state === STARTED) {
+        self.state = RUNNING;
+        self.timer.restart(tick, self.delay, self.time);
+        tick(elapsed);
+      }
+    });
+    self.state = STARTING;
+    self.on.call("start", node, node.__data__, self.index, self.group);
+    if (self.state !== STARTING) return;
+    self.state = STARTED;
+    tween = new Array(n = self.tween.length);
+    for (i = 0, j = -1; i < n; ++i) {
+      if (o = self.tween[i].value.call(node, node.__data__, self.index, self.group)) {
+        tween[++j] = o;
+      }
+    }
+    tween.length = j + 1;
+  }
+  function tick(elapsed) {
+    var t = elapsed < self.duration ? self.ease.call(null, elapsed / self.duration) : (self.timer.restart(stop), self.state = ENDING, 1), i = -1, n = tween.length;
+    while (++i < n) {
+      tween[i].call(node, t);
+    }
+    if (self.state === ENDING) {
+      self.on.call("end", node, node.__data__, self.index, self.group);
+      stop();
+    }
+  }
+  function stop() {
+    self.state = ENDED;
+    self.timer.stop();
+    delete schedules[id2];
+    for (var i in schedules) return;
+    delete node.__transition;
+  }
+}
+
+// node_modules/d3-transition/src/interrupt.js
+function interrupt_default(node, name) {
+  var schedules = node.__transition, schedule, active, empty2 = true, i;
+  if (!schedules) return;
+  name = name == null ? null : name + "";
+  for (i in schedules) {
+    if ((schedule = schedules[i]).name !== name) {
+      empty2 = false;
+      continue;
+    }
+    active = schedule.state > STARTING && schedule.state < ENDING;
+    schedule.state = ENDED;
+    schedule.timer.stop();
+    schedule.on.call(active ? "interrupt" : "cancel", node, node.__data__, schedule.index, schedule.group);
+    delete schedules[i];
+  }
+  if (empty2) delete node.__transition;
+}
+
+// node_modules/d3-transition/src/selection/interrupt.js
+function interrupt_default2(name) {
+  return this.each(function() {
+    interrupt_default(this, name);
+  });
+}
+
+// node_modules/d3-transition/src/transition/tween.js
+function tweenRemove(id2, name) {
+  var tween0, tween1;
+  return function() {
+    var schedule = set2(this, id2), tween = schedule.tween;
+    if (tween !== tween0) {
+      tween1 = tween0 = tween;
+      for (var i = 0, n = tween1.length; i < n; ++i) {
+        if (tween1[i].name === name) {
+          tween1 = tween1.slice();
+          tween1.splice(i, 1);
+          break;
+        }
+      }
+    }
+    schedule.tween = tween1;
+  };
+}
+function tweenFunction(id2, name, value) {
+  var tween0, tween1;
+  if (typeof value !== "function") throw new Error();
+  return function() {
+    var schedule = set2(this, id2), tween = schedule.tween;
+    if (tween !== tween0) {
+      tween1 = (tween0 = tween).slice();
+      for (var t = { name, value }, i = 0, n = tween1.length; i < n; ++i) {
+        if (tween1[i].name === name) {
+          tween1[i] = t;
+          break;
+        }
+      }
+      if (i === n) tween1.push(t);
+    }
+    schedule.tween = tween1;
+  };
+}
+function tween_default(name, value) {
+  var id2 = this._id;
+  name += "";
+  if (arguments.length < 2) {
+    var tween = get2(this.node(), id2).tween;
+    for (var i = 0, n = tween.length, t; i < n; ++i) {
+      if ((t = tween[i]).name === name) {
+        return t.value;
+      }
+    }
+    return null;
+  }
+  return this.each((value == null ? tweenRemove : tweenFunction)(id2, name, value));
+}
+function tweenValue(transition2, name, value) {
+  var id2 = transition2._id;
+  transition2.each(function() {
+    var schedule = set2(this, id2);
+    (schedule.value || (schedule.value = {}))[name] = value.apply(this, arguments);
+  });
+  return function(node) {
+    return get2(node, id2).value[name];
+  };
+}
+
+// node_modules/d3-transition/src/transition/interpolate.js
+function interpolate_default(a, b) {
+  var c;
+  return (typeof b === "number" ? number_default : b instanceof color ? rgb_default : (c = color(b)) ? (b = c, rgb_default) : string_default)(a, b);
+}
+
+// node_modules/d3-transition/src/transition/attr.js
+function attrRemove2(name) {
+  return function() {
+    this.removeAttribute(name);
+  };
+}
+function attrRemoveNS2(fullname) {
+  return function() {
+    this.removeAttributeNS(fullname.space, fullname.local);
+  };
+}
+function attrConstant2(name, interpolate, value1) {
+  var string00, string1 = value1 + "", interpolate0;
+  return function() {
+    var string0 = this.getAttribute(name);
+    return string0 === string1 ? null : string0 === string00 ? interpolate0 : interpolate0 = interpolate(string00 = string0, value1);
+  };
+}
+function attrConstantNS2(fullname, interpolate, value1) {
+  var string00, string1 = value1 + "", interpolate0;
+  return function() {
+    var string0 = this.getAttributeNS(fullname.space, fullname.local);
+    return string0 === string1 ? null : string0 === string00 ? interpolate0 : interpolate0 = interpolate(string00 = string0, value1);
+  };
+}
+function attrFunction2(name, interpolate, value) {
+  var string00, string10, interpolate0;
+  return function() {
+    var string0, value1 = value(this), string1;
+    if (value1 == null) return void this.removeAttribute(name);
+    string0 = this.getAttribute(name);
+    string1 = value1 + "";
+    return string0 === string1 ? null : string0 === string00 && string1 === string10 ? interpolate0 : (string10 = string1, interpolate0 = interpolate(string00 = string0, value1));
+  };
+}
+function attrFunctionNS2(fullname, interpolate, value) {
+  var string00, string10, interpolate0;
+  return function() {
+    var string0, value1 = value(this), string1;
+    if (value1 == null) return void this.removeAttributeNS(fullname.space, fullname.local);
+    string0 = this.getAttributeNS(fullname.space, fullname.local);
+    string1 = value1 + "";
+    return string0 === string1 ? null : string0 === string00 && string1 === string10 ? interpolate0 : (string10 = string1, interpolate0 = interpolate(string00 = string0, value1));
+  };
+}
+function attr_default2(name, value) {
+  var fullname = namespace_default(name), i = fullname === "transform" ? interpolateTransformSvg : interpolate_default;
+  return this.attrTween(name, typeof value === "function" ? (fullname.local ? attrFunctionNS2 : attrFunction2)(fullname, i, tweenValue(this, "attr." + name, value)) : value == null ? (fullname.local ? attrRemoveNS2 : attrRemove2)(fullname) : (fullname.local ? attrConstantNS2 : attrConstant2)(fullname, i, value));
+}
+
+// node_modules/d3-transition/src/transition/attrTween.js
+function attrInterpolate(name, i) {
+  return function(t) {
+    this.setAttribute(name, i.call(this, t));
+  };
+}
+function attrInterpolateNS(fullname, i) {
+  return function(t) {
+    this.setAttributeNS(fullname.space, fullname.local, i.call(this, t));
+  };
+}
+function attrTweenNS(fullname, value) {
+  var t0, i0;
+  function tween() {
+    var i = value.apply(this, arguments);
+    if (i !== i0) t0 = (i0 = i) && attrInterpolateNS(fullname, i);
+    return t0;
+  }
+  tween._value = value;
+  return tween;
+}
+function attrTween(name, value) {
+  var t0, i0;
+  function tween() {
+    var i = value.apply(this, arguments);
+    if (i !== i0) t0 = (i0 = i) && attrInterpolate(name, i);
+    return t0;
+  }
+  tween._value = value;
+  return tween;
+}
+function attrTween_default(name, value) {
+  var key = "attr." + name;
+  if (arguments.length < 2) return (key = this.tween(key)) && key._value;
+  if (value == null) return this.tween(key, null);
+  if (typeof value !== "function") throw new Error();
+  var fullname = namespace_default(name);
+  return this.tween(key, (fullname.local ? attrTweenNS : attrTween)(fullname, value));
+}
+
+// node_modules/d3-transition/src/transition/delay.js
+function delayFunction(id2, value) {
+  return function() {
+    init(this, id2).delay = +value.apply(this, arguments);
+  };
+}
+function delayConstant(id2, value) {
+  return value = +value, function() {
+    init(this, id2).delay = value;
+  };
+}
+function delay_default(value) {
+  var id2 = this._id;
+  return arguments.length ? this.each((typeof value === "function" ? delayFunction : delayConstant)(id2, value)) : get2(this.node(), id2).delay;
+}
+
+// node_modules/d3-transition/src/transition/duration.js
+function durationFunction(id2, value) {
+  return function() {
+    set2(this, id2).duration = +value.apply(this, arguments);
+  };
+}
+function durationConstant(id2, value) {
+  return value = +value, function() {
+    set2(this, id2).duration = value;
+  };
+}
+function duration_default(value) {
+  var id2 = this._id;
+  return arguments.length ? this.each((typeof value === "function" ? durationFunction : durationConstant)(id2, value)) : get2(this.node(), id2).duration;
+}
+
+// node_modules/d3-transition/src/transition/ease.js
+function easeConstant(id2, value) {
+  if (typeof value !== "function") throw new Error();
+  return function() {
+    set2(this, id2).ease = value;
+  };
+}
+function ease_default(value) {
+  var id2 = this._id;
+  return arguments.length ? this.each(easeConstant(id2, value)) : get2(this.node(), id2).ease;
+}
+
+// node_modules/d3-transition/src/transition/easeVarying.js
+function easeVarying(id2, value) {
+  return function() {
+    var v = value.apply(this, arguments);
+    if (typeof v !== "function") throw new Error();
+    set2(this, id2).ease = v;
+  };
+}
+function easeVarying_default(value) {
+  if (typeof value !== "function") throw new Error();
+  return this.each(easeVarying(this._id, value));
+}
+
+// node_modules/d3-transition/src/transition/filter.js
+function filter_default2(match) {
+  if (typeof match !== "function") match = matcher_default(match);
+  for (var groups = this._groups, m = groups.length, subgroups = new Array(m), j = 0; j < m; ++j) {
+    for (var group = groups[j], n = group.length, subgroup = subgroups[j] = [], node, i = 0; i < n; ++i) {
+      if ((node = group[i]) && match.call(node, node.__data__, i, group)) {
+        subgroup.push(node);
+      }
+    }
+  }
+  return new Transition(subgroups, this._parents, this._name, this._id);
+}
+
+// node_modules/d3-transition/src/transition/merge.js
+function merge_default2(transition2) {
+  if (transition2._id !== this._id) throw new Error();
+  for (var groups0 = this._groups, groups1 = transition2._groups, m0 = groups0.length, m1 = groups1.length, m = Math.min(m0, m1), merges = new Array(m0), j = 0; j < m; ++j) {
+    for (var group0 = groups0[j], group1 = groups1[j], n = group0.length, merge = merges[j] = new Array(n), node, i = 0; i < n; ++i) {
+      if (node = group0[i] || group1[i]) {
+        merge[i] = node;
+      }
+    }
+  }
+  for (; j < m0; ++j) {
+    merges[j] = groups0[j];
+  }
+  return new Transition(merges, this._parents, this._name, this._id);
+}
+
+// node_modules/d3-transition/src/transition/on.js
+function start(name) {
+  return (name + "").trim().split(/^|\s+/).every(function(t) {
+    var i = t.indexOf(".");
+    if (i >= 0) t = t.slice(0, i);
+    return !t || t === "start";
+  });
+}
+function onFunction(id2, name, listener) {
+  var on0, on1, sit = start(name) ? init : set2;
+  return function() {
+    var schedule = sit(this, id2), on = schedule.on;
+    if (on !== on0) (on1 = (on0 = on).copy()).on(name, listener);
+    schedule.on = on1;
+  };
+}
+function on_default2(name, listener) {
+  var id2 = this._id;
+  return arguments.length < 2 ? get2(this.node(), id2).on.on(name) : this.each(onFunction(id2, name, listener));
+}
+
+// node_modules/d3-transition/src/transition/remove.js
+function removeFunction(id2) {
+  return function() {
+    var parent = this.parentNode;
+    for (var i in this.__transition) if (+i !== id2) return;
+    if (parent) parent.removeChild(this);
+  };
+}
+function remove_default2() {
+  return this.on("end.remove", removeFunction(this._id));
+}
+
+// node_modules/d3-transition/src/transition/select.js
+function select_default3(select) {
+  var name = this._name, id2 = this._id;
+  if (typeof select !== "function") select = selector_default(select);
+  for (var groups = this._groups, m = groups.length, subgroups = new Array(m), j = 0; j < m; ++j) {
+    for (var group = groups[j], n = group.length, subgroup = subgroups[j] = new Array(n), node, subnode, i = 0; i < n; ++i) {
+      if ((node = group[i]) && (subnode = select.call(node, node.__data__, i, group))) {
+        if ("__data__" in node) subnode.__data__ = node.__data__;
+        subgroup[i] = subnode;
+        schedule_default(subgroup[i], name, id2, i, subgroup, get2(node, id2));
+      }
+    }
+  }
+  return new Transition(subgroups, this._parents, name, id2);
+}
+
+// node_modules/d3-transition/src/transition/selectAll.js
+function selectAll_default2(select) {
+  var name = this._name, id2 = this._id;
+  if (typeof select !== "function") select = selectorAll_default(select);
+  for (var groups = this._groups, m = groups.length, subgroups = [], parents = [], j = 0; j < m; ++j) {
+    for (var group = groups[j], n = group.length, node, i = 0; i < n; ++i) {
+      if (node = group[i]) {
+        for (var children2 = select.call(node, node.__data__, i, group), child, inherit2 = get2(node, id2), k = 0, l = children2.length; k < l; ++k) {
+          if (child = children2[k]) {
+            schedule_default(child, name, id2, k, children2, inherit2);
+          }
+        }
+        subgroups.push(children2);
+        parents.push(node);
+      }
+    }
+  }
+  return new Transition(subgroups, parents, name, id2);
+}
+
+// node_modules/d3-transition/src/transition/selection.js
+var Selection2 = selection_default.prototype.constructor;
+function selection_default2() {
+  return new Selection2(this._groups, this._parents);
+}
+
+// node_modules/d3-transition/src/transition/style.js
+function styleNull(name, interpolate) {
+  var string00, string10, interpolate0;
+  return function() {
+    var string0 = styleValue(this, name), string1 = (this.style.removeProperty(name), styleValue(this, name));
+    return string0 === string1 ? null : string0 === string00 && string1 === string10 ? interpolate0 : interpolate0 = interpolate(string00 = string0, string10 = string1);
+  };
+}
+function styleRemove2(name) {
+  return function() {
+    this.style.removeProperty(name);
+  };
+}
+function styleConstant2(name, interpolate, value1) {
+  var string00, string1 = value1 + "", interpolate0;
+  return function() {
+    var string0 = styleValue(this, name);
+    return string0 === string1 ? null : string0 === string00 ? interpolate0 : interpolate0 = interpolate(string00 = string0, value1);
+  };
+}
+function styleFunction2(name, interpolate, value) {
+  var string00, string10, interpolate0;
+  return function() {
+    var string0 = styleValue(this, name), value1 = value(this), string1 = value1 + "";
+    if (value1 == null) string1 = value1 = (this.style.removeProperty(name), styleValue(this, name));
+    return string0 === string1 ? null : string0 === string00 && string1 === string10 ? interpolate0 : (string10 = string1, interpolate0 = interpolate(string00 = string0, value1));
+  };
+}
+function styleMaybeRemove(id2, name) {
+  var on0, on1, listener0, key = "style." + name, event = "end." + key, remove2;
+  return function() {
+    var schedule = set2(this, id2), on = schedule.on, listener = schedule.value[key] == null ? remove2 || (remove2 = styleRemove2(name)) : void 0;
+    if (on !== on0 || listener0 !== listener) (on1 = (on0 = on).copy()).on(event, listener0 = listener);
+    schedule.on = on1;
+  };
+}
+function style_default2(name, value, priority) {
+  var i = (name += "") === "transform" ? interpolateTransformCss : interpolate_default;
+  return value == null ? this.styleTween(name, styleNull(name, i)).on("end.style." + name, styleRemove2(name)) : typeof value === "function" ? this.styleTween(name, styleFunction2(name, i, tweenValue(this, "style." + name, value))).each(styleMaybeRemove(this._id, name)) : this.styleTween(name, styleConstant2(name, i, value), priority).on("end.style." + name, null);
+}
+
+// node_modules/d3-transition/src/transition/styleTween.js
+function styleInterpolate(name, i, priority) {
+  return function(t) {
+    this.style.setProperty(name, i.call(this, t), priority);
+  };
+}
+function styleTween(name, value, priority) {
+  var t, i0;
+  function tween() {
+    var i = value.apply(this, arguments);
+    if (i !== i0) t = (i0 = i) && styleInterpolate(name, i, priority);
+    return t;
+  }
+  tween._value = value;
+  return tween;
+}
+function styleTween_default(name, value, priority) {
+  var key = "style." + (name += "");
+  if (arguments.length < 2) return (key = this.tween(key)) && key._value;
+  if (value == null) return this.tween(key, null);
+  if (typeof value !== "function") throw new Error();
+  return this.tween(key, styleTween(name, value, priority == null ? "" : priority));
+}
+
+// node_modules/d3-transition/src/transition/text.js
+function textConstant2(value) {
+  return function() {
+    this.textContent = value;
+  };
+}
+function textFunction2(value) {
+  return function() {
+    var value1 = value(this);
+    this.textContent = value1 == null ? "" : value1;
+  };
+}
+function text_default2(value) {
+  return this.tween("text", typeof value === "function" ? textFunction2(tweenValue(this, "text", value)) : textConstant2(value == null ? "" : value + ""));
+}
+
+// node_modules/d3-transition/src/transition/textTween.js
+function textInterpolate(i) {
+  return function(t) {
+    this.textContent = i.call(this, t);
+  };
+}
+function textTween(value) {
+  var t0, i0;
+  function tween() {
+    var i = value.apply(this, arguments);
+    if (i !== i0) t0 = (i0 = i) && textInterpolate(i);
+    return t0;
+  }
+  tween._value = value;
+  return tween;
+}
+function textTween_default(value) {
+  var key = "text";
+  if (arguments.length < 1) return (key = this.tween(key)) && key._value;
+  if (value == null) return this.tween(key, null);
+  if (typeof value !== "function") throw new Error();
+  return this.tween(key, textTween(value));
+}
+
+// node_modules/d3-transition/src/transition/transition.js
+function transition_default() {
+  var name = this._name, id0 = this._id, id1 = newId();
+  for (var groups = this._groups, m = groups.length, j = 0; j < m; ++j) {
+    for (var group = groups[j], n = group.length, node, i = 0; i < n; ++i) {
+      if (node = group[i]) {
+        var inherit2 = get2(node, id0);
+        schedule_default(node, name, id1, i, group, {
+          time: inherit2.time + inherit2.delay + inherit2.duration,
+          delay: 0,
+          duration: inherit2.duration,
+          ease: inherit2.ease
+        });
+      }
+    }
+  }
+  return new Transition(groups, this._parents, name, id1);
+}
+
+// node_modules/d3-transition/src/transition/end.js
+function end_default() {
+  var on0, on1, that = this, id2 = that._id, size = that.size();
+  return new Promise(function(resolve, reject) {
+    var cancel = { value: reject }, end = { value: function() {
+      if (--size === 0) resolve();
+    } };
+    that.each(function() {
+      var schedule = set2(this, id2), on = schedule.on;
+      if (on !== on0) {
+        on1 = (on0 = on).copy();
+        on1._.cancel.push(cancel);
+        on1._.interrupt.push(cancel);
+        on1._.end.push(end);
+      }
+      schedule.on = on1;
+    });
+    if (size === 0) resolve();
+  });
+}
+
+// node_modules/d3-transition/src/transition/index.js
+var id = 0;
+function Transition(groups, parents, name, id2) {
+  this._groups = groups;
+  this._parents = parents;
+  this._name = name;
+  this._id = id2;
+}
+function transition(name) {
+  return selection_default().transition(name);
+}
+function newId() {
+  return ++id;
+}
+var selection_prototype = selection_default.prototype;
+Transition.prototype = transition.prototype = {
+  constructor: Transition,
+  select: select_default3,
+  selectAll: selectAll_default2,
+  selectChild: selection_prototype.selectChild,
+  selectChildren: selection_prototype.selectChildren,
+  filter: filter_default2,
+  merge: merge_default2,
+  selection: selection_default2,
+  transition: transition_default,
+  call: selection_prototype.call,
+  nodes: selection_prototype.nodes,
+  node: selection_prototype.node,
+  size: selection_prototype.size,
+  empty: selection_prototype.empty,
+  each: selection_prototype.each,
+  on: on_default2,
+  attr: attr_default2,
+  attrTween: attrTween_default,
+  style: style_default2,
+  styleTween: styleTween_default,
+  text: text_default2,
+  textTween: textTween_default,
+  remove: remove_default2,
+  tween: tween_default,
+  delay: delay_default,
+  duration: duration_default,
+  ease: ease_default,
+  easeVarying: easeVarying_default,
+  end: end_default,
+  [Symbol.iterator]: selection_prototype[Symbol.iterator]
+};
+
+// node_modules/d3-ease/src/cubic.js
+function cubicInOut(t) {
+  return ((t *= 2) <= 1 ? t * t * t : (t -= 2) * t * t + 2) / 2;
+}
+
+// node_modules/d3-transition/src/selection/transition.js
+var defaultTiming = {
+  time: null,
+  // Set on use.
+  delay: 0,
+  duration: 250,
+  ease: cubicInOut
+};
+function inherit(node, id2) {
+  var timing;
+  while (!(timing = node.__transition) || !(timing = timing[id2])) {
+    if (!(node = node.parentNode)) {
+      throw new Error(`transition ${id2} not found`);
+    }
+  }
+  return timing;
+}
+function transition_default2(name) {
+  var id2, timing;
+  if (name instanceof Transition) {
+    id2 = name._id, name = name._name;
+  } else {
+    id2 = newId(), (timing = defaultTiming).time = now(), name = name == null ? null : name + "";
+  }
+  for (var groups = this._groups, m = groups.length, j = 0; j < m; ++j) {
+    for (var group = groups[j], n = group.length, node, i = 0; i < n; ++i) {
+      if (node = group[i]) {
+        schedule_default(node, name, id2, i, group, timing || inherit(node, id2));
+      }
+    }
+  }
+  return new Transition(groups, this._parents, name, id2);
+}
+
+// node_modules/d3-transition/src/selection/index.js
+selection_default.prototype.interrupt = interrupt_default2;
+selection_default.prototype.transition = transition_default2;
+
+// node_modules/d3-zoom/src/constant.js
+var constant_default4 = (x) => () => x;
+
+// node_modules/d3-zoom/src/event.js
+function ZoomEvent(type, {
+  sourceEvent,
+  target,
+  transform: transform2,
+  dispatch: dispatch2
+}) {
+  Object.defineProperties(this, {
+    type: { value: type, enumerable: true, configurable: true },
+    sourceEvent: { value: sourceEvent, enumerable: true, configurable: true },
+    target: { value: target, enumerable: true, configurable: true },
+    transform: { value: transform2, enumerable: true, configurable: true },
+    _: { value: dispatch2 }
+  });
+}
+
+// node_modules/d3-zoom/src/transform.js
+function Transform(k, x, y) {
+  this.k = k;
+  this.x = x;
+  this.y = y;
+}
+Transform.prototype = {
+  constructor: Transform,
+  scale: function(k) {
+    return k === 1 ? this : new Transform(this.k * k, this.x, this.y);
+  },
+  translate: function(x, y) {
+    return x === 0 & y === 0 ? this : new Transform(this.k, this.x + this.k * x, this.y + this.k * y);
+  },
+  apply: function(point) {
+    return [point[0] * this.k + this.x, point[1] * this.k + this.y];
+  },
+  applyX: function(x) {
+    return x * this.k + this.x;
+  },
+  applyY: function(y) {
+    return y * this.k + this.y;
+  },
+  invert: function(location) {
+    return [(location[0] - this.x) / this.k, (location[1] - this.y) / this.k];
+  },
+  invertX: function(x) {
+    return (x - this.x) / this.k;
+  },
+  invertY: function(y) {
+    return (y - this.y) / this.k;
+  },
+  rescaleX: function(x) {
+    return x.copy().domain(x.range().map(this.invertX, this).map(x.invert, x));
+  },
+  rescaleY: function(y) {
+    return y.copy().domain(y.range().map(this.invertY, this).map(y.invert, y));
+  },
+  toString: function() {
+    return "translate(" + this.x + "," + this.y + ") scale(" + this.k + ")";
+  }
+};
+var identity3 = new Transform(1, 0, 0);
+transform.prototype = Transform.prototype;
+function transform(node) {
+  while (!node.__zoom) if (!(node = node.parentNode)) return identity3;
+  return node.__zoom;
+}
+
+// node_modules/d3-zoom/src/noevent.js
+function nopropagation2(event) {
+  event.stopImmediatePropagation();
+}
+function noevent_default2(event) {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+// node_modules/d3-zoom/src/zoom.js
+function defaultFilter2(event) {
+  return (!event.ctrlKey || event.type === "wheel") && !event.button;
+}
+function defaultExtent() {
+  var e = this;
+  if (e instanceof SVGElement) {
+    e = e.ownerSVGElement || e;
+    if (e.hasAttribute("viewBox")) {
+      e = e.viewBox.baseVal;
+      return [[e.x, e.y], [e.x + e.width, e.y + e.height]];
+    }
+    return [[0, 0], [e.width.baseVal.value, e.height.baseVal.value]];
+  }
+  return [[0, 0], [e.clientWidth, e.clientHeight]];
+}
+function defaultTransform() {
+  return this.__zoom || identity3;
+}
+function defaultWheelDelta(event) {
+  return -event.deltaY * (event.deltaMode === 1 ? 0.05 : event.deltaMode ? 1 : 2e-3) * (event.ctrlKey ? 10 : 1);
+}
+function defaultTouchable2() {
+  return navigator.maxTouchPoints || "ontouchstart" in this;
+}
+function defaultConstrain(transform2, extent, translateExtent) {
+  var dx0 = transform2.invertX(extent[0][0]) - translateExtent[0][0], dx1 = transform2.invertX(extent[1][0]) - translateExtent[1][0], dy0 = transform2.invertY(extent[0][1]) - translateExtent[0][1], dy1 = transform2.invertY(extent[1][1]) - translateExtent[1][1];
+  return transform2.translate(
+    dx1 > dx0 ? (dx0 + dx1) / 2 : Math.min(0, dx0) || Math.max(0, dx1),
+    dy1 > dy0 ? (dy0 + dy1) / 2 : Math.min(0, dy0) || Math.max(0, dy1)
+  );
+}
+function zoom_default2() {
+  var filter2 = defaultFilter2, extent = defaultExtent, constrain = defaultConstrain, wheelDelta2 = defaultWheelDelta, touchable = defaultTouchable2, scaleExtent = [0, Infinity], translateExtent = [[-Infinity, -Infinity], [Infinity, Infinity]], duration = 250, interpolate = zoom_default, listeners = dispatch_default("start", "zoom", "end"), touchstarting, touchfirst, touchending, touchDelay = 500, wheelDelay = 150, clickDistance2 = 0, tapDistance = 10;
+  function zoom(selection2) {
+    selection2.property("__zoom", defaultTransform).on("wheel.zoom", wheeled, { passive: false }).on("mousedown.zoom", mousedowned).on("dblclick.zoom", dblclicked).filter(touchable).on("touchstart.zoom", touchstarted).on("touchmove.zoom", touchmoved).on("touchend.zoom touchcancel.zoom", touchended).style("-webkit-tap-highlight-color", "rgba(0,0,0,0)");
+  }
+  zoom.transform = function(collection, transform2, point, event) {
+    var selection2 = collection.selection ? collection.selection() : collection;
+    selection2.property("__zoom", defaultTransform);
+    if (collection !== selection2) {
+      schedule(collection, transform2, point, event);
+    } else {
+      selection2.interrupt().each(function() {
+        gesture(this, arguments).event(event).start().zoom(null, typeof transform2 === "function" ? transform2.apply(this, arguments) : transform2).end();
+      });
+    }
+  };
+  zoom.scaleBy = function(selection2, k, p, event) {
+    zoom.scaleTo(selection2, function() {
+      var k0 = this.__zoom.k, k1 = typeof k === "function" ? k.apply(this, arguments) : k;
+      return k0 * k1;
+    }, p, event);
+  };
+  zoom.scaleTo = function(selection2, k, p, event) {
+    zoom.transform(selection2, function() {
+      var e = extent.apply(this, arguments), t0 = this.__zoom, p0 = p == null ? centroid(e) : typeof p === "function" ? p.apply(this, arguments) : p, p1 = t0.invert(p0), k1 = typeof k === "function" ? k.apply(this, arguments) : k;
+      return constrain(translate(scale(t0, k1), p0, p1), e, translateExtent);
+    }, p, event);
+  };
+  zoom.translateBy = function(selection2, x, y, event) {
+    zoom.transform(selection2, function() {
+      return constrain(this.__zoom.translate(
+        typeof x === "function" ? x.apply(this, arguments) : x,
+        typeof y === "function" ? y.apply(this, arguments) : y
+      ), extent.apply(this, arguments), translateExtent);
+    }, null, event);
+  };
+  zoom.translateTo = function(selection2, x, y, p, event) {
+    zoom.transform(selection2, function() {
+      var e = extent.apply(this, arguments), t = this.__zoom, p0 = p == null ? centroid(e) : typeof p === "function" ? p.apply(this, arguments) : p;
+      return constrain(identity3.translate(p0[0], p0[1]).scale(t.k).translate(
+        typeof x === "function" ? -x.apply(this, arguments) : -x,
+        typeof y === "function" ? -y.apply(this, arguments) : -y
+      ), e, translateExtent);
+    }, p, event);
+  };
+  function scale(transform2, k) {
+    k = Math.max(scaleExtent[0], Math.min(scaleExtent[1], k));
+    return k === transform2.k ? transform2 : new Transform(k, transform2.x, transform2.y);
+  }
+  function translate(transform2, p0, p1) {
+    var x = p0[0] - p1[0] * transform2.k, y = p0[1] - p1[1] * transform2.k;
+    return x === transform2.x && y === transform2.y ? transform2 : new Transform(transform2.k, x, y);
+  }
+  function centroid(extent2) {
+    return [(+extent2[0][0] + +extent2[1][0]) / 2, (+extent2[0][1] + +extent2[1][1]) / 2];
+  }
+  function schedule(transition2, transform2, point, event) {
+    transition2.on("start.zoom", function() {
+      gesture(this, arguments).event(event).start();
+    }).on("interrupt.zoom end.zoom", function() {
+      gesture(this, arguments).event(event).end();
+    }).tween("zoom", function() {
+      var that = this, args = arguments, g = gesture(that, args).event(event), e = extent.apply(that, args), p = point == null ? centroid(e) : typeof point === "function" ? point.apply(that, args) : point, w = Math.max(e[1][0] - e[0][0], e[1][1] - e[0][1]), a = that.__zoom, b = typeof transform2 === "function" ? transform2.apply(that, args) : transform2, i = interpolate(a.invert(p).concat(w / a.k), b.invert(p).concat(w / b.k));
+      return function(t) {
+        if (t === 1) t = b;
+        else {
+          var l = i(t), k = w / l[2];
+          t = new Transform(k, p[0] - l[0] * k, p[1] - l[1] * k);
+        }
+        g.zoom(null, t);
+      };
+    });
+  }
+  function gesture(that, args, clean) {
+    return !clean && that.__zooming || new Gesture(that, args);
+  }
+  function Gesture(that, args) {
+    this.that = that;
+    this.args = args;
+    this.active = 0;
+    this.sourceEvent = null;
+    this.extent = extent.apply(that, args);
+    this.taps = 0;
+  }
+  Gesture.prototype = {
+    event: function(event) {
+      if (event) this.sourceEvent = event;
+      return this;
+    },
+    start: function() {
+      if (++this.active === 1) {
+        this.that.__zooming = this;
+        this.emit("start");
+      }
+      return this;
+    },
+    zoom: function(key, transform2) {
+      if (this.mouse && key !== "mouse") this.mouse[1] = transform2.invert(this.mouse[0]);
+      if (this.touch0 && key !== "touch") this.touch0[1] = transform2.invert(this.touch0[0]);
+      if (this.touch1 && key !== "touch") this.touch1[1] = transform2.invert(this.touch1[0]);
+      this.that.__zoom = transform2;
+      this.emit("zoom");
+      return this;
+    },
+    end: function() {
+      if (--this.active === 0) {
+        delete this.that.__zooming;
+        this.emit("end");
+      }
+      return this;
+    },
+    emit: function(type) {
+      var d = select_default2(this.that).datum();
+      listeners.call(
+        type,
+        this.that,
+        new ZoomEvent(type, {
+          sourceEvent: this.sourceEvent,
+          target: zoom,
+          type,
+          transform: this.that.__zoom,
+          dispatch: listeners
+        }),
+        d
+      );
+    }
+  };
+  function wheeled(event, ...args) {
+    if (!filter2.apply(this, arguments)) return;
+    var g = gesture(this, args).event(event), t = this.__zoom, k = Math.max(scaleExtent[0], Math.min(scaleExtent[1], t.k * Math.pow(2, wheelDelta2.apply(this, arguments)))), p = pointer_default(event);
+    if (g.wheel) {
+      if (g.mouse[0][0] !== p[0] || g.mouse[0][1] !== p[1]) {
+        g.mouse[1] = t.invert(g.mouse[0] = p);
+      }
+      clearTimeout(g.wheel);
+    } else if (t.k === k) return;
+    else {
+      g.mouse = [p, t.invert(p)];
+      interrupt_default(this);
+      g.start();
+    }
+    noevent_default2(event);
+    g.wheel = setTimeout(wheelidled, wheelDelay);
+    g.zoom("mouse", constrain(translate(scale(t, k), g.mouse[0], g.mouse[1]), g.extent, translateExtent));
+    function wheelidled() {
+      g.wheel = null;
+      g.end();
+    }
+  }
+  function mousedowned(event, ...args) {
+    if (touchending || !filter2.apply(this, arguments)) return;
+    var currentTarget = event.currentTarget, g = gesture(this, args, true).event(event), v = select_default2(event.view).on("mousemove.zoom", mousemoved, true).on("mouseup.zoom", mouseupped, true), p = pointer_default(event, currentTarget), x0 = event.clientX, y0 = event.clientY;
+    nodrag_default(event.view);
+    nopropagation2(event);
+    g.mouse = [p, this.__zoom.invert(p)];
+    interrupt_default(this);
+    g.start();
+    function mousemoved(event2) {
+      noevent_default2(event2);
+      if (!g.moved) {
+        var dx = event2.clientX - x0, dy = event2.clientY - y0;
+        g.moved = dx * dx + dy * dy > clickDistance2;
+      }
+      g.event(event2).zoom("mouse", constrain(translate(g.that.__zoom, g.mouse[0] = pointer_default(event2, currentTarget), g.mouse[1]), g.extent, translateExtent));
+    }
+    function mouseupped(event2) {
+      v.on("mousemove.zoom mouseup.zoom", null);
+      yesdrag(event2.view, g.moved);
+      noevent_default2(event2);
+      g.event(event2).end();
+    }
+  }
+  function dblclicked(event, ...args) {
+    if (!filter2.apply(this, arguments)) return;
+    var t0 = this.__zoom, p0 = pointer_default(event.changedTouches ? event.changedTouches[0] : event, this), p1 = t0.invert(p0), k1 = t0.k * (event.shiftKey ? 0.5 : 2), t1 = constrain(translate(scale(t0, k1), p0, p1), extent.apply(this, args), translateExtent);
+    noevent_default2(event);
+    if (duration > 0) select_default2(this).transition().duration(duration).call(schedule, t1, p0, event);
+    else select_default2(this).call(zoom.transform, t1, p0, event);
+  }
+  function touchstarted(event, ...args) {
+    if (!filter2.apply(this, arguments)) return;
+    var touches = event.touches, n = touches.length, g = gesture(this, args, event.changedTouches.length === n).event(event), started, i, t, p;
+    nopropagation2(event);
+    for (i = 0; i < n; ++i) {
+      t = touches[i], p = pointer_default(t, this);
+      p = [p, this.__zoom.invert(p), t.identifier];
+      if (!g.touch0) g.touch0 = p, started = true, g.taps = 1 + !!touchstarting;
+      else if (!g.touch1 && g.touch0[2] !== p[2]) g.touch1 = p, g.taps = 0;
+    }
+    if (touchstarting) touchstarting = clearTimeout(touchstarting);
+    if (started) {
+      if (g.taps < 2) touchfirst = p[0], touchstarting = setTimeout(function() {
+        touchstarting = null;
+      }, touchDelay);
+      interrupt_default(this);
+      g.start();
+    }
+  }
+  function touchmoved(event, ...args) {
+    if (!this.__zooming) return;
+    var g = gesture(this, args).event(event), touches = event.changedTouches, n = touches.length, i, t, p, l;
+    noevent_default2(event);
+    for (i = 0; i < n; ++i) {
+      t = touches[i], p = pointer_default(t, this);
+      if (g.touch0 && g.touch0[2] === t.identifier) g.touch0[0] = p;
+      else if (g.touch1 && g.touch1[2] === t.identifier) g.touch1[0] = p;
+    }
+    t = g.that.__zoom;
+    if (g.touch1) {
+      var p0 = g.touch0[0], l0 = g.touch0[1], p1 = g.touch1[0], l1 = g.touch1[1], dp = (dp = p1[0] - p0[0]) * dp + (dp = p1[1] - p0[1]) * dp, dl = (dl = l1[0] - l0[0]) * dl + (dl = l1[1] - l0[1]) * dl;
+      t = scale(t, Math.sqrt(dp / dl));
+      p = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
+      l = [(l0[0] + l1[0]) / 2, (l0[1] + l1[1]) / 2];
+    } else if (g.touch0) p = g.touch0[0], l = g.touch0[1];
+    else return;
+    g.zoom("touch", constrain(translate(t, p, l), g.extent, translateExtent));
+  }
+  function touchended(event, ...args) {
+    if (!this.__zooming) return;
+    var g = gesture(this, args).event(event), touches = event.changedTouches, n = touches.length, i, t;
+    nopropagation2(event);
+    if (touchending) clearTimeout(touchending);
+    touchending = setTimeout(function() {
+      touchending = null;
+    }, touchDelay);
+    for (i = 0; i < n; ++i) {
+      t = touches[i];
+      if (g.touch0 && g.touch0[2] === t.identifier) delete g.touch0;
+      else if (g.touch1 && g.touch1[2] === t.identifier) delete g.touch1;
+    }
+    if (g.touch1 && !g.touch0) g.touch0 = g.touch1, delete g.touch1;
+    if (g.touch0) g.touch0[1] = this.__zoom.invert(g.touch0[0]);
+    else {
+      g.end();
+      if (g.taps === 2) {
+        t = pointer_default(t, this);
+        if (Math.hypot(touchfirst[0] - t[0], touchfirst[1] - t[1]) < tapDistance) {
+          var p = select_default2(this).on("dblclick.zoom");
+          if (p) p.apply(this, arguments);
+        }
+      }
+    }
+  }
+  zoom.wheelDelta = function(_) {
+    return arguments.length ? (wheelDelta2 = typeof _ === "function" ? _ : constant_default4(+_), zoom) : wheelDelta2;
+  };
+  zoom.filter = function(_) {
+    return arguments.length ? (filter2 = typeof _ === "function" ? _ : constant_default4(!!_), zoom) : filter2;
+  };
+  zoom.touchable = function(_) {
+    return arguments.length ? (touchable = typeof _ === "function" ? _ : constant_default4(!!_), zoom) : touchable;
+  };
+  zoom.extent = function(_) {
+    return arguments.length ? (extent = typeof _ === "function" ? _ : constant_default4([[+_[0][0], +_[0][1]], [+_[1][0], +_[1][1]]]), zoom) : extent;
+  };
+  zoom.scaleExtent = function(_) {
+    return arguments.length ? (scaleExtent[0] = +_[0], scaleExtent[1] = +_[1], zoom) : [scaleExtent[0], scaleExtent[1]];
+  };
+  zoom.translateExtent = function(_) {
+    return arguments.length ? (translateExtent[0][0] = +_[0][0], translateExtent[1][0] = +_[1][0], translateExtent[0][1] = +_[0][1], translateExtent[1][1] = +_[1][1], zoom) : [[translateExtent[0][0], translateExtent[0][1]], [translateExtent[1][0], translateExtent[1][1]]];
+  };
+  zoom.constrain = function(_) {
+    return arguments.length ? (constrain = _, zoom) : constrain;
+  };
+  zoom.duration = function(_) {
+    return arguments.length ? (duration = +_, zoom) : duration;
+  };
+  zoom.interpolate = function(_) {
+    return arguments.length ? (interpolate = _, zoom) : interpolate;
+  };
+  zoom.on = function() {
+    var value = listeners.on.apply(listeners, arguments);
+    return value === listeners ? zoom : value;
+  };
+  zoom.clickDistance = function(_) {
+    return arguments.length ? (clickDistance2 = (_ = +_) * _, zoom) : Math.sqrt(clickDistance2);
+  };
+  zoom.tapDistance = function(_) {
+    return arguments.length ? (tapDistance = +_, zoom) : tapDistance;
+  };
+  return zoom;
+}
+
+// node_modules/@reactflow/core/dist/esm/index.mjs
+var import_react_dom = __toESM(require_react_dom(), 1);
+var StoreContext = (0, import_react11.createContext)(null);
+var Provider$1 = StoreContext.Provider;
+var errorMessages = {
+  error001: () => "[React Flow]: Seems like you have not used zustand provider as an ancestor. Help: https://reactflow.dev/error#001",
+  error002: () => "It looks like you've created a new nodeTypes or edgeTypes object. If this wasn't on purpose please define the nodeTypes/edgeTypes outside of the component or memoize them.",
+  error003: (nodeType) => `Node type "${nodeType}" not found. Using fallback type "default".`,
+  error004: () => "The React Flow parent container needs a width and a height to render the graph.",
+  error005: () => "Only child nodes can use a parent extent.",
+  error006: () => "Can't create edge. An edge needs a source and a target.",
+  error007: (id2) => `The old edge with id=${id2} does not exist.`,
+  error009: (type) => `Marker type "${type}" doesn't exist.`,
+  error008: (sourceHandle, edge) => `Couldn't create edge for ${!sourceHandle ? "source" : "target"} handle id: "${!sourceHandle ? edge.sourceHandle : edge.targetHandle}", edge id: ${edge.id}.`,
+  error010: () => "Handle: No node id found. Make sure to only use a Handle inside a custom Node.",
+  error011: (edgeType) => `Edge type "${edgeType}" not found. Using fallback type "default".`,
+  error012: (id2) => `Node with id "${id2}" does not exist, it may have been removed. This can happen when a node is deleted before the "onNodeClick" handler is called.`
+};
+var zustandErrorMessage = errorMessages["error001"]();
+function useStore(selector3, equalityFn) {
+  const store = (0, import_react11.useContext)(StoreContext);
+  if (store === null) {
+    throw new Error(zustandErrorMessage);
+  }
+  return useStoreWithEqualityFn(store, selector3, equalityFn);
+}
+var useStoreApi = () => {
+  const store = (0, import_react11.useContext)(StoreContext);
+  if (store === null) {
+    throw new Error(zustandErrorMessage);
+  }
+  return (0, import_react11.useMemo)(() => ({
+    getState: store.getState,
+    setState: store.setState,
+    subscribe: store.subscribe,
+    destroy: store.destroy
+  }), [store]);
+};
+var selector$g = (s) => s.userSelectionActive ? "none" : "all";
+function Panel({ position, children: children2, className, style: style2, ...rest }) {
+  const pointerEvents = useStore(selector$g);
+  const positionClasses = `${position}`.split("-");
+  return import_react11.default.createElement("div", { className: cc(["react-flow__panel", className, ...positionClasses]), style: { ...style2, pointerEvents }, ...rest }, children2);
+}
+function Attribution({ proOptions, position = "bottom-right" }) {
+  if (proOptions?.hideAttribution) {
+    return null;
+  }
+  return import_react11.default.createElement(
+    Panel,
+    { position, className: "react-flow__attribution", "data-message": "Please only hide this attribution when you are subscribed to React Flow Pro: https://reactflow.dev/pro" },
+    import_react11.default.createElement("a", { href: "https://reactflow.dev", target: "_blank", rel: "noopener noreferrer", "aria-label": "React Flow attribution" }, "React Flow")
+  );
+}
+var EdgeText = ({ x, y, label, labelStyle = {}, labelShowBg = true, labelBgStyle = {}, labelBgPadding = [2, 4], labelBgBorderRadius = 2, children: children2, className, ...rest }) => {
+  const edgeRef = (0, import_react11.useRef)(null);
+  const [edgeTextBbox, setEdgeTextBbox] = (0, import_react11.useState)({ x: 0, y: 0, width: 0, height: 0 });
+  const edgeTextClasses = cc(["react-flow__edge-textwrapper", className]);
+  (0, import_react11.useEffect)(() => {
+    if (edgeRef.current) {
+      const textBbox = edgeRef.current.getBBox();
+      setEdgeTextBbox({
+        x: textBbox.x,
+        y: textBbox.y,
+        width: textBbox.width,
+        height: textBbox.height
+      });
+    }
+  }, [label]);
+  if (typeof label === "undefined" || !label) {
+    return null;
+  }
+  return import_react11.default.createElement(
+    "g",
+    { transform: `translate(${x - edgeTextBbox.width / 2} ${y - edgeTextBbox.height / 2})`, className: edgeTextClasses, visibility: edgeTextBbox.width ? "visible" : "hidden", ...rest },
+    labelShowBg && import_react11.default.createElement("rect", { width: edgeTextBbox.width + 2 * labelBgPadding[0], x: -labelBgPadding[0], y: -labelBgPadding[1], height: edgeTextBbox.height + 2 * labelBgPadding[1], className: "react-flow__edge-textbg", style: labelBgStyle, rx: labelBgBorderRadius, ry: labelBgBorderRadius }),
+    import_react11.default.createElement("text", { className: "react-flow__edge-text", y: edgeTextBbox.height / 2, dy: "0.3em", ref: edgeRef, style: labelStyle }, label),
+    children2
+  );
+};
+var EdgeText$1 = (0, import_react11.memo)(EdgeText);
+var getDimensions = (node) => ({
+  width: node.offsetWidth,
+  height: node.offsetHeight
+});
+var clamp = (val, min = 0, max = 1) => Math.min(Math.max(val, min), max);
+var clampPosition = (position = { x: 0, y: 0 }, extent) => ({
+  x: clamp(position.x, extent[0][0], extent[1][0]),
+  y: clamp(position.y, extent[0][1], extent[1][1])
+});
+var calcAutoPanVelocity = (value, min, max) => {
+  if (value < min) {
+    return clamp(Math.abs(value - min), 1, 50) / 50;
+  } else if (value > max) {
+    return -clamp(Math.abs(value - max), 1, 50) / 50;
+  }
+  return 0;
+};
+var calcAutoPan = (pos, bounds) => {
+  const xMovement = calcAutoPanVelocity(pos.x, 35, bounds.width - 35) * 20;
+  const yMovement = calcAutoPanVelocity(pos.y, 35, bounds.height - 35) * 20;
+  return [xMovement, yMovement];
+};
+var getHostForElement = (element) => element.getRootNode?.() || window?.document;
+var getBoundsOfBoxes = (box1, box2) => ({
+  x: Math.min(box1.x, box2.x),
+  y: Math.min(box1.y, box2.y),
+  x2: Math.max(box1.x2, box2.x2),
+  y2: Math.max(box1.y2, box2.y2)
+});
+var rectToBox = ({ x, y, width, height }) => ({
+  x,
+  y,
+  x2: x + width,
+  y2: y + height
+});
+var boxToRect = ({ x, y, x2, y2 }) => ({
+  x,
+  y,
+  width: x2 - x,
+  height: y2 - y
+});
+var nodeToRect = (node) => ({
+  ...node.positionAbsolute || { x: 0, y: 0 },
+  width: node.width || 0,
+  height: node.height || 0
+});
+var getOverlappingArea = (rectA, rectB) => {
+  const xOverlap = Math.max(0, Math.min(rectA.x + rectA.width, rectB.x + rectB.width) - Math.max(rectA.x, rectB.x));
+  const yOverlap = Math.max(0, Math.min(rectA.y + rectA.height, rectB.y + rectB.height) - Math.max(rectA.y, rectB.y));
+  return Math.ceil(xOverlap * yOverlap);
+};
+var isRectObject = (obj) => isNumeric(obj.width) && isNumeric(obj.height) && isNumeric(obj.x) && isNumeric(obj.y);
+var isNumeric = (n) => !isNaN(n) && isFinite(n);
+var internalsSymbol = Symbol.for("internals");
+var elementSelectionKeys = ["Enter", " ", "Escape"];
+var devWarn = (id2, message) => {
+  if (true) {
+    console.warn(`[React Flow]: ${message} Help: https://reactflow.dev/error#${id2}`);
+  }
+};
+var isReactKeyboardEvent = (event) => "nativeEvent" in event;
+function isInputDOMNode(event) {
+  const kbEvent = isReactKeyboardEvent(event) ? event.nativeEvent : event;
+  const target = kbEvent.composedPath?.()?.[0] || event.target;
+  const isInput = ["INPUT", "SELECT", "TEXTAREA"].includes(target?.nodeName) || target?.hasAttribute("contenteditable");
+  return isInput || !!target?.closest(".nokey");
+}
+var isMouseEvent = (event) => "clientX" in event;
+var getEventPosition = (event, bounds) => {
+  const isMouseTriggered = isMouseEvent(event);
+  const evtX = isMouseTriggered ? event.clientX : event.touches?.[0].clientX;
+  const evtY = isMouseTriggered ? event.clientY : event.touches?.[0].clientY;
+  return {
+    x: evtX - (bounds?.left ?? 0),
+    y: evtY - (bounds?.top ?? 0)
+  };
+};
+var isMacOs = () => typeof navigator !== "undefined" && navigator?.userAgent?.indexOf("Mac") >= 0;
+var BaseEdge = ({ id: id2, path, labelX, labelY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, interactionWidth = 20 }) => {
+  return import_react11.default.createElement(
+    import_react11.default.Fragment,
+    null,
+    import_react11.default.createElement("path", { id: id2, style: style2, d: path, fill: "none", className: "react-flow__edge-path", markerEnd, markerStart }),
+    interactionWidth && import_react11.default.createElement("path", { d: path, fill: "none", strokeOpacity: 0, strokeWidth: interactionWidth, className: "react-flow__edge-interaction" }),
+    label && isNumeric(labelX) && isNumeric(labelY) ? import_react11.default.createElement(EdgeText$1, { x: labelX, y: labelY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius }) : null
+  );
+};
+BaseEdge.displayName = "BaseEdge";
+function getMouseHandler$1(id2, getState, handler) {
+  return handler === void 0 ? handler : (event) => {
+    const edge = getState().edges.find((e) => e.id === id2);
+    if (edge) {
+      handler(event, { ...edge });
+    }
+  };
+}
+function getEdgeCenter({ sourceX, sourceY, targetX, targetY }) {
+  const xOffset = Math.abs(targetX - sourceX) / 2;
+  const centerX = targetX < sourceX ? targetX + xOffset : targetX - xOffset;
+  const yOffset = Math.abs(targetY - sourceY) / 2;
+  const centerY = targetY < sourceY ? targetY + yOffset : targetY - yOffset;
+  return [centerX, centerY, xOffset, yOffset];
+}
+function getBezierEdgeCenter({ sourceX, sourceY, targetX, targetY, sourceControlX, sourceControlY, targetControlX, targetControlY }) {
+  const centerX = sourceX * 0.125 + sourceControlX * 0.375 + targetControlX * 0.375 + targetX * 0.125;
+  const centerY = sourceY * 0.125 + sourceControlY * 0.375 + targetControlY * 0.375 + targetY * 0.125;
+  const offsetX = Math.abs(centerX - sourceX);
+  const offsetY = Math.abs(centerY - sourceY);
+  return [centerX, centerY, offsetX, offsetY];
+}
+var ConnectionMode;
+(function(ConnectionMode2) {
+  ConnectionMode2["Strict"] = "strict";
+  ConnectionMode2["Loose"] = "loose";
+})(ConnectionMode || (ConnectionMode = {}));
+var PanOnScrollMode;
+(function(PanOnScrollMode2) {
+  PanOnScrollMode2["Free"] = "free";
+  PanOnScrollMode2["Vertical"] = "vertical";
+  PanOnScrollMode2["Horizontal"] = "horizontal";
+})(PanOnScrollMode || (PanOnScrollMode = {}));
+var SelectionMode;
+(function(SelectionMode2) {
+  SelectionMode2["Partial"] = "partial";
+  SelectionMode2["Full"] = "full";
+})(SelectionMode || (SelectionMode = {}));
+var ConnectionLineType;
+(function(ConnectionLineType2) {
+  ConnectionLineType2["Bezier"] = "default";
+  ConnectionLineType2["Straight"] = "straight";
+  ConnectionLineType2["Step"] = "step";
+  ConnectionLineType2["SmoothStep"] = "smoothstep";
+  ConnectionLineType2["SimpleBezier"] = "simplebezier";
+})(ConnectionLineType || (ConnectionLineType = {}));
+var MarkerType;
+(function(MarkerType2) {
+  MarkerType2["Arrow"] = "arrow";
+  MarkerType2["ArrowClosed"] = "arrowclosed";
+})(MarkerType || (MarkerType = {}));
+var Position;
+(function(Position2) {
+  Position2["Left"] = "left";
+  Position2["Top"] = "top";
+  Position2["Right"] = "right";
+  Position2["Bottom"] = "bottom";
+})(Position || (Position = {}));
+function getControl({ pos, x1, y1, x2, y2 }) {
+  if (pos === Position.Left || pos === Position.Right) {
+    return [0.5 * (x1 + x2), y1];
+  }
+  return [x1, 0.5 * (y1 + y2)];
+}
+function getSimpleBezierPath({ sourceX, sourceY, sourcePosition = Position.Bottom, targetX, targetY, targetPosition = Position.Top }) {
+  const [sourceControlX, sourceControlY] = getControl({
+    pos: sourcePosition,
+    x1: sourceX,
+    y1: sourceY,
+    x2: targetX,
+    y2: targetY
+  });
+  const [targetControlX, targetControlY] = getControl({
+    pos: targetPosition,
+    x1: targetX,
+    y1: targetY,
+    x2: sourceX,
+    y2: sourceY
+  });
+  const [labelX, labelY, offsetX, offsetY] = getBezierEdgeCenter({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourceControlX,
+    sourceControlY,
+    targetControlX,
+    targetControlY
+  });
+  return [
+    `M${sourceX},${sourceY} C${sourceControlX},${sourceControlY} ${targetControlX},${targetControlY} ${targetX},${targetY}`,
+    labelX,
+    labelY,
+    offsetX,
+    offsetY
+  ];
+}
+var SimpleBezierEdge = (0, import_react11.memo)(({ sourceX, sourceY, targetX, targetY, sourcePosition = Position.Bottom, targetPosition = Position.Top, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, interactionWidth }) => {
+  const [path, labelX, labelY] = getSimpleBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition
+  });
+  return import_react11.default.createElement(BaseEdge, { path, labelX, labelY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, interactionWidth });
+});
+SimpleBezierEdge.displayName = "SimpleBezierEdge";
+var handleDirections = {
+  [Position.Left]: { x: -1, y: 0 },
+  [Position.Right]: { x: 1, y: 0 },
+  [Position.Top]: { x: 0, y: -1 },
+  [Position.Bottom]: { x: 0, y: 1 }
+};
+var getDirection = ({ source, sourcePosition = Position.Bottom, target }) => {
+  if (sourcePosition === Position.Left || sourcePosition === Position.Right) {
+    return source.x < target.x ? { x: 1, y: 0 } : { x: -1, y: 0 };
+  }
+  return source.y < target.y ? { x: 0, y: 1 } : { x: 0, y: -1 };
+};
+var distance = (a, b) => Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2));
+function getPoints({ source, sourcePosition = Position.Bottom, target, targetPosition = Position.Top, center, offset }) {
+  const sourceDir = handleDirections[sourcePosition];
+  const targetDir = handleDirections[targetPosition];
+  const sourceGapped = { x: source.x + sourceDir.x * offset, y: source.y + sourceDir.y * offset };
+  const targetGapped = { x: target.x + targetDir.x * offset, y: target.y + targetDir.y * offset };
+  const dir = getDirection({
+    source: sourceGapped,
+    sourcePosition,
+    target: targetGapped
+  });
+  const dirAccessor = dir.x !== 0 ? "x" : "y";
+  const currDir = dir[dirAccessor];
+  let points = [];
+  let centerX, centerY;
+  const sourceGapOffset = { x: 0, y: 0 };
+  const targetGapOffset = { x: 0, y: 0 };
+  const [defaultCenterX, defaultCenterY, defaultOffsetX, defaultOffsetY] = getEdgeCenter({
+    sourceX: source.x,
+    sourceY: source.y,
+    targetX: target.x,
+    targetY: target.y
+  });
+  if (sourceDir[dirAccessor] * targetDir[dirAccessor] === -1) {
+    centerX = center.x ?? defaultCenterX;
+    centerY = center.y ?? defaultCenterY;
+    const verticalSplit = [
+      { x: centerX, y: sourceGapped.y },
+      { x: centerX, y: targetGapped.y }
+    ];
+    const horizontalSplit = [
+      { x: sourceGapped.x, y: centerY },
+      { x: targetGapped.x, y: centerY }
+    ];
+    if (sourceDir[dirAccessor] === currDir) {
+      points = dirAccessor === "x" ? verticalSplit : horizontalSplit;
+    } else {
+      points = dirAccessor === "x" ? horizontalSplit : verticalSplit;
+    }
+  } else {
+    const sourceTarget = [{ x: sourceGapped.x, y: targetGapped.y }];
+    const targetSource = [{ x: targetGapped.x, y: sourceGapped.y }];
+    if (dirAccessor === "x") {
+      points = sourceDir.x === currDir ? targetSource : sourceTarget;
+    } else {
+      points = sourceDir.y === currDir ? sourceTarget : targetSource;
+    }
+    if (sourcePosition === targetPosition) {
+      const diff = Math.abs(source[dirAccessor] - target[dirAccessor]);
+      if (diff <= offset) {
+        const gapOffset = Math.min(offset - 1, offset - diff);
+        if (sourceDir[dirAccessor] === currDir) {
+          sourceGapOffset[dirAccessor] = (sourceGapped[dirAccessor] > source[dirAccessor] ? -1 : 1) * gapOffset;
+        } else {
+          targetGapOffset[dirAccessor] = (targetGapped[dirAccessor] > target[dirAccessor] ? -1 : 1) * gapOffset;
+        }
+      }
+    }
+    if (sourcePosition !== targetPosition) {
+      const dirAccessorOpposite = dirAccessor === "x" ? "y" : "x";
+      const isSameDir = sourceDir[dirAccessor] === targetDir[dirAccessorOpposite];
+      const sourceGtTargetOppo = sourceGapped[dirAccessorOpposite] > targetGapped[dirAccessorOpposite];
+      const sourceLtTargetOppo = sourceGapped[dirAccessorOpposite] < targetGapped[dirAccessorOpposite];
+      const flipSourceTarget = sourceDir[dirAccessor] === 1 && (!isSameDir && sourceGtTargetOppo || isSameDir && sourceLtTargetOppo) || sourceDir[dirAccessor] !== 1 && (!isSameDir && sourceLtTargetOppo || isSameDir && sourceGtTargetOppo);
+      if (flipSourceTarget) {
+        points = dirAccessor === "x" ? sourceTarget : targetSource;
+      }
+    }
+    const sourceGapPoint = { x: sourceGapped.x + sourceGapOffset.x, y: sourceGapped.y + sourceGapOffset.y };
+    const targetGapPoint = { x: targetGapped.x + targetGapOffset.x, y: targetGapped.y + targetGapOffset.y };
+    const maxXDistance = Math.max(Math.abs(sourceGapPoint.x - points[0].x), Math.abs(targetGapPoint.x - points[0].x));
+    const maxYDistance = Math.max(Math.abs(sourceGapPoint.y - points[0].y), Math.abs(targetGapPoint.y - points[0].y));
+    if (maxXDistance >= maxYDistance) {
+      centerX = (sourceGapPoint.x + targetGapPoint.x) / 2;
+      centerY = points[0].y;
+    } else {
+      centerX = points[0].x;
+      centerY = (sourceGapPoint.y + targetGapPoint.y) / 2;
+    }
+  }
+  const pathPoints = [
+    source,
+    { x: sourceGapped.x + sourceGapOffset.x, y: sourceGapped.y + sourceGapOffset.y },
+    ...points,
+    { x: targetGapped.x + targetGapOffset.x, y: targetGapped.y + targetGapOffset.y },
+    target
+  ];
+  return [pathPoints, centerX, centerY, defaultOffsetX, defaultOffsetY];
+}
+function getBend(a, b, c, size) {
+  const bendSize = Math.min(distance(a, b) / 2, distance(b, c) / 2, size);
+  const { x, y } = b;
+  if (a.x === x && x === c.x || a.y === y && y === c.y) {
+    return `L${x} ${y}`;
+  }
+  if (a.y === y) {
+    const xDir2 = a.x < c.x ? -1 : 1;
+    const yDir2 = a.y < c.y ? 1 : -1;
+    return `L ${x + bendSize * xDir2},${y}Q ${x},${y} ${x},${y + bendSize * yDir2}`;
+  }
+  const xDir = a.x < c.x ? 1 : -1;
+  const yDir = a.y < c.y ? -1 : 1;
+  return `L ${x},${y + bendSize * yDir}Q ${x},${y} ${x + bendSize * xDir},${y}`;
+}
+function getSmoothStepPath({ sourceX, sourceY, sourcePosition = Position.Bottom, targetX, targetY, targetPosition = Position.Top, borderRadius = 5, centerX, centerY, offset = 20 }) {
+  const [points, labelX, labelY, offsetX, offsetY] = getPoints({
+    source: { x: sourceX, y: sourceY },
+    sourcePosition,
+    target: { x: targetX, y: targetY },
+    targetPosition,
+    center: { x: centerX, y: centerY },
+    offset
+  });
+  const path = points.reduce((res, p, i) => {
+    let segment = "";
+    if (i > 0 && i < points.length - 1) {
+      segment = getBend(points[i - 1], p, points[i + 1], borderRadius);
+    } else {
+      segment = `${i === 0 ? "M" : "L"}${p.x} ${p.y}`;
+    }
+    res += segment;
+    return res;
+  }, "");
+  return [path, labelX, labelY, offsetX, offsetY];
+}
+var SmoothStepEdge = (0, import_react11.memo)(({ sourceX, sourceY, targetX, targetY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, sourcePosition = Position.Bottom, targetPosition = Position.Top, markerEnd, markerStart, pathOptions, interactionWidth }) => {
+  const [path, labelX, labelY] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+    borderRadius: pathOptions?.borderRadius,
+    offset: pathOptions?.offset
+  });
+  return import_react11.default.createElement(BaseEdge, { path, labelX, labelY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, interactionWidth });
+});
+SmoothStepEdge.displayName = "SmoothStepEdge";
+var StepEdge = (0, import_react11.memo)((props) => import_react11.default.createElement(SmoothStepEdge, { ...props, pathOptions: (0, import_react11.useMemo)(() => ({ borderRadius: 0, offset: props.pathOptions?.offset }), [props.pathOptions?.offset]) }));
+StepEdge.displayName = "StepEdge";
+function getStraightPath({ sourceX, sourceY, targetX, targetY }) {
+  const [labelX, labelY, offsetX, offsetY] = getEdgeCenter({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY
+  });
+  return [`M ${sourceX},${sourceY}L ${targetX},${targetY}`, labelX, labelY, offsetX, offsetY];
+}
+var StraightEdge = (0, import_react11.memo)(({ sourceX, sourceY, targetX, targetY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, interactionWidth }) => {
+  const [path, labelX, labelY] = getStraightPath({ sourceX, sourceY, targetX, targetY });
+  return import_react11.default.createElement(BaseEdge, { path, labelX, labelY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, interactionWidth });
+});
+StraightEdge.displayName = "StraightEdge";
+function calculateControlOffset(distance2, curvature) {
+  if (distance2 >= 0) {
+    return 0.5 * distance2;
+  }
+  return curvature * 25 * Math.sqrt(-distance2);
+}
+function getControlWithCurvature({ pos, x1, y1, x2, y2, c }) {
+  switch (pos) {
+    case Position.Left:
+      return [x1 - calculateControlOffset(x1 - x2, c), y1];
+    case Position.Right:
+      return [x1 + calculateControlOffset(x2 - x1, c), y1];
+    case Position.Top:
+      return [x1, y1 - calculateControlOffset(y1 - y2, c)];
+    case Position.Bottom:
+      return [x1, y1 + calculateControlOffset(y2 - y1, c)];
+  }
+}
+function getBezierPath({ sourceX, sourceY, sourcePosition = Position.Bottom, targetX, targetY, targetPosition = Position.Top, curvature = 0.25 }) {
+  const [sourceControlX, sourceControlY] = getControlWithCurvature({
+    pos: sourcePosition,
+    x1: sourceX,
+    y1: sourceY,
+    x2: targetX,
+    y2: targetY,
+    c: curvature
+  });
+  const [targetControlX, targetControlY] = getControlWithCurvature({
+    pos: targetPosition,
+    x1: targetX,
+    y1: targetY,
+    x2: sourceX,
+    y2: sourceY,
+    c: curvature
+  });
+  const [labelX, labelY, offsetX, offsetY] = getBezierEdgeCenter({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourceControlX,
+    sourceControlY,
+    targetControlX,
+    targetControlY
+  });
+  return [
+    `M${sourceX},${sourceY} C${sourceControlX},${sourceControlY} ${targetControlX},${targetControlY} ${targetX},${targetY}`,
+    labelX,
+    labelY,
+    offsetX,
+    offsetY
+  ];
+}
+var BezierEdge = (0, import_react11.memo)(({ sourceX, sourceY, targetX, targetY, sourcePosition = Position.Bottom, targetPosition = Position.Top, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, pathOptions, interactionWidth }) => {
+  const [path, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+    curvature: pathOptions?.curvature
+  });
+  return import_react11.default.createElement(BaseEdge, { path, labelX, labelY, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, markerEnd, markerStart, interactionWidth });
+});
+BezierEdge.displayName = "BezierEdge";
+var NodeIdContext = (0, import_react11.createContext)(null);
+var Provider = NodeIdContext.Provider;
+NodeIdContext.Consumer;
+var useNodeId = () => {
+  const nodeId = (0, import_react11.useContext)(NodeIdContext);
+  return nodeId;
+};
+var isEdge = (element) => "id" in element && "source" in element && "target" in element;
+var getEdgeId = ({ source, sourceHandle, target, targetHandle }) => `reactflow__edge-${source}${sourceHandle || ""}-${target}${targetHandle || ""}`;
+var getMarkerId = (marker, rfId) => {
+  if (typeof marker === "undefined") {
+    return "";
+  }
+  if (typeof marker === "string") {
+    return marker;
+  }
+  const idPrefix = rfId ? `${rfId}__` : "";
+  return `${idPrefix}${Object.keys(marker).sort().map((key) => `${key}=${marker[key]}`).join("&")}`;
+};
+var connectionExists = (edge, edges) => {
+  return edges.some((el) => el.source === edge.source && el.target === edge.target && (el.sourceHandle === edge.sourceHandle || !el.sourceHandle && !edge.sourceHandle) && (el.targetHandle === edge.targetHandle || !el.targetHandle && !edge.targetHandle));
+};
+var addEdge = (edgeParams, edges) => {
+  if (!edgeParams.source || !edgeParams.target) {
+    devWarn("006", errorMessages["error006"]());
+    return edges;
+  }
+  let edge;
+  if (isEdge(edgeParams)) {
+    edge = { ...edgeParams };
+  } else {
+    edge = {
+      ...edgeParams,
+      id: getEdgeId(edgeParams)
+    };
+  }
+  if (connectionExists(edge, edges)) {
+    return edges;
+  }
+  return edges.concat(edge);
+};
+var pointToRendererPoint = ({ x, y }, [tx, ty, tScale], snapToGrid, [snapX, snapY]) => {
+  const position = {
+    x: (x - tx) / tScale,
+    y: (y - ty) / tScale
+  };
+  if (snapToGrid) {
+    return {
+      x: snapX * Math.round(position.x / snapX),
+      y: snapY * Math.round(position.y / snapY)
+    };
+  }
+  return position;
+};
+var rendererPointToPoint = ({ x, y }, [tx, ty, tScale]) => {
+  return {
+    x: x * tScale + tx,
+    y: y * tScale + ty
+  };
+};
+var getNodePositionWithOrigin = (node, nodeOrigin = [0, 0]) => {
+  if (!node) {
+    return {
+      x: 0,
+      y: 0,
+      positionAbsolute: {
+        x: 0,
+        y: 0
+      }
+    };
+  }
+  const offsetX = (node.width ?? 0) * nodeOrigin[0];
+  const offsetY = (node.height ?? 0) * nodeOrigin[1];
+  const position = {
+    x: node.position.x - offsetX,
+    y: node.position.y - offsetY
+  };
+  return {
+    ...position,
+    positionAbsolute: node.positionAbsolute ? {
+      x: node.positionAbsolute.x - offsetX,
+      y: node.positionAbsolute.y - offsetY
+    } : position
+  };
+};
+var getNodesBounds = (nodes, nodeOrigin = [0, 0]) => {
+  if (nodes.length === 0) {
+    return { x: 0, y: 0, width: 0, height: 0 };
+  }
+  const box = nodes.reduce((currBox, node) => {
+    const { x, y } = getNodePositionWithOrigin(node, nodeOrigin).positionAbsolute;
+    return getBoundsOfBoxes(currBox, rectToBox({
+      x,
+      y,
+      width: node.width || 0,
+      height: node.height || 0
+    }));
+  }, { x: Infinity, y: Infinity, x2: -Infinity, y2: -Infinity });
+  return boxToRect(box);
+};
+var getNodesInside = (nodeInternals, rect, [tx, ty, tScale] = [0, 0, 1], partially = false, excludeNonSelectableNodes = false, nodeOrigin = [0, 0]) => {
+  const paneRect = {
+    x: (rect.x - tx) / tScale,
+    y: (rect.y - ty) / tScale,
+    width: rect.width / tScale,
+    height: rect.height / tScale
+  };
+  const visibleNodes = [];
+  nodeInternals.forEach((node) => {
+    const { width, height, selectable = true, hidden = false } = node;
+    if (excludeNonSelectableNodes && !selectable || hidden) {
+      return false;
+    }
+    const { positionAbsolute } = getNodePositionWithOrigin(node, nodeOrigin);
+    const nodeRect = {
+      x: positionAbsolute.x,
+      y: positionAbsolute.y,
+      width: width || 0,
+      height: height || 0
+    };
+    const overlappingArea = getOverlappingArea(paneRect, nodeRect);
+    const notInitialized = typeof width === "undefined" || typeof height === "undefined" || width === null || height === null;
+    const partiallyVisible = partially && overlappingArea > 0;
+    const area = (width || 0) * (height || 0);
+    const isVisible = notInitialized || partiallyVisible || overlappingArea >= area;
+    if (isVisible || node.dragging) {
+      visibleNodes.push(node);
+    }
+  });
+  return visibleNodes;
+};
+var getConnectedEdges = (nodes, edges) => {
+  const nodeIds = nodes.map((node) => node.id);
+  return edges.filter((edge) => nodeIds.includes(edge.source) || nodeIds.includes(edge.target));
+};
+var getViewportForBounds = (bounds, width, height, minZoom, maxZoom, padding = 0.1) => {
+  const xZoom = width / (bounds.width * (1 + padding));
+  const yZoom = height / (bounds.height * (1 + padding));
+  const zoom = Math.min(xZoom, yZoom);
+  const clampedZoom = clamp(zoom, minZoom, maxZoom);
+  const boundsCenterX = bounds.x + bounds.width / 2;
+  const boundsCenterY = bounds.y + bounds.height / 2;
+  const x = width / 2 - boundsCenterX * clampedZoom;
+  const y = height / 2 - boundsCenterY * clampedZoom;
+  return { x, y, zoom: clampedZoom };
+};
+var getD3Transition = (selection2, duration = 0) => {
+  return selection2.transition().duration(duration);
+};
+function getHandles(node, handleBounds, type, currentHandle) {
+  return (handleBounds[type] || []).reduce((res, h) => {
+    if (`${node.id}-${h.id}-${type}` !== currentHandle) {
+      res.push({
+        id: h.id || null,
+        type,
+        nodeId: node.id,
+        x: (node.positionAbsolute?.x ?? 0) + h.x + h.width / 2,
+        y: (node.positionAbsolute?.y ?? 0) + h.y + h.height / 2
+      });
+    }
+    return res;
+  }, []);
+}
+function getClosestHandle(event, doc, pos, connectionRadius, handles, validator) {
+  const { x, y } = getEventPosition(event);
+  const domNodes = doc.elementsFromPoint(x, y);
+  const handleBelow = domNodes.find((el) => el.classList.contains("react-flow__handle"));
+  if (handleBelow) {
+    const handleNodeId = handleBelow.getAttribute("data-nodeid");
+    if (handleNodeId) {
+      const handleType = getHandleType(void 0, handleBelow);
+      const handleId = handleBelow.getAttribute("data-handleid");
+      const validHandleResult = validator({ nodeId: handleNodeId, id: handleId, type: handleType });
+      if (validHandleResult) {
+        const handle = handles.find((h) => h.nodeId === handleNodeId && h.type === handleType && h.id === handleId);
+        return {
+          handle: {
+            id: handleId,
+            type: handleType,
+            nodeId: handleNodeId,
+            x: handle?.x || pos.x,
+            y: handle?.y || pos.y
+          },
+          validHandleResult
+        };
+      }
+    }
+  }
+  let closestHandles = [];
+  let minDistance = Infinity;
+  handles.forEach((handle) => {
+    const distance2 = Math.sqrt((handle.x - pos.x) ** 2 + (handle.y - pos.y) ** 2);
+    if (distance2 <= connectionRadius) {
+      const validHandleResult = validator(handle);
+      if (distance2 <= minDistance) {
+        if (distance2 < minDistance) {
+          closestHandles = [{ handle, validHandleResult }];
+        } else if (distance2 === minDistance) {
+          closestHandles.push({
+            handle,
+            validHandleResult
+          });
+        }
+        minDistance = distance2;
+      }
+    }
+  });
+  if (!closestHandles.length) {
+    return { handle: null, validHandleResult: defaultResult() };
+  }
+  if (closestHandles.length === 1) {
+    return closestHandles[0];
+  }
+  const hasValidHandle = closestHandles.some(({ validHandleResult }) => validHandleResult.isValid);
+  const hasTargetHandle = closestHandles.some(({ handle }) => handle.type === "target");
+  return closestHandles.find(({ handle, validHandleResult }) => hasTargetHandle ? handle.type === "target" : hasValidHandle ? validHandleResult.isValid : true) || closestHandles[0];
+}
+var nullConnection = { source: null, target: null, sourceHandle: null, targetHandle: null };
+var defaultResult = () => ({
+  handleDomNode: null,
+  isValid: false,
+  connection: nullConnection,
+  endHandle: null
+});
+function isValidHandle(handle, connectionMode, fromNodeId, fromHandleId, fromType, isValidConnection, doc) {
+  const isTarget = fromType === "target";
+  const handleToCheck = doc.querySelector(`.react-flow__handle[data-id="${handle?.nodeId}-${handle?.id}-${handle?.type}"]`);
+  const result = {
+    ...defaultResult(),
+    handleDomNode: handleToCheck
+  };
+  if (handleToCheck) {
+    const handleType = getHandleType(void 0, handleToCheck);
+    const handleNodeId = handleToCheck.getAttribute("data-nodeid");
+    const handleId = handleToCheck.getAttribute("data-handleid");
+    const connectable = handleToCheck.classList.contains("connectable");
+    const connectableEnd = handleToCheck.classList.contains("connectableend");
+    const connection = {
+      source: isTarget ? handleNodeId : fromNodeId,
+      sourceHandle: isTarget ? handleId : fromHandleId,
+      target: isTarget ? fromNodeId : handleNodeId,
+      targetHandle: isTarget ? fromHandleId : handleId
+    };
+    result.connection = connection;
+    const isConnectable = connectable && connectableEnd;
+    const isValid = isConnectable && (connectionMode === ConnectionMode.Strict ? isTarget && handleType === "source" || !isTarget && handleType === "target" : handleNodeId !== fromNodeId || handleId !== fromHandleId);
+    if (isValid) {
+      result.endHandle = {
+        nodeId: handleNodeId,
+        handleId,
+        type: handleType
+      };
+      result.isValid = isValidConnection(connection);
+    }
+  }
+  return result;
+}
+function getHandleLookup({ nodes, nodeId, handleId, handleType }) {
+  return nodes.reduce((res, node) => {
+    if (node[internalsSymbol]) {
+      const { handleBounds } = node[internalsSymbol];
+      let sourceHandles = [];
+      let targetHandles = [];
+      if (handleBounds) {
+        sourceHandles = getHandles(node, handleBounds, "source", `${nodeId}-${handleId}-${handleType}`);
+        targetHandles = getHandles(node, handleBounds, "target", `${nodeId}-${handleId}-${handleType}`);
+      }
+      res.push(...sourceHandles, ...targetHandles);
+    }
+    return res;
+  }, []);
+}
+function getHandleType(edgeUpdaterType, handleDomNode) {
+  if (edgeUpdaterType) {
+    return edgeUpdaterType;
+  } else if (handleDomNode?.classList.contains("target")) {
+    return "target";
+  } else if (handleDomNode?.classList.contains("source")) {
+    return "source";
+  }
+  return null;
+}
+function resetRecentHandle(handleDomNode) {
+  handleDomNode?.classList.remove("valid", "connecting", "react-flow__handle-valid", "react-flow__handle-connecting");
+}
+function getConnectionStatus(isInsideConnectionRadius, isHandleValid) {
+  let connectionStatus = null;
+  if (isHandleValid) {
+    connectionStatus = "valid";
+  } else if (isInsideConnectionRadius && !isHandleValid) {
+    connectionStatus = "invalid";
+  }
+  return connectionStatus;
+}
+function handlePointerDown({ event, handleId, nodeId, onConnect, isTarget, getState, setState, isValidConnection, edgeUpdaterType, onReconnectEnd }) {
+  const doc = getHostForElement(event.target);
+  const { connectionMode, domNode, autoPanOnConnect, connectionRadius, onConnectStart, panBy, getNodes, cancelConnection } = getState();
+  let autoPanId = 0;
+  let closestHandle;
+  const { x, y } = getEventPosition(event);
+  const clickedHandle = doc?.elementFromPoint(x, y);
+  const handleType = getHandleType(edgeUpdaterType, clickedHandle);
+  const containerBounds = domNode?.getBoundingClientRect();
+  if (!containerBounds || !handleType) {
+    return;
+  }
+  let prevActiveHandle;
+  let connectionPosition = getEventPosition(event, containerBounds);
+  let autoPanStarted = false;
+  let connection = null;
+  let isValid = false;
+  let handleDomNode = null;
+  const handleLookup = getHandleLookup({
+    nodes: getNodes(),
+    nodeId,
+    handleId,
+    handleType
+  });
+  const autoPan = () => {
+    if (!autoPanOnConnect) {
+      return;
+    }
+    const [xMovement, yMovement] = calcAutoPan(connectionPosition, containerBounds);
+    panBy({ x: xMovement, y: yMovement });
+    autoPanId = requestAnimationFrame(autoPan);
+  };
+  setState({
+    connectionPosition,
+    connectionStatus: null,
+    // connectionNodeId etc will be removed in the next major in favor of connectionStartHandle
+    connectionNodeId: nodeId,
+    connectionHandleId: handleId,
+    connectionHandleType: handleType,
+    connectionStartHandle: {
+      nodeId,
+      handleId,
+      type: handleType
+    },
+    connectionEndHandle: null
+  });
+  onConnectStart?.(event, { nodeId, handleId, handleType });
+  function onPointerMove(event2) {
+    const { transform: transform2 } = getState();
+    connectionPosition = getEventPosition(event2, containerBounds);
+    const { handle, validHandleResult } = getClosestHandle(event2, doc, pointToRendererPoint(connectionPosition, transform2, false, [1, 1]), connectionRadius, handleLookup, (handle2) => isValidHandle(handle2, connectionMode, nodeId, handleId, isTarget ? "target" : "source", isValidConnection, doc));
+    closestHandle = handle;
+    if (!autoPanStarted) {
+      autoPan();
+      autoPanStarted = true;
+    }
+    handleDomNode = validHandleResult.handleDomNode;
+    connection = validHandleResult.connection;
+    isValid = validHandleResult.isValid;
+    setState({
+      connectionPosition: closestHandle && isValid ? rendererPointToPoint({
+        x: closestHandle.x,
+        y: closestHandle.y
+      }, transform2) : connectionPosition,
+      connectionStatus: getConnectionStatus(!!closestHandle, isValid),
+      connectionEndHandle: validHandleResult.endHandle
+    });
+    if (!closestHandle && !isValid && !handleDomNode) {
+      return resetRecentHandle(prevActiveHandle);
+    }
+    if (connection.source !== connection.target && handleDomNode) {
+      resetRecentHandle(prevActiveHandle);
+      prevActiveHandle = handleDomNode;
+      handleDomNode.classList.add("connecting", "react-flow__handle-connecting");
+      handleDomNode.classList.toggle("valid", isValid);
+      handleDomNode.classList.toggle("react-flow__handle-valid", isValid);
+    }
+  }
+  function onPointerUp(event2) {
+    if ((closestHandle || handleDomNode) && connection && isValid) {
+      onConnect?.(connection);
+    }
+    getState().onConnectEnd?.(event2);
+    if (edgeUpdaterType) {
+      onReconnectEnd?.(event2);
+    }
+    resetRecentHandle(prevActiveHandle);
+    cancelConnection();
+    cancelAnimationFrame(autoPanId);
+    autoPanStarted = false;
+    isValid = false;
+    connection = null;
+    handleDomNode = null;
+    doc.removeEventListener("mousemove", onPointerMove);
+    doc.removeEventListener("mouseup", onPointerUp);
+    doc.removeEventListener("touchmove", onPointerMove);
+    doc.removeEventListener("touchend", onPointerUp);
+  }
+  doc.addEventListener("mousemove", onPointerMove);
+  doc.addEventListener("mouseup", onPointerUp);
+  doc.addEventListener("touchmove", onPointerMove);
+  doc.addEventListener("touchend", onPointerUp);
+}
+var alwaysValid = () => true;
+var selector$f = (s) => ({
+  connectionStartHandle: s.connectionStartHandle,
+  connectOnClick: s.connectOnClick,
+  noPanClassName: s.noPanClassName
+});
+var connectingSelector = (nodeId, handleId, type) => (state) => {
+  const { connectionStartHandle: startHandle, connectionEndHandle: endHandle, connectionClickStartHandle: clickHandle } = state;
+  return {
+    connecting: startHandle?.nodeId === nodeId && startHandle?.handleId === handleId && startHandle?.type === type || endHandle?.nodeId === nodeId && endHandle?.handleId === handleId && endHandle?.type === type,
+    clickConnecting: clickHandle?.nodeId === nodeId && clickHandle?.handleId === handleId && clickHandle?.type === type
+  };
+};
+var Handle = (0, import_react11.forwardRef)(({ type = "source", position = Position.Top, isValidConnection, isConnectable = true, isConnectableStart = true, isConnectableEnd = true, id: id2, onConnect, children: children2, className, onMouseDown, onTouchStart, ...rest }, ref) => {
+  const handleId = id2 || null;
+  const isTarget = type === "target";
+  const store = useStoreApi();
+  const nodeId = useNodeId();
+  const { connectOnClick, noPanClassName } = useStore(selector$f, shallow$1);
+  const { connecting, clickConnecting } = useStore(connectingSelector(nodeId, handleId, type), shallow$1);
+  if (!nodeId) {
+    store.getState().onError?.("010", errorMessages["error010"]());
+  }
+  const onConnectExtended = (params) => {
+    const { defaultEdgeOptions, onConnect: onConnectAction, hasDefaultEdges } = store.getState();
+    const edgeParams = {
+      ...defaultEdgeOptions,
+      ...params
+    };
+    if (hasDefaultEdges) {
+      const { edges, setEdges } = store.getState();
+      setEdges(addEdge(edgeParams, edges));
+    }
+    onConnectAction?.(edgeParams);
+    onConnect?.(edgeParams);
+  };
+  const onPointerDown = (event) => {
+    if (!nodeId) {
+      return;
+    }
+    const isMouseTriggered = isMouseEvent(event);
+    if (isConnectableStart && (isMouseTriggered && event.button === 0 || !isMouseTriggered)) {
+      handlePointerDown({
+        event,
+        handleId,
+        nodeId,
+        onConnect: onConnectExtended,
+        isTarget,
+        getState: store.getState,
+        setState: store.setState,
+        isValidConnection: isValidConnection || store.getState().isValidConnection || alwaysValid
+      });
+    }
+    if (isMouseTriggered) {
+      onMouseDown?.(event);
+    } else {
+      onTouchStart?.(event);
+    }
+  };
+  const onClick = (event) => {
+    const { onClickConnectStart, onClickConnectEnd, connectionClickStartHandle, connectionMode, isValidConnection: isValidConnectionStore } = store.getState();
+    if (!nodeId || !connectionClickStartHandle && !isConnectableStart) {
+      return;
+    }
+    if (!connectionClickStartHandle) {
+      onClickConnectStart?.(event, { nodeId, handleId, handleType: type });
+      store.setState({ connectionClickStartHandle: { nodeId, type, handleId } });
+      return;
+    }
+    const doc = getHostForElement(event.target);
+    const isValidConnectionHandler = isValidConnection || isValidConnectionStore || alwaysValid;
+    const { connection, isValid } = isValidHandle({
+      nodeId,
+      id: handleId,
+      type
+    }, connectionMode, connectionClickStartHandle.nodeId, connectionClickStartHandle.handleId || null, connectionClickStartHandle.type, isValidConnectionHandler, doc);
+    if (isValid) {
+      onConnectExtended(connection);
+    }
+    onClickConnectEnd?.(event);
+    store.setState({ connectionClickStartHandle: null });
+  };
+  return import_react11.default.createElement("div", { "data-handleid": handleId, "data-nodeid": nodeId, "data-handlepos": position, "data-id": `${nodeId}-${handleId}-${type}`, className: cc([
+    "react-flow__handle",
+    `react-flow__handle-${position}`,
+    "nodrag",
+    noPanClassName,
+    className,
+    {
+      source: !isTarget,
+      target: isTarget,
+      connectable: isConnectable,
+      connectablestart: isConnectableStart,
+      connectableend: isConnectableEnd,
+      connecting: clickConnecting,
+      // this class is used to style the handle when the user is connecting
+      connectionindicator: isConnectable && (isConnectableStart && !connecting || isConnectableEnd && connecting)
+    }
+  ]), onMouseDown: onPointerDown, onTouchStart: onPointerDown, onClick: connectOnClick ? onClick : void 0, ref, ...rest }, children2);
+});
+Handle.displayName = "Handle";
+var Handle$1 = (0, import_react11.memo)(Handle);
+var DefaultNode = ({ data, isConnectable, targetPosition = Position.Top, sourcePosition = Position.Bottom }) => {
+  return import_react11.default.createElement(
+    import_react11.default.Fragment,
+    null,
+    import_react11.default.createElement(Handle$1, { type: "target", position: targetPosition, isConnectable }),
+    data?.label,
+    import_react11.default.createElement(Handle$1, { type: "source", position: sourcePosition, isConnectable })
+  );
+};
+DefaultNode.displayName = "DefaultNode";
+var DefaultNode$1 = (0, import_react11.memo)(DefaultNode);
+var InputNode = ({ data, isConnectable, sourcePosition = Position.Bottom }) => import_react11.default.createElement(
+  import_react11.default.Fragment,
+  null,
+  data?.label,
+  import_react11.default.createElement(Handle$1, { type: "source", position: sourcePosition, isConnectable })
+);
+InputNode.displayName = "InputNode";
+var InputNode$1 = (0, import_react11.memo)(InputNode);
+var OutputNode = ({ data, isConnectable, targetPosition = Position.Top }) => import_react11.default.createElement(
+  import_react11.default.Fragment,
+  null,
+  import_react11.default.createElement(Handle$1, { type: "target", position: targetPosition, isConnectable }),
+  data?.label
+);
+OutputNode.displayName = "OutputNode";
+var OutputNode$1 = (0, import_react11.memo)(OutputNode);
+var GroupNode = () => null;
+GroupNode.displayName = "GroupNode";
+var selector$e = (s) => ({
+  selectedNodes: s.getNodes().filter((n) => n.selected),
+  selectedEdges: s.edges.filter((e) => e.selected).map((e) => ({ ...e }))
+});
+var selectId = (obj) => obj.id;
+function areEqual(a, b) {
+  return shallow$1(a.selectedNodes.map(selectId), b.selectedNodes.map(selectId)) && shallow$1(a.selectedEdges.map(selectId), b.selectedEdges.map(selectId));
+}
+var SelectionListener = (0, import_react11.memo)(({ onSelectionChange }) => {
+  const store = useStoreApi();
+  const { selectedNodes, selectedEdges } = useStore(selector$e, areEqual);
+  (0, import_react11.useEffect)(() => {
+    const params = { nodes: selectedNodes, edges: selectedEdges };
+    onSelectionChange?.(params);
+    store.getState().onSelectionChange.forEach((fn) => fn(params));
+  }, [selectedNodes, selectedEdges, onSelectionChange]);
+  return null;
+});
+SelectionListener.displayName = "SelectionListener";
+var changeSelector = (s) => !!s.onSelectionChange;
+function Wrapper$1({ onSelectionChange }) {
+  const storeHasSelectionChange = useStore(changeSelector);
+  if (onSelectionChange || storeHasSelectionChange) {
+    return import_react11.default.createElement(SelectionListener, { onSelectionChange });
+  }
+  return null;
+}
+var selector$d = (s) => ({
+  setNodes: s.setNodes,
+  setEdges: s.setEdges,
+  setDefaultNodesAndEdges: s.setDefaultNodesAndEdges,
+  setMinZoom: s.setMinZoom,
+  setMaxZoom: s.setMaxZoom,
+  setTranslateExtent: s.setTranslateExtent,
+  setNodeExtent: s.setNodeExtent,
+  reset: s.reset
+});
+function useStoreUpdater(value, setStoreState) {
+  (0, import_react11.useEffect)(() => {
+    if (typeof value !== "undefined") {
+      setStoreState(value);
+    }
+  }, [value]);
+}
+function useDirectStoreUpdater(key, value, setState) {
+  (0, import_react11.useEffect)(() => {
+    if (typeof value !== "undefined") {
+      setState({ [key]: value });
+    }
+  }, [value]);
+}
+var StoreUpdater = ({ nodes, edges, defaultNodes, defaultEdges, onConnect, onConnectStart, onConnectEnd, onClickConnectStart, onClickConnectEnd, nodesDraggable, nodesConnectable, nodesFocusable, edgesFocusable, edgesUpdatable, elevateNodesOnSelect, minZoom, maxZoom, nodeExtent, onNodesChange, onEdgesChange, elementsSelectable, connectionMode, snapGrid, snapToGrid, translateExtent, connectOnClick, defaultEdgeOptions, fitView: fitView2, fitViewOptions, onNodesDelete, onEdgesDelete, onNodeDrag, onNodeDragStart, onNodeDragStop, onSelectionDrag, onSelectionDragStart, onSelectionDragStop, noPanClassName, nodeOrigin, rfId, autoPanOnConnect, autoPanOnNodeDrag, onError, connectionRadius, isValidConnection, nodeDragThreshold }) => {
+  const { setNodes, setEdges, setDefaultNodesAndEdges, setMinZoom, setMaxZoom, setTranslateExtent, setNodeExtent, reset } = useStore(selector$d, shallow$1);
+  const store = useStoreApi();
+  (0, import_react11.useEffect)(() => {
+    const edgesWithDefaults = defaultEdges?.map((e) => ({ ...e, ...defaultEdgeOptions }));
+    setDefaultNodesAndEdges(defaultNodes, edgesWithDefaults);
+    return () => {
+      reset();
+    };
+  }, []);
+  useDirectStoreUpdater("defaultEdgeOptions", defaultEdgeOptions, store.setState);
+  useDirectStoreUpdater("connectionMode", connectionMode, store.setState);
+  useDirectStoreUpdater("onConnect", onConnect, store.setState);
+  useDirectStoreUpdater("onConnectStart", onConnectStart, store.setState);
+  useDirectStoreUpdater("onConnectEnd", onConnectEnd, store.setState);
+  useDirectStoreUpdater("onClickConnectStart", onClickConnectStart, store.setState);
+  useDirectStoreUpdater("onClickConnectEnd", onClickConnectEnd, store.setState);
+  useDirectStoreUpdater("nodesDraggable", nodesDraggable, store.setState);
+  useDirectStoreUpdater("nodesConnectable", nodesConnectable, store.setState);
+  useDirectStoreUpdater("nodesFocusable", nodesFocusable, store.setState);
+  useDirectStoreUpdater("edgesFocusable", edgesFocusable, store.setState);
+  useDirectStoreUpdater("edgesUpdatable", edgesUpdatable, store.setState);
+  useDirectStoreUpdater("elementsSelectable", elementsSelectable, store.setState);
+  useDirectStoreUpdater("elevateNodesOnSelect", elevateNodesOnSelect, store.setState);
+  useDirectStoreUpdater("snapToGrid", snapToGrid, store.setState);
+  useDirectStoreUpdater("snapGrid", snapGrid, store.setState);
+  useDirectStoreUpdater("onNodesChange", onNodesChange, store.setState);
+  useDirectStoreUpdater("onEdgesChange", onEdgesChange, store.setState);
+  useDirectStoreUpdater("connectOnClick", connectOnClick, store.setState);
+  useDirectStoreUpdater("fitViewOnInit", fitView2, store.setState);
+  useDirectStoreUpdater("fitViewOnInitOptions", fitViewOptions, store.setState);
+  useDirectStoreUpdater("onNodesDelete", onNodesDelete, store.setState);
+  useDirectStoreUpdater("onEdgesDelete", onEdgesDelete, store.setState);
+  useDirectStoreUpdater("onNodeDrag", onNodeDrag, store.setState);
+  useDirectStoreUpdater("onNodeDragStart", onNodeDragStart, store.setState);
+  useDirectStoreUpdater("onNodeDragStop", onNodeDragStop, store.setState);
+  useDirectStoreUpdater("onSelectionDrag", onSelectionDrag, store.setState);
+  useDirectStoreUpdater("onSelectionDragStart", onSelectionDragStart, store.setState);
+  useDirectStoreUpdater("onSelectionDragStop", onSelectionDragStop, store.setState);
+  useDirectStoreUpdater("noPanClassName", noPanClassName, store.setState);
+  useDirectStoreUpdater("nodeOrigin", nodeOrigin, store.setState);
+  useDirectStoreUpdater("rfId", rfId, store.setState);
+  useDirectStoreUpdater("autoPanOnConnect", autoPanOnConnect, store.setState);
+  useDirectStoreUpdater("autoPanOnNodeDrag", autoPanOnNodeDrag, store.setState);
+  useDirectStoreUpdater("onError", onError, store.setState);
+  useDirectStoreUpdater("connectionRadius", connectionRadius, store.setState);
+  useDirectStoreUpdater("isValidConnection", isValidConnection, store.setState);
+  useDirectStoreUpdater("nodeDragThreshold", nodeDragThreshold, store.setState);
+  useStoreUpdater(nodes, setNodes);
+  useStoreUpdater(edges, setEdges);
+  useStoreUpdater(minZoom, setMinZoom);
+  useStoreUpdater(maxZoom, setMaxZoom);
+  useStoreUpdater(translateExtent, setTranslateExtent);
+  useStoreUpdater(nodeExtent, setNodeExtent);
+  return null;
+};
+var style = { display: "none" };
+var ariaLiveStyle = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  margin: -1,
+  border: 0,
+  padding: 0,
+  overflow: "hidden",
+  clip: "rect(0px, 0px, 0px, 0px)",
+  clipPath: "inset(100%)"
+};
+var ARIA_NODE_DESC_KEY = "react-flow__node-desc";
+var ARIA_EDGE_DESC_KEY = "react-flow__edge-desc";
+var ARIA_LIVE_MESSAGE = "react-flow__aria-live";
+var selector$c = (s) => s.ariaLiveMessage;
+function AriaLiveMessage({ rfId }) {
+  const ariaLiveMessage = useStore(selector$c);
+  return import_react11.default.createElement("div", { id: `${ARIA_LIVE_MESSAGE}-${rfId}`, "aria-live": "assertive", "aria-atomic": "true", style: ariaLiveStyle }, ariaLiveMessage);
+}
+function A11yDescriptions({ rfId, disableKeyboardA11y }) {
+  return import_react11.default.createElement(
+    import_react11.default.Fragment,
+    null,
+    import_react11.default.createElement(
+      "div",
+      { id: `${ARIA_NODE_DESC_KEY}-${rfId}`, style },
+      "Press enter or space to select a node.",
+      !disableKeyboardA11y && "You can then use the arrow keys to move the node around.",
+      " Press delete to remove it and escape to cancel.",
+      " "
+    ),
+    import_react11.default.createElement("div", { id: `${ARIA_EDGE_DESC_KEY}-${rfId}`, style }, "Press enter or space to select an edge. You can then press delete to remove it or escape to cancel."),
+    !disableKeyboardA11y && import_react11.default.createElement(AriaLiveMessage, { rfId })
+  );
+}
+var useKeyPress = (keyCode = null, options = { actInsideInputWithModifier: true }) => {
+  const [keyPressed, setKeyPressed] = (0, import_react11.useState)(false);
+  const modifierPressed = (0, import_react11.useRef)(false);
+  const pressedKeys = (0, import_react11.useRef)(/* @__PURE__ */ new Set([]));
+  const [keyCodes, keysToWatch] = (0, import_react11.useMemo)(() => {
+    if (keyCode !== null) {
+      const keyCodeArr = Array.isArray(keyCode) ? keyCode : [keyCode];
+      const keys = keyCodeArr.filter((kc) => typeof kc === "string").map((kc) => kc.split("+"));
+      const keysFlat = keys.reduce((res, item) => res.concat(...item), []);
+      return [keys, keysFlat];
+    }
+    return [[], []];
+  }, [keyCode]);
+  (0, import_react11.useEffect)(() => {
+    const doc = typeof document !== "undefined" ? document : null;
+    const target = options?.target || doc;
+    if (keyCode !== null) {
+      const downHandler = (event) => {
+        modifierPressed.current = event.ctrlKey || event.metaKey || event.shiftKey;
+        const preventAction = (!modifierPressed.current || modifierPressed.current && !options.actInsideInputWithModifier) && isInputDOMNode(event);
+        if (preventAction) {
+          return false;
+        }
+        const keyOrCode = useKeyOrCode(event.code, keysToWatch);
+        pressedKeys.current.add(event[keyOrCode]);
+        if (isMatchingKey(keyCodes, pressedKeys.current, false)) {
+          event.preventDefault();
+          setKeyPressed(true);
+        }
+      };
+      const upHandler = (event) => {
+        const preventAction = (!modifierPressed.current || modifierPressed.current && !options.actInsideInputWithModifier) && isInputDOMNode(event);
+        if (preventAction) {
+          return false;
+        }
+        const keyOrCode = useKeyOrCode(event.code, keysToWatch);
+        if (isMatchingKey(keyCodes, pressedKeys.current, true)) {
+          setKeyPressed(false);
+          pressedKeys.current.clear();
+        } else {
+          pressedKeys.current.delete(event[keyOrCode]);
+        }
+        if (event.key === "Meta") {
+          pressedKeys.current.clear();
+        }
+        modifierPressed.current = false;
+      };
+      const resetHandler = () => {
+        pressedKeys.current.clear();
+        setKeyPressed(false);
+      };
+      target?.addEventListener("keydown", downHandler);
+      target?.addEventListener("keyup", upHandler);
+      window.addEventListener("blur", resetHandler);
+      return () => {
+        target?.removeEventListener("keydown", downHandler);
+        target?.removeEventListener("keyup", upHandler);
+        window.removeEventListener("blur", resetHandler);
+      };
+    }
+  }, [keyCode, setKeyPressed]);
+  return keyPressed;
+};
+function isMatchingKey(keyCodes, pressedKeys, isUp) {
+  return keyCodes.filter((keys) => isUp || keys.length === pressedKeys.size).some((keys) => keys.every((k) => pressedKeys.has(k)));
+}
+function useKeyOrCode(eventCode, keysToWatch) {
+  return keysToWatch.includes(eventCode) ? "code" : "key";
+}
+function calculateXYZPosition(node, nodeInternals, result, nodeOrigin) {
+  const parentId = node.parentNode || node.parentId;
+  if (!parentId) {
+    return result;
+  }
+  const parentNode = nodeInternals.get(parentId);
+  const parentNodePosition = getNodePositionWithOrigin(parentNode, nodeOrigin);
+  return calculateXYZPosition(parentNode, nodeInternals, {
+    x: (result.x ?? 0) + parentNodePosition.x,
+    y: (result.y ?? 0) + parentNodePosition.y,
+    z: (parentNode[internalsSymbol]?.z ?? 0) > (result.z ?? 0) ? parentNode[internalsSymbol]?.z ?? 0 : result.z ?? 0
+  }, nodeOrigin);
+}
+function updateAbsoluteNodePositions(nodeInternals, nodeOrigin, parentNodes) {
+  nodeInternals.forEach((node) => {
+    const parentId = node.parentNode || node.parentId;
+    if (parentId && !nodeInternals.has(parentId)) {
+      throw new Error(`Parent node ${parentId} not found`);
+    }
+    if (parentId || parentNodes?.[node.id]) {
+      const { x, y, z } = calculateXYZPosition(node, nodeInternals, {
+        ...node.position,
+        z: node[internalsSymbol]?.z ?? 0
+      }, nodeOrigin);
+      node.positionAbsolute = {
+        x,
+        y
+      };
+      node[internalsSymbol].z = z;
+      if (parentNodes?.[node.id]) {
+        node[internalsSymbol].isParent = true;
+      }
+    }
+  });
+}
+function createNodeInternals(nodes, nodeInternals, nodeOrigin, elevateNodesOnSelect) {
+  const nextNodeInternals = /* @__PURE__ */ new Map();
+  const parentNodes = {};
+  const selectedNodeZ = elevateNodesOnSelect ? 1e3 : 0;
+  nodes.forEach((node) => {
+    const z = (isNumeric(node.zIndex) ? node.zIndex : 0) + (node.selected ? selectedNodeZ : 0);
+    const currInternals = nodeInternals.get(node.id);
+    const internals = {
+      ...node,
+      positionAbsolute: {
+        x: node.position.x,
+        y: node.position.y
+      }
+    };
+    const parentId = node.parentNode || node.parentId;
+    if (parentId) {
+      parentNodes[parentId] = true;
+    }
+    const resetHandleBounds = currInternals?.type && currInternals?.type !== node.type;
+    Object.defineProperty(internals, internalsSymbol, {
+      enumerable: false,
+      value: {
+        handleBounds: resetHandleBounds ? void 0 : currInternals?.[internalsSymbol]?.handleBounds,
+        z
+      }
+    });
+    nextNodeInternals.set(node.id, internals);
+  });
+  updateAbsoluteNodePositions(nextNodeInternals, nodeOrigin, parentNodes);
+  return nextNodeInternals;
+}
+function fitView(get3, options = {}) {
+  const { getNodes, width, height, minZoom, maxZoom, d3Zoom, d3Selection, fitViewOnInitDone, fitViewOnInit, nodeOrigin } = get3();
+  const isInitialFitView = options.initial && !fitViewOnInitDone && fitViewOnInit;
+  const d3initialized = d3Zoom && d3Selection;
+  if (d3initialized && (isInitialFitView || !options.initial)) {
+    const nodes = getNodes().filter((n) => {
+      const isVisible = options.includeHiddenNodes ? n.width && n.height : !n.hidden;
+      if (options.nodes?.length) {
+        return isVisible && options.nodes.some((optionNode) => optionNode.id === n.id);
+      }
+      return isVisible;
+    });
+    const nodesInitialized = nodes.every((n) => n.width && n.height);
+    if (nodes.length > 0 && nodesInitialized) {
+      const bounds = getNodesBounds(nodes, nodeOrigin);
+      const { x, y, zoom } = getViewportForBounds(bounds, width, height, options.minZoom ?? minZoom, options.maxZoom ?? maxZoom, options.padding ?? 0.1);
+      const nextTransform = identity3.translate(x, y).scale(zoom);
+      if (typeof options.duration === "number" && options.duration > 0) {
+        d3Zoom.transform(getD3Transition(d3Selection, options.duration), nextTransform);
+      } else {
+        d3Zoom.transform(d3Selection, nextTransform);
+      }
+      return true;
+    }
+  }
+  return false;
+}
+function handleControlledNodeSelectionChange(nodeChanges, nodeInternals) {
+  nodeChanges.forEach((change) => {
+    const node = nodeInternals.get(change.id);
+    if (node) {
+      nodeInternals.set(node.id, {
+        ...node,
+        [internalsSymbol]: node[internalsSymbol],
+        selected: change.selected
+      });
+    }
+  });
+  return new Map(nodeInternals);
+}
+function handleControlledEdgeSelectionChange(edgeChanges, edges) {
+  return edges.map((e) => {
+    const change = edgeChanges.find((change2) => change2.id === e.id);
+    if (change) {
+      e.selected = change.selected;
+    }
+    return e;
+  });
+}
+function updateNodesAndEdgesSelections({ changedNodes, changedEdges, get: get3, set: set3 }) {
+  const { nodeInternals, edges, onNodesChange, onEdgesChange, hasDefaultNodes, hasDefaultEdges } = get3();
+  if (changedNodes?.length) {
+    if (hasDefaultNodes) {
+      set3({ nodeInternals: handleControlledNodeSelectionChange(changedNodes, nodeInternals) });
+    }
+    onNodesChange?.(changedNodes);
+  }
+  if (changedEdges?.length) {
+    if (hasDefaultEdges) {
+      set3({ edges: handleControlledEdgeSelectionChange(changedEdges, edges) });
+    }
+    onEdgesChange?.(changedEdges);
+  }
+}
+var noop2 = () => {
+};
+var initialViewportHelper = {
+  zoomIn: noop2,
+  zoomOut: noop2,
+  zoomTo: noop2,
+  getZoom: () => 1,
+  setViewport: noop2,
+  getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+  fitView: () => false,
+  setCenter: noop2,
+  fitBounds: noop2,
+  project: (position) => position,
+  screenToFlowPosition: (position) => position,
+  flowToScreenPosition: (position) => position,
+  viewportInitialized: false
+};
+var selector$b = (s) => ({
+  d3Zoom: s.d3Zoom,
+  d3Selection: s.d3Selection
+});
+var useViewportHelper = () => {
+  const store = useStoreApi();
+  const { d3Zoom, d3Selection } = useStore(selector$b, shallow$1);
+  const viewportHelperFunctions = (0, import_react11.useMemo)(() => {
+    if (d3Selection && d3Zoom) {
+      return {
+        zoomIn: (options) => d3Zoom.scaleBy(getD3Transition(d3Selection, options?.duration), 1.2),
+        zoomOut: (options) => d3Zoom.scaleBy(getD3Transition(d3Selection, options?.duration), 1 / 1.2),
+        zoomTo: (zoomLevel, options) => d3Zoom.scaleTo(getD3Transition(d3Selection, options?.duration), zoomLevel),
+        getZoom: () => store.getState().transform[2],
+        setViewport: (transform2, options) => {
+          const [x, y, zoom] = store.getState().transform;
+          const nextTransform = identity3.translate(transform2.x ?? x, transform2.y ?? y).scale(transform2.zoom ?? zoom);
+          d3Zoom.transform(getD3Transition(d3Selection, options?.duration), nextTransform);
+        },
+        getViewport: () => {
+          const [x, y, zoom] = store.getState().transform;
+          return { x, y, zoom };
+        },
+        fitView: (options) => fitView(store.getState, options),
+        setCenter: (x, y, options) => {
+          const { width, height, maxZoom } = store.getState();
+          const nextZoom = typeof options?.zoom !== "undefined" ? options.zoom : maxZoom;
+          const centerX = width / 2 - x * nextZoom;
+          const centerY = height / 2 - y * nextZoom;
+          const transform2 = identity3.translate(centerX, centerY).scale(nextZoom);
+          d3Zoom.transform(getD3Transition(d3Selection, options?.duration), transform2);
+        },
+        fitBounds: (bounds, options) => {
+          const { width, height, minZoom, maxZoom } = store.getState();
+          const { x, y, zoom } = getViewportForBounds(bounds, width, height, minZoom, maxZoom, options?.padding ?? 0.1);
+          const transform2 = identity3.translate(x, y).scale(zoom);
+          d3Zoom.transform(getD3Transition(d3Selection, options?.duration), transform2);
+        },
+        // @deprecated Use `screenToFlowPosition`.
+        project: (position) => {
+          const { transform: transform2, snapToGrid, snapGrid } = store.getState();
+          console.warn("[DEPRECATED] `project` is deprecated. Instead use `screenToFlowPosition`. There is no need to subtract the react flow bounds anymore! https://reactflow.dev/api-reference/types/react-flow-instance#screen-to-flow-position");
+          return pointToRendererPoint(position, transform2, snapToGrid, snapGrid);
+        },
+        screenToFlowPosition: (position) => {
+          const { transform: transform2, snapToGrid, snapGrid, domNode } = store.getState();
+          if (!domNode) {
+            return position;
+          }
+          const { x: domX, y: domY } = domNode.getBoundingClientRect();
+          const relativePosition = {
+            x: position.x - domX,
+            y: position.y - domY
+          };
+          return pointToRendererPoint(relativePosition, transform2, snapToGrid, snapGrid);
+        },
+        flowToScreenPosition: (position) => {
+          const { transform: transform2, domNode } = store.getState();
+          if (!domNode) {
+            return position;
+          }
+          const { x: domX, y: domY } = domNode.getBoundingClientRect();
+          const rendererPosition = rendererPointToPoint(position, transform2);
+          return {
+            x: rendererPosition.x + domX,
+            y: rendererPosition.y + domY
+          };
+        },
+        viewportInitialized: true
+      };
+    }
+    return initialViewportHelper;
+  }, [d3Zoom, d3Selection]);
+  return viewportHelperFunctions;
+};
+function useReactFlow() {
+  const viewportHelper = useViewportHelper();
+  const store = useStoreApi();
+  const getNodes = (0, import_react11.useCallback)(() => {
+    return store.getState().getNodes().map((n) => ({ ...n }));
+  }, []);
+  const getNode = (0, import_react11.useCallback)((id2) => {
+    return store.getState().nodeInternals.get(id2);
+  }, []);
+  const getEdges = (0, import_react11.useCallback)(() => {
+    const { edges = [] } = store.getState();
+    return edges.map((e) => ({ ...e }));
+  }, []);
+  const getEdge = (0, import_react11.useCallback)((id2) => {
+    const { edges = [] } = store.getState();
+    return edges.find((e) => e.id === id2);
+  }, []);
+  const setNodes = (0, import_react11.useCallback)((payload) => {
+    const { getNodes: getNodes2, setNodes: setNodes2, hasDefaultNodes, onNodesChange } = store.getState();
+    const nodes = getNodes2();
+    const nextNodes = typeof payload === "function" ? payload(nodes) : payload;
+    if (hasDefaultNodes) {
+      setNodes2(nextNodes);
+    } else if (onNodesChange) {
+      const changes = nextNodes.length === 0 ? nodes.map((node) => ({ type: "remove", id: node.id })) : nextNodes.map((node) => ({ item: node, type: "reset" }));
+      onNodesChange(changes);
+    }
+  }, []);
+  const setEdges = (0, import_react11.useCallback)((payload) => {
+    const { edges = [], setEdges: setEdges2, hasDefaultEdges, onEdgesChange } = store.getState();
+    const nextEdges = typeof payload === "function" ? payload(edges) : payload;
+    if (hasDefaultEdges) {
+      setEdges2(nextEdges);
+    } else if (onEdgesChange) {
+      const changes = nextEdges.length === 0 ? edges.map((edge) => ({ type: "remove", id: edge.id })) : nextEdges.map((edge) => ({ item: edge, type: "reset" }));
+      onEdgesChange(changes);
+    }
+  }, []);
+  const addNodes = (0, import_react11.useCallback)((payload) => {
+    const nodes = Array.isArray(payload) ? payload : [payload];
+    const { getNodes: getNodes2, setNodes: setNodes2, hasDefaultNodes, onNodesChange } = store.getState();
+    if (hasDefaultNodes) {
+      const currentNodes = getNodes2();
+      const nextNodes = [...currentNodes, ...nodes];
+      setNodes2(nextNodes);
+    } else if (onNodesChange) {
+      const changes = nodes.map((node) => ({ item: node, type: "add" }));
+      onNodesChange(changes);
+    }
+  }, []);
+  const addEdges = (0, import_react11.useCallback)((payload) => {
+    const nextEdges = Array.isArray(payload) ? payload : [payload];
+    const { edges = [], setEdges: setEdges2, hasDefaultEdges, onEdgesChange } = store.getState();
+    if (hasDefaultEdges) {
+      setEdges2([...edges, ...nextEdges]);
+    } else if (onEdgesChange) {
+      const changes = nextEdges.map((edge) => ({ item: edge, type: "add" }));
+      onEdgesChange(changes);
+    }
+  }, []);
+  const toObject = (0, import_react11.useCallback)(() => {
+    const { getNodes: getNodes2, edges = [], transform: transform2 } = store.getState();
+    const [x, y, zoom] = transform2;
+    return {
+      nodes: getNodes2().map((n) => ({ ...n })),
+      edges: edges.map((e) => ({ ...e })),
+      viewport: {
+        x,
+        y,
+        zoom
+      }
+    };
+  }, []);
+  const deleteElements = (0, import_react11.useCallback)(({ nodes: nodesDeleted, edges: edgesDeleted }) => {
+    const { nodeInternals, getNodes: getNodes2, edges, hasDefaultNodes, hasDefaultEdges, onNodesDelete, onEdgesDelete, onNodesChange, onEdgesChange } = store.getState();
+    const nodeIds = (nodesDeleted || []).map((node) => node.id);
+    const edgeIds = (edgesDeleted || []).map((edge) => edge.id);
+    const nodesToRemove = getNodes2().reduce((res, node) => {
+      const parentId = node.parentNode || node.parentId;
+      const parentHit = !nodeIds.includes(node.id) && parentId && res.find((n) => n.id === parentId);
+      const deletable = typeof node.deletable === "boolean" ? node.deletable : true;
+      if (deletable && (nodeIds.includes(node.id) || parentHit)) {
+        res.push(node);
+      }
+      return res;
+    }, []);
+    const deletableEdges = edges.filter((e) => typeof e.deletable === "boolean" ? e.deletable : true);
+    const initialHitEdges = deletableEdges.filter((e) => edgeIds.includes(e.id));
+    if (nodesToRemove || initialHitEdges) {
+      const connectedEdges = getConnectedEdges(nodesToRemove, deletableEdges);
+      const edgesToRemove = [...initialHitEdges, ...connectedEdges];
+      const edgeIdsToRemove = edgesToRemove.reduce((res, edge) => {
+        if (!res.includes(edge.id)) {
+          res.push(edge.id);
+        }
+        return res;
+      }, []);
+      if (hasDefaultEdges || hasDefaultNodes) {
+        if (hasDefaultEdges) {
+          store.setState({
+            edges: edges.filter((e) => !edgeIdsToRemove.includes(e.id))
+          });
+        }
+        if (hasDefaultNodes) {
+          nodesToRemove.forEach((node) => {
+            nodeInternals.delete(node.id);
+          });
+          store.setState({
+            nodeInternals: new Map(nodeInternals)
+          });
+        }
+      }
+      if (edgeIdsToRemove.length > 0) {
+        onEdgesDelete?.(edgesToRemove);
+        if (onEdgesChange) {
+          onEdgesChange(edgeIdsToRemove.map((id2) => ({
+            id: id2,
+            type: "remove"
+          })));
+        }
+      }
+      if (nodesToRemove.length > 0) {
+        onNodesDelete?.(nodesToRemove);
+        if (onNodesChange) {
+          const nodeChanges = nodesToRemove.map((n) => ({ id: n.id, type: "remove" }));
+          onNodesChange(nodeChanges);
+        }
+      }
+    }
+  }, []);
+  const getNodeRect = (0, import_react11.useCallback)((nodeOrRect) => {
+    const isRect = isRectObject(nodeOrRect);
+    const node = isRect ? null : store.getState().nodeInternals.get(nodeOrRect.id);
+    if (!isRect && !node) {
+      return [null, null, isRect];
+    }
+    const nodeRect = isRect ? nodeOrRect : nodeToRect(node);
+    return [nodeRect, node, isRect];
+  }, []);
+  const getIntersectingNodes = (0, import_react11.useCallback)((nodeOrRect, partially = true, nodes) => {
+    const [nodeRect, node, isRect] = getNodeRect(nodeOrRect);
+    if (!nodeRect) {
+      return [];
+    }
+    return (nodes || store.getState().getNodes()).filter((n) => {
+      if (!isRect && (n.id === node.id || !n.positionAbsolute)) {
+        return false;
+      }
+      const currNodeRect = nodeToRect(n);
+      const overlappingArea = getOverlappingArea(currNodeRect, nodeRect);
+      const partiallyVisible = partially && overlappingArea > 0;
+      return partiallyVisible || overlappingArea >= nodeRect.width * nodeRect.height;
+    });
+  }, []);
+  const isNodeIntersecting = (0, import_react11.useCallback)((nodeOrRect, area, partially = true) => {
+    const [nodeRect] = getNodeRect(nodeOrRect);
+    if (!nodeRect) {
+      return false;
+    }
+    const overlappingArea = getOverlappingArea(nodeRect, area);
+    const partiallyVisible = partially && overlappingArea > 0;
+    return partiallyVisible || overlappingArea >= nodeRect.width * nodeRect.height;
+  }, []);
+  return (0, import_react11.useMemo)(() => {
+    return {
+      ...viewportHelper,
+      getNodes,
+      getNode,
+      getEdges,
+      getEdge,
+      setNodes,
+      setEdges,
+      addNodes,
+      addEdges,
+      toObject,
+      deleteElements,
+      getIntersectingNodes,
+      isNodeIntersecting
+    };
+  }, [
+    viewportHelper,
+    getNodes,
+    getNode,
+    getEdges,
+    getEdge,
+    setNodes,
+    setEdges,
+    addNodes,
+    addEdges,
+    toObject,
+    deleteElements,
+    getIntersectingNodes,
+    isNodeIntersecting
+  ]);
+}
+var deleteKeyOptions = { actInsideInputWithModifier: false };
+var useGlobalKeyHandler = ({ deleteKeyCode, multiSelectionKeyCode }) => {
+  const store = useStoreApi();
+  const { deleteElements } = useReactFlow();
+  const deleteKeyPressed = useKeyPress(deleteKeyCode, deleteKeyOptions);
+  const multiSelectionKeyPressed = useKeyPress(multiSelectionKeyCode);
+  (0, import_react11.useEffect)(() => {
+    if (deleteKeyPressed) {
+      const { edges, getNodes } = store.getState();
+      const selectedNodes = getNodes().filter((node) => node.selected);
+      const selectedEdges = edges.filter((edge) => edge.selected);
+      deleteElements({ nodes: selectedNodes, edges: selectedEdges });
+      store.setState({ nodesSelectionActive: false });
+    }
+  }, [deleteKeyPressed]);
+  (0, import_react11.useEffect)(() => {
+    store.setState({ multiSelectionActive: multiSelectionKeyPressed });
+  }, [multiSelectionKeyPressed]);
+};
+function useResizeHandler(rendererNode) {
+  const store = useStoreApi();
+  (0, import_react11.useEffect)(() => {
+    let resizeObserver;
+    const updateDimensions = () => {
+      if (!rendererNode.current) {
+        return;
+      }
+      const size = getDimensions(rendererNode.current);
+      if (size.height === 0 || size.width === 0) {
+        store.getState().onError?.("004", errorMessages["error004"]());
+      }
+      store.setState({ width: size.width || 500, height: size.height || 500 });
+    };
+    updateDimensions();
+    window.addEventListener("resize", updateDimensions);
+    if (rendererNode.current) {
+      resizeObserver = new ResizeObserver(() => updateDimensions());
+      resizeObserver.observe(rendererNode.current);
+    }
+    return () => {
+      window.removeEventListener("resize", updateDimensions);
+      if (resizeObserver && rendererNode.current) {
+        resizeObserver.unobserve(rendererNode.current);
+      }
+    };
+  }, []);
+}
+var containerStyle = {
+  position: "absolute",
+  width: "100%",
+  height: "100%",
+  top: 0,
+  left: 0
+};
+var viewChanged = (prevViewport, eventTransform) => prevViewport.x !== eventTransform.x || prevViewport.y !== eventTransform.y || prevViewport.zoom !== eventTransform.k;
+var eventToFlowTransform = (eventTransform) => ({
+  x: eventTransform.x,
+  y: eventTransform.y,
+  zoom: eventTransform.k
+});
+var isWrappedWithClass = (event, className) => event.target.closest(`.${className}`);
+var isRightClickPan = (panOnDrag, usedButton) => usedButton === 2 && Array.isArray(panOnDrag) && panOnDrag.includes(2);
+var wheelDelta = (event) => {
+  const factor = event.ctrlKey && isMacOs() ? 10 : 1;
+  return -event.deltaY * (event.deltaMode === 1 ? 0.05 : event.deltaMode ? 1 : 2e-3) * factor;
+};
+var selector$a = (s) => ({
+  d3Zoom: s.d3Zoom,
+  d3Selection: s.d3Selection,
+  d3ZoomHandler: s.d3ZoomHandler,
+  userSelectionActive: s.userSelectionActive
+});
+var ZoomPane = ({ onMove, onMoveStart, onMoveEnd, onPaneContextMenu, zoomOnScroll = true, zoomOnPinch = true, panOnScroll = false, panOnScrollSpeed = 0.5, panOnScrollMode = PanOnScrollMode.Free, zoomOnDoubleClick = true, elementsSelectable, panOnDrag = true, defaultViewport, translateExtent, minZoom, maxZoom, zoomActivationKeyCode, preventScrolling = true, children: children2, noWheelClassName, noPanClassName }) => {
+  const timerId = (0, import_react11.useRef)();
+  const store = useStoreApi();
+  const isZoomingOrPanning = (0, import_react11.useRef)(false);
+  const zoomedWithRightMouseButton = (0, import_react11.useRef)(false);
+  const zoomPane = (0, import_react11.useRef)(null);
+  const prevTransform = (0, import_react11.useRef)({ x: 0, y: 0, zoom: 0 });
+  const { d3Zoom, d3Selection, d3ZoomHandler, userSelectionActive } = useStore(selector$a, shallow$1);
+  const zoomActivationKeyPressed = useKeyPress(zoomActivationKeyCode);
+  const mouseButton = (0, import_react11.useRef)(0);
+  const isPanScrolling = (0, import_react11.useRef)(false);
+  const panScrollTimeout = (0, import_react11.useRef)();
+  useResizeHandler(zoomPane);
+  (0, import_react11.useEffect)(() => {
+    if (zoomPane.current) {
+      const bbox = zoomPane.current.getBoundingClientRect();
+      const d3ZoomInstance = zoom_default2().scaleExtent([minZoom, maxZoom]).translateExtent(translateExtent);
+      const selection2 = select_default2(zoomPane.current).call(d3ZoomInstance);
+      const updatedTransform = identity3.translate(defaultViewport.x, defaultViewport.y).scale(clamp(defaultViewport.zoom, minZoom, maxZoom));
+      const extent = [
+        [0, 0],
+        [bbox.width, bbox.height]
+      ];
+      const constrainedTransform = d3ZoomInstance.constrain()(updatedTransform, extent, translateExtent);
+      d3ZoomInstance.transform(selection2, constrainedTransform);
+      d3ZoomInstance.wheelDelta(wheelDelta);
+      store.setState({
+        d3Zoom: d3ZoomInstance,
+        d3Selection: selection2,
+        d3ZoomHandler: selection2.on("wheel.zoom"),
+        // we need to pass transform because zoom handler is not registered when we set the initial transform
+        transform: [constrainedTransform.x, constrainedTransform.y, constrainedTransform.k],
+        domNode: zoomPane.current.closest(".react-flow")
+      });
+    }
+  }, []);
+  (0, import_react11.useEffect)(() => {
+    if (d3Selection && d3Zoom) {
+      if (panOnScroll && !zoomActivationKeyPressed && !userSelectionActive) {
+        d3Selection.on("wheel.zoom", (event) => {
+          if (isWrappedWithClass(event, noWheelClassName)) {
+            return false;
+          }
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          const currentZoom = d3Selection.property("__zoom").k || 1;
+          if (event.ctrlKey && zoomOnPinch) {
+            const point = pointer_default(event);
+            const pinchDelta = wheelDelta(event);
+            const zoom = currentZoom * Math.pow(2, pinchDelta);
+            d3Zoom.scaleTo(d3Selection, zoom, point, event);
+            return;
+          }
+          const deltaNormalize = event.deltaMode === 1 ? 20 : 1;
+          let deltaX = panOnScrollMode === PanOnScrollMode.Vertical ? 0 : event.deltaX * deltaNormalize;
+          let deltaY = panOnScrollMode === PanOnScrollMode.Horizontal ? 0 : event.deltaY * deltaNormalize;
+          if (!isMacOs() && event.shiftKey && panOnScrollMode !== PanOnScrollMode.Vertical) {
+            deltaX = event.deltaY * deltaNormalize;
+            deltaY = 0;
+          }
+          d3Zoom.translateBy(
+            d3Selection,
+            -(deltaX / currentZoom) * panOnScrollSpeed,
+            -(deltaY / currentZoom) * panOnScrollSpeed,
+            // @ts-ignore
+            { internal: true }
+          );
+          const nextViewport = eventToFlowTransform(d3Selection.property("__zoom"));
+          const { onViewportChangeStart, onViewportChange, onViewportChangeEnd } = store.getState();
+          clearTimeout(panScrollTimeout.current);
+          if (!isPanScrolling.current) {
+            isPanScrolling.current = true;
+            onMoveStart?.(event, nextViewport);
+            onViewportChangeStart?.(nextViewport);
+          }
+          if (isPanScrolling.current) {
+            onMove?.(event, nextViewport);
+            onViewportChange?.(nextViewport);
+            panScrollTimeout.current = setTimeout(() => {
+              onMoveEnd?.(event, nextViewport);
+              onViewportChangeEnd?.(nextViewport);
+              isPanScrolling.current = false;
+            }, 150);
+          }
+        }, { passive: false });
+      } else if (typeof d3ZoomHandler !== "undefined") {
+        d3Selection.on("wheel.zoom", function(event, d) {
+          const invalidEvent = !preventScrolling && event.type === "wheel" && !event.ctrlKey;
+          if (invalidEvent || isWrappedWithClass(event, noWheelClassName)) {
+            return null;
+          }
+          event.preventDefault();
+          d3ZoomHandler.call(this, event, d);
+        }, { passive: false });
+      }
+    }
+  }, [
+    userSelectionActive,
+    panOnScroll,
+    panOnScrollMode,
+    d3Selection,
+    d3Zoom,
+    d3ZoomHandler,
+    zoomActivationKeyPressed,
+    zoomOnPinch,
+    preventScrolling,
+    noWheelClassName,
+    onMoveStart,
+    onMove,
+    onMoveEnd
+  ]);
+  (0, import_react11.useEffect)(() => {
+    if (d3Zoom) {
+      d3Zoom.on("start", (event) => {
+        if (!event.sourceEvent || event.sourceEvent.internal) {
+          return null;
+        }
+        mouseButton.current = event.sourceEvent?.button;
+        const { onViewportChangeStart } = store.getState();
+        const flowTransform = eventToFlowTransform(event.transform);
+        isZoomingOrPanning.current = true;
+        prevTransform.current = flowTransform;
+        if (event.sourceEvent?.type === "mousedown") {
+          store.setState({ paneDragging: true });
+        }
+        onViewportChangeStart?.(flowTransform);
+        onMoveStart?.(event.sourceEvent, flowTransform);
+      });
+    }
+  }, [d3Zoom, onMoveStart]);
+  (0, import_react11.useEffect)(() => {
+    if (d3Zoom) {
+      if (userSelectionActive && !isZoomingOrPanning.current) {
+        d3Zoom.on("zoom", null);
+      } else if (!userSelectionActive) {
+        d3Zoom.on("zoom", (event) => {
+          const { onViewportChange } = store.getState();
+          store.setState({ transform: [event.transform.x, event.transform.y, event.transform.k] });
+          zoomedWithRightMouseButton.current = !!(onPaneContextMenu && isRightClickPan(panOnDrag, mouseButton.current ?? 0));
+          if ((onMove || onViewportChange) && !event.sourceEvent?.internal) {
+            const flowTransform = eventToFlowTransform(event.transform);
+            onViewportChange?.(flowTransform);
+            onMove?.(event.sourceEvent, flowTransform);
+          }
+        });
+      }
+    }
+  }, [userSelectionActive, d3Zoom, onMove, panOnDrag, onPaneContextMenu]);
+  (0, import_react11.useEffect)(() => {
+    if (d3Zoom) {
+      d3Zoom.on("end", (event) => {
+        if (!event.sourceEvent || event.sourceEvent.internal) {
+          return null;
+        }
+        const { onViewportChangeEnd } = store.getState();
+        isZoomingOrPanning.current = false;
+        store.setState({ paneDragging: false });
+        if (onPaneContextMenu && isRightClickPan(panOnDrag, mouseButton.current ?? 0) && !zoomedWithRightMouseButton.current) {
+          onPaneContextMenu(event.sourceEvent);
+        }
+        zoomedWithRightMouseButton.current = false;
+        if ((onMoveEnd || onViewportChangeEnd) && viewChanged(prevTransform.current, event.transform)) {
+          const flowTransform = eventToFlowTransform(event.transform);
+          prevTransform.current = flowTransform;
+          clearTimeout(timerId.current);
+          timerId.current = setTimeout(() => {
+            onViewportChangeEnd?.(flowTransform);
+            onMoveEnd?.(event.sourceEvent, flowTransform);
+          }, panOnScroll ? 150 : 0);
+        }
+      });
+    }
+  }, [d3Zoom, panOnScroll, panOnDrag, onMoveEnd, onPaneContextMenu]);
+  (0, import_react11.useEffect)(() => {
+    if (d3Zoom) {
+      d3Zoom.filter((event) => {
+        const zoomScroll = zoomActivationKeyPressed || zoomOnScroll;
+        const pinchZoom = zoomOnPinch && event.ctrlKey;
+        if ((panOnDrag === true || Array.isArray(panOnDrag) && panOnDrag.includes(1)) && event.button === 1 && event.type === "mousedown" && (isWrappedWithClass(event, "react-flow__node") || isWrappedWithClass(event, "react-flow__edge"))) {
+          return true;
+        }
+        if (!panOnDrag && !zoomScroll && !panOnScroll && !zoomOnDoubleClick && !zoomOnPinch) {
+          return false;
+        }
+        if (userSelectionActive) {
+          return false;
+        }
+        if (!zoomOnDoubleClick && event.type === "dblclick") {
+          return false;
+        }
+        if (isWrappedWithClass(event, noWheelClassName) && event.type === "wheel") {
+          return false;
+        }
+        if (isWrappedWithClass(event, noPanClassName) && (event.type !== "wheel" || panOnScroll && event.type === "wheel" && !zoomActivationKeyPressed)) {
+          return false;
+        }
+        if (!zoomOnPinch && event.ctrlKey && event.type === "wheel") {
+          return false;
+        }
+        if (!zoomScroll && !panOnScroll && !pinchZoom && event.type === "wheel") {
+          return false;
+        }
+        if (!panOnDrag && (event.type === "mousedown" || event.type === "touchstart")) {
+          return false;
+        }
+        if (Array.isArray(panOnDrag) && !panOnDrag.includes(event.button) && event.type === "mousedown") {
+          return false;
+        }
+        const buttonAllowed = Array.isArray(panOnDrag) && panOnDrag.includes(event.button) || !event.button || event.button <= 1;
+        return (!event.ctrlKey || event.type === "wheel") && buttonAllowed;
+      });
+    }
+  }, [
+    userSelectionActive,
+    d3Zoom,
+    zoomOnScroll,
+    zoomOnPinch,
+    panOnScroll,
+    zoomOnDoubleClick,
+    panOnDrag,
+    elementsSelectable,
+    zoomActivationKeyPressed
+  ]);
+  return import_react11.default.createElement("div", { className: "react-flow__renderer", ref: zoomPane, style: containerStyle }, children2);
+};
+var selector$9 = (s) => ({
+  userSelectionActive: s.userSelectionActive,
+  userSelectionRect: s.userSelectionRect
+});
+function UserSelection() {
+  const { userSelectionActive, userSelectionRect } = useStore(selector$9, shallow$1);
+  const isActive = userSelectionActive && userSelectionRect;
+  if (!isActive) {
+    return null;
+  }
+  return import_react11.default.createElement("div", { className: "react-flow__selection react-flow__container", style: {
+    width: userSelectionRect.width,
+    height: userSelectionRect.height,
+    transform: `translate(${userSelectionRect.x}px, ${userSelectionRect.y}px)`
+  } });
+}
+function handleParentExpand(res, updateItem) {
+  const parentId = updateItem.parentNode || updateItem.parentId;
+  const parent = res.find((e) => e.id === parentId);
+  if (parent) {
+    const extendWidth = updateItem.position.x + updateItem.width - parent.width;
+    const extendHeight = updateItem.position.y + updateItem.height - parent.height;
+    if (extendWidth > 0 || extendHeight > 0 || updateItem.position.x < 0 || updateItem.position.y < 0) {
+      parent.style = { ...parent.style };
+      parent.style.width = parent.style.width ?? parent.width;
+      parent.style.height = parent.style.height ?? parent.height;
+      if (extendWidth > 0) {
+        parent.style.width += extendWidth;
+      }
+      if (extendHeight > 0) {
+        parent.style.height += extendHeight;
+      }
+      if (updateItem.position.x < 0) {
+        const xDiff = Math.abs(updateItem.position.x);
+        parent.position.x = parent.position.x - xDiff;
+        parent.style.width += xDiff;
+        updateItem.position.x = 0;
+      }
+      if (updateItem.position.y < 0) {
+        const yDiff = Math.abs(updateItem.position.y);
+        parent.position.y = parent.position.y - yDiff;
+        parent.style.height += yDiff;
+        updateItem.position.y = 0;
+      }
+      parent.width = parent.style.width;
+      parent.height = parent.style.height;
+    }
+  }
+}
+function applyChanges(changes, elements) {
+  if (changes.some((c) => c.type === "reset")) {
+    return changes.filter((c) => c.type === "reset").map((c) => c.item);
+  }
+  const initElements = changes.filter((c) => c.type === "add").map((c) => c.item);
+  return elements.reduce((res, item) => {
+    const currentChanges = changes.filter((c) => c.id === item.id);
+    if (currentChanges.length === 0) {
+      res.push(item);
+      return res;
+    }
+    const updateItem = { ...item };
+    for (const currentChange of currentChanges) {
+      if (currentChange) {
+        switch (currentChange.type) {
+          case "select": {
+            updateItem.selected = currentChange.selected;
+            break;
+          }
+          case "position": {
+            if (typeof currentChange.position !== "undefined") {
+              updateItem.position = currentChange.position;
+            }
+            if (typeof currentChange.positionAbsolute !== "undefined") {
+              updateItem.positionAbsolute = currentChange.positionAbsolute;
+            }
+            if (typeof currentChange.dragging !== "undefined") {
+              updateItem.dragging = currentChange.dragging;
+            }
+            if (updateItem.expandParent) {
+              handleParentExpand(res, updateItem);
+            }
+            break;
+          }
+          case "dimensions": {
+            if (typeof currentChange.dimensions !== "undefined") {
+              updateItem.width = currentChange.dimensions.width;
+              updateItem.height = currentChange.dimensions.height;
+            }
+            if (typeof currentChange.updateStyle !== "undefined") {
+              updateItem.style = { ...updateItem.style || {}, ...currentChange.dimensions };
+            }
+            if (typeof currentChange.resizing === "boolean") {
+              updateItem.resizing = currentChange.resizing;
+            }
+            if (updateItem.expandParent) {
+              handleParentExpand(res, updateItem);
+            }
+            break;
+          }
+          case "remove": {
+            return res;
+          }
+        }
+      }
+    }
+    res.push(updateItem);
+    return res;
+  }, initElements);
+}
+function applyNodeChanges(changes, nodes) {
+  return applyChanges(changes, nodes);
+}
+function applyEdgeChanges(changes, edges) {
+  return applyChanges(changes, edges);
+}
+var createSelectionChange = (id2, selected) => ({
+  id: id2,
+  type: "select",
+  selected
+});
+function getSelectionChanges(items, selectedIds) {
+  return items.reduce((res, item) => {
+    const willBeSelected = selectedIds.includes(item.id);
+    if (!item.selected && willBeSelected) {
+      item.selected = true;
+      res.push(createSelectionChange(item.id, true));
+    } else if (item.selected && !willBeSelected) {
+      item.selected = false;
+      res.push(createSelectionChange(item.id, false));
+    }
+    return res;
+  }, []);
+}
+var wrapHandler = (handler, containerRef) => {
+  return (event) => {
+    if (event.target !== containerRef.current) {
+      return;
+    }
+    handler?.(event);
+  };
+};
+var selector$8 = (s) => ({
+  userSelectionActive: s.userSelectionActive,
+  elementsSelectable: s.elementsSelectable,
+  dragging: s.paneDragging
+});
+var Pane = (0, import_react11.memo)(({ isSelecting, selectionMode = SelectionMode.Full, panOnDrag, onSelectionStart, onSelectionEnd, onPaneClick, onPaneContextMenu, onPaneScroll, onPaneMouseEnter, onPaneMouseMove, onPaneMouseLeave, children: children2 }) => {
+  const container = (0, import_react11.useRef)(null);
+  const store = useStoreApi();
+  const prevSelectedNodesCount = (0, import_react11.useRef)(0);
+  const prevSelectedEdgesCount = (0, import_react11.useRef)(0);
+  const containerBounds = (0, import_react11.useRef)();
+  const { userSelectionActive, elementsSelectable, dragging } = useStore(selector$8, shallow$1);
+  const resetUserSelection = () => {
+    store.setState({ userSelectionActive: false, userSelectionRect: null });
+    prevSelectedNodesCount.current = 0;
+    prevSelectedEdgesCount.current = 0;
+  };
+  const onClick = (event) => {
+    onPaneClick?.(event);
+    store.getState().resetSelectedElements();
+    store.setState({ nodesSelectionActive: false });
+  };
+  const onContextMenu = (event) => {
+    if (Array.isArray(panOnDrag) && panOnDrag?.includes(2)) {
+      event.preventDefault();
+      return;
+    }
+    onPaneContextMenu?.(event);
+  };
+  const onWheel = onPaneScroll ? (event) => onPaneScroll(event) : void 0;
+  const onMouseDown = (event) => {
+    const { resetSelectedElements, domNode } = store.getState();
+    containerBounds.current = domNode?.getBoundingClientRect();
+    if (!elementsSelectable || !isSelecting || event.button !== 0 || event.target !== container.current || !containerBounds.current) {
+      return;
+    }
+    const { x, y } = getEventPosition(event, containerBounds.current);
+    resetSelectedElements();
+    store.setState({
+      userSelectionRect: {
+        width: 0,
+        height: 0,
+        startX: x,
+        startY: y,
+        x,
+        y
+      }
+    });
+    onSelectionStart?.(event);
+  };
+  const onMouseMove = (event) => {
+    const { userSelectionRect, nodeInternals, edges, transform: transform2, onNodesChange, onEdgesChange, nodeOrigin, getNodes } = store.getState();
+    if (!isSelecting || !containerBounds.current || !userSelectionRect) {
+      return;
+    }
+    store.setState({ userSelectionActive: true, nodesSelectionActive: false });
+    const mousePos = getEventPosition(event, containerBounds.current);
+    const startX = userSelectionRect.startX ?? 0;
+    const startY = userSelectionRect.startY ?? 0;
+    const nextUserSelectRect = {
+      ...userSelectionRect,
+      x: mousePos.x < startX ? mousePos.x : startX,
+      y: mousePos.y < startY ? mousePos.y : startY,
+      width: Math.abs(mousePos.x - startX),
+      height: Math.abs(mousePos.y - startY)
+    };
+    const nodes = getNodes();
+    const selectedNodes = getNodesInside(nodeInternals, nextUserSelectRect, transform2, selectionMode === SelectionMode.Partial, true, nodeOrigin);
+    const selectedEdgeIds = getConnectedEdges(selectedNodes, edges).map((e) => e.id);
+    const selectedNodeIds = selectedNodes.map((n) => n.id);
+    if (prevSelectedNodesCount.current !== selectedNodeIds.length) {
+      prevSelectedNodesCount.current = selectedNodeIds.length;
+      const changes = getSelectionChanges(nodes, selectedNodeIds);
+      if (changes.length) {
+        onNodesChange?.(changes);
+      }
+    }
+    if (prevSelectedEdgesCount.current !== selectedEdgeIds.length) {
+      prevSelectedEdgesCount.current = selectedEdgeIds.length;
+      const changes = getSelectionChanges(edges, selectedEdgeIds);
+      if (changes.length) {
+        onEdgesChange?.(changes);
+      }
+    }
+    store.setState({
+      userSelectionRect: nextUserSelectRect
+    });
+  };
+  const onMouseUp = (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+    const { userSelectionRect } = store.getState();
+    if (!userSelectionActive && userSelectionRect && event.target === container.current) {
+      onClick?.(event);
+    }
+    store.setState({ nodesSelectionActive: prevSelectedNodesCount.current > 0 });
+    resetUserSelection();
+    onSelectionEnd?.(event);
+  };
+  const onMouseLeave = (event) => {
+    if (userSelectionActive) {
+      store.setState({ nodesSelectionActive: prevSelectedNodesCount.current > 0 });
+      onSelectionEnd?.(event);
+    }
+    resetUserSelection();
+  };
+  const hasActiveSelection = elementsSelectable && (isSelecting || userSelectionActive);
+  return import_react11.default.createElement(
+    "div",
+    { className: cc(["react-flow__pane", { dragging, selection: isSelecting }]), onClick: hasActiveSelection ? void 0 : wrapHandler(onClick, container), onContextMenu: wrapHandler(onContextMenu, container), onWheel: wrapHandler(onWheel, container), onMouseEnter: hasActiveSelection ? void 0 : onPaneMouseEnter, onMouseDown: hasActiveSelection ? onMouseDown : void 0, onMouseMove: hasActiveSelection ? onMouseMove : onPaneMouseMove, onMouseUp: hasActiveSelection ? onMouseUp : void 0, onMouseLeave: hasActiveSelection ? onMouseLeave : onPaneMouseLeave, ref: container, style: containerStyle },
+    children2,
+    import_react11.default.createElement(UserSelection, null)
+  );
+});
+Pane.displayName = "Pane";
+function isParentSelected(node, nodeInternals) {
+  const parentId = node.parentNode || node.parentId;
+  if (!parentId) {
+    return false;
+  }
+  const parentNode = nodeInternals.get(parentId);
+  if (!parentNode) {
+    return false;
+  }
+  if (parentNode.selected) {
+    return true;
+  }
+  return isParentSelected(parentNode, nodeInternals);
+}
+function hasSelector(target, selector3, nodeRef) {
+  let current = target;
+  do {
+    if (current?.matches(selector3))
+      return true;
+    if (current === nodeRef.current)
+      return false;
+    current = current.parentElement;
+  } while (current);
+  return false;
+}
+function getDragItems(nodeInternals, nodesDraggable, mousePos, nodeId) {
+  return Array.from(nodeInternals.values()).filter((n) => (n.selected || n.id === nodeId) && (!n.parentNode || n.parentId || !isParentSelected(n, nodeInternals)) && (n.draggable || nodesDraggable && typeof n.draggable === "undefined")).map((n) => ({
+    id: n.id,
+    position: n.position || { x: 0, y: 0 },
+    positionAbsolute: n.positionAbsolute || { x: 0, y: 0 },
+    distance: {
+      x: mousePos.x - (n.positionAbsolute?.x ?? 0),
+      y: mousePos.y - (n.positionAbsolute?.y ?? 0)
+    },
+    delta: {
+      x: 0,
+      y: 0
+    },
+    extent: n.extent,
+    parentNode: n.parentNode || n.parentId,
+    parentId: n.parentNode || n.parentId,
+    width: n.width,
+    height: n.height,
+    expandParent: n.expandParent
+  }));
+}
+function clampNodeExtent(node, extent) {
+  if (!extent || extent === "parent") {
+    return extent;
+  }
+  return [extent[0], [extent[1][0] - (node.width || 0), extent[1][1] - (node.height || 0)]];
+}
+function calcNextPosition(node, nextPosition, nodeInternals, nodeExtent, nodeOrigin = [0, 0], onError) {
+  const clampedNodeExtent = clampNodeExtent(node, node.extent || nodeExtent);
+  let currentExtent = clampedNodeExtent;
+  const parentId = node.parentNode || node.parentId;
+  if (node.extent === "parent" && !node.expandParent) {
+    if (parentId && node.width && node.height) {
+      const parent = nodeInternals.get(parentId);
+      const { x: parentX, y: parentY } = getNodePositionWithOrigin(parent, nodeOrigin).positionAbsolute;
+      currentExtent = parent && isNumeric(parentX) && isNumeric(parentY) && isNumeric(parent.width) && isNumeric(parent.height) ? [
+        [parentX + node.width * nodeOrigin[0], parentY + node.height * nodeOrigin[1]],
+        [
+          parentX + parent.width - node.width + node.width * nodeOrigin[0],
+          parentY + parent.height - node.height + node.height * nodeOrigin[1]
+        ]
+      ] : currentExtent;
+    } else {
+      onError?.("005", errorMessages["error005"]());
+      currentExtent = clampedNodeExtent;
+    }
+  } else if (node.extent && parentId && node.extent !== "parent") {
+    const parent = nodeInternals.get(parentId);
+    const { x: parentX, y: parentY } = getNodePositionWithOrigin(parent, nodeOrigin).positionAbsolute;
+    currentExtent = [
+      [node.extent[0][0] + parentX, node.extent[0][1] + parentY],
+      [node.extent[1][0] + parentX, node.extent[1][1] + parentY]
+    ];
+  }
+  let parentPosition = { x: 0, y: 0 };
+  if (parentId) {
+    const parentNode = nodeInternals.get(parentId);
+    parentPosition = getNodePositionWithOrigin(parentNode, nodeOrigin).positionAbsolute;
+  }
+  const positionAbsolute = currentExtent && currentExtent !== "parent" ? clampPosition(nextPosition, currentExtent) : nextPosition;
+  return {
+    position: {
+      x: positionAbsolute.x - parentPosition.x,
+      y: positionAbsolute.y - parentPosition.y
+    },
+    positionAbsolute
+  };
+}
+function getEventHandlerParams({ nodeId, dragItems, nodeInternals }) {
+  const extentedDragItems = dragItems.map((n) => {
+    const node = nodeInternals.get(n.id);
+    return {
+      ...node,
+      position: n.position,
+      positionAbsolute: n.positionAbsolute
+    };
+  });
+  return [nodeId ? extentedDragItems.find((n) => n.id === nodeId) : extentedDragItems[0], extentedDragItems];
+}
+var getHandleBounds = (selector3, nodeElement, zoom, nodeOrigin) => {
+  const handles = nodeElement.querySelectorAll(selector3);
+  if (!handles || !handles.length) {
+    return null;
+  }
+  const handlesArray = Array.from(handles);
+  const nodeBounds = nodeElement.getBoundingClientRect();
+  const nodeOffset = {
+    x: nodeBounds.width * nodeOrigin[0],
+    y: nodeBounds.height * nodeOrigin[1]
+  };
+  return handlesArray.map((handle) => {
+    const handleBounds = handle.getBoundingClientRect();
+    return {
+      id: handle.getAttribute("data-handleid"),
+      position: handle.getAttribute("data-handlepos"),
+      x: (handleBounds.left - nodeBounds.left - nodeOffset.x) / zoom,
+      y: (handleBounds.top - nodeBounds.top - nodeOffset.y) / zoom,
+      ...getDimensions(handle)
+    };
+  });
+};
+function getMouseHandler(id2, getState, handler) {
+  return handler === void 0 ? handler : (event) => {
+    const node = getState().nodeInternals.get(id2);
+    if (node) {
+      handler(event, { ...node });
+    }
+  };
+}
+function handleNodeClick({ id: id2, store, unselect = false, nodeRef }) {
+  const { addSelectedNodes, unselectNodesAndEdges, multiSelectionActive, nodeInternals, onError } = store.getState();
+  const node = nodeInternals.get(id2);
+  if (!node) {
+    onError?.("012", errorMessages["error012"](id2));
+    return;
+  }
+  store.setState({ nodesSelectionActive: false });
+  if (!node.selected) {
+    addSelectedNodes([id2]);
+  } else if (unselect || node.selected && multiSelectionActive) {
+    unselectNodesAndEdges({ nodes: [node], edges: [] });
+    requestAnimationFrame(() => nodeRef?.current?.blur());
+  }
+}
+function useGetPointerPosition() {
+  const store = useStoreApi();
+  const getPointerPosition = (0, import_react11.useCallback)(({ sourceEvent }) => {
+    const { transform: transform2, snapGrid, snapToGrid } = store.getState();
+    const x = sourceEvent.touches ? sourceEvent.touches[0].clientX : sourceEvent.clientX;
+    const y = sourceEvent.touches ? sourceEvent.touches[0].clientY : sourceEvent.clientY;
+    const pointerPos = {
+      x: (x - transform2[0]) / transform2[2],
+      y: (y - transform2[1]) / transform2[2]
+    };
+    return {
+      xSnapped: snapToGrid ? snapGrid[0] * Math.round(pointerPos.x / snapGrid[0]) : pointerPos.x,
+      ySnapped: snapToGrid ? snapGrid[1] * Math.round(pointerPos.y / snapGrid[1]) : pointerPos.y,
+      ...pointerPos
+    };
+  }, []);
+  return getPointerPosition;
+}
+function wrapSelectionDragFunc(selectionFunc) {
+  return (event, _, nodes) => selectionFunc?.(event, nodes);
+}
+function useDrag({ nodeRef, disabled = false, noDragClassName, handleSelector, nodeId, isSelectable, selectNodesOnDrag }) {
+  const store = useStoreApi();
+  const [dragging, setDragging] = (0, import_react11.useState)(false);
+  const dragItems = (0, import_react11.useRef)([]);
+  const lastPos = (0, import_react11.useRef)({ x: null, y: null });
+  const autoPanId = (0, import_react11.useRef)(0);
+  const containerBounds = (0, import_react11.useRef)(null);
+  const mousePosition = (0, import_react11.useRef)({ x: 0, y: 0 });
+  const dragEvent = (0, import_react11.useRef)(null);
+  const autoPanStarted = (0, import_react11.useRef)(false);
+  const dragStarted = (0, import_react11.useRef)(false);
+  const abortDrag = (0, import_react11.useRef)(false);
+  const getPointerPosition = useGetPointerPosition();
+  (0, import_react11.useEffect)(() => {
+    if (nodeRef?.current) {
+      const selection2 = select_default2(nodeRef.current);
+      const updateNodes = ({ x, y }) => {
+        const { nodeInternals, onNodeDrag, onSelectionDrag, updateNodePositions, nodeExtent, snapGrid, snapToGrid, nodeOrigin, onError } = store.getState();
+        lastPos.current = { x, y };
+        let hasChange = false;
+        let nodesBox = { x: 0, y: 0, x2: 0, y2: 0 };
+        if (dragItems.current.length > 1 && nodeExtent) {
+          const rect = getNodesBounds(dragItems.current, nodeOrigin);
+          nodesBox = rectToBox(rect);
+        }
+        dragItems.current = dragItems.current.map((n) => {
+          const nextPosition = { x: x - n.distance.x, y: y - n.distance.y };
+          if (snapToGrid) {
+            nextPosition.x = snapGrid[0] * Math.round(nextPosition.x / snapGrid[0]);
+            nextPosition.y = snapGrid[1] * Math.round(nextPosition.y / snapGrid[1]);
+          }
+          const adjustedNodeExtent = [
+            [nodeExtent[0][0], nodeExtent[0][1]],
+            [nodeExtent[1][0], nodeExtent[1][1]]
+          ];
+          if (dragItems.current.length > 1 && nodeExtent && !n.extent) {
+            adjustedNodeExtent[0][0] = n.positionAbsolute.x - nodesBox.x + nodeExtent[0][0];
+            adjustedNodeExtent[1][0] = n.positionAbsolute.x + (n.width ?? 0) - nodesBox.x2 + nodeExtent[1][0];
+            adjustedNodeExtent[0][1] = n.positionAbsolute.y - nodesBox.y + nodeExtent[0][1];
+            adjustedNodeExtent[1][1] = n.positionAbsolute.y + (n.height ?? 0) - nodesBox.y2 + nodeExtent[1][1];
+          }
+          const updatedPos = calcNextPosition(n, nextPosition, nodeInternals, adjustedNodeExtent, nodeOrigin, onError);
+          hasChange = hasChange || n.position.x !== updatedPos.position.x || n.position.y !== updatedPos.position.y;
+          n.position = updatedPos.position;
+          n.positionAbsolute = updatedPos.positionAbsolute;
+          return n;
+        });
+        if (!hasChange) {
+          return;
+        }
+        updateNodePositions(dragItems.current, true, true);
+        setDragging(true);
+        const onDrag = nodeId ? onNodeDrag : wrapSelectionDragFunc(onSelectionDrag);
+        if (onDrag && dragEvent.current) {
+          const [currentNode, nodes] = getEventHandlerParams({
+            nodeId,
+            dragItems: dragItems.current,
+            nodeInternals
+          });
+          onDrag(dragEvent.current, currentNode, nodes);
+        }
+      };
+      const autoPan = () => {
+        if (!containerBounds.current) {
+          return;
+        }
+        const [xMovement, yMovement] = calcAutoPan(mousePosition.current, containerBounds.current);
+        if (xMovement !== 0 || yMovement !== 0) {
+          const { transform: transform2, panBy } = store.getState();
+          lastPos.current.x = (lastPos.current.x ?? 0) - xMovement / transform2[2];
+          lastPos.current.y = (lastPos.current.y ?? 0) - yMovement / transform2[2];
+          if (panBy({ x: xMovement, y: yMovement })) {
+            updateNodes(lastPos.current);
+          }
+        }
+        autoPanId.current = requestAnimationFrame(autoPan);
+      };
+      const startDrag = (event) => {
+        const { nodeInternals, multiSelectionActive, nodesDraggable, unselectNodesAndEdges, onNodeDragStart, onSelectionDragStart } = store.getState();
+        dragStarted.current = true;
+        const onStart = nodeId ? onNodeDragStart : wrapSelectionDragFunc(onSelectionDragStart);
+        if ((!selectNodesOnDrag || !isSelectable) && !multiSelectionActive && nodeId) {
+          if (!nodeInternals.get(nodeId)?.selected) {
+            unselectNodesAndEdges();
+          }
+        }
+        if (nodeId && isSelectable && selectNodesOnDrag) {
+          handleNodeClick({
+            id: nodeId,
+            store,
+            nodeRef
+          });
+        }
+        const pointerPos = getPointerPosition(event);
+        lastPos.current = pointerPos;
+        dragItems.current = getDragItems(nodeInternals, nodesDraggable, pointerPos, nodeId);
+        if (onStart && dragItems.current) {
+          const [currentNode, nodes] = getEventHandlerParams({
+            nodeId,
+            dragItems: dragItems.current,
+            nodeInternals
+          });
+          onStart(event.sourceEvent, currentNode, nodes);
+        }
+      };
+      if (disabled) {
+        selection2.on(".drag", null);
+      } else {
+        const dragHandler = drag_default().on("start", (event) => {
+          const { domNode, nodeDragThreshold } = store.getState();
+          if (nodeDragThreshold === 0) {
+            startDrag(event);
+          }
+          abortDrag.current = false;
+          const pointerPos = getPointerPosition(event);
+          lastPos.current = pointerPos;
+          containerBounds.current = domNode?.getBoundingClientRect() || null;
+          mousePosition.current = getEventPosition(event.sourceEvent, containerBounds.current);
+        }).on("drag", (event) => {
+          const pointerPos = getPointerPosition(event);
+          const { autoPanOnNodeDrag, nodeDragThreshold } = store.getState();
+          if (event.sourceEvent.type === "touchmove" && event.sourceEvent.touches.length > 1) {
+            abortDrag.current = true;
+          }
+          if (abortDrag.current) {
+            return;
+          }
+          if (!autoPanStarted.current && dragStarted.current && autoPanOnNodeDrag) {
+            autoPanStarted.current = true;
+            autoPan();
+          }
+          if (!dragStarted.current) {
+            const x = pointerPos.xSnapped - (lastPos?.current?.x ?? 0);
+            const y = pointerPos.ySnapped - (lastPos?.current?.y ?? 0);
+            const distance2 = Math.sqrt(x * x + y * y);
+            if (distance2 > nodeDragThreshold) {
+              startDrag(event);
+            }
+          }
+          if ((lastPos.current.x !== pointerPos.xSnapped || lastPos.current.y !== pointerPos.ySnapped) && dragItems.current && dragStarted.current) {
+            dragEvent.current = event.sourceEvent;
+            mousePosition.current = getEventPosition(event.sourceEvent, containerBounds.current);
+            updateNodes(pointerPos);
+          }
+        }).on("end", (event) => {
+          if (!dragStarted.current || abortDrag.current) {
+            return;
+          }
+          setDragging(false);
+          autoPanStarted.current = false;
+          dragStarted.current = false;
+          cancelAnimationFrame(autoPanId.current);
+          if (dragItems.current) {
+            const { updateNodePositions, nodeInternals, onNodeDragStop, onSelectionDragStop } = store.getState();
+            const onStop = nodeId ? onNodeDragStop : wrapSelectionDragFunc(onSelectionDragStop);
+            updateNodePositions(dragItems.current, false, false);
+            if (onStop) {
+              const [currentNode, nodes] = getEventHandlerParams({
+                nodeId,
+                dragItems: dragItems.current,
+                nodeInternals
+              });
+              onStop(event.sourceEvent, currentNode, nodes);
+            }
+          }
+        }).filter((event) => {
+          const target = event.target;
+          const isDraggable = !event.button && (!noDragClassName || !hasSelector(target, `.${noDragClassName}`, nodeRef)) && (!handleSelector || hasSelector(target, handleSelector, nodeRef));
+          return isDraggable;
+        });
+        selection2.call(dragHandler);
+        return () => {
+          selection2.on(".drag", null);
+        };
+      }
+    }
+  }, [
+    nodeRef,
+    disabled,
+    noDragClassName,
+    handleSelector,
+    isSelectable,
+    store,
+    nodeId,
+    selectNodesOnDrag,
+    getPointerPosition
+  ]);
+  return dragging;
+}
+function useUpdateNodePositions() {
+  const store = useStoreApi();
+  const updatePositions = (0, import_react11.useCallback)((params) => {
+    const { nodeInternals, nodeExtent, updateNodePositions, getNodes, snapToGrid, snapGrid, onError, nodesDraggable } = store.getState();
+    const selectedNodes = getNodes().filter((n) => n.selected && (n.draggable || nodesDraggable && typeof n.draggable === "undefined"));
+    const xVelo = snapToGrid ? snapGrid[0] : 5;
+    const yVelo = snapToGrid ? snapGrid[1] : 5;
+    const factor = params.isShiftPressed ? 4 : 1;
+    const positionDiffX = params.x * xVelo * factor;
+    const positionDiffY = params.y * yVelo * factor;
+    const nodeUpdates = selectedNodes.map((n) => {
+      if (n.positionAbsolute) {
+        const nextPosition = { x: n.positionAbsolute.x + positionDiffX, y: n.positionAbsolute.y + positionDiffY };
+        if (snapToGrid) {
+          nextPosition.x = snapGrid[0] * Math.round(nextPosition.x / snapGrid[0]);
+          nextPosition.y = snapGrid[1] * Math.round(nextPosition.y / snapGrid[1]);
+        }
+        const { positionAbsolute, position } = calcNextPosition(n, nextPosition, nodeInternals, nodeExtent, void 0, onError);
+        n.position = position;
+        n.positionAbsolute = positionAbsolute;
+      }
+      return n;
+    });
+    updateNodePositions(nodeUpdates, true, false);
+  }, []);
+  return updatePositions;
+}
+var arrowKeyDiffs = {
+  ArrowUp: { x: 0, y: -1 },
+  ArrowDown: { x: 0, y: 1 },
+  ArrowLeft: { x: -1, y: 0 },
+  ArrowRight: { x: 1, y: 0 }
+};
+var wrapNode = (NodeComponent) => {
+  const NodeWrapper = ({ id: id2, type, data, xPos, yPos, xPosOrigin, yPosOrigin, selected, onClick, onMouseEnter, onMouseMove, onMouseLeave, onContextMenu, onDoubleClick, style: style2, className, isDraggable, isSelectable, isConnectable, isFocusable, selectNodesOnDrag, sourcePosition, targetPosition, hidden, resizeObserver, dragHandle, zIndex, isParent, noDragClassName, noPanClassName, initialized, disableKeyboardA11y, ariaLabel, rfId, hasHandleBounds }) => {
+    const store = useStoreApi();
+    const nodeRef = (0, import_react11.useRef)(null);
+    const prevNodeRef = (0, import_react11.useRef)(null);
+    const prevSourcePosition = (0, import_react11.useRef)(sourcePosition);
+    const prevTargetPosition = (0, import_react11.useRef)(targetPosition);
+    const prevType = (0, import_react11.useRef)(type);
+    const hasPointerEvents = isSelectable || isDraggable || onClick || onMouseEnter || onMouseMove || onMouseLeave;
+    const updatePositions = useUpdateNodePositions();
+    const onMouseEnterHandler = getMouseHandler(id2, store.getState, onMouseEnter);
+    const onMouseMoveHandler = getMouseHandler(id2, store.getState, onMouseMove);
+    const onMouseLeaveHandler = getMouseHandler(id2, store.getState, onMouseLeave);
+    const onContextMenuHandler = getMouseHandler(id2, store.getState, onContextMenu);
+    const onDoubleClickHandler = getMouseHandler(id2, store.getState, onDoubleClick);
+    const onSelectNodeHandler = (event) => {
+      const { nodeDragThreshold } = store.getState();
+      if (isSelectable && (!selectNodesOnDrag || !isDraggable || nodeDragThreshold > 0)) {
+        handleNodeClick({
+          id: id2,
+          store,
+          nodeRef
+        });
+      }
+      if (onClick) {
+        const node = store.getState().nodeInternals.get(id2);
+        if (node) {
+          onClick(event, { ...node });
+        }
+      }
+    };
+    const onKeyDown = (event) => {
+      if (isInputDOMNode(event)) {
+        return;
+      }
+      if (disableKeyboardA11y) {
+        return;
+      }
+      if (elementSelectionKeys.includes(event.key) && isSelectable) {
+        const unselect = event.key === "Escape";
+        handleNodeClick({
+          id: id2,
+          store,
+          unselect,
+          nodeRef
+        });
+      } else if (isDraggable && selected && Object.prototype.hasOwnProperty.call(arrowKeyDiffs, event.key)) {
+        store.setState({
+          ariaLiveMessage: `Moved selected node ${event.key.replace("Arrow", "").toLowerCase()}. New position, x: ${~~xPos}, y: ${~~yPos}`
+        });
+        updatePositions({
+          x: arrowKeyDiffs[event.key].x,
+          y: arrowKeyDiffs[event.key].y,
+          isShiftPressed: event.shiftKey
+        });
+      }
+    };
+    (0, import_react11.useEffect)(() => {
+      return () => {
+        if (prevNodeRef.current) {
+          resizeObserver?.unobserve(prevNodeRef.current);
+          prevNodeRef.current = null;
+        }
+      };
+    }, []);
+    (0, import_react11.useEffect)(() => {
+      if (nodeRef.current && !hidden) {
+        const currNode = nodeRef.current;
+        if (!initialized || !hasHandleBounds || prevNodeRef.current !== currNode) {
+          if (prevNodeRef.current) {
+            resizeObserver?.unobserve(prevNodeRef.current);
+          }
+          resizeObserver?.observe(currNode);
+          prevNodeRef.current = currNode;
+        }
+      }
+    }, [hidden, initialized, hasHandleBounds]);
+    (0, import_react11.useEffect)(() => {
+      const typeChanged = prevType.current !== type;
+      const sourcePosChanged = prevSourcePosition.current !== sourcePosition;
+      const targetPosChanged = prevTargetPosition.current !== targetPosition;
+      if (nodeRef.current && (typeChanged || sourcePosChanged || targetPosChanged)) {
+        if (typeChanged) {
+          prevType.current = type;
+        }
+        if (sourcePosChanged) {
+          prevSourcePosition.current = sourcePosition;
+        }
+        if (targetPosChanged) {
+          prevTargetPosition.current = targetPosition;
+        }
+        store.getState().updateNodeDimensions([{ id: id2, nodeElement: nodeRef.current, forceUpdate: true }]);
+      }
+    }, [id2, type, sourcePosition, targetPosition]);
+    const dragging = useDrag({
+      nodeRef,
+      disabled: hidden || !isDraggable,
+      noDragClassName,
+      handleSelector: dragHandle,
+      nodeId: id2,
+      isSelectable,
+      selectNodesOnDrag
+    });
+    if (hidden) {
+      return null;
+    }
+    return import_react11.default.createElement(
+      "div",
+      { className: cc([
+        "react-flow__node",
+        `react-flow__node-${type}`,
+        {
+          // this is overwritable by passing `nopan` as a class name
+          [noPanClassName]: isDraggable
+        },
+        className,
+        {
+          selected,
+          selectable: isSelectable,
+          parent: isParent,
+          dragging
+        }
+      ]), ref: nodeRef, style: {
+        zIndex,
+        transform: `translate(${xPosOrigin}px,${yPosOrigin}px)`,
+        pointerEvents: hasPointerEvents ? "all" : "none",
+        visibility: initialized ? "visible" : "hidden",
+        ...style2
+      }, "data-id": id2, "data-testid": `rf__node-${id2}`, onMouseEnter: onMouseEnterHandler, onMouseMove: onMouseMoveHandler, onMouseLeave: onMouseLeaveHandler, onContextMenu: onContextMenuHandler, onClick: onSelectNodeHandler, onDoubleClick: onDoubleClickHandler, onKeyDown: isFocusable ? onKeyDown : void 0, tabIndex: isFocusable ? 0 : void 0, role: isFocusable ? "button" : void 0, "aria-describedby": disableKeyboardA11y ? void 0 : `${ARIA_NODE_DESC_KEY}-${rfId}`, "aria-label": ariaLabel },
+      import_react11.default.createElement(
+        Provider,
+        { value: id2 },
+        import_react11.default.createElement(NodeComponent, { id: id2, data, type, xPos, yPos, selected, isConnectable, sourcePosition, targetPosition, dragging, dragHandle, zIndex })
+      )
+    );
+  };
+  NodeWrapper.displayName = "NodeWrapper";
+  return (0, import_react11.memo)(NodeWrapper);
+};
+var selector$7 = (s) => {
+  const selectedNodes = s.getNodes().filter((n) => n.selected);
+  return {
+    ...getNodesBounds(selectedNodes, s.nodeOrigin),
+    transformString: `translate(${s.transform[0]}px,${s.transform[1]}px) scale(${s.transform[2]})`,
+    userSelectionActive: s.userSelectionActive
+  };
+};
+function NodesSelection({ onSelectionContextMenu, noPanClassName, disableKeyboardA11y }) {
+  const store = useStoreApi();
+  const { width, height, x: left, y: top, transformString, userSelectionActive } = useStore(selector$7, shallow$1);
+  const updatePositions = useUpdateNodePositions();
+  const nodeRef = (0, import_react11.useRef)(null);
+  (0, import_react11.useEffect)(() => {
+    if (!disableKeyboardA11y) {
+      nodeRef.current?.focus({
+        preventScroll: true
+      });
+    }
+  }, [disableKeyboardA11y]);
+  useDrag({
+    nodeRef
+  });
+  if (userSelectionActive || !width || !height) {
+    return null;
+  }
+  const onContextMenu = onSelectionContextMenu ? (event) => {
+    const selectedNodes = store.getState().getNodes().filter((n) => n.selected);
+    onSelectionContextMenu(event, selectedNodes);
+  } : void 0;
+  const onKeyDown = (event) => {
+    if (Object.prototype.hasOwnProperty.call(arrowKeyDiffs, event.key)) {
+      updatePositions({
+        x: arrowKeyDiffs[event.key].x,
+        y: arrowKeyDiffs[event.key].y,
+        isShiftPressed: event.shiftKey
+      });
+    }
+  };
+  return import_react11.default.createElement(
+    "div",
+    { className: cc(["react-flow__nodesselection", "react-flow__container", noPanClassName]), style: {
+      transform: transformString
+    } },
+    import_react11.default.createElement("div", { ref: nodeRef, className: "react-flow__nodesselection-rect", onContextMenu, tabIndex: disableKeyboardA11y ? void 0 : -1, onKeyDown: disableKeyboardA11y ? void 0 : onKeyDown, style: {
+      width,
+      height,
+      top,
+      left
+    } })
+  );
+}
+var NodesSelection$1 = (0, import_react11.memo)(NodesSelection);
+var selector$6 = (s) => s.nodesSelectionActive;
+var FlowRenderer = ({ children: children2, onPaneClick, onPaneMouseEnter, onPaneMouseMove, onPaneMouseLeave, onPaneContextMenu, onPaneScroll, deleteKeyCode, onMove, onMoveStart, onMoveEnd, selectionKeyCode, selectionOnDrag, selectionMode, onSelectionStart, onSelectionEnd, multiSelectionKeyCode, panActivationKeyCode, zoomActivationKeyCode, elementsSelectable, zoomOnScroll, zoomOnPinch, panOnScroll: _panOnScroll, panOnScrollSpeed, panOnScrollMode, zoomOnDoubleClick, panOnDrag: _panOnDrag, defaultViewport, translateExtent, minZoom, maxZoom, preventScrolling, onSelectionContextMenu, noWheelClassName, noPanClassName, disableKeyboardA11y }) => {
+  const nodesSelectionActive = useStore(selector$6);
+  const selectionKeyPressed = useKeyPress(selectionKeyCode);
+  const panActivationKeyPressed = useKeyPress(panActivationKeyCode);
+  const panOnDrag = panActivationKeyPressed || _panOnDrag;
+  const panOnScroll = panActivationKeyPressed || _panOnScroll;
+  const isSelecting = selectionKeyPressed || selectionOnDrag && panOnDrag !== true;
+  useGlobalKeyHandler({ deleteKeyCode, multiSelectionKeyCode });
+  return import_react11.default.createElement(
+    ZoomPane,
+    { onMove, onMoveStart, onMoveEnd, onPaneContextMenu, elementsSelectable, zoomOnScroll, zoomOnPinch, panOnScroll, panOnScrollSpeed, panOnScrollMode, zoomOnDoubleClick, panOnDrag: !selectionKeyPressed && panOnDrag, defaultViewport, translateExtent, minZoom, maxZoom, zoomActivationKeyCode, preventScrolling, noWheelClassName, noPanClassName },
+    import_react11.default.createElement(
+      Pane,
+      { onSelectionStart, onSelectionEnd, onPaneClick, onPaneMouseEnter, onPaneMouseMove, onPaneMouseLeave, onPaneContextMenu, onPaneScroll, panOnDrag, isSelecting: !!isSelecting, selectionMode },
+      children2,
+      nodesSelectionActive && import_react11.default.createElement(NodesSelection$1, { onSelectionContextMenu, noPanClassName, disableKeyboardA11y })
+    )
+  );
+};
+FlowRenderer.displayName = "FlowRenderer";
+var FlowRenderer$1 = (0, import_react11.memo)(FlowRenderer);
+function useVisibleNodes(onlyRenderVisible) {
+  const nodes = useStore((0, import_react11.useCallback)((s) => onlyRenderVisible ? getNodesInside(s.nodeInternals, { x: 0, y: 0, width: s.width, height: s.height }, s.transform, true) : s.getNodes(), [onlyRenderVisible]));
+  return nodes;
+}
+function createNodeTypes(nodeTypes2) {
+  const standardTypes = {
+    input: wrapNode(nodeTypes2.input || InputNode$1),
+    default: wrapNode(nodeTypes2.default || DefaultNode$1),
+    output: wrapNode(nodeTypes2.output || OutputNode$1),
+    group: wrapNode(nodeTypes2.group || GroupNode)
+  };
+  const wrappedTypes = {};
+  const specialTypes = Object.keys(nodeTypes2).filter((k) => !["input", "default", "output", "group"].includes(k)).reduce((res, key) => {
+    res[key] = wrapNode(nodeTypes2[key] || DefaultNode$1);
+    return res;
+  }, wrappedTypes);
+  return {
+    ...standardTypes,
+    ...specialTypes
+  };
+}
+var getPositionWithOrigin = ({ x, y, width, height, origin }) => {
+  if (!width || !height) {
+    return { x, y };
+  }
+  if (origin[0] < 0 || origin[1] < 0 || origin[0] > 1 || origin[1] > 1) {
+    return { x, y };
+  }
+  return {
+    x: x - width * origin[0],
+    y: y - height * origin[1]
+  };
+};
+var selector$5 = (s) => ({
+  nodesDraggable: s.nodesDraggable,
+  nodesConnectable: s.nodesConnectable,
+  nodesFocusable: s.nodesFocusable,
+  elementsSelectable: s.elementsSelectable,
+  updateNodeDimensions: s.updateNodeDimensions,
+  onError: s.onError
+});
+var NodeRenderer = (props) => {
+  const { nodesDraggable, nodesConnectable, nodesFocusable, elementsSelectable, updateNodeDimensions, onError } = useStore(selector$5, shallow$1);
+  const nodes = useVisibleNodes(props.onlyRenderVisibleElements);
+  const resizeObserverRef = (0, import_react11.useRef)();
+  const resizeObserver = (0, import_react11.useMemo)(() => {
+    if (typeof ResizeObserver === "undefined") {
+      return null;
+    }
+    const observer = new ResizeObserver((entries) => {
+      const updates = entries.map((entry) => ({
+        id: entry.target.getAttribute("data-id"),
+        nodeElement: entry.target,
+        forceUpdate: true
+      }));
+      updateNodeDimensions(updates);
+    });
+    resizeObserverRef.current = observer;
+    return observer;
+  }, []);
+  (0, import_react11.useEffect)(() => {
+    return () => {
+      resizeObserverRef?.current?.disconnect();
+    };
+  }, []);
+  return import_react11.default.createElement("div", { className: "react-flow__nodes", style: containerStyle }, nodes.map((node) => {
+    let nodeType = node.type || "default";
+    if (!props.nodeTypes[nodeType]) {
+      onError?.("003", errorMessages["error003"](nodeType));
+      nodeType = "default";
+    }
+    const NodeComponent = props.nodeTypes[nodeType] || props.nodeTypes.default;
+    const isDraggable = !!(node.draggable || nodesDraggable && typeof node.draggable === "undefined");
+    const isSelectable = !!(node.selectable || elementsSelectable && typeof node.selectable === "undefined");
+    const isConnectable = !!(node.connectable || nodesConnectable && typeof node.connectable === "undefined");
+    const isFocusable = !!(node.focusable || nodesFocusable && typeof node.focusable === "undefined");
+    const clampedPosition = props.nodeExtent ? clampPosition(node.positionAbsolute, props.nodeExtent) : node.positionAbsolute;
+    const posX = clampedPosition?.x ?? 0;
+    const posY = clampedPosition?.y ?? 0;
+    const posOrigin = getPositionWithOrigin({
+      x: posX,
+      y: posY,
+      width: node.width ?? 0,
+      height: node.height ?? 0,
+      origin: props.nodeOrigin
+    });
+    return import_react11.default.createElement(NodeComponent, { key: node.id, id: node.id, className: node.className, style: node.style, type: nodeType, data: node.data, sourcePosition: node.sourcePosition || Position.Bottom, targetPosition: node.targetPosition || Position.Top, hidden: node.hidden, xPos: posX, yPos: posY, xPosOrigin: posOrigin.x, yPosOrigin: posOrigin.y, selectNodesOnDrag: props.selectNodesOnDrag, onClick: props.onNodeClick, onMouseEnter: props.onNodeMouseEnter, onMouseMove: props.onNodeMouseMove, onMouseLeave: props.onNodeMouseLeave, onContextMenu: props.onNodeContextMenu, onDoubleClick: props.onNodeDoubleClick, selected: !!node.selected, isDraggable, isSelectable, isConnectable, isFocusable, resizeObserver, dragHandle: node.dragHandle, zIndex: node[internalsSymbol]?.z ?? 0, isParent: !!node[internalsSymbol]?.isParent, noDragClassName: props.noDragClassName, noPanClassName: props.noPanClassName, initialized: !!node.width && !!node.height, rfId: props.rfId, disableKeyboardA11y: props.disableKeyboardA11y, ariaLabel: node.ariaLabel, hasHandleBounds: !!node[internalsSymbol]?.handleBounds });
+  }));
+};
+NodeRenderer.displayName = "NodeRenderer";
+var NodeRenderer$1 = (0, import_react11.memo)(NodeRenderer);
+var shiftX = (x, shift, position) => {
+  if (position === Position.Left)
+    return x - shift;
+  if (position === Position.Right)
+    return x + shift;
+  return x;
+};
+var shiftY = (y, shift, position) => {
+  if (position === Position.Top)
+    return y - shift;
+  if (position === Position.Bottom)
+    return y + shift;
+  return y;
+};
+var EdgeUpdaterClassName = "react-flow__edgeupdater";
+var EdgeAnchor = ({ position, centerX, centerY, radius = 10, onMouseDown, onMouseEnter, onMouseOut, type }) => import_react11.default.createElement("circle", { onMouseDown, onMouseEnter, onMouseOut, className: cc([EdgeUpdaterClassName, `${EdgeUpdaterClassName}-${type}`]), cx: shiftX(centerX, radius, position), cy: shiftY(centerY, radius, position), r: radius, stroke: "transparent", fill: "transparent" });
+var alwaysValidConnection = () => true;
+var wrapEdge = (EdgeComponent) => {
+  const EdgeWrapper = ({ id: id2, className, type, data, onClick, onEdgeDoubleClick, selected, animated, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, style: style2, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, elementsSelectable, hidden, sourceHandleId, targetHandleId, onContextMenu, onMouseEnter, onMouseMove, onMouseLeave, reconnectRadius, onReconnect, onReconnectStart, onReconnectEnd, markerEnd, markerStart, rfId, ariaLabel, isFocusable, isReconnectable, pathOptions, interactionWidth, disableKeyboardA11y }) => {
+    const edgeRef = (0, import_react11.useRef)(null);
+    const [updateHover, setUpdateHover] = (0, import_react11.useState)(false);
+    const [updating, setUpdating] = (0, import_react11.useState)(false);
+    const store = useStoreApi();
+    const markerStartUrl = (0, import_react11.useMemo)(() => `url('#${getMarkerId(markerStart, rfId)}')`, [markerStart, rfId]);
+    const markerEndUrl = (0, import_react11.useMemo)(() => `url('#${getMarkerId(markerEnd, rfId)}')`, [markerEnd, rfId]);
+    if (hidden) {
+      return null;
+    }
+    const onEdgeClick = (event) => {
+      const { edges, addSelectedEdges, unselectNodesAndEdges, multiSelectionActive } = store.getState();
+      const edge = edges.find((e) => e.id === id2);
+      if (!edge) {
+        return;
+      }
+      if (elementsSelectable) {
+        store.setState({ nodesSelectionActive: false });
+        if (edge.selected && multiSelectionActive) {
+          unselectNodesAndEdges({ nodes: [], edges: [edge] });
+          edgeRef.current?.blur();
+        } else {
+          addSelectedEdges([id2]);
+        }
+      }
+      if (onClick) {
+        onClick(event, edge);
+      }
+    };
+    const onEdgeDoubleClickHandler = getMouseHandler$1(id2, store.getState, onEdgeDoubleClick);
+    const onEdgeContextMenu = getMouseHandler$1(id2, store.getState, onContextMenu);
+    const onEdgeMouseEnter = getMouseHandler$1(id2, store.getState, onMouseEnter);
+    const onEdgeMouseMove = getMouseHandler$1(id2, store.getState, onMouseMove);
+    const onEdgeMouseLeave = getMouseHandler$1(id2, store.getState, onMouseLeave);
+    const handleEdgeUpdater = (event, isSourceHandle) => {
+      if (event.button !== 0) {
+        return;
+      }
+      const { edges, isValidConnection: isValidConnectionStore } = store.getState();
+      const nodeId = isSourceHandle ? target : source;
+      const handleId = (isSourceHandle ? targetHandleId : sourceHandleId) || null;
+      const handleType = isSourceHandle ? "target" : "source";
+      const isValidConnection = isValidConnectionStore || alwaysValidConnection;
+      const isTarget = isSourceHandle;
+      const edge = edges.find((e) => e.id === id2);
+      setUpdating(true);
+      onReconnectStart?.(event, edge, handleType);
+      const _onReconnectEnd = (evt) => {
+        setUpdating(false);
+        onReconnectEnd?.(evt, edge, handleType);
+      };
+      const onConnectEdge = (connection) => onReconnect?.(edge, connection);
+      handlePointerDown({
+        event,
+        handleId,
+        nodeId,
+        onConnect: onConnectEdge,
+        isTarget,
+        getState: store.getState,
+        setState: store.setState,
+        isValidConnection,
+        edgeUpdaterType: handleType,
+        onReconnectEnd: _onReconnectEnd
+      });
+    };
+    const onEdgeUpdaterSourceMouseDown = (event) => handleEdgeUpdater(event, true);
+    const onEdgeUpdaterTargetMouseDown = (event) => handleEdgeUpdater(event, false);
+    const onEdgeUpdaterMouseEnter = () => setUpdateHover(true);
+    const onEdgeUpdaterMouseOut = () => setUpdateHover(false);
+    const inactive = !elementsSelectable && !onClick;
+    const onKeyDown = (event) => {
+      if (!disableKeyboardA11y && elementSelectionKeys.includes(event.key) && elementsSelectable) {
+        const { unselectNodesAndEdges, addSelectedEdges, edges } = store.getState();
+        const unselect = event.key === "Escape";
+        if (unselect) {
+          edgeRef.current?.blur();
+          unselectNodesAndEdges({ edges: [edges.find((e) => e.id === id2)] });
+        } else {
+          addSelectedEdges([id2]);
+        }
+      }
+    };
+    return import_react11.default.createElement(
+      "g",
+      { className: cc([
+        "react-flow__edge",
+        `react-flow__edge-${type}`,
+        className,
+        { selected, animated, inactive, updating: updateHover }
+      ]), onClick: onEdgeClick, onDoubleClick: onEdgeDoubleClickHandler, onContextMenu: onEdgeContextMenu, onMouseEnter: onEdgeMouseEnter, onMouseMove: onEdgeMouseMove, onMouseLeave: onEdgeMouseLeave, onKeyDown: isFocusable ? onKeyDown : void 0, tabIndex: isFocusable ? 0 : void 0, role: isFocusable ? "button" : "img", "data-testid": `rf__edge-${id2}`, "aria-label": ariaLabel === null ? void 0 : ariaLabel ? ariaLabel : `Edge from ${source} to ${target}`, "aria-describedby": isFocusable ? `${ARIA_EDGE_DESC_KEY}-${rfId}` : void 0, ref: edgeRef },
+      !updating && import_react11.default.createElement(EdgeComponent, { id: id2, source, target, selected, animated, label, labelStyle, labelShowBg, labelBgStyle, labelBgPadding, labelBgBorderRadius, data, style: style2, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, sourceHandleId, targetHandleId, markerStart: markerStartUrl, markerEnd: markerEndUrl, pathOptions, interactionWidth }),
+      isReconnectable && import_react11.default.createElement(
+        import_react11.default.Fragment,
+        null,
+        (isReconnectable === "source" || isReconnectable === true) && import_react11.default.createElement(EdgeAnchor, { position: sourcePosition, centerX: sourceX, centerY: sourceY, radius: reconnectRadius, onMouseDown: onEdgeUpdaterSourceMouseDown, onMouseEnter: onEdgeUpdaterMouseEnter, onMouseOut: onEdgeUpdaterMouseOut, type: "source" }),
+        (isReconnectable === "target" || isReconnectable === true) && import_react11.default.createElement(EdgeAnchor, { position: targetPosition, centerX: targetX, centerY: targetY, radius: reconnectRadius, onMouseDown: onEdgeUpdaterTargetMouseDown, onMouseEnter: onEdgeUpdaterMouseEnter, onMouseOut: onEdgeUpdaterMouseOut, type: "target" })
+      )
+    );
+  };
+  EdgeWrapper.displayName = "EdgeWrapper";
+  return (0, import_react11.memo)(EdgeWrapper);
+};
+function createEdgeTypes(edgeTypes) {
+  const standardTypes = {
+    default: wrapEdge(edgeTypes.default || BezierEdge),
+    straight: wrapEdge(edgeTypes.bezier || StraightEdge),
+    step: wrapEdge(edgeTypes.step || StepEdge),
+    smoothstep: wrapEdge(edgeTypes.step || SmoothStepEdge),
+    simplebezier: wrapEdge(edgeTypes.simplebezier || SimpleBezierEdge)
+  };
+  const wrappedTypes = {};
+  const specialTypes = Object.keys(edgeTypes).filter((k) => !["default", "bezier"].includes(k)).reduce((res, key) => {
+    res[key] = wrapEdge(edgeTypes[key] || BezierEdge);
+    return res;
+  }, wrappedTypes);
+  return {
+    ...standardTypes,
+    ...specialTypes
+  };
+}
+function getHandlePosition(position, nodeRect, handle = null) {
+  const x = (handle?.x || 0) + nodeRect.x;
+  const y = (handle?.y || 0) + nodeRect.y;
+  const width = handle?.width || nodeRect.width;
+  const height = handle?.height || nodeRect.height;
+  switch (position) {
+    case Position.Top:
+      return {
+        x: x + width / 2,
+        y
+      };
+    case Position.Right:
+      return {
+        x: x + width,
+        y: y + height / 2
+      };
+    case Position.Bottom:
+      return {
+        x: x + width / 2,
+        y: y + height
+      };
+    case Position.Left:
+      return {
+        x,
+        y: y + height / 2
+      };
+  }
+}
+function getHandle(bounds, handleId) {
+  if (!bounds) {
+    return null;
+  }
+  if (bounds.length === 1 || !handleId) {
+    return bounds[0];
+  } else if (handleId) {
+    return bounds.find((d) => d.id === handleId) || null;
+  }
+  return null;
+}
+var getEdgePositions = (sourceNodeRect, sourceHandle, sourcePosition, targetNodeRect, targetHandle, targetPosition) => {
+  const sourceHandlePos = getHandlePosition(sourcePosition, sourceNodeRect, sourceHandle);
+  const targetHandlePos = getHandlePosition(targetPosition, targetNodeRect, targetHandle);
+  return {
+    sourceX: sourceHandlePos.x,
+    sourceY: sourceHandlePos.y,
+    targetX: targetHandlePos.x,
+    targetY: targetHandlePos.y
+  };
+};
+function isEdgeVisible({ sourcePos, targetPos, sourceWidth, sourceHeight, targetWidth, targetHeight, width, height, transform: transform2 }) {
+  const edgeBox = {
+    x: Math.min(sourcePos.x, targetPos.x),
+    y: Math.min(sourcePos.y, targetPos.y),
+    x2: Math.max(sourcePos.x + sourceWidth, targetPos.x + targetWidth),
+    y2: Math.max(sourcePos.y + sourceHeight, targetPos.y + targetHeight)
+  };
+  if (edgeBox.x === edgeBox.x2) {
+    edgeBox.x2 += 1;
+  }
+  if (edgeBox.y === edgeBox.y2) {
+    edgeBox.y2 += 1;
+  }
+  const viewBox = rectToBox({
+    x: (0 - transform2[0]) / transform2[2],
+    y: (0 - transform2[1]) / transform2[2],
+    width: width / transform2[2],
+    height: height / transform2[2]
+  });
+  const xOverlap = Math.max(0, Math.min(viewBox.x2, edgeBox.x2) - Math.max(viewBox.x, edgeBox.x));
+  const yOverlap = Math.max(0, Math.min(viewBox.y2, edgeBox.y2) - Math.max(viewBox.y, edgeBox.y));
+  const overlappingArea = Math.ceil(xOverlap * yOverlap);
+  return overlappingArea > 0;
+}
+function getNodeData(node) {
+  const handleBounds = node?.[internalsSymbol]?.handleBounds || null;
+  const isValid = handleBounds && node?.width && node?.height && typeof node?.positionAbsolute?.x !== "undefined" && typeof node?.positionAbsolute?.y !== "undefined";
+  return [
+    {
+      x: node?.positionAbsolute?.x || 0,
+      y: node?.positionAbsolute?.y || 0,
+      width: node?.width || 0,
+      height: node?.height || 0
+    },
+    handleBounds,
+    !!isValid
+  ];
+}
+var defaultEdgeTree = [{ level: 0, isMaxLevel: true, edges: [] }];
+function groupEdgesByZLevel(edges, nodeInternals, elevateEdgesOnSelect = false) {
+  let maxLevel = -1;
+  const levelLookup = edges.reduce((tree, edge) => {
+    const hasZIndex = isNumeric(edge.zIndex);
+    let z = hasZIndex ? edge.zIndex : 0;
+    if (elevateEdgesOnSelect) {
+      const targetNode = nodeInternals.get(edge.target);
+      const sourceNode = nodeInternals.get(edge.source);
+      const edgeOrConnectedNodeSelected = edge.selected || targetNode?.selected || sourceNode?.selected;
+      const selectedZIndex = Math.max(sourceNode?.[internalsSymbol]?.z || 0, targetNode?.[internalsSymbol]?.z || 0, 1e3);
+      z = (hasZIndex ? edge.zIndex : 0) + (edgeOrConnectedNodeSelected ? selectedZIndex : 0);
+    }
+    if (tree[z]) {
+      tree[z].push(edge);
+    } else {
+      tree[z] = [edge];
+    }
+    maxLevel = z > maxLevel ? z : maxLevel;
+    return tree;
+  }, {});
+  const edgeTree = Object.entries(levelLookup).map(([key, edges2]) => {
+    const level = +key;
+    return {
+      edges: edges2,
+      level,
+      isMaxLevel: level === maxLevel
+    };
+  });
+  if (edgeTree.length === 0) {
+    return defaultEdgeTree;
+  }
+  return edgeTree;
+}
+function useVisibleEdges(onlyRenderVisible, nodeInternals, elevateEdgesOnSelect) {
+  const edges = useStore((0, import_react11.useCallback)((s) => {
+    if (!onlyRenderVisible) {
+      return s.edges;
+    }
+    return s.edges.filter((e) => {
+      const sourceNode = nodeInternals.get(e.source);
+      const targetNode = nodeInternals.get(e.target);
+      return sourceNode?.width && sourceNode?.height && targetNode?.width && targetNode?.height && isEdgeVisible({
+        sourcePos: sourceNode.positionAbsolute || { x: 0, y: 0 },
+        targetPos: targetNode.positionAbsolute || { x: 0, y: 0 },
+        sourceWidth: sourceNode.width,
+        sourceHeight: sourceNode.height,
+        targetWidth: targetNode.width,
+        targetHeight: targetNode.height,
+        width: s.width,
+        height: s.height,
+        transform: s.transform
+      });
+    });
+  }, [onlyRenderVisible, nodeInternals]));
+  return groupEdgesByZLevel(edges, nodeInternals, elevateEdgesOnSelect);
+}
+var ArrowSymbol = ({ color: color2 = "none", strokeWidth = 1 }) => {
+  return import_react11.default.createElement("polyline", { style: {
+    stroke: color2,
+    strokeWidth
+  }, strokeLinecap: "round", strokeLinejoin: "round", fill: "none", points: "-5,-4 0,0 -5,4" });
+};
+var ArrowClosedSymbol = ({ color: color2 = "none", strokeWidth = 1 }) => {
+  return import_react11.default.createElement("polyline", { style: {
+    stroke: color2,
+    fill: color2,
+    strokeWidth
+  }, strokeLinecap: "round", strokeLinejoin: "round", points: "-5,-4 0,0 -5,4 -5,-4" });
+};
+var MarkerSymbols = {
+  [MarkerType.Arrow]: ArrowSymbol,
+  [MarkerType.ArrowClosed]: ArrowClosedSymbol
+};
+function useMarkerSymbol(type) {
+  const store = useStoreApi();
+  const symbol = (0, import_react11.useMemo)(() => {
+    const symbolExists = Object.prototype.hasOwnProperty.call(MarkerSymbols, type);
+    if (!symbolExists) {
+      store.getState().onError?.("009", errorMessages["error009"](type));
+      return null;
+    }
+    return MarkerSymbols[type];
+  }, [type]);
+  return symbol;
+}
+var Marker = ({ id: id2, type, color: color2, width = 12.5, height = 12.5, markerUnits = "strokeWidth", strokeWidth, orient = "auto-start-reverse" }) => {
+  const Symbol2 = useMarkerSymbol(type);
+  if (!Symbol2) {
+    return null;
+  }
+  return import_react11.default.createElement(
+    "marker",
+    { className: "react-flow__arrowhead", id: id2, markerWidth: `${width}`, markerHeight: `${height}`, viewBox: "-10 -10 20 20", markerUnits, orient, refX: "0", refY: "0" },
+    import_react11.default.createElement(Symbol2, { color: color2, strokeWidth })
+  );
+};
+var markerSelector = ({ defaultColor: defaultColor2, rfId }) => (s) => {
+  const ids = [];
+  return s.edges.reduce((markers, edge) => {
+    [edge.markerStart, edge.markerEnd].forEach((marker) => {
+      if (marker && typeof marker === "object") {
+        const markerId = getMarkerId(marker, rfId);
+        if (!ids.includes(markerId)) {
+          markers.push({ id: markerId, color: marker.color || defaultColor2, ...marker });
+          ids.push(markerId);
+        }
+      }
+    });
+    return markers;
+  }, []).sort((a, b) => a.id.localeCompare(b.id));
+};
+var MarkerDefinitions = ({ defaultColor: defaultColor2, rfId }) => {
+  const markers = useStore(
+    (0, import_react11.useCallback)(markerSelector({ defaultColor: defaultColor2, rfId }), [defaultColor2, rfId]),
+    // the id includes all marker options, so we just need to look at that part of the marker
+    (a, b) => !(a.length !== b.length || a.some((m, i) => m.id !== b[i].id))
+  );
+  return import_react11.default.createElement("defs", null, markers.map((marker) => import_react11.default.createElement(Marker, { id: marker.id, key: marker.id, type: marker.type, color: marker.color, width: marker.width, height: marker.height, markerUnits: marker.markerUnits, strokeWidth: marker.strokeWidth, orient: marker.orient })));
+};
+MarkerDefinitions.displayName = "MarkerDefinitions";
+var MarkerDefinitions$1 = (0, import_react11.memo)(MarkerDefinitions);
+var selector$4 = (s) => ({
+  nodesConnectable: s.nodesConnectable,
+  edgesFocusable: s.edgesFocusable,
+  edgesUpdatable: s.edgesUpdatable,
+  elementsSelectable: s.elementsSelectable,
+  width: s.width,
+  height: s.height,
+  connectionMode: s.connectionMode,
+  nodeInternals: s.nodeInternals,
+  onError: s.onError
+});
+var EdgeRenderer = ({ defaultMarkerColor, onlyRenderVisibleElements, elevateEdgesOnSelect, rfId, edgeTypes, noPanClassName, onEdgeContextMenu, onEdgeMouseEnter, onEdgeMouseMove, onEdgeMouseLeave, onEdgeClick, onEdgeDoubleClick, onReconnect, onReconnectStart, onReconnectEnd, reconnectRadius, children: children2, disableKeyboardA11y }) => {
+  const { edgesFocusable, edgesUpdatable, elementsSelectable, width, height, connectionMode, nodeInternals, onError } = useStore(selector$4, shallow$1);
+  const edgeTree = useVisibleEdges(onlyRenderVisibleElements, nodeInternals, elevateEdgesOnSelect);
+  if (!width) {
+    return null;
+  }
+  return import_react11.default.createElement(
+    import_react11.default.Fragment,
+    null,
+    edgeTree.map(({ level, edges, isMaxLevel }) => import_react11.default.createElement(
+      "svg",
+      { key: level, style: { zIndex: level }, width, height, className: "react-flow__edges react-flow__container" },
+      isMaxLevel && import_react11.default.createElement(MarkerDefinitions$1, { defaultColor: defaultMarkerColor, rfId }),
+      import_react11.default.createElement("g", null, edges.map((edge) => {
+        const [sourceNodeRect, sourceHandleBounds, sourceIsValid] = getNodeData(nodeInternals.get(edge.source));
+        const [targetNodeRect, targetHandleBounds, targetIsValid] = getNodeData(nodeInternals.get(edge.target));
+        if (!sourceIsValid || !targetIsValid) {
+          return null;
+        }
+        let edgeType = edge.type || "default";
+        if (!edgeTypes[edgeType]) {
+          onError?.("011", errorMessages["error011"](edgeType));
+          edgeType = "default";
+        }
+        const EdgeComponent = edgeTypes[edgeType] || edgeTypes.default;
+        const targetNodeHandles = connectionMode === ConnectionMode.Strict ? targetHandleBounds.target : (targetHandleBounds.target ?? []).concat(targetHandleBounds.source ?? []);
+        const sourceHandle = getHandle(sourceHandleBounds.source, edge.sourceHandle);
+        const targetHandle = getHandle(targetNodeHandles, edge.targetHandle);
+        const sourcePosition = sourceHandle?.position || Position.Bottom;
+        const targetPosition = targetHandle?.position || Position.Top;
+        const isFocusable = !!(edge.focusable || edgesFocusable && typeof edge.focusable === "undefined");
+        const edgeReconnectable = edge.reconnectable || edge.updatable;
+        const isReconnectable = typeof onReconnect !== "undefined" && (edgeReconnectable || edgesUpdatable && typeof edgeReconnectable === "undefined");
+        if (!sourceHandle || !targetHandle) {
+          onError?.("008", errorMessages["error008"](sourceHandle, edge));
+          return null;
+        }
+        const { sourceX, sourceY, targetX, targetY } = getEdgePositions(sourceNodeRect, sourceHandle, sourcePosition, targetNodeRect, targetHandle, targetPosition);
+        return import_react11.default.createElement(EdgeComponent, { key: edge.id, id: edge.id, className: cc([edge.className, noPanClassName]), type: edgeType, data: edge.data, selected: !!edge.selected, animated: !!edge.animated, hidden: !!edge.hidden, label: edge.label, labelStyle: edge.labelStyle, labelShowBg: edge.labelShowBg, labelBgStyle: edge.labelBgStyle, labelBgPadding: edge.labelBgPadding, labelBgBorderRadius: edge.labelBgBorderRadius, style: edge.style, source: edge.source, target: edge.target, sourceHandleId: edge.sourceHandle, targetHandleId: edge.targetHandle, markerEnd: edge.markerEnd, markerStart: edge.markerStart, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, elementsSelectable, onContextMenu: onEdgeContextMenu, onMouseEnter: onEdgeMouseEnter, onMouseMove: onEdgeMouseMove, onMouseLeave: onEdgeMouseLeave, onClick: onEdgeClick, onEdgeDoubleClick, onReconnect, onReconnectStart, onReconnectEnd, reconnectRadius, rfId, ariaLabel: edge.ariaLabel, isFocusable, isReconnectable, pathOptions: "pathOptions" in edge ? edge.pathOptions : void 0, interactionWidth: edge.interactionWidth, disableKeyboardA11y });
+      }))
+    )),
+    children2
+  );
+};
+EdgeRenderer.displayName = "EdgeRenderer";
+var EdgeRenderer$1 = (0, import_react11.memo)(EdgeRenderer);
+var selector$3 = (s) => `translate(${s.transform[0]}px,${s.transform[1]}px) scale(${s.transform[2]})`;
+function Viewport({ children: children2 }) {
+  const transform2 = useStore(selector$3);
+  return import_react11.default.createElement("div", { className: "react-flow__viewport react-flow__container", style: { transform: transform2 } }, children2);
+}
+function useOnInitHandler(onInit) {
+  const rfInstance = useReactFlow();
+  const isInitialized = (0, import_react11.useRef)(false);
+  (0, import_react11.useEffect)(() => {
+    if (!isInitialized.current && rfInstance.viewportInitialized && onInit) {
+      setTimeout(() => onInit(rfInstance), 1);
+      isInitialized.current = true;
+    }
+  }, [onInit, rfInstance.viewportInitialized]);
+}
+var oppositePosition = {
+  [Position.Left]: Position.Right,
+  [Position.Right]: Position.Left,
+  [Position.Top]: Position.Bottom,
+  [Position.Bottom]: Position.Top
+};
+var ConnectionLine = ({ nodeId, handleType, style: style2, type = ConnectionLineType.Bezier, CustomComponent, connectionStatus }) => {
+  const { fromNode, handleId, toX, toY, connectionMode } = useStore((0, import_react11.useCallback)((s) => ({
+    fromNode: s.nodeInternals.get(nodeId),
+    handleId: s.connectionHandleId,
+    toX: (s.connectionPosition.x - s.transform[0]) / s.transform[2],
+    toY: (s.connectionPosition.y - s.transform[1]) / s.transform[2],
+    connectionMode: s.connectionMode
+  }), [nodeId]), shallow$1);
+  const fromHandleBounds = fromNode?.[internalsSymbol]?.handleBounds;
+  let handleBounds = fromHandleBounds?.[handleType];
+  if (connectionMode === ConnectionMode.Loose) {
+    handleBounds = handleBounds ? handleBounds : fromHandleBounds?.[handleType === "source" ? "target" : "source"];
+  }
+  if (!fromNode || !handleBounds) {
+    return null;
+  }
+  const fromHandle = handleId ? handleBounds.find((d) => d.id === handleId) : handleBounds[0];
+  const fromHandleX = fromHandle ? fromHandle.x + fromHandle.width / 2 : (fromNode.width ?? 0) / 2;
+  const fromHandleY = fromHandle ? fromHandle.y + fromHandle.height / 2 : fromNode.height ?? 0;
+  const fromX = (fromNode.positionAbsolute?.x ?? 0) + fromHandleX;
+  const fromY = (fromNode.positionAbsolute?.y ?? 0) + fromHandleY;
+  const fromPosition = fromHandle?.position;
+  const toPosition = fromPosition ? oppositePosition[fromPosition] : null;
+  if (!fromPosition || !toPosition) {
+    return null;
+  }
+  if (CustomComponent) {
+    return import_react11.default.createElement(CustomComponent, { connectionLineType: type, connectionLineStyle: style2, fromNode, fromHandle, fromX, fromY, toX, toY, fromPosition, toPosition, connectionStatus });
+  }
+  let dAttr = "";
+  const pathParams = {
+    sourceX: fromX,
+    sourceY: fromY,
+    sourcePosition: fromPosition,
+    targetX: toX,
+    targetY: toY,
+    targetPosition: toPosition
+  };
+  if (type === ConnectionLineType.Bezier) {
+    [dAttr] = getBezierPath(pathParams);
+  } else if (type === ConnectionLineType.Step) {
+    [dAttr] = getSmoothStepPath({
+      ...pathParams,
+      borderRadius: 0
+    });
+  } else if (type === ConnectionLineType.SmoothStep) {
+    [dAttr] = getSmoothStepPath(pathParams);
+  } else if (type === ConnectionLineType.SimpleBezier) {
+    [dAttr] = getSimpleBezierPath(pathParams);
+  } else {
+    dAttr = `M${fromX},${fromY} ${toX},${toY}`;
+  }
+  return import_react11.default.createElement("path", { d: dAttr, fill: "none", className: "react-flow__connection-path", style: style2 });
+};
+ConnectionLine.displayName = "ConnectionLine";
+var selector$2 = (s) => ({
+  nodeId: s.connectionNodeId,
+  handleType: s.connectionHandleType,
+  nodesConnectable: s.nodesConnectable,
+  connectionStatus: s.connectionStatus,
+  width: s.width,
+  height: s.height
+});
+function ConnectionLineWrapper({ containerStyle: containerStyle2, style: style2, type, component }) {
+  const { nodeId, handleType, nodesConnectable, width, height, connectionStatus } = useStore(selector$2, shallow$1);
+  const isValid = !!(nodeId && handleType && width && nodesConnectable);
+  if (!isValid) {
+    return null;
+  }
+  return import_react11.default.createElement(
+    "svg",
+    { style: containerStyle2, width, height, className: "react-flow__edges react-flow__connectionline react-flow__container" },
+    import_react11.default.createElement(
+      "g",
+      { className: cc(["react-flow__connection", connectionStatus]) },
+      import_react11.default.createElement(ConnectionLine, { nodeId, handleType, style: style2, type, CustomComponent: component, connectionStatus })
+    )
+  );
+}
+function useNodeOrEdgeTypes(nodeOrEdgeTypes, createTypes) {
+  const typesKeysRef = (0, import_react11.useRef)(null);
+  const store = useStoreApi();
+  const typesParsed = (0, import_react11.useMemo)(() => {
+    if (true) {
+      const typeKeys = Object.keys(nodeOrEdgeTypes);
+      if (shallow$1(typesKeysRef.current, typeKeys)) {
+        store.getState().onError?.("002", errorMessages["error002"]());
+      }
+      typesKeysRef.current = typeKeys;
+    }
+    return createTypes(nodeOrEdgeTypes);
+  }, [nodeOrEdgeTypes]);
+  return typesParsed;
+}
+var GraphView = ({ nodeTypes: nodeTypes2, edgeTypes, onMove, onMoveStart, onMoveEnd, onInit, onNodeClick, onEdgeClick, onNodeDoubleClick, onEdgeDoubleClick, onNodeMouseEnter, onNodeMouseMove, onNodeMouseLeave, onNodeContextMenu, onSelectionContextMenu, onSelectionStart, onSelectionEnd, connectionLineType, connectionLineStyle, connectionLineComponent, connectionLineContainerStyle, selectionKeyCode, selectionOnDrag, selectionMode, multiSelectionKeyCode, panActivationKeyCode, zoomActivationKeyCode, deleteKeyCode, onlyRenderVisibleElements, elementsSelectable, selectNodesOnDrag, defaultViewport, translateExtent, minZoom, maxZoom, preventScrolling, defaultMarkerColor, zoomOnScroll, zoomOnPinch, panOnScroll, panOnScrollSpeed, panOnScrollMode, zoomOnDoubleClick, panOnDrag, onPaneClick, onPaneMouseEnter, onPaneMouseMove, onPaneMouseLeave, onPaneScroll, onPaneContextMenu, onEdgeContextMenu, onEdgeMouseEnter, onEdgeMouseMove, onEdgeMouseLeave, onReconnect, onReconnectStart, onReconnectEnd, reconnectRadius, noDragClassName, noWheelClassName, noPanClassName, elevateEdgesOnSelect, disableKeyboardA11y, nodeOrigin, nodeExtent, rfId }) => {
+  const nodeTypesWrapped = useNodeOrEdgeTypes(nodeTypes2, createNodeTypes);
+  const edgeTypesWrapped = useNodeOrEdgeTypes(edgeTypes, createEdgeTypes);
+  useOnInitHandler(onInit);
+  return import_react11.default.createElement(
+    FlowRenderer$1,
+    { onPaneClick, onPaneMouseEnter, onPaneMouseMove, onPaneMouseLeave, onPaneContextMenu, onPaneScroll, deleteKeyCode, selectionKeyCode, selectionOnDrag, selectionMode, onSelectionStart, onSelectionEnd, multiSelectionKeyCode, panActivationKeyCode, zoomActivationKeyCode, elementsSelectable, onMove, onMoveStart, onMoveEnd, zoomOnScroll, zoomOnPinch, zoomOnDoubleClick, panOnScroll, panOnScrollSpeed, panOnScrollMode, panOnDrag, defaultViewport, translateExtent, minZoom, maxZoom, onSelectionContextMenu, preventScrolling, noDragClassName, noWheelClassName, noPanClassName, disableKeyboardA11y },
+    import_react11.default.createElement(
+      Viewport,
+      null,
+      import_react11.default.createElement(
+        EdgeRenderer$1,
+        { edgeTypes: edgeTypesWrapped, onEdgeClick, onEdgeDoubleClick, onlyRenderVisibleElements, onEdgeContextMenu, onEdgeMouseEnter, onEdgeMouseMove, onEdgeMouseLeave, onReconnect, onReconnectStart, onReconnectEnd, reconnectRadius, defaultMarkerColor, noPanClassName, elevateEdgesOnSelect: !!elevateEdgesOnSelect, disableKeyboardA11y, rfId },
+        import_react11.default.createElement(ConnectionLineWrapper, { style: connectionLineStyle, type: connectionLineType, component: connectionLineComponent, containerStyle: connectionLineContainerStyle })
+      ),
+      import_react11.default.createElement("div", { className: "react-flow__edgelabel-renderer" }),
+      import_react11.default.createElement(NodeRenderer$1, { nodeTypes: nodeTypesWrapped, onNodeClick, onNodeDoubleClick, onNodeMouseEnter, onNodeMouseMove, onNodeMouseLeave, onNodeContextMenu, selectNodesOnDrag, onlyRenderVisibleElements, noPanClassName, noDragClassName, disableKeyboardA11y, nodeOrigin, nodeExtent, rfId })
+    )
+  );
+};
+GraphView.displayName = "GraphView";
+var GraphView$1 = (0, import_react11.memo)(GraphView);
+var infiniteExtent = [
+  [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY],
+  [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]
+];
+var initialState2 = {
+  rfId: "1",
+  width: 0,
+  height: 0,
+  transform: [0, 0, 1],
+  nodeInternals: /* @__PURE__ */ new Map(),
+  edges: [],
+  onNodesChange: null,
+  onEdgesChange: null,
+  hasDefaultNodes: false,
+  hasDefaultEdges: false,
+  d3Zoom: null,
+  d3Selection: null,
+  d3ZoomHandler: void 0,
+  minZoom: 0.5,
+  maxZoom: 2,
+  translateExtent: infiniteExtent,
+  nodeExtent: infiniteExtent,
+  nodesSelectionActive: false,
+  userSelectionActive: false,
+  userSelectionRect: null,
+  connectionNodeId: null,
+  connectionHandleId: null,
+  connectionHandleType: "source",
+  connectionPosition: { x: 0, y: 0 },
+  connectionStatus: null,
+  connectionMode: ConnectionMode.Strict,
+  domNode: null,
+  paneDragging: false,
+  noPanClassName: "nopan",
+  nodeOrigin: [0, 0],
+  nodeDragThreshold: 0,
+  snapGrid: [15, 15],
+  snapToGrid: false,
+  nodesDraggable: true,
+  nodesConnectable: true,
+  nodesFocusable: true,
+  edgesFocusable: true,
+  edgesUpdatable: true,
+  elementsSelectable: true,
+  elevateNodesOnSelect: true,
+  fitViewOnInit: false,
+  fitViewOnInitDone: false,
+  fitViewOnInitOptions: void 0,
+  onSelectionChange: [],
+  multiSelectionActive: false,
+  connectionStartHandle: null,
+  connectionEndHandle: null,
+  connectionClickStartHandle: null,
+  connectOnClick: true,
+  ariaLiveMessage: "",
+  autoPanOnConnect: true,
+  autoPanOnNodeDrag: true,
+  connectionRadius: 20,
+  onError: devWarn,
+  isValidConnection: void 0
+};
+var createRFStore = () => createWithEqualityFn((set3, get3) => ({
+  ...initialState2,
+  setNodes: (nodes) => {
+    const { nodeInternals, nodeOrigin, elevateNodesOnSelect } = get3();
+    set3({ nodeInternals: createNodeInternals(nodes, nodeInternals, nodeOrigin, elevateNodesOnSelect) });
+  },
+  getNodes: () => {
+    return Array.from(get3().nodeInternals.values());
+  },
+  setEdges: (edges) => {
+    const { defaultEdgeOptions = {} } = get3();
+    set3({ edges: edges.map((e) => ({ ...defaultEdgeOptions, ...e })) });
+  },
+  setDefaultNodesAndEdges: (nodes, edges) => {
+    const hasDefaultNodes = typeof nodes !== "undefined";
+    const hasDefaultEdges = typeof edges !== "undefined";
+    const nodeInternals = hasDefaultNodes ? createNodeInternals(nodes, /* @__PURE__ */ new Map(), get3().nodeOrigin, get3().elevateNodesOnSelect) : /* @__PURE__ */ new Map();
+    const nextEdges = hasDefaultEdges ? edges : [];
+    set3({ nodeInternals, edges: nextEdges, hasDefaultNodes, hasDefaultEdges });
+  },
+  updateNodeDimensions: (updates) => {
+    const { onNodesChange, nodeInternals, fitViewOnInit, fitViewOnInitDone, fitViewOnInitOptions, domNode, nodeOrigin } = get3();
+    const viewportNode = domNode?.querySelector(".react-flow__viewport");
+    if (!viewportNode) {
+      return;
+    }
+    const style2 = window.getComputedStyle(viewportNode);
+    const { m22: zoom } = new window.DOMMatrixReadOnly(style2.transform);
+    const changes = updates.reduce((res, update) => {
+      const node = nodeInternals.get(update.id);
+      if (node?.hidden) {
+        nodeInternals.set(node.id, {
+          ...node,
+          [internalsSymbol]: {
+            ...node[internalsSymbol],
+            // we need to reset the handle bounds when the node is hidden
+            // in order to force a new observation when the node is shown again
+            handleBounds: void 0
+          }
+        });
+      } else if (node) {
+        const dimensions = getDimensions(update.nodeElement);
+        const doUpdate = !!(dimensions.width && dimensions.height && (node.width !== dimensions.width || node.height !== dimensions.height || update.forceUpdate));
+        if (doUpdate) {
+          nodeInternals.set(node.id, {
+            ...node,
+            [internalsSymbol]: {
+              ...node[internalsSymbol],
+              handleBounds: {
+                source: getHandleBounds(".source", update.nodeElement, zoom, nodeOrigin),
+                target: getHandleBounds(".target", update.nodeElement, zoom, nodeOrigin)
+              }
+            },
+            ...dimensions
+          });
+          res.push({
+            id: node.id,
+            type: "dimensions",
+            dimensions
+          });
+        }
+      }
+      return res;
+    }, []);
+    updateAbsoluteNodePositions(nodeInternals, nodeOrigin);
+    const nextFitViewOnInitDone = fitViewOnInitDone || fitViewOnInit && !fitViewOnInitDone && fitView(get3, { initial: true, ...fitViewOnInitOptions });
+    set3({ nodeInternals: new Map(nodeInternals), fitViewOnInitDone: nextFitViewOnInitDone });
+    if (changes?.length > 0) {
+      onNodesChange?.(changes);
+    }
+  },
+  updateNodePositions: (nodeDragItems, positionChanged = true, dragging = false) => {
+    const { triggerNodeChanges } = get3();
+    const changes = nodeDragItems.map((node) => {
+      const change = {
+        id: node.id,
+        type: "position",
+        dragging
+      };
+      if (positionChanged) {
+        change.positionAbsolute = node.positionAbsolute;
+        change.position = node.position;
+      }
+      return change;
+    });
+    triggerNodeChanges(changes);
+  },
+  triggerNodeChanges: (changes) => {
+    const { onNodesChange, nodeInternals, hasDefaultNodes, nodeOrigin, getNodes, elevateNodesOnSelect } = get3();
+    if (changes?.length) {
+      if (hasDefaultNodes) {
+        const nodes = applyNodeChanges(changes, getNodes());
+        const nextNodeInternals = createNodeInternals(nodes, nodeInternals, nodeOrigin, elevateNodesOnSelect);
+        set3({ nodeInternals: nextNodeInternals });
+      }
+      onNodesChange?.(changes);
+    }
+  },
+  addSelectedNodes: (selectedNodeIds) => {
+    const { multiSelectionActive, edges, getNodes } = get3();
+    let changedNodes;
+    let changedEdges = null;
+    if (multiSelectionActive) {
+      changedNodes = selectedNodeIds.map((nodeId) => createSelectionChange(nodeId, true));
+    } else {
+      changedNodes = getSelectionChanges(getNodes(), selectedNodeIds);
+      changedEdges = getSelectionChanges(edges, []);
+    }
+    updateNodesAndEdgesSelections({
+      changedNodes,
+      changedEdges,
+      get: get3,
+      set: set3
+    });
+  },
+  addSelectedEdges: (selectedEdgeIds) => {
+    const { multiSelectionActive, edges, getNodes } = get3();
+    let changedEdges;
+    let changedNodes = null;
+    if (multiSelectionActive) {
+      changedEdges = selectedEdgeIds.map((edgeId) => createSelectionChange(edgeId, true));
+    } else {
+      changedEdges = getSelectionChanges(edges, selectedEdgeIds);
+      changedNodes = getSelectionChanges(getNodes(), []);
+    }
+    updateNodesAndEdgesSelections({
+      changedNodes,
+      changedEdges,
+      get: get3,
+      set: set3
+    });
+  },
+  unselectNodesAndEdges: ({ nodes, edges } = {}) => {
+    const { edges: storeEdges, getNodes } = get3();
+    const nodesToUnselect = nodes ? nodes : getNodes();
+    const edgesToUnselect = edges ? edges : storeEdges;
+    const changedNodes = nodesToUnselect.map((n) => {
+      n.selected = false;
+      return createSelectionChange(n.id, false);
+    });
+    const changedEdges = edgesToUnselect.map((edge) => createSelectionChange(edge.id, false));
+    updateNodesAndEdgesSelections({
+      changedNodes,
+      changedEdges,
+      get: get3,
+      set: set3
+    });
+  },
+  setMinZoom: (minZoom) => {
+    const { d3Zoom, maxZoom } = get3();
+    d3Zoom?.scaleExtent([minZoom, maxZoom]);
+    set3({ minZoom });
+  },
+  setMaxZoom: (maxZoom) => {
+    const { d3Zoom, minZoom } = get3();
+    d3Zoom?.scaleExtent([minZoom, maxZoom]);
+    set3({ maxZoom });
+  },
+  setTranslateExtent: (translateExtent) => {
+    get3().d3Zoom?.translateExtent(translateExtent);
+    set3({ translateExtent });
+  },
+  resetSelectedElements: () => {
+    const { edges, getNodes } = get3();
+    const nodes = getNodes();
+    const nodesToUnselect = nodes.filter((e) => e.selected).map((n) => createSelectionChange(n.id, false));
+    const edgesToUnselect = edges.filter((e) => e.selected).map((e) => createSelectionChange(e.id, false));
+    updateNodesAndEdgesSelections({
+      changedNodes: nodesToUnselect,
+      changedEdges: edgesToUnselect,
+      get: get3,
+      set: set3
+    });
+  },
+  setNodeExtent: (nodeExtent) => {
+    const { nodeInternals } = get3();
+    nodeInternals.forEach((node) => {
+      node.positionAbsolute = clampPosition(node.position, nodeExtent);
+    });
+    set3({
+      nodeExtent,
+      nodeInternals: new Map(nodeInternals)
+    });
+  },
+  panBy: (delta) => {
+    const { transform: transform2, width, height, d3Zoom, d3Selection, translateExtent } = get3();
+    if (!d3Zoom || !d3Selection || !delta.x && !delta.y) {
+      return false;
+    }
+    const nextTransform = identity3.translate(transform2[0] + delta.x, transform2[1] + delta.y).scale(transform2[2]);
+    const extent = [
+      [0, 0],
+      [width, height]
+    ];
+    const constrainedTransform = d3Zoom?.constrain()(nextTransform, extent, translateExtent);
+    d3Zoom.transform(d3Selection, constrainedTransform);
+    const transformChanged = transform2[0] !== constrainedTransform.x || transform2[1] !== constrainedTransform.y || transform2[2] !== constrainedTransform.k;
+    return transformChanged;
+  },
+  cancelConnection: () => set3({
+    connectionNodeId: initialState2.connectionNodeId,
+    connectionHandleId: initialState2.connectionHandleId,
+    connectionHandleType: initialState2.connectionHandleType,
+    connectionStatus: initialState2.connectionStatus,
+    connectionStartHandle: initialState2.connectionStartHandle,
+    connectionEndHandle: initialState2.connectionEndHandle
+  }),
+  reset: () => set3({ ...initialState2 })
+}), Object.is);
+var ReactFlowProvider = ({ children: children2 }) => {
+  const storeRef = (0, import_react11.useRef)(null);
+  if (!storeRef.current) {
+    storeRef.current = createRFStore();
+  }
+  return import_react11.default.createElement(Provider$1, { value: storeRef.current }, children2);
+};
+ReactFlowProvider.displayName = "ReactFlowProvider";
+var Wrapper = ({ children: children2 }) => {
+  const isWrapped = (0, import_react11.useContext)(StoreContext);
+  if (isWrapped) {
+    return import_react11.default.createElement(import_react11.default.Fragment, null, children2);
+  }
+  return import_react11.default.createElement(ReactFlowProvider, null, children2);
+};
+Wrapper.displayName = "ReactFlowWrapper";
+var defaultNodeTypes = {
+  input: InputNode$1,
+  default: DefaultNode$1,
+  output: OutputNode$1,
+  group: GroupNode
+};
+var defaultEdgeTypes = {
+  default: BezierEdge,
+  straight: StraightEdge,
+  step: StepEdge,
+  smoothstep: SmoothStepEdge,
+  simplebezier: SimpleBezierEdge
+};
+var initNodeOrigin = [0, 0];
+var initSnapGrid = [15, 15];
+var initDefaultViewport = { x: 0, y: 0, zoom: 1 };
+var wrapperStyle = {
+  width: "100%",
+  height: "100%",
+  overflow: "hidden",
+  position: "relative",
+  zIndex: 0
+};
+var ReactFlow = (0, import_react11.forwardRef)(({ nodes, edges, defaultNodes, defaultEdges, className, nodeTypes: nodeTypes2 = defaultNodeTypes, edgeTypes = defaultEdgeTypes, onNodeClick, onEdgeClick, onInit, onMove, onMoveStart, onMoveEnd, onConnect, onConnectStart, onConnectEnd, onClickConnectStart, onClickConnectEnd, onNodeMouseEnter, onNodeMouseMove, onNodeMouseLeave, onNodeContextMenu, onNodeDoubleClick, onNodeDragStart, onNodeDrag, onNodeDragStop, onNodesDelete, onEdgesDelete, onSelectionChange, onSelectionDragStart, onSelectionDrag, onSelectionDragStop, onSelectionContextMenu, onSelectionStart, onSelectionEnd, connectionMode = ConnectionMode.Strict, connectionLineType = ConnectionLineType.Bezier, connectionLineStyle, connectionLineComponent, connectionLineContainerStyle, deleteKeyCode = "Backspace", selectionKeyCode = "Shift", selectionOnDrag = false, selectionMode = SelectionMode.Full, panActivationKeyCode = "Space", multiSelectionKeyCode = isMacOs() ? "Meta" : "Control", zoomActivationKeyCode = isMacOs() ? "Meta" : "Control", snapToGrid = false, snapGrid = initSnapGrid, onlyRenderVisibleElements = false, selectNodesOnDrag = true, nodesDraggable, nodesConnectable, nodesFocusable, nodeOrigin = initNodeOrigin, edgesFocusable, edgesUpdatable, elementsSelectable, defaultViewport = initDefaultViewport, minZoom = 0.5, maxZoom = 2, translateExtent = infiniteExtent, preventScrolling = true, nodeExtent, defaultMarkerColor = "#b1b1b7", zoomOnScroll = true, zoomOnPinch = true, panOnScroll = false, panOnScrollSpeed = 0.5, panOnScrollMode = PanOnScrollMode.Free, zoomOnDoubleClick = true, panOnDrag = true, onPaneClick, onPaneMouseEnter, onPaneMouseMove, onPaneMouseLeave, onPaneScroll, onPaneContextMenu, children: children2, onEdgeContextMenu, onEdgeDoubleClick, onEdgeMouseEnter, onEdgeMouseMove, onEdgeMouseLeave, onEdgeUpdate, onEdgeUpdateStart, onEdgeUpdateEnd, onReconnect, onReconnectStart, onReconnectEnd, reconnectRadius = 10, edgeUpdaterRadius = 10, onNodesChange, onEdgesChange, noDragClassName = "nodrag", noWheelClassName = "nowheel", noPanClassName = "nopan", fitView: fitView2 = false, fitViewOptions, connectOnClick = true, attributionPosition, proOptions, defaultEdgeOptions, elevateNodesOnSelect = true, elevateEdgesOnSelect = false, disableKeyboardA11y = false, autoPanOnConnect = true, autoPanOnNodeDrag = true, connectionRadius = 20, isValidConnection, onError, style: style2, id: id2, nodeDragThreshold, ...rest }, ref) => {
+  const rfId = id2 || "1";
+  return import_react11.default.createElement(
+    "div",
+    { ...rest, style: { ...style2, ...wrapperStyle }, ref, className: cc(["react-flow", className]), "data-testid": "rf__wrapper", id: id2 },
+    import_react11.default.createElement(
+      Wrapper,
+      null,
+      import_react11.default.createElement(GraphView$1, { onInit, onMove, onMoveStart, onMoveEnd, onNodeClick, onEdgeClick, onNodeMouseEnter, onNodeMouseMove, onNodeMouseLeave, onNodeContextMenu, onNodeDoubleClick, nodeTypes: nodeTypes2, edgeTypes, connectionLineType, connectionLineStyle, connectionLineComponent, connectionLineContainerStyle, selectionKeyCode, selectionOnDrag, selectionMode, deleteKeyCode, multiSelectionKeyCode, panActivationKeyCode, zoomActivationKeyCode, onlyRenderVisibleElements, selectNodesOnDrag, defaultViewport, translateExtent, minZoom, maxZoom, preventScrolling, zoomOnScroll, zoomOnPinch, zoomOnDoubleClick, panOnScroll, panOnScrollSpeed, panOnScrollMode, panOnDrag, onPaneClick, onPaneMouseEnter, onPaneMouseMove, onPaneMouseLeave, onPaneScroll, onPaneContextMenu, onSelectionContextMenu, onSelectionStart, onSelectionEnd, onEdgeContextMenu, onEdgeDoubleClick, onEdgeMouseEnter, onEdgeMouseMove, onEdgeMouseLeave, onReconnect: onReconnect ?? onEdgeUpdate, onReconnectStart: onReconnectStart ?? onEdgeUpdateStart, onReconnectEnd: onReconnectEnd ?? onEdgeUpdateEnd, reconnectRadius: reconnectRadius ?? edgeUpdaterRadius, defaultMarkerColor, noDragClassName, noWheelClassName, noPanClassName, elevateEdgesOnSelect, rfId, disableKeyboardA11y, nodeOrigin, nodeExtent }),
+      import_react11.default.createElement(StoreUpdater, { nodes, edges, defaultNodes, defaultEdges, onConnect, onConnectStart, onConnectEnd, onClickConnectStart, onClickConnectEnd, nodesDraggable, nodesConnectable, nodesFocusable, edgesFocusable, edgesUpdatable, elementsSelectable, elevateNodesOnSelect, minZoom, maxZoom, nodeExtent, onNodesChange, onEdgesChange, snapToGrid, snapGrid, connectionMode, translateExtent, connectOnClick, defaultEdgeOptions, fitView: fitView2, fitViewOptions, onNodesDelete, onEdgesDelete, onNodeDragStart, onNodeDrag, onNodeDragStop, onSelectionDrag, onSelectionDragStart, onSelectionDragStop, noPanClassName, nodeOrigin, rfId, autoPanOnConnect, autoPanOnNodeDrag, onError, connectionRadius, isValidConnection, nodeDragThreshold }),
+      import_react11.default.createElement(Wrapper$1, { onSelectionChange }),
+      children2,
+      import_react11.default.createElement(Attribution, { proOptions, position: attributionPosition }),
+      import_react11.default.createElement(A11yDescriptions, { rfId, disableKeyboardA11y })
+    )
+  );
+});
+ReactFlow.displayName = "ReactFlow";
+function createUseItemsState(applyChanges2) {
+  return (initialItems) => {
+    const [items, setItems] = (0, import_react11.useState)(initialItems);
+    const onItemsChange = (0, import_react11.useCallback)((changes) => setItems((items2) => applyChanges2(changes, items2)), []);
+    return [items, setItems, onItemsChange];
+  };
+}
+var useNodesState = createUseItemsState(applyNodeChanges);
+var useEdgesState = createUseItemsState(applyEdgeChanges);
+
+// node_modules/@reactflow/controls/dist/esm/index.mjs
+var import_react12 = __toESM(require_react(), 1);
+function PlusIcon() {
+  return import_react12.default.createElement(
+    "svg",
+    { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 32 32" },
+    import_react12.default.createElement("path", { d: "M32 18.133H18.133V32h-4.266V18.133H0v-4.266h13.867V0h4.266v13.867H32z" })
+  );
+}
+function MinusIcon() {
+  return import_react12.default.createElement(
+    "svg",
+    { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 32 5" },
+    import_react12.default.createElement("path", { d: "M0 0h32v4.2H0z" })
+  );
+}
+function FitViewIcon() {
+  return import_react12.default.createElement(
+    "svg",
+    { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 32 30" },
+    import_react12.default.createElement("path", { d: "M3.692 4.63c0-.53.4-.938.939-.938h5.215V0H4.708C2.13 0 0 2.054 0 4.63v5.216h3.692V4.631zM27.354 0h-5.2v3.692h5.17c.53 0 .984.4.984.939v5.215H32V4.631A4.624 4.624 0 0027.354 0zm.954 24.83c0 .532-.4.94-.939.94h-5.215v3.768h5.215c2.577 0 4.631-2.13 4.631-4.707v-5.139h-3.692v5.139zm-23.677.94c-.531 0-.939-.4-.939-.94v-5.138H0v5.139c0 2.577 2.13 4.707 4.708 4.707h5.138V25.77H4.631z" })
+  );
+}
+function LockIcon() {
+  return import_react12.default.createElement(
+    "svg",
+    { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 25 32" },
+    import_react12.default.createElement("path", { d: "M21.333 10.667H19.81V7.619C19.81 3.429 16.38 0 12.19 0 8 0 4.571 3.429 4.571 7.619v3.048H3.048A3.056 3.056 0 000 13.714v15.238A3.056 3.056 0 003.048 32h18.285a3.056 3.056 0 003.048-3.048V13.714a3.056 3.056 0 00-3.048-3.047zM12.19 24.533a3.056 3.056 0 01-3.047-3.047 3.056 3.056 0 013.047-3.048 3.056 3.056 0 013.048 3.048 3.056 3.056 0 01-3.048 3.047zm4.724-13.866H7.467V7.619c0-2.59 2.133-4.724 4.723-4.724 2.591 0 4.724 2.133 4.724 4.724v3.048z" })
+  );
+}
+function UnlockIcon() {
+  return import_react12.default.createElement(
+    "svg",
+    { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 25 32" },
+    import_react12.default.createElement("path", { d: "M21.333 10.667H19.81V7.619C19.81 3.429 16.38 0 12.19 0c-4.114 1.828-1.37 2.133.305 2.438 1.676.305 4.42 2.59 4.42 5.181v3.048H3.047A3.056 3.056 0 000 13.714v15.238A3.056 3.056 0 003.048 32h18.285a3.056 3.056 0 003.048-3.048V13.714a3.056 3.056 0 00-3.048-3.047zM12.19 24.533a3.056 3.056 0 01-3.047-3.047 3.056 3.056 0 013.047-3.048 3.056 3.056 0 013.048 3.048 3.056 3.056 0 01-3.048 3.047z" })
+  );
+}
+var ControlButton = ({ children: children2, className, ...rest }) => import_react12.default.createElement("button", { type: "button", className: cc(["react-flow__controls-button", className]), ...rest }, children2);
+ControlButton.displayName = "ControlButton";
+var selector = (s) => ({
+  isInteractive: s.nodesDraggable || s.nodesConnectable || s.elementsSelectable,
+  minZoomReached: s.transform[2] <= s.minZoom,
+  maxZoomReached: s.transform[2] >= s.maxZoom
+});
+var Controls = ({ style: style2, showZoom = true, showFitView = true, showInteractive = true, fitViewOptions, onZoomIn, onZoomOut, onFitView, onInteractiveChange, className, children: children2, position = "bottom-left" }) => {
+  const store = useStoreApi();
+  const [isVisible, setIsVisible] = (0, import_react12.useState)(false);
+  const { isInteractive, minZoomReached, maxZoomReached } = useStore(selector, shallow$1);
+  const { zoomIn, zoomOut, fitView: fitView2 } = useReactFlow();
+  (0, import_react12.useEffect)(() => {
+    setIsVisible(true);
+  }, []);
+  if (!isVisible) {
+    return null;
+  }
+  const onZoomInHandler = () => {
+    zoomIn();
+    onZoomIn?.();
+  };
+  const onZoomOutHandler = () => {
+    zoomOut();
+    onZoomOut?.();
+  };
+  const onFitViewHandler = () => {
+    fitView2(fitViewOptions);
+    onFitView?.();
+  };
+  const onToggleInteractivity = () => {
+    store.setState({
+      nodesDraggable: !isInteractive,
+      nodesConnectable: !isInteractive,
+      elementsSelectable: !isInteractive
+    });
+    onInteractiveChange?.(!isInteractive);
+  };
+  return import_react12.default.createElement(
+    Panel,
+    { className: cc(["react-flow__controls", className]), position, style: style2, "data-testid": "rf__controls" },
+    showZoom && import_react12.default.createElement(
+      import_react12.default.Fragment,
+      null,
+      import_react12.default.createElement(
+        ControlButton,
+        { onClick: onZoomInHandler, className: "react-flow__controls-zoomin", title: "zoom in", "aria-label": "zoom in", disabled: maxZoomReached },
+        import_react12.default.createElement(PlusIcon, null)
+      ),
+      import_react12.default.createElement(
+        ControlButton,
+        { onClick: onZoomOutHandler, className: "react-flow__controls-zoomout", title: "zoom out", "aria-label": "zoom out", disabled: minZoomReached },
+        import_react12.default.createElement(MinusIcon, null)
+      )
+    ),
+    showFitView && import_react12.default.createElement(
+      ControlButton,
+      { className: "react-flow__controls-fitview", onClick: onFitViewHandler, title: "fit view", "aria-label": "fit view" },
+      import_react12.default.createElement(FitViewIcon, null)
+    ),
+    showInteractive && import_react12.default.createElement(ControlButton, { className: "react-flow__controls-interactive", onClick: onToggleInteractivity, title: "toggle interactivity", "aria-label": "toggle interactivity" }, isInteractive ? import_react12.default.createElement(UnlockIcon, null) : import_react12.default.createElement(LockIcon, null)),
+    children2
+  );
+};
+Controls.displayName = "Controls";
+var Controls$1 = (0, import_react12.memo)(Controls);
+
+// node_modules/@reactflow/background/dist/esm/index.mjs
+var import_react13 = __toESM(require_react(), 1);
+var BackgroundVariant;
+(function(BackgroundVariant2) {
+  BackgroundVariant2["Lines"] = "lines";
+  BackgroundVariant2["Dots"] = "dots";
+  BackgroundVariant2["Cross"] = "cross";
+})(BackgroundVariant || (BackgroundVariant = {}));
+function LinePattern({ color: color2, dimensions, lineWidth }) {
+  return import_react13.default.createElement("path", { stroke: color2, strokeWidth: lineWidth, d: `M${dimensions[0] / 2} 0 V${dimensions[1]} M0 ${dimensions[1] / 2} H${dimensions[0]}` });
+}
+function DotPattern({ color: color2, radius }) {
+  return import_react13.default.createElement("circle", { cx: radius, cy: radius, r: radius, fill: color2 });
+}
+var defaultColor = {
+  [BackgroundVariant.Dots]: "#91919a",
+  [BackgroundVariant.Lines]: "#eee",
+  [BackgroundVariant.Cross]: "#e2e2e2"
+};
+var defaultSize = {
+  [BackgroundVariant.Dots]: 1,
+  [BackgroundVariant.Lines]: 1,
+  [BackgroundVariant.Cross]: 6
+};
+var selector2 = (s) => ({ transform: s.transform, patternId: `pattern-${s.rfId}` });
+function Background({
+  id: id2,
+  variant = BackgroundVariant.Dots,
+  // only used for dots and cross
+  gap = 20,
+  // only used for lines and cross
+  size,
+  lineWidth = 1,
+  offset = 2,
+  color: color2,
+  style: style2,
+  className
+}) {
+  const ref = (0, import_react13.useRef)(null);
+  const { transform: transform2, patternId } = useStore(selector2, shallow$1);
+  const patternColor = color2 || defaultColor[variant];
+  const patternSize = size || defaultSize[variant];
+  const isDots = variant === BackgroundVariant.Dots;
+  const isCross = variant === BackgroundVariant.Cross;
+  const gapXY = Array.isArray(gap) ? gap : [gap, gap];
+  const scaledGap = [gapXY[0] * transform2[2] || 1, gapXY[1] * transform2[2] || 1];
+  const scaledSize = patternSize * transform2[2];
+  const patternDimensions = isCross ? [scaledSize, scaledSize] : scaledGap;
+  const patternOffset = isDots ? [scaledSize / offset, scaledSize / offset] : [patternDimensions[0] / offset, patternDimensions[1] / offset];
+  return import_react13.default.createElement(
+    "svg",
+    { className: cc(["react-flow__background", className]), style: {
+      ...style2,
+      position: "absolute",
+      width: "100%",
+      height: "100%",
+      top: 0,
+      left: 0
+    }, ref, "data-testid": "rf__background" },
+    import_react13.default.createElement("pattern", { id: patternId + id2, x: transform2[0] % scaledGap[0], y: transform2[1] % scaledGap[1], width: scaledGap[0], height: scaledGap[1], patternUnits: "userSpaceOnUse", patternTransform: `translate(-${patternOffset[0]},-${patternOffset[1]})` }, isDots ? import_react13.default.createElement(DotPattern, { color: patternColor, radius: scaledSize / offset }) : import_react13.default.createElement(LinePattern, { dimensions: patternDimensions, color: patternColor, lineWidth })),
+    import_react13.default.createElement("rect", { x: "0", y: "0", width: "100%", height: "100%", fill: `url(#${patternId + id2})` })
+  );
+}
+Background.displayName = "Background";
+var Background$1 = (0, import_react13.memo)(Background);
+
+// src/utils/validation.js
+function validatePlanBlueprint(data) {
+  if (!data || typeof data !== "object") {
+    return { valid: false, error: "Blueprint must be an object with a 'tasks' or 'nodes' array" };
+  }
+  if (Array.isArray(data.tasks)) {
+    for (let i = 0; i < data.tasks.length; i++) {
+      let t = data.tasks[i];
+      if (typeof t === "string" && t.trim()) {
+        t = {
+          task_id: `task-${i + 1}`,
+          description: t.trim(),
+          level: i
+        };
+        data.tasks[i] = t;
+      }
+      if (t && typeof t === "object") {
+        if (typeof t.task_id === "number") {
+          t.task_id = String(t.task_id);
+        }
+        if (typeof t.id === "number") {
+          t.id = String(t.id);
+        }
+        if (!t.task_id && !t.id) {
+          t.task_id = `task-${i + 1}`;
+        }
+        if ((!t.description || !String(t.description).trim()) && (t.label || t.title || t.name)) {
+          t.description = String(t.label || t.title || t.name).trim();
+        }
+        if (typeof t.level !== "number" || t.level < 0 || !Number.isInteger(t.level)) {
+          t.level = inferTaskLevel(t, i);
+        }
+      }
+    }
+    if (data.tasks.length > 1 && (!Array.isArray(data.edges) || data.edges.length === 0)) {
+      data.edges = [];
+      for (let i = 0; i < data.tasks.length - 1; i++) {
+        data.edges.push({ from: data.tasks[i].task_id || `task-${i + 1}`, to: data.tasks[i + 1].task_id || `task-${i + 2}` });
+      }
+    }
+  }
+  const hasTasks = Array.isArray(data.tasks);
+  const hasNodes = Array.isArray(data.nodes);
+  if (!hasTasks && !hasNodes) {
+    return { valid: false, error: "Blueprint must contain a 'tasks' or 'nodes' array" };
+  }
+  if (hasNodes) {
+    return validateFlowchartFormat(data);
+  }
+  return validateTasksFormat(data);
+}
+function validateTasksFormat(data) {
+  const tasks = data.tasks;
+  const edges = data.edges || [];
+  if (tasks.length === 0) {
+    return { valid: false, error: "Blueprint 'tasks' array is empty \u2014 at least one task is required" };
+  }
+  const taskIds = /* @__PURE__ */ new Set();
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i];
+    if (!task || typeof task !== "object") {
+      return { valid: false, error: `Task at index ${i} must be an object` };
+    }
+    const id2 = task.task_id || task.id;
+    if (typeof id2 !== "string" || !id2.trim()) {
+      return { valid: false, error: `Task at index ${i} must have a 'task_id' (or 'id') string field` };
+    }
+    if (taskIds.has(id2)) {
+      return { valid: false, error: `Duplicate task id: ${id2}` };
+    }
+    taskIds.add(id2);
+    if (typeof task.description !== "string" || !task.description.trim()) {
+      return { valid: false, error: `Task ${id2} must have a non-empty 'description'` };
+    }
+    if (typeof task.level !== "number" || task.level < 0 || !Number.isInteger(task.level)) {
+      return { valid: false, error: `Task ${id2} must have an integer 'level' >= 0 (e.g. 0, 1, 2) for graph layout` };
+    }
+  }
+  if (tasks.length > 1 && edges.length === 0) {
+    return { valid: false, error: "Blueprint must include an 'edges' array connecting tasks when there are multiple tasks (e.g. [{from: 'a', to: 'b'}])" };
+  }
+  for (let i = 0; i < edges.length; i++) {
+    const edge = edges[i];
+    if (!edge || typeof edge !== "object") {
+      return { valid: false, error: `Edge at index ${i} must be an object with 'from' and 'to'` };
+    }
+    const from = edge.from || edge.source;
+    const to = edge.to || edge.target;
+    if (typeof from !== "string" || !taskIds.has(from)) {
+      return { valid: false, error: `Edge ${i} references unknown source task: '${from}' \u2014 must match a task's 'task_id'` };
+    }
+    if (typeof to !== "string" || !taskIds.has(to)) {
+      return { valid: false, error: `Edge ${i} references unknown target task: '${to}' \u2014 must match a task's 'task_id'` };
+    }
+  }
+  return { valid: true };
+}
+function validateFlowchartFormat(data) {
+  const nodes = data.nodes;
+  const edges = data.edges || [];
+  if (nodes.length === 0) {
+    return { valid: false, error: "Blueprint 'nodes' array is empty" };
+  }
+  const nodeIds = /* @__PURE__ */ new Set();
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (!node || typeof node !== "object") {
+      return { valid: false, error: `Node at index ${i} must be an object` };
+    }
+    if (typeof node.id !== "string" || !node.id.trim()) {
+      return { valid: false, error: `Node at index ${i} must have a valid string 'id'` };
+    }
+    if (nodeIds.has(node.id)) {
+      return { valid: false, error: `Duplicate node id: ${node.id}` };
+    }
+    nodeIds.add(node.id);
+    if (typeof node.label !== "string" || !node.label.trim()) {
+      return { valid: false, error: `Node ${node.id} must have a non-empty 'label'` };
+    }
+    if (typeof node.level !== "number" || node.level < 0 || !Number.isInteger(node.level)) {
+      return { valid: false, error: `Node ${node.id} must have an integer 'level' >= 0 for graph layout` };
+    }
+  }
+  if (nodes.length > 1 && edges.length === 0) {
+    return { valid: false, error: "Blueprint must include an 'edges' array connecting nodes" };
+  }
+  for (let i = 0; i < edges.length; i++) {
+    const edge = edges[i];
+    if (!edge || typeof edge !== "object") {
+      return { valid: false, error: `Edge at index ${i} must be an object with 'from' and 'to'` };
+    }
+    const from = edge.from || edge.source;
+    const to = edge.to || edge.target;
+    if (typeof from !== "string" || !nodeIds.has(from)) {
+      return { valid: false, error: `Edge ${i} references unknown source: ${from}` };
+    }
+    if (typeof to !== "string" || !nodeIds.has(to)) {
+      return { valid: false, error: `Edge ${i} references unknown target: ${to}` };
+    }
+  }
+  return { valid: true };
+}
+function normalizeBlueprint(blueprint) {
+  if (!blueprint || typeof blueprint !== "object") {
+    return { nodes: [], edges: [] };
+  }
+  if (Array.isArray(blueprint.nodes)) {
+    return { nodes: blueprint.nodes, edges: blueprint.edges || [] };
+  }
+  if (Array.isArray(blueprint.tasks)) {
+    return normalizeTasksToFlowchart(blueprint);
+  }
+  return { nodes: [], edges: [] };
+}
+function normalizeTasksToFlowchart(blueprint) {
+  const tasks = blueprint.tasks || [];
+  const rawEdges = blueprint.edges || [];
+  const activePointer = blueprint.active_task_pointer ?? 0;
+  const nodes = tasks.map((t, i) => ({
+    id: String(t.task_id || t.id || `task-${i}`),
+    label: t.description || t.label || `Task ${i + 1}`,
+    level: typeof t.level === "number" && Number.isInteger(t.level) ? t.level : inferTaskLevel(t, i),
+    desc: t.desc || t.description || "",
+    status: t.is_completed ? "done" : i === activePointer ? "active" : "pending"
+  }));
+  const seenIds = new Set(nodes.map((n) => n.id));
+  const edges = rawEdges.map((e) => {
+    const from = e.from || e.source;
+    const to = e.to || e.target;
+    return seenIds.has(from) && seenIds.has(to) ? { from, to } : null;
+  }).filter(Boolean);
+  return { nodes, edges };
+}
+function inferTaskLevel(task, index) {
+  if (task && Array.isArray(task.child_checkpoint_ids) && task.child_checkpoint_ids.length > 0) {
+    return 0;
+  }
+  if (task && task.repair_origin_checkpoint_id != null) {
+    return 1;
+  }
+  return 0;
+}
+
+// src/components/PlanFlowchart.js?v=flow4
+init_format();
+init_MotionPrimitives();
+function BlueprintNode({ data }) {
+  const [showModal, setShowModal] = import_react14.default.useState(false);
+  const statusColor = data.status === "done" ? "var(--primary)" : data.status === "active" ? "#facc15" : "var(--outline)";
+  const statusIcon = data.status === "done" ? "check_circle" : data.status === "active" ? "play_circle" : "circle";
+  return import_react14.default.createElement(
+    import_react14.default.Fragment,
+    null,
+    import_react14.default.createElement(
+      "div",
+      {
+        className: `plan-node-shell${data.status === "active" ? " is-active" : ""}${data.status === "done" ? " is-done" : ""}`,
+        style: { width: `${data.width || 320}px`, maxWidth: `${data.width || 320}px` }
+      },
+      import_react14.default.createElement("span", { className: "plan-node-orbit", "aria-hidden": "true" }),
+      import_react14.default.createElement(Handle$1, { type: "target", position: Position.Top, style: { background: "var(--outline)", width: 8, height: 8 } }),
+      import_react14.default.createElement(
+        "div",
+        { className: "plan-node-head" },
+        import_react14.default.createElement(
+          "span",
+          { style: { fontSize: "16px", color: statusColor } },
+          import_react14.default.createElement("span", { className: "material-symbols-outlined", style: { fontSize: "16px", fontVariationSettings: "'FILL' 1" } }, statusIcon)
+        ),
+        import_react14.default.createElement(
+          "span",
+          { className: "plan-node-level" },
+          `L${data.level}`
+        ),
+        import_react14.default.createElement("span", { className: "plan-node-status" }, formatNodeStatus(data.status))
+      ),
+      import_react14.default.createElement(
+        "div",
+        { className: "plan-node-label" },
+        escapeHtml(data.label || "")
+      ),
+      data.desc ? import_react14.default.createElement(
+        "div",
+        { className: "plan-node-desc-preview" },
+        escapeHtml(truncateNodeCopy(data.desc))
+      ) : null,
+      import_react14.default.createElement(
+        "button",
+        {
+          type: "button",
+          className: "plan-node-info",
+          onClick: (e) => {
+            e.stopPropagation();
+            setShowModal(true);
+          },
+          title: "Details"
+        },
+        import_react14.default.createElement("span", { className: "material-symbols-outlined", style: { fontSize: "14px" } }, "info")
+      ),
+      import_react14.default.createElement(Handle$1, { type: "source", position: Position.Bottom, style: { background: "var(--outline)", width: 8, height: 8 } })
+    ),
+    showModal ? import_react14.default.createElement(
+      "div",
+      { className: "plan-node-modal-backdrop", onClick: () => setShowModal(false) },
+      import_react14.default.createElement(
+        "div",
+        { className: "plan-node-modal", onClick: (e) => e.stopPropagation() },
+        import_react14.default.createElement("h3", { className: "plan-node-modal-title" }, escapeHtml(data.label || "")),
+        import_react14.default.createElement("p", { className: "plan-node-modal-copy" }, escapeHtml(data.desc || "No description")),
+        import_react14.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "plan-node-modal-close",
+            onClick: () => setShowModal(false)
+          },
+          "Close"
+        )
+      )
+    ) : null
+  );
+}
+var nodeTypes = { blueprint: BlueprintNode };
+function layoutNodes(nodes, edges) {
+  const byLevel = {};
+  const incoming = /* @__PURE__ */ new Map();
+  (Array.isArray(edges) ? edges : []).forEach((edge) => {
+    const target = edge.to || edge.target;
+    const source = edge.from || edge.source;
+    if (!target || !source) return;
+    const bucket = incoming.get(target) || [];
+    bucket.push(source);
+    incoming.set(target, bucket);
+  });
+  nodes.forEach((n) => {
+    const level = n.level != null ? n.level : 0;
+    (byLevel[level] = byLevel[level] || []).push(n);
+  });
+  const H_SPACING = 48;
+  const V_SPACING = 180;
+  const MAX_ROW_WIDTH = 980;
+  const result = [];
+  const sortedLevels = Object.keys(byLevel).sort((a, b) => Number(a) - Number(b));
+  const previousPositions = /* @__PURE__ */ new Map();
+  sortedLevels.forEach((level) => {
+    const group = [...byLevel[level]].sort((left, right) => {
+      const leftParents = (incoming.get(left.id) || []).join(",");
+      const rightParents = (incoming.get(right.id) || []).join(",");
+      return leftParents.localeCompare(rightParents) || left.id.localeCompare(right.id);
+    });
+    const levelNumber = Number(level);
+    const measured = group.map((node) => ({
+      node,
+      width: estimateNodeWidth(node.label || ""),
+      parentCenter: getParentCenter(incoming.get(node.id) || [], previousPositions)
+    }));
+    let cursor = 0;
+    let row = 0;
+    let rowWidth = 0;
+    measured.forEach((entry, index) => {
+      const projectedWidth = rowWidth === 0 ? entry.width : rowWidth + H_SPACING + entry.width;
+      if (projectedWidth > MAX_ROW_WIDTH && rowWidth > 0) {
+        row += 1;
+        rowWidth = 0;
+        cursor = 0;
+      }
+      const centeredX = entry.parentCenter != null ? entry.parentCenter - entry.width / 2 : cursor;
+      const desiredX = Math.max(centeredX, cursor);
+      entry.x = index === 0 ? centeredX : desiredX;
+      entry.yOffset = row * 118;
+      cursor = entry.x + entry.width + H_SPACING;
+      rowWidth = rowWidth === 0 ? entry.width : rowWidth + H_SPACING + entry.width;
+    });
+    const minX = Math.min(...measured.map((entry) => entry.x));
+    const maxX = Math.max(...measured.map((entry) => entry.x + entry.width));
+    const offset = (minX + maxX) / 2;
+    measured.forEach((entry) => {
+      const x = entry.x - offset;
+      previousPositions.set(entry.node.id, { x, width: entry.width });
+      result.push({
+        id: entry.node.id,
+        type: "blueprint",
+        position: { x, y: levelNumber * V_SPACING + 20 + (entry.yOffset || 0) },
+        data: { label: entry.node.label, level: entry.node.level, desc: entry.node.desc || "", status: entry.node.status || "pending", width: entry.width }
+      });
+    });
+  });
+  return result;
+}
+function convertEdges(edges) {
+  return edges.map((e) => ({
+    id: `${e.from}->${e.to}`,
+    source: e.from,
+    target: e.to,
+    type: "smoothstep",
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#4fdbc8" },
+    style: { stroke: "#3c4947", strokeWidth: 2 }
+  }));
+}
+function estimateNodeWidth(label) {
+  const normalized = String(label || "").trim();
+  return Math.min(420, Math.max(250, 180 + normalized.length * 5.5));
+}
+function getParentCenter(parentIds, positions) {
+  const centers = parentIds.map((parentId) => positions.get(parentId)).filter(Boolean).map((entry) => entry.x + entry.width / 2);
+  if (!centers.length) return null;
+  return centers.reduce((sum, value) => sum + value, 0) / centers.length;
+}
+function PlanFlowchart({ blueprint, mode = "auto" }) {
+  const normalized = import_react14.default.useMemo(() => normalizeBlueprint(blueprint), [blueprint]);
+  const validation = import_react14.default.useMemo(() => validatePlanBlueprint({
+    nodes: normalized.nodes,
+    edges: normalized.edges
+  }), [normalized]);
+  if (!validation.valid) {
+    return import_react14.default.createElement(
+      MotionReveal,
+      { className: "flex flex-col gap-2 w-full max-w-[88rem]" },
+      import_react14.default.createElement(
+        "div",
+        { className: "flex items-center gap-2 mb-1" },
+        import_react14.default.createElement(
+          "div",
+          { className: "w-6 h-6 rounded-full bg-surface-container-highest flex items-center justify-center" },
+          import_react14.default.createElement("span", { className: "material-symbols-outlined text-[14px] text-primary" }, "account_tree")
+        ),
+        import_react14.default.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "Execution Plan"),
+        import_react14.default.createElement("span", { className: "px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-error" }, "Invalid")
+      ),
+      import_react14.default.createElement("div", { className: "ml-3 pl-3 border-l-2 border-outline-variant font-body-md text-body-md text-error" }, validation.error || "Invalid plan data")
+    );
+  }
+  const allDone = normalized.nodes.every((n) => n.status === "done");
+  const flowNodes = import_react14.default.useMemo(() => layoutNodes(normalized.nodes, normalized.edges), [normalized.nodes, normalized.edges]);
+  const flowEdges = import_react14.default.useMemo(() => convertEdges(normalized.edges), [normalized.edges]);
+  const [nodes, setNodes, onNodesChange] = useNodesState(flowNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges);
+  import_react14.default.useEffect(() => {
+    setNodes(flowNodes);
+    setEdges(flowEdges);
+  }, [flowNodes, flowEdges, setNodes, setEdges]);
+  return import_react14.default.createElement(
+    MotionReveal,
+    { className: "plan-shell w-full max-w-[88rem]" },
+    import_react14.default.createElement(
+      BeamFrame,
+      { active: normalized.nodes.some((node) => node.status === "active"), tone: "ocean", className: "flex flex-col gap-2 w-full max-w-[88rem]" },
+      import_react14.default.createElement(
+        "div",
+        { className: "plan-header flex items-center gap-2 mb-1 flex-wrap" },
+        import_react14.default.createElement(
+          "div",
+          { className: "w-6 h-6 rounded-full bg-surface-container-highest flex items-center justify-center" },
+          import_react14.default.createElement("span", { className: "material-symbols-outlined text-[14px] text-primary" }, "account_tree")
+        ),
+        import_react14.default.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "Execution Plan"),
+        import_react14.default.createElement(
+          MotionShimmerText,
+          { className: "plan-header-copy", active: normalized.nodes.some((node) => node.status === "active") },
+          normalized.nodes.some((node) => node.status === "active") ? "Steps are actively progressing through the graph" : "Blueprint is ready to inspect and execute"
+        ),
+        import_react14.default.createElement(
+          "span",
+          { className: `plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] ${blueprint.verification_passed ? "text-primary" : allDone ? "text-primary" : "text-on-surface-variant"}` },
+          blueprint.verification_passed ? "Verified" : allDone ? "Done" : "In progress"
+        ),
+        import_react14.default.createElement(
+          "span",
+          { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
+          mode === "forced" ? "Plan mode" : "Auto-planned"
+        ),
+        import_react14.default.createElement(
+          "span",
+          { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
+          `${normalized.nodes.length} steps`
+        ),
+        import_react14.default.createElement(
+          "span",
+          { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
+          `${normalized.edges.length} links`
+        )
+      ),
+      import_react14.default.createElement(
+        "div",
+        { className: "plan-runway-rail" },
+        import_react14.default.createElement("span", { className: "plan-runway-pill" }, blueprint.verification_passed ? "Verified" : allDone ? "Done" : "Active graph"),
+        import_react14.default.createElement("span", { className: "plan-runway-pill" }, mode === "forced" ? "Plan mode" : "Auto plan"),
+        import_react14.default.createElement("span", { className: "plan-runway-pill" }, nextActionLabel(normalized.nodes)),
+        import_react14.default.createElement("span", { className: "plan-runway-copy" }, normalized.nodes.some((node) => node.status === "active") ? "The execution graph is actively progressing through the current checkpoint." : "This graph is staged and ready to inspect before execution continues.")
+      ),
+      import_react14.default.createElement(
+        MotionDeck,
+        { className: "plan-summary-grid mb-2" },
+        planStat("Layers", String(new Set(normalized.nodes.map((node) => node.level)).size), "Execution depth across the graph", 0),
+        planStat("Next", nextActionLabel(normalized.nodes), "The step that should move first", 1),
+        planStat("State", blueprint.verification_passed ? "Verified" : allDone ? "Done" : normalized.nodes.some((node) => node.status === "active") ? "Running" : "Ready", "Current graph status", 2)
+      ),
+      import_react14.default.createElement(
+        MetalSurface,
+        { className: "plan-flow-canvas-shell" },
+        import_react14.default.createElement(
+          "div",
+          { className: "plan-flow-canvas", style: { height: "380px" } },
+          import_react14.default.createElement(
+            ReactFlow,
+            {
+              nodes,
+              edges,
+              onNodesChange,
+              onEdgesChange,
+              nodeTypes,
+              fitView: true,
+              fitViewOptions: { padding: 0.28, minZoom: 0.4 },
+              panOnDrag: true,
+              panOnScroll: true,
+              zoomOnScroll: true,
+              zoomOnPinch: true,
+              zoomOnDoubleClick: false,
+              nodesDraggable: false,
+              nodesConnectable: false,
+              elementsSelectable: true,
+              minZoom: 0.35,
+              maxZoom: 2.5,
+              proOptions: { hideAttribution: true }
+            },
+            import_react14.default.createElement(Controls$1, { showInteractive: false, position: "bottom-right" }),
+            import_react14.default.createElement(Background$1, { color: "rgba(108, 130, 149, 0.2)", gap: 22, size: 1.2 })
+          )
+        )
+      )
+    )
+  );
+}
+function planStat(label, value, detail, index) {
+  const numeric = /^\d+$/.test(String(value || "").trim());
+  return import_react14.default.createElement(
+    MotionReveal,
+    { delay: index * 70 },
+    import_react14.default.createElement(
+      MetalSurface,
+      { className: "plan-summary-card" },
+      import_react14.default.createElement("span", { className: "plan-summary-label" }, label),
+      import_react14.default.createElement(
+        "strong",
+        { className: "plan-summary-value" },
+        numeric ? import_react14.default.createElement(MotionNumber, { value }) : import_react14.default.createElement(MotionShimmerText, { active: false }, value)
+      ),
+      import_react14.default.createElement("span", { className: "plan-summary-detail" }, detail)
+    )
+  );
+}
+function nextActionLabel(nodes) {
+  const active = nodes.find((node) => node.status === "active");
+  if (active?.label) return truncatePlanStat(active.label);
+  const pending = nodes.find((node) => node.status !== "done");
+  if (pending?.label) return truncatePlanStat(pending.label);
+  return "Complete";
+}
+function truncatePlanStat(value) {
+  const text = String(value || "").trim();
+  return text.length > 32 ? `${text.slice(0, 29)}...` : text;
+}
+function formatNodeStatus(status) {
+  if (status === "done") return "done";
+  if (status === "active") return "live";
+  return "queued";
+}
+function truncateNodeCopy(value) {
+  const text = String(value || "").trim();
+  return text.length > 84 ? `${text.slice(0, 81)}...` : text;
+}
+
+// src/components/Transcript.js
+init_Header();
+init_MotionPrimitives();
+var SUGGESTIONS = [
+  "Do you remember anything about the old retrieval logic for this project?",
+  "What prior Codex session context is relevant to infinite memory here?",
+  "Is this a new context or does it match an older Devenv session?"
+];
+var PLAYBOOKS = [
+  {
+    label: "Repo plan",
+    icon: "account_tree",
+    title: "Map the work before touching code",
+    copy: "Flip straight into plan mode and render a multi-step execution flow for the current repo request.",
+    suggestion: "Plan the UI and runtime fixes needed to make this project feel polished and reliable.",
+    selectedTools: ["list_directory", "search_text", "inspect_symbols"],
+    planMode: true
+  },
+  {
+    label: "Trace code",
+    icon: "conversion_path",
+    title: "Follow symbols through the workspace",
+    copy: "Bias the turn toward files, search, symbols, and traces so the answer stays grounded in actual code.",
+    suggestion: "Trace how this app decides between memory, planning, tools, and web search.",
+    selectedTools: ["locate_files", "read_file", "search_text", "track_symbol"],
+    planMode: false
+  },
+  {
+    label: "Live research",
+    icon: "language",
+    title: "Pull current facts and references",
+    copy: "Route the turn into live sources when the answer depends on recent information or external references.",
+    suggestion: "Look up the latest changes in the tools and UI patterns we should borrow from.",
+    selectedTools: ["web_search", "knowledge_search"],
+    planMode: false
+  }
+];
+function Transcript() {
+  const { state, dispatch: dispatch2 } = useApp();
+  const scrollRef = import_react15.default.useRef(null);
+  import_react15.default.useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [state.transcript]);
+  const handleCopyMessage = import_react15.default.useCallback(async (message) => {
+    const text = String(message?.content || "").trim();
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      showToast(dispatch2, "Message copied");
+    } catch {
+      showToast(dispatch2, "Copy failed");
+    }
+  }, [dispatch2]);
+  const handleReplyMessage = import_react15.default.useCallback((message) => {
+    if (!message) return;
+    dispatch2({
+      type: "SET_REPLY_TARGET",
+      payload: {
+        id: message.id,
+        role: message.role,
+        author: message.role === "user" ? "You" : message.role === "error" ? "Error" : "Devenv",
+        excerpt: buildReplyExcerpt(message.content)
+      }
+    });
+    showToast(dispatch2, "Reply attached");
+  }, [dispatch2]);
+  if (!state.health || state.bootError) return null;
+  if (!state.transcript.length) {
+    return import_react15.default.createElement(
+      "div",
+      { className: "transcript-scroll p-margin-desktop space-y-8", ref: scrollRef },
+      import_react15.default.createElement(
+        "div",
+        { className: "empty-state-shell flex flex-col items-center justify-center min-h-[60vh] gap-10 px-12" },
+        import_react15.default.createElement(
+          BeamFrame,
+          { active: false, tone: "ocean", className: "empty-state-hero rounded-3xl p-8 max-w-3xl w-full" },
+          import_react15.default.createElement(
+            "div",
+            { className: "flex flex-col items-center gap-4" },
+            import_react15.default.createElement(
+              "div",
+              { className: "empty-state-badge w-14 h-14 rounded-full flex items-center justify-center text-on-primary" },
+              import_react15.default.createElement("span", { className: "material-symbols-outlined text-[26px]" }, "neurology")
+            ),
+            import_react15.default.createElement(
+              "h1",
+              { className: "font-headline-lg text-headline-lg text-on-surface text-center empty-state-title" },
+              import_react15.default.createElement(MotionShimmerText, { className: "empty-state-title-line" }, "Inspect faster."),
+              import_react15.default.createElement("span", { className: "empty-state-title-line" }, "Plan cleaner."),
+              import_react15.default.createElement("span", { className: "empty-state-title-line" }, "Ship with motion.")
+            ),
+            import_react15.default.createElement("div", { className: "max-w-2xl text-center font-body-lg text-body-lg text-on-surface-variant" }, "Ask Devenv to inspect the codebase, route into a plan, or search live sources. The interface stays light, tactile, and traceable while the runtime decides what to use.")
+          ),
+          import_react15.default.createElement(
+            MotionDeck,
+            { className: "empty-state-hero-chips w-full mt-6" },
+            import_react15.default.createElement(MotionBadge, { className: "empty-state-hero-chip", active: true }, "Light shell"),
+            import_react15.default.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Plan-ready"),
+            import_react15.default.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Tool-routed"),
+            import_react15.default.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Ollama friendly")
+          ),
+          import_react15.default.createElement(
+            MotionDeck,
+            { className: "empty-state-stage-grid w-full mt-6" },
+            [
+              {
+                label: "Plan",
+                title: "Map first",
+                copy: "Render a real execution flow before code edits land.",
+                icon: "account_tree"
+              },
+              {
+                label: "Trace",
+                title: "Ground every answer",
+                copy: "Bias the turn toward files, symbols, and search when the repo matters.",
+                icon: "conversion_path"
+              },
+              {
+                label: "Web",
+                title: "Verify live facts",
+                copy: "Switch into fetched-source mode for current questions and external references.",
+                icon: "language"
+              }
+            ].map(
+              (card, index) => import_react15.default.createElement(
+                MotionReveal,
+                { key: card.label, delay: index * 70 },
+                import_react15.default.createElement(
+                  MotionTilt,
+                  null,
+                  import_react15.default.createElement(
+                    "div",
+                    { className: "empty-state-stage-card" },
+                    import_react15.default.createElement("span", { className: "empty-state-stage-kicker" }, card.label),
+                    import_react15.default.createElement(
+                      "div",
+                      { className: "empty-state-stage-head" },
+                      import_react15.default.createElement("span", { className: "material-symbols-outlined text-[18px] text-primary" }, card.icon),
+                      import_react15.default.createElement("strong", null, card.title)
+                    ),
+                    import_react15.default.createElement("p", { className: "empty-state-stage-copy" }, card.copy)
+                  )
+                )
+              )
+            )
+          ),
+          import_react15.default.createElement(
+            MotionDeck,
+            { className: "empty-state-command-deck w-full mt-6" },
+            PLAYBOOKS.map(
+              (playbook, index) => import_react15.default.createElement(
+                MotionReveal,
+                { key: playbook.label, delay: index * 80 },
+                import_react15.default.createElement(
+                  MotionTilt,
+                  null,
+                  import_react15.default.createElement(
+                    "button",
+                    {
+                      type: "button",
+                      className: "empty-state-command-card text-left",
+                      onClick: () => {
+                        const event = new CustomEvent("opencode-suggestion", { detail: playbook });
+                        window.dispatchEvent(event);
+                      }
+                    },
+                    import_react15.default.createElement("span", { className: "empty-state-command-kicker" }, playbook.label),
+                    import_react15.default.createElement(
+                      "div",
+                      { className: "empty-state-command-head" },
+                      import_react15.default.createElement("span", { className: "material-symbols-outlined text-[19px] text-primary" }, playbook.icon),
+                      import_react15.default.createElement("strong", null, playbook.title)
+                    ),
+                    import_react15.default.createElement("p", { className: "empty-state-command-copy" }, playbook.copy),
+                    import_react15.default.createElement(
+                      "div",
+                      { className: "empty-state-command-footer" },
+                      import_react15.default.createElement("span", { className: "empty-state-command-pill" }, playbook.planMode ? "Plan mode" : `${playbook.selectedTools.length} routes`),
+                      import_react15.default.createElement("span", { className: "empty-state-command-launch" }, "Load prompt")
+                    )
+                  )
+                )
+              )
+            )
+          )
+        ),
+        import_react15.default.createElement(
+          MotionStack,
+          { className: "empty-state-preview-grid w-full max-w-3xl" },
+          [
+            { label: "Plan", icon: "conversion_path", title: "Multi-node flow", copy: "Blueprints render as connected steps instead of a one-line shrug." },
+            { label: "Trace", icon: "network_intelligence", title: "Visible reasoning surface", copy: "Thinking, tools, and retrieval cues stay legible while a turn is running." },
+            { label: "Motion", icon: "animation", title: "Light, tactile shell", copy: "Beams, metal shimmer, stacked cards, and staged panel transitions unify the interface." }
+          ].map(
+            (card, index) => import_react15.default.createElement(
+              MotionReveal,
+              { key: card.label, delay: index * 90 },
+              import_react15.default.createElement(
+                MotionTilt,
+                null,
+                import_react15.default.createElement(
+                  "div",
+                  { className: "empty-state-preview-card" },
+                  import_react15.default.createElement("span", { className: "empty-state-preview-kicker" }, card.label),
+                  import_react15.default.createElement(
+                    "div",
+                    { className: "empty-state-preview-head" },
+                    import_react15.default.createElement("span", { className: "material-symbols-outlined text-[20px] text-primary" }, card.icon),
+                    import_react15.default.createElement("strong", null, card.title)
+                  ),
+                  import_react15.default.createElement("p", { className: "empty-state-preview-copy" }, card.copy)
+                )
+              )
+            )
+          )
+        ),
+        import_react15.default.createElement(
+          MotionDeck,
+          { className: "empty-state-suggestions grid grid-cols-1 gap-3 w-full max-w-2xl" },
+          SUGGESTIONS.map(
+            (suggestion) => import_react15.default.createElement(
+              MotionReveal,
+              { key: suggestion, delay: SUGGESTIONS.indexOf(suggestion) * 70 },
+              import_react15.default.createElement(
+                MotionTilt,
+                null,
+                import_react15.default.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "empty-state-card text-left p-4 bg-surface-container border border-outline-variant rounded-2xl font-body-md text-body-md text-on-surface",
+                    onClick: () => {
+                      const event = new CustomEvent("opencode-suggestion", { detail: { suggestion, selectedTools: [], planMode: false } });
+                      window.dispatchEvent(event);
+                    }
+                  },
+                  suggestion
+                )
+              )
+            )
+          )
+        )
+      )
+    );
+  }
+  return import_react15.default.createElement(
+    "div",
+    { className: "transcript-scroll p-margin-desktop space-y-8", ref: scrollRef },
+    import_react15.default.createElement(
+      "div",
+      { className: "transcript-runway" },
+      import_react15.default.createElement("div", { className: "transcript-runway-grid", "aria-hidden": "true" }),
+      import_react15.default.createElement("div", { className: "transcript-runway-orbit transcript-runway-orbit-one", "aria-hidden": "true" }),
+      import_react15.default.createElement("div", { className: "transcript-runway-orbit transcript-runway-orbit-two", "aria-hidden": "true" }),
+      import_react15.default.createElement(
+        BeamFrame,
+        { active: state.isRunning, tone: "mono", className: "transcript-runway-rail rounded-[24px] px-4 py-3" },
+        import_react15.default.createElement(
+          "div",
+          { className: "transcript-runway-head" },
+          import_react15.default.createElement(
+            "div",
+            { className: "transcript-runway-copy" },
+            import_react15.default.createElement(MotionBadge, { className: "transcript-runway-badge", active: state.isRunning }, state.isRunning ? "Live trace" : "Transcript"),
+            import_react15.default.createElement(
+              "div",
+              { className: "transcript-runway-text" },
+              import_react15.default.createElement("strong", null, "Conversation runway"),
+              import_react15.default.createElement(
+                "span",
+                null,
+                state.isRunning ? "Reasoning, tools, and responses are landing in a staged stream." : "The shell keeps every turn legible while the runtime swaps between plans, tools, and direct answers."
+              )
+            )
+          ),
+          import_react15.default.createElement(
+            "div",
+            { className: "transcript-runway-stats" },
+            import_react15.default.createElement(
+              "div",
+              { className: "transcript-runway-stat" },
+              import_react15.default.createElement("span", null, "Entries"),
+              import_react15.default.createElement(MotionNumber, { value: state.transcript.length })
+            ),
+            import_react15.default.createElement(
+              "div",
+              { className: "transcript-runway-stat" },
+              import_react15.default.createElement("span", null, "Mode"),
+              import_react15.default.createElement("strong", null, state.planMode ? "Plan" : state.isRunning ? "Live" : "Direct")
+            )
+          )
+        )
+      ),
+      import_react15.default.createElement(
+        "div",
+        { className: "transcript-stream" },
+        state.transcript.map(
+          (item, index) => import_react15.default.createElement(
+            MotionReveal,
+            { key: item.id, delay: Math.min(index * 55, 330), className: "transcript-entry-reveal" },
+            import_react15.default.createElement(
+              "div",
+              { className: `transcript-entry-shell transcript-entry-${item.role || "assistant"}` },
+              renderTranscriptItem(item, handleCopyMessage, handleReplyMessage)
+            )
+          )
+        )
+      )
+    )
+  );
+}
+function renderTranscriptItem(item, handleCopyMessage, handleReplyMessage) {
+  switch (item.role) {
+    case "user":
+      return import_react15.default.createElement(UserMessage, {
+        message: item,
+        onCopy: () => handleCopyMessage(item),
+        onReply: () => handleReplyMessage(item)
+      });
+    case "thinking":
+      return import_react15.default.createElement(ThinkingMessage, { message: item });
+    case "plan":
+      return import_react15.default.createElement(PlanFlowchart, { blueprint: item.blueprint, mode: item.mode || "auto" });
+    case "error":
+      return import_react15.default.createElement(ErrorMessage, {
+        message: item,
+        onCopy: () => handleCopyMessage(item),
+        onReply: () => handleReplyMessage(item)
+      });
+    default:
+      return import_react15.default.createElement(AssistantMessage, {
+        message: item,
+        onCopy: () => handleCopyMessage(item),
+        onReply: () => handleReplyMessage(item)
+      });
+  }
+}
+function buildReplyExcerpt(content) {
+  const normalized = String(content || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "Empty message";
+  return normalized.length > 140 ? `${normalized.slice(0, 137)}...` : normalized;
+}
+
+// src/components/Composer.js
+var import_react17 = __toESM(require_react(), 1);
+init_AppContext();
+init_format();
+
+// src/components/ToolPicker.js?v=popup3
+var import_react16 = __toESM(require_react(), 1);
+init_AppContext();
+init_MotionPrimitives();
+var TOOL_META = {
+  list_directory: { icon: "folder_open", label: "Files", hint: "Map folders and top-level structure", category: "workspace" },
+  locate_files: { icon: "find_in_page", label: "Locate", hint: "Find likely files before reading", category: "workspace" },
+  read_file: { icon: "description", label: "Read", hint: "Open exact files and inspect content", category: "workspace" },
+  search_text: { icon: "match_case", label: "Search", hint: "Search the repo for strings and usages", category: "workspace" },
+  inspect_symbols: { icon: "route", label: "Symbols", hint: "Inspect definitions, exports, and structure", category: "workspace" },
+  track_symbol: { icon: "conversion_path", label: "Trace", hint: "Follow a symbol through the codebase", category: "workspace" },
+  generate_pdf: { icon: "picture_as_pdf", label: "PDF", hint: "Generate polished PDFs", category: "artifacts" },
+  generate_prompt: { icon: "auto_awesome", label: "Prompt", hint: "Prepare a strong prompt", category: "artifacts" },
+  knowledge_search: { icon: "hub", label: "Knowledge", hint: "Pull repos and references", category: "research" },
+  web_search: { icon: "language", label: "Web", hint: "Search live sources", category: "research" }
+};
+var TOOL_CATEGORY_META = {
+  workspace: {
+    label: "Workspace",
+    detail: "Stay grounded in the current repo before planning or answering."
+  },
+  research: {
+    label: "Live Research",
+    detail: "Pull current web facts or external references when memory is not enough."
+  },
+  artifacts: {
+    label: "Artifacts",
+    detail: "Generate polished outputs instead of only answering in chat."
+  }
+};
+var USER_VISIBLE_TOOLS = new Set(Object.keys(TOOL_META));
+function ToolPicker() {
+  const { state, dispatch: dispatch2 } = useApp();
+  const toolReadiness = state.health?.tool_readiness || {};
+  const registeredTools = new Set((Array.isArray(state.health?.tools) ? state.health.tools : []).filter((toolName) => USER_VISIBLE_TOOLS.has(toolName)));
+  const displayTools = Array.from(
+    /* @__PURE__ */ new Set([
+      ...registeredTools,
+      ...Object.keys(toolReadiness).filter((toolName) => USER_VISIBLE_TOOLS.has(toolName))
+    ])
+  );
+  const visibleSelectedTools = state.selectedTools.filter((toolName) => USER_VISIBLE_TOOLS.has(toolName) && isToolAvailable(toolName, registeredTools, toolReadiness));
+  const selected = new Set(visibleSelectedTools);
+  const [droppingTools, setDroppingTools] = import_react16.default.useState([]);
+  const selectedToolsKey = state.selectedTools.join("|");
+  const visibleSelectedToolsKey = visibleSelectedTools.join("|");
+  import_react16.default.useEffect(() => {
+    if (selectedToolsKey === visibleSelectedToolsKey) return;
+    dispatch2({ type: "SET_SELECTED_TOOLS", payload: visibleSelectedTools });
+  }, [dispatch2, selectedToolsKey, visibleSelectedTools, visibleSelectedToolsKey]);
+  import_react16.default.useEffect(() => {
+    if (!droppingTools.length) return void 0;
+    const timer2 = window.setTimeout(() => {
+      setDroppingTools([]);
+    }, 720);
+    return () => window.clearTimeout(timer2);
+  }, [droppingTools]);
+  const toggleToolPicker = () => {
+    dispatch2({ type: "SET_TOOL_PICKER_OPEN", payload: !state.toolPickerOpen });
+  };
+  const clearToolSelection = () => {
+    dispatch2({ type: "SET_SELECTED_TOOLS", payload: [] });
+    dispatch2({ type: "SET_TOOL_PICKER_OPEN", payload: false });
+  };
+  const toggleTool = (toolName) => {
+    const next = new Set(visibleSelectedTools);
+    if (next.has(toolName)) {
+      next.delete(toolName);
+    } else {
+      next.add(toolName);
+      setDroppingTools((current) => Array.from(/* @__PURE__ */ new Set([...current, toolName])));
+    }
+    dispatch2({ type: "SET_SELECTED_TOOLS", payload: Array.from(next).sort() });
+  };
+  const selectedTools = Array.from(selected);
+  const routeSummary = summarizeRoute(visibleSelectedTools, state.planMode);
+  const groupedTools = groupToolsByCategory(displayTools);
+  const selectedToolChips = selectedTools.map((toolName) => {
+    const meta = describeTool(toolName);
+    return import_react16.default.createElement(
+      "button",
+      {
+        key: `selected-${toolName}`,
+        type: "button",
+        className: `tool-token inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-primary/40 bg-surface text-on-surface hover:bg-surface-container-high transition-colors${droppingTools.includes(toolName) ? " tool-token-drop" : ""}`,
+        onClick: () => toggleTool(toolName),
+        title: `Remove ${toolName}`,
+        "aria-label": `Remove ${toolName}`
+      },
+      import_react16.default.createElement("span", { className: "material-symbols-outlined text-[15px] text-primary" }, meta.icon),
+      import_react16.default.createElement("span", { className: "font-label-caps text-[10px] uppercase tracking-[0.08em]" }, meta.label),
+      import_react16.default.createElement("span", { className: "material-symbols-outlined text-[13px] text-on-surface-variant" }, "close")
+    );
+  });
+  return import_react16.default.createElement(
+    "div",
+    { className: `tool-picker relative flex flex-col gap-2${state.toolPickerOpen ? " open" : ""}` },
+    import_react16.default.createElement(
+      "div",
+      { className: "tool-picker-trigger-row" },
+      import_react16.default.createElement(
+        BeamFrame,
+        { active: state.toolPickerOpen, tone: "mono", className: "tool-picker-trigger-shell rounded-xl" },
+        import_react16.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "tool-picker-trigger flex items-center gap-2 px-3 py-1.5 bg-surface-container-highest rounded-xl border border-outline-variant hover:bg-surface-variant transition-colors",
+            onClick: toggleToolPicker,
+            "aria-label": selected.size ? `Choose tools, ${selected.size} selected` : "Choose tools"
+          },
+          import_react16.default.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "TOOLS"),
+          import_react16.default.createElement(
+            MotionShimmerText,
+            { className: "tool-picker-trigger-copy", active: state.toolPickerOpen },
+            routeSummary.trigger
+          ),
+          import_react16.default.createElement("span", { className: "material-symbols-outlined text-[16px] text-on-surface-variant ml-auto" }, state.toolPickerOpen ? "expand_less" : "expand_more")
+        )
+      )
+    ),
+    selectedTools.length ? import_react16.default.createElement(
+      MotionReveal,
+      null,
+      import_react16.default.createElement(
+        "div",
+        { className: "tool-picker-selected-row" },
+        import_react16.default.createElement("span", { className: "tool-picker-selected-label" }, "Active tools"),
+        import_react16.default.createElement("div", { className: "tool-picker-selected-list" }, selectedToolChips)
+      )
+    ) : null,
+    state.toolPickerOpen ? import_react16.default.createElement(
+      "div",
+      { className: "tool-picker-panel absolute left-0 bottom-full mb-3 z-10 w-[33rem] max-w-[calc(100vw-2rem)] overflow-hidden" },
+      import_react16.default.createElement("div", { className: "tool-picker-panel-glow", "aria-hidden": "true" }),
+      import_react16.default.createElement(
+        "div",
+        { className: "tool-picker-panel-inner" },
+        import_react16.default.createElement("span", { className: "tool-picker-panel-ribbon", "aria-hidden": "true" }),
+        import_react16.default.createElement("span", { className: "tool-picker-panel-orbit tool-picker-panel-orbit-one", "aria-hidden": "true" }),
+        import_react16.default.createElement("span", { className: "tool-picker-panel-orbit tool-picker-panel-orbit-two", "aria-hidden": "true" }),
+        import_react16.default.createElement(
+          import_react16.default.Fragment,
+          null,
+          import_react16.default.createElement(
+            "div",
+            { className: "tool-picker-panel-header" },
+            import_react16.default.createElement(
+              "div",
+              { className: "tool-picker-panel-copy" },
+              import_react16.default.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, "Route this turn"),
+              import_react16.default.createElement("span", { className: "text-[11px] leading-5 text-on-surface-variant" }, routeSummary.panel)
+            ),
+            import_react16.default.createElement(
+              "button",
+              {
+                type: "button",
+                className: "font-label-caps text-label-caps text-primary bg-transparent border border-outline-variant rounded-full px-3 py-1 shrink-0 hover:bg-surface-container-high transition-colors",
+                onClick: clearToolSelection
+              },
+              "Clear"
+            )
+          ),
+          import_react16.default.createElement(
+            "div",
+            { className: "tool-picker-summary-rail" },
+            import_react16.default.createElement(
+              "span",
+              { className: "tool-picker-summary-pill" },
+              `${selectedTools.length || 0} active`
+            ),
+            import_react16.default.createElement(
+              "span",
+              { className: "tool-picker-summary-pill" },
+              `${groupedTools.length} lanes`
+            ),
+            import_react16.default.createElement(
+              "span",
+              { className: "tool-picker-summary-copy" },
+              selectedTools.length ? "Selected routes will constrain this turn." : "Leave the tray clear to keep routing automatic."
+            )
+          ),
+          import_react16.default.createElement(
+            "div",
+            { className: "tool-picker-route-note" },
+            import_react16.default.createElement("span", { className: "tool-picker-route-label" }, state.planMode ? "Plan mode" : "Auto route"),
+            import_react16.default.createElement("span", { className: "tool-picker-route-copy" }, state.planMode ? "The runtime will inspect the repo and return a flowchart only. Live route cards stay selected for normal turns after you exit plan mode." : "Leave the tray empty to let Devenv choose between memory, live search, and tool-assisted execution.")
+          ),
+          import_react16.default.createElement(
+            MotionDeck,
+            { className: "tool-picker-preview-deck" },
+            import_react16.default.createElement(
+              "div",
+              { className: "tool-picker-preview-card" },
+              import_react16.default.createElement("span", { className: "tool-picker-preview-kicker" }, "Lane"),
+              import_react16.default.createElement("strong", { className: "tool-picker-preview-title" }, state.planMode ? "Blueprint lane" : routeSummary.trigger),
+              import_react16.default.createElement("span", { className: "tool-picker-preview-copy" }, routeSummary.panel)
+            ),
+            import_react16.default.createElement(
+              "div",
+              { className: "tool-picker-preview-card tool-picker-preview-card-secondary" },
+              import_react16.default.createElement("span", { className: "tool-picker-preview-kicker" }, "Selection"),
+              import_react16.default.createElement("strong", { className: "tool-picker-preview-title" }, selectedTools.length ? `${selectedTools.length} active route${selectedTools.length === 1 ? "" : "s"}` : "Runtime freedom"),
+              import_react16.default.createElement("span", { className: "tool-picker-preview-copy" }, selectedTools.length ? "The runtime will stay inside these visible tool surfaces where possible." : "Let the model decide when memory, workspace tools, or live search is actually needed.")
+            )
+          ),
+          import_react16.default.createElement(
+            MotionDeck,
+            { className: "tool-picker-sections" },
+            groupedTools.map(
+              ([category, toolNames]) => import_react16.default.createElement(
+                "section",
+                { key: category, className: "tool-picker-section" },
+                import_react16.default.createElement(
+                  "div",
+                  { className: "tool-picker-section-copy" },
+                  import_react16.default.createElement("span", { className: "tool-picker-section-label" }, TOOL_CATEGORY_META[category]?.label || "Tools"),
+                  import_react16.default.createElement("span", { className: "tool-picker-section-detail" }, TOOL_CATEGORY_META[category]?.detail || "Route the runtime through these tools.")
+                ),
+                import_react16.default.createElement(
+                  "div",
+                  { className: "tool-picker-grid" },
+                  toolNames.map((toolName) => {
+                    const meta = describeTool(toolName, toolReadiness[toolName]);
+                    const isAvailable = isToolAvailable(toolName, registeredTools, toolReadiness);
+                    return import_react16.default.createElement(
+                      "button",
+                      {
+                        key: toolName,
+                        type: "button",
+                        className: `tool-picker-tile${selected.has(toolName) ? " is-selected" : ""}${isAvailable ? "" : " is-disabled"}`,
+                        onClick: () => isAvailable && toggleTool(toolName),
+                        disabled: !isAvailable
+                      },
+                      import_react16.default.createElement(
+                        "span",
+                        { className: "tool-picker-tile-icon" },
+                        import_react16.default.createElement("span", { className: "material-symbols-outlined text-[18px] text-primary" }, meta.icon)
+                      ),
+                      import_react16.default.createElement("span", { className: "tool-picker-tile-label" }, meta.label),
+                      import_react16.default.createElement("span", { className: "tool-picker-tile-hint" }, meta.hint),
+                      !isAvailable ? import_react16.default.createElement("span", { className: "tool-picker-tile-state" }, "Unavailable") : null,
+                      selected.has(toolName) ? import_react16.default.createElement(
+                        "span",
+                        { className: "tool-picker-tile-check" },
+                        import_react16.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "south")
+                      ) : null
+                    );
+                  })
+                )
+              )
+            )
+          )
+        )
+      )
+    ) : null
+  );
+}
+function groupToolsByCategory(toolNames) {
+  const orderedCategories = ["workspace", "research", "artifacts"];
+  return orderedCategories.map((category) => [
+    category,
+    toolNames.filter((toolName) => (TOOL_META[toolName]?.category || "workspace") === category)
+  ]).filter(([, items]) => items.length);
+}
+function isToolAvailable(toolName, registeredTools, toolReadiness) {
+  if (registeredTools.has(toolName)) return true;
+  return toolReadiness?.[toolName]?.ready === true;
+}
+function describeTool(toolName, readiness = {}) {
+  const meta = TOOL_META[toolName] || {};
+  const fallbackLabel = String(toolName || "").split("_").filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+  return {
+    icon: meta.icon || "build",
+    label: meta.label || fallbackLabel || "Tool",
+    hint: typeof readiness.detail === "string" && readiness.detail.trim() || meta.hint || "General workspace action"
+  };
+}
+function summarizeRoute(selectedTools, planMode) {
+  if (planMode) {
+    return {
+      trigger: "Plan flow active",
+      panel: "Plan mode uses repo inspection and blueprint generation first. Route cards remain available for direct turns after planning."
+    };
+  }
+  if (!selectedTools.length) {
+    return {
+      trigger: "Auto route",
+      panel: "Pick a route card to bias the runtime toward web, knowledge, prompt, or PDF work. Leave everything clear for automatic routing."
+    };
+  }
+  const workspaceRoutes = selectedTools.filter((toolName) => ["list_directory", "locate_files", "read_file", "search_text", "inspect_symbols", "track_symbol"].includes(toolName));
+  if (workspaceRoutes.length && workspaceRoutes.length === selectedTools.length) {
+    return {
+      trigger: workspaceRoutes.length === 1 ? `${describeTool(workspaceRoutes[0]).label} route` : "Workspace route",
+      panel: workspaceRoutes.length === 1 ? `This turn is constrained to ${describeTool(workspaceRoutes[0]).label.toLowerCase()} inspection inside the repo.` : "This turn is constrained to repo inspection tools, which helps Devenv stay grounded in the current codebase before answering or planning."
+    };
+  }
+  if (selectedTools.length === 1) {
+    const meta = describeTool(selectedTools[0]);
+    return {
+      trigger: `${meta.label} route`,
+      panel: `This turn is biased toward ${meta.label.toLowerCase()} behavior. You can stack more route cards if the request needs multiple surfaces.`
+    };
+  }
+  return {
+    trigger: `${selectedTools.length} routes active`,
+    panel: "Multiple route cards are active, so the runtime will constrain itself to those selected surfaces where possible."
+  };
+}
+
+// src/utils/plans.js
+var READ_ONLY_PLAN_TOOLS = [
+  "list_directory",
+  "locate_files",
+  "read_file",
+  "inspect_symbols",
+  "search_text",
+  "peek_lines",
+  "track_symbol"
+];
+function buildPlanModePrompt(userPrompt) {
+  const cleaned = String(userPrompt || "").trim();
+  return `PLAN MODE IS ACTIVE.
+
+The user wants a planning graph only. Do not execute file edits. You may inspect the workspace with read-only tools if needed.
+
+Return ONLY a valid JSON object for a multi-layer flowchart. No markdown fences. No prose before or after the JSON.
+
+Required structure:
+{
+  "tasks": [
+    {
+      "task_id": "short-kebab-id",
+      "description": "Clear actionable step",
+      "level": 0
+    }
+  ],
+  "edges": [
+    { "from": "task-id", "to": "task-id" }
+  ]
+}
+
+Rules:
+- Use multiple nodes whenever the work can be broken down.
+- Use multiple levels when some tasks depend on earlier tasks or branch from them.
+- "task_id" must be unique.
+- "description" must be concrete and implementation-oriented.
+- "level" must be an integer >= 0.
+- Include "edges" whenever there is more than one task.
+- Return raw JSON only.
+
+User request:
+${cleaned}`;
+}
+function shouldDisplayPlanResult(result, planModeEnabled) {
+  if (planModeEnabled) return true;
+  const traces = Array.isArray(result?.stage_traces) ? result.stage_traces : [];
+  const checkpointCreation = traces.find((trace) => trace && trace.stage === "checkpoint_creation");
+  if (checkpointCreation?.payload && typeof checkpointCreation.payload.should_plan === "boolean") {
+    return checkpointCreation.payload.should_plan;
+  }
+  const taskCount = Array.isArray(result?.blueprint?.tasks) ? result.blueprint.tasks.length : 0;
+  return taskCount > 1;
+}
+function extractPlanBlueprint(result, planModeEnabled) {
+  if (planModeEnabled) {
+    const parsed = parsePlanBlueprintString(result?.final_response);
+    if (parsed) return parsed;
+  }
+  return result?.blueprint || null;
+}
+function parsePlanBlueprintString(content) {
+  const raw = String(content || "").trim();
+  if (!raw) return null;
+  const candidates = buildJsonCandidates(raw);
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (isPlanBlueprint(parsed)) {
+        return parsed;
+      }
+      if (parsed && typeof parsed === "object" && typeof parsed.content === "string") {
+        const nested = parsePlanBlueprintString(parsed.content);
+        if (nested) return nested;
+      }
+    } catch {
+    }
+  }
+  return null;
+}
+function buildJsonCandidates(raw) {
+  const trimmed = raw.trim();
+  const candidates = [trimmed];
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenceMatch?.[1]) {
+    candidates.push(fenceMatch[1].trim());
+  }
+  const balanced = extractBalancedJsonObject(trimmed);
+  if (balanced) {
+    candidates.push(balanced);
+  }
+  const contentIndex = trimmed.indexOf('{"type"');
+  if (contentIndex >= 0) {
+    candidates.push(trimmed.slice(contentIndex));
+  }
+  return [...new Set(candidates.filter(Boolean))];
+}
+function extractBalancedJsonObject(text) {
+  const start2 = text.indexOf("{");
+  if (start2 < 0) return "";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start2; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{") depth += 1;
+    if (char === "}") depth -= 1;
+    if (depth === 0) {
+      return text.slice(start2, index + 1);
+    }
+  }
+  return "";
+}
+function isPlanBlueprint(value) {
+  if (!value || typeof value !== "object") return false;
+  return Array.isArray(value.tasks) || Array.isArray(value.nodes) || Array.isArray(value.steps) || Array.isArray(value.items) || Array.isArray(value.plan);
+}
+
+// src/components/Composer.js
+init_MotionPrimitives();
+function Composer() {
+  const { state, dispatch: dispatch2 } = useApp();
+  const textareaRef = import_react17.default.useRef(null);
+  const isCoolingDown = Boolean(state.rateLimitInfo && state.rateLimitInfo.resetAt > state.clock);
+  const isBudgetBlocked = Boolean(state.sessionBudgetTokens && state.sessionUsageTotal >= state.sessionBudgetTokens);
+  const isDisabled = isCoolingDown || isBudgetBlocked;
+  const pendingThinking = [...state.transcript].reverse().find((entry) => entry.role === "thinking" && entry.pending);
+  const replyTarget = state.replyTarget;
+  const placeholder = isCoolingDown ? `Cooldown active. Input unlocks in ${formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))}.` : isBudgetBlocked ? "Session budget reached. Increase the limit in the right rail to continue." : "Ask Devenv...";
+  const handleInput = (e) => {
+    dispatch2({ type: "SET_PROMPT", payload: e.target.value });
+    autosizeComposer(e.target);
+  };
+  const handleKeyDown = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+  };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const originalPrompt = state.prompt.trim();
+    if (!originalPrompt || state.isRunning || isCoolingDown || isBudgetBlocked) return;
+    const requestPrompt = buildRuntimePrompt(originalPrompt, replyTarget);
+    const userEntry = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content: originalPrompt,
+      replyTo: replyTarget
+    };
+    dispatch2({ type: "SET_IS_RUNNING", payload: true });
+    dispatch2({ type: "SET_RUN_STARTED_AT", payload: Date.now() });
+    dispatch2({
+      type: "SET_PENDING_RUN_MODE",
+      payload: inferPendingRunMode({
+        prompt: originalPrompt,
+        selectedTools: state.selectedTools,
+        planMode: state.planMode
+      })
+    });
+    dispatch2({ type: "SET_TOOL_PICKER_OPEN", payload: false });
+    dispatch2({ type: "SET_PROMPT", payload: "" });
+    dispatch2({ type: "SET_REPLY_TARGET", payload: null });
+    const thinkingId = `thinking-${Date.now()}`;
+    const pendingRunMode2 = inferPendingRunMode({
+      prompt: originalPrompt,
+      selectedTools: state.selectedTools,
+      planMode: state.planMode
+    });
+    const pendingLogs = pendingRunMode2 === "web" ? [
+      { source: "tool_call", message: "tool: web_search" },
+      { source: "web_search", message: `query: ${originalPrompt}` },
+      { source: "ai", message: "Checking live sources for the latest answer" }
+    ] : pendingRunMode2 === "knowledge" ? [
+      { source: "tool_call", message: "tool: knowledge_search" },
+      { source: "knowledge_search", message: `query: ${originalPrompt}` },
+      { source: "ai", message: "Looking for repos, videos, docs, and threads" }
+    ] : [
+      { source: "system", message: "Checking Devenv memory" },
+      { source: "ai", message: "Looking for prior session matches" }
+    ];
+    if (replyTarget?.excerpt) {
+      pendingLogs.unshift({ source: "reply", message: `focus: ${replyTarget.author}: ${replyTarget.excerpt}` });
+    }
+    dispatch2({ type: "APPEND_TRANSCRIPT", payload: userEntry });
+    dispatch2({
+      type: "APPEND_TRANSCRIPT",
+      payload: { id: thinkingId, role: "thinking", content: formatThinkingBlock(pendingLogs), pending: true }
+    });
+    try {
+      const { runPlan: runPlan2, runTurn: runTurn2 } = await Promise.resolve().then(() => (init_api(), api_exports));
+      let result = null;
+      let planValidationError = null;
+      const planOnlyMode = Boolean(state.planMode);
+      while (true) {
+        try {
+          result = planOnlyMode ? await runPlan2({
+            prompt: buildPlanModePrompt(requestPrompt),
+            selectedTools: READ_ONLY_PLAN_TOOLS,
+            backendPreference: state.preferredBackend || "opencode"
+          }) : await runTurn2({
+            prompt: requestPrompt,
+            planningMode: "auto",
+            selectedTools: state.selectedTools,
+            backendPreference: state.preferredBackend || "opencode",
+            sessionBudgetTokens: state.sessionBudgetTokens
+          });
+          break;
+        } catch (error) {
+          const parsedRateLimit = parseRateLimitError(error.message);
+          if (!parsedRateLimit) throw error;
+          dispatch2({ type: "SET_RATE_LIMIT_INFO", payload: parsedRateLimit });
+          updateThinking(thinkingId, dispatch2, [
+            { source: "system", message: "Rate limit reached" },
+            { source: "ai", message: `Retrying in ${formatDuration(parsedRateLimit.retryMs)}` }
+          ]);
+          await waitForCooldown(parsedRateLimit.resetAt, (remainingMs) => {
+            updateThinking(thinkingId, dispatch2, [
+              { source: "system", message: "Rate limit reached" },
+              { source: "ai", message: `Retrying in ${formatDuration(remainingMs)}` }
+            ]);
+          });
+        }
+      }
+      const shouldShowPlan = shouldDisplayPlanResult(result, planOnlyMode);
+      const planBlueprint = shouldShowPlan ? extractPlanBlueprint(result, planOnlyMode) : null;
+      if (shouldShowPlan && planBlueprint && (planBlueprint.tasks || planBlueprint.nodes)) {
+        const validation = validatePlanBlueprint(planBlueprint);
+        planValidationError = validation.valid ? null : validation.error;
+      } else if (shouldShowPlan) {
+        planValidationError = "No valid plan JSON was returned.";
+      }
+      const turnTokens = Number(result.total_usage?.total_tokens || 0);
+      dispatch2({ type: "SET_LATEST_TURN_TOKENS", payload: turnTokens });
+      dispatch2({ type: "SET_LATEST_ELAPSED_MS", payload: Number(result.elapsed_ms || Date.now() - state.runStartedAt) });
+      dispatch2({ type: "SET_ACTIVE_BACKEND", payload: result.backend_used || result.metadata?.backend_used || state.activeBackend });
+      const now2 = Date.now();
+      dispatch2({
+        type: "SET_USAGE_WINDOW",
+        payload: [...state.usageWindow, { timestamp: now2, totalTokens: turnTokens }].filter((e2) => now2 - e2.timestamp < 6e4)
+      });
+      dispatch2({
+        type: "SET_RETRIEVAL_STATUS",
+        payload: buildRetrievalStatus(result.metadata || {})
+      });
+      const budgetState = result.metadata?.budget_state || null;
+      if (budgetState) {
+        dispatch2({ type: "SET_SESSION_USAGE_TOTAL", payload: Number(budgetState.used || state.sessionUsageTotal) });
+      } else {
+        dispatch2({ type: "SET_SESSION_USAGE_TOTAL", payload: state.sessionUsageTotal + turnTokens });
+      }
+      dispatch2({
+        type: "UPDATE_TRANSCRIPT_ENTRY",
+        payload: { id: thinkingId, updates: { content: formatThinkingFromResult(result), pending: false } }
+      });
+      if (shouldShowPlan && planBlueprint && planValidationError === null) {
+        dispatch2({ type: "SET_PLAN_BLUEPRINT", payload: planBlueprint });
+        dispatch2({
+          type: "APPEND_TRANSCRIPT",
+          payload: {
+            id: `plan-${Date.now()}`,
+            role: "plan",
+            content: "",
+            blueprint: planBlueprint,
+            mode: planOnlyMode ? "forced" : "auto"
+          }
+        });
+      } else if (shouldShowPlan && planValidationError) {
+        dispatch2({ type: "SET_PLAN_BLUEPRINT", payload: null });
+        dispatch2({
+          type: "APPEND_TRANSCRIPT",
+          payload: {
+            id: `plan-error-${Date.now()}`,
+            role: "error",
+            content: `Plan mode expected a valid multi-node flowchart JSON response, but the UI could not render it.
+
+Last error: ${planValidationError}`,
+            diagnostics: buildMessageDiagnostics({
+              result,
+              pendingRunMode: pendingRunMode2,
+              planOnlyMode,
+              overrideSourceLabel: "Plan render issue",
+              overrideDetail: planValidationError
+            })
+          }
+        });
+      }
+      const visibleAssistantResponse = planOnlyMode && shouldShowPlan && planValidationError === null ? `Generated an execution plan for: ${originalPrompt}` : selectVisibleAssistantResponse(result);
+      if (visibleAssistantResponse) {
+        dispatch2({
+          type: "APPEND_TRANSCRIPT",
+          payload: {
+            id: `assistant-${Date.now()}`,
+            role: result?.error_message ? "error" : "assistant",
+            content: visibleAssistantResponse,
+            diagnostics: buildMessageDiagnostics({
+              result,
+              pendingRunMode: pendingRunMode2,
+              planOnlyMode,
+              overrideSourceLabel: result?.error_message ? "Runtime issue" : null,
+              overrideDetail: result?.error_message || null
+            })
+          }
+        });
+      }
+      dispatch2({ type: "SET_RATE_LIMIT_INFO", payload: null });
+      if (budgetState?.blocked) {
+        const { showToast: showToast2 } = await Promise.resolve().then(() => (init_Header(), Header_exports));
+        showToast2(dispatch2, "Session budget reached");
+      }
+    } catch (error) {
+      const parsedRateLimit = parseRateLimitError(error.message);
+      updateThinking(thinkingId, dispatch2, [
+        { source: "system", message: "Memory retrieval failed" },
+        { source: "error", message: error.message }
+      ]);
+      dispatch2({
+        type: "APPEND_TRANSCRIPT",
+        payload: {
+          id: `assistant-${Date.now()}`,
+          role: parsedRateLimit ? "error" : "assistant",
+          content: parsedRateLimit ? "Rate limit reached while checking Devenv memory." : `Request failed: ${error.message}`,
+          diagnostics: buildFailureDiagnostics({
+            error,
+            pendingRunMode: pendingRunMode2,
+            planOnlyMode: Boolean(state.planMode),
+            preferredBackend: state.preferredBackend || state.activeBackend || "opencode",
+            parsedRateLimit
+          })
+        }
+      });
+      if (parsedRateLimit) {
+        dispatch2({ type: "SET_RATE_LIMIT_INFO", payload: parsedRateLimit });
+      }
+    } finally {
+      dispatch2({ type: "SET_IS_RUNNING", payload: false });
+      dispatch2({ type: "SET_PENDING_RUN_MODE", payload: "direct" });
+    }
+  };
+  import_react17.default.useEffect(() => {
+    if (textareaRef.current) {
+      autosizeComposer(textareaRef.current);
+    }
+  }, [state.prompt]);
+  import_react17.default.useEffect(() => {
+    const handler = () => {
+      if (!textareaRef.current) return;
+      textareaRef.current.focus();
+      const length = textareaRef.current.value.length;
+      textareaRef.current.setSelectionRange(length, length);
+    };
+    window.addEventListener("opencode-suggestion", handler);
+    return () => window.removeEventListener("opencode-suggestion", handler);
+  }, []);
+  return import_react17.default.createElement(
+    "form",
+    {
+      className: "composer-shell p-margin-desktop bg-surface-container-low border-t border-outline-variant",
+      onSubmit: handleSubmit
+    },
+    import_react17.default.createElement(
+      "div",
+      { className: "max-w-4xl mx-auto flex flex-col gap-3" },
+      import_react17.default.createElement(
+        BeamFrame,
+        {
+          active: state.isRunning,
+          tone: pendingThinking ? "ocean" : "mono",
+          className: "composer-frame relative inset-terminal rounded-[26px] border border-outline-variant p-4"
+        },
+        import_react17.default.createElement("span", { className: "composer-ribbon", "aria-hidden": "true" }),
+        import_react17.default.createElement("div", { className: "composer-backdrop composer-backdrop-one", "aria-hidden": "true" }),
+        import_react17.default.createElement("div", { className: "composer-backdrop composer-backdrop-two", "aria-hidden": "true" }),
+        import_react17.default.createElement(
+          "div",
+          { className: "composer-topline" },
+          import_react17.default.createElement(
+            "div",
+            { className: "composer-topline-copy" },
+            import_react17.default.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, state.planMode ? "Plan-first" : "Live prompt"),
+            import_react17.default.createElement(
+              MotionShimmerText,
+              { active: state.isRunning, className: "composer-topline-detail text-on-surface-variant" },
+              describeComposerState(state, { isCoolingDown, isBudgetBlocked })
+            )
+          ),
+          import_react17.default.createElement(
+            "div",
+            { className: "composer-topline-pills" },
+            import_react17.default.createElement("span", { className: "composer-pill" }, formatBackendLabel(state.preferredBackend || "opencode")),
+            import_react17.default.createElement("span", { className: "composer-pill" }, describeRouteChip(state)),
+            import_react17.default.createElement("span", { className: "composer-pill" }, state.planMode ? "plan mode" : "direct/auto")
+          )
+        ),
+        replyTarget ? import_react17.default.createElement(
+          MotionReveal,
+          { className: "mb-3" },
+          import_react17.default.createElement(
+            MetalSurface,
+            { className: "composer-reply flex items-start gap-3 rounded-2xl border border-primary/30 bg-surface-container px-3 py-2" },
+            import_react17.default.createElement("span", { className: "material-symbols-outlined text-primary text-[16px] mt-0.5" }, "reply"),
+            import_react17.default.createElement(
+              "div",
+              { className: "min-w-0 flex-1" },
+              import_react17.default.createElement("div", { className: "font-label-caps text-label-caps text-primary" }, `Replying to ${replyTarget.author}`),
+              import_react17.default.createElement("div", { className: "truncate text-[12px] text-on-surface-variant" }, replyTarget.excerpt)
+            ),
+            import_react17.default.createElement(
+              "button",
+              {
+                type: "button",
+                className: "rounded-full p-1 text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface",
+                onClick: () => dispatch2({ type: "SET_REPLY_TARGET", payload: null }),
+                title: "Clear reply"
+              },
+              import_react17.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "close")
+            )
+          )
+        ) : null,
+        import_react17.default.createElement(
+          MotionStack,
+          { className: "composer-signal-row" },
+          import_react17.default.createElement("span", { className: "composer-signal-dot" }),
+          import_react17.default.createElement("span", { className: "composer-signal-dot" }),
+          import_react17.default.createElement("span", { className: "composer-signal-dot" })
+        ),
+        import_react17.default.createElement(
+          "div",
+          { className: "composer-input-shell" },
+          import_react17.default.createElement("div", { className: "composer-input-orbit composer-input-orbit-one", "aria-hidden": "true" }),
+          import_react17.default.createElement("div", { className: "composer-input-orbit composer-input-orbit-two", "aria-hidden": "true" }),
+          import_react17.default.createElement("textarea", {
+            ref: textareaRef,
+            className: "composer-input w-full bg-transparent border-none focus:ring-0 font-body-md text-body-md text-on-surface resize-none h-20 placeholder:text-outline outline-none",
+            placeholder,
+            disabled: isDisabled,
+            value: state.prompt,
+            onChange: handleInput,
+            onKeyDown: handleKeyDown
+          }),
+          import_react17.default.createElement(
+            "div",
+            { className: "composer-input-meta" },
+            import_react17.default.createElement("span", { className: "composer-input-meta-pill" }, state.planMode ? "Blueprint only" : "Live runtime"),
+            import_react17.default.createElement("span", { className: "composer-input-meta-pill" }, state.selectedTools.length ? `${state.selectedTools.length} route${state.selectedTools.length === 1 ? "" : "s"}` : "Auto route"),
+            import_react17.default.createElement("span", { className: "composer-input-meta-pill" }, `${state.prompt.trim().length} chars`)
+          )
+        ),
+        import_react17.default.createElement(
+          MotionSwap,
+          { className: "composer-route-strip" },
+          import_react17.default.createElement("span", { className: "composer-route-strip-label" }, state.planMode ? "Plan lane" : "Run lane"),
+          import_react17.default.createElement("span", { className: "composer-route-strip-copy" }, state.selectedTools.length ? describeRouteChip(state) : "Let Devenv decide between memory, tools, and live search.")
+        ),
+        import_react17.default.createElement(
+          "div",
+          { className: "composer-toolbar flex justify-between items-center mt-2 pt-2 border-t border-outline-variant/30" },
+          import_react17.default.createElement(
+            "div",
+            { className: "composer-toolbar-left flex items-center gap-2" },
+            import_react17.default.createElement(ToolPicker, null),
+            import_react17.default.createElement(
+              "div",
+              { className: "composer-hint text-on-surface-variant" },
+              "Enter to type, Cmd/Ctrl+Enter to run"
+            )
+          ),
+          import_react17.default.createElement(
+            "button",
+            {
+              type: "submit",
+              className: "composer-submit px-6 py-2 rounded-full font-label-caps text-label-caps font-bold",
+              disabled: state.isRunning || isDisabled || !state.prompt.trim()
+            },
+            state.isRunning ? import_react17.default.createElement(
+              MotionSwap,
+              { className: "items-center gap-2" },
+              import_react17.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, pendingRunMode === "knowledge" ? "hub" : pendingRunMode === "web" ? "public" : "bolt"),
+              import_react17.default.createElement(MotionShimmerText, { className: "composer-submit-copy" }, runningVerbForMode(pendingRunMode))
+            ) : isCoolingDown ? formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0)) : isBudgetBlocked ? "Blocked" : "Ask"
+          )
+        ),
+        state.isRunning && pendingThinking ? import_react17.default.createElement(MotionReveal, { className: "mt-2" }, renderRunningTicker(dispatch2, state, pendingThinking)) : null
+      )
+    )
+  );
+}
+function updateThinking(thinkingId, dispatch2, logs) {
+  dispatch2({
+    type: "UPDATE_TRANSCRIPT_ENTRY",
+    payload: {
+      id: thinkingId,
+      updates: {
+        content: logs.map((e) => `${String(e.source).toUpperCase()}  ${e.message}`).join("\n")
+      }
+    }
+  });
+}
+function formatThinkingBlock(entries) {
+  return ["```text", ...entries.map((entry) => `${String(entry.source).toUpperCase()}  ${entry.message}`), "```"].join("\n");
+}
+function parseRateLimitError(message) {
+  const limitMatch = message.match(/Limit\s+(\d+)/i);
+  const usedMatch = message.match(/Used\s+(\d+)/i);
+  const requestedMatch = message.match(/Requested\s+(\d+)/i);
+  const retryMatch = message.match(/try again in\s+([\d.]+)s/i);
+  if (!limitMatch || !usedMatch || !requestedMatch || !retryMatch) return null;
+  const retryMs = Math.ceil(Number(retryMatch[1]) * 1e3);
+  return { limit: Number(limitMatch[1]), used: Number(usedMatch[1]), requested: Number(requestedMatch[1]), retryMs, resetAt: Date.now() + retryMs };
+}
+async function waitForCooldown(resetAt, onTick) {
+  while (true) {
+    const remainingMs = Math.max(resetAt - Date.now(), 0);
+    onTick(remainingMs);
+    if (remainingMs <= 0) return;
+    await sleep2(Math.min(remainingMs, 1e3));
+  }
+}
+function sleep2(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+function inferPendingRunMode({ prompt, selectedTools = [], planMode = false }) {
+  if (planMode) return "plan";
+  const toolSet = new Set(Array.isArray(selectedTools) ? selectedTools : []);
+  if (toolSet.has("knowledge_search")) return "knowledge";
+  if (toolSet.has("web_search")) return "web";
+  if (toolSet.size) return "direct";
+  const lowered = String(prompt || "").toLowerCase();
+  const webMarkers = ["today", "latest", "current", "currently", "recent", "president", "prime minister", "ceo", "who is"];
+  const knowledgeMarkers = ["github", "repo", "reference", "references", "youtube", "reddit", "stackoverflow", "quora", "similar project", "find examples"];
+  if (knowledgeMarkers.some((marker) => lowered.includes(marker))) return "knowledge";
+  if (webMarkers.some((marker) => lowered.includes(marker))) return "web";
+  return "direct";
+}
+function formatThinkingFromResult(result) {
+  const lines = [];
+  const metadata = result.metadata || {};
+  if (metadata.external_context_state === "privacy_blocked") {
+    lines.push({ source: "system", message: "Privacy mode blocked prior memory for this turn" });
+  }
+  const toolSteps = Array.isArray(result.steps) ? result.steps : [];
+  if (!toolSteps.length && Array.isArray(result.stage_traces) && result.stage_traces.length) {
+    for (const trace of result.stage_traces.slice(0, 5)) {
+      const summary = summarizeStageTrace(trace);
+      if (summary) lines.push(summary);
+      const traceLogs = Array.isArray(trace.logs) ? trace.logs : [];
+      for (const log of traceLogs.slice(0, 2)) {
+        const normalizedLog = summarizeTraceLog(trace.stage, log);
+        if (normalizedLog) lines.push(normalizedLog);
+      }
+    }
+  }
+  for (const step of toolSteps.slice(0, 5)) {
+    if (step.tool_name) {
+      const args = step.arguments || {};
+      const path = typeof args.path === "string" ? ` (${args.path})` : "";
+      lines.push({ source: "tool_call", message: `tool: ${step.tool_name}${path}` });
+      if (step.tool_name === "web_search" && typeof step.data?.query === "string") {
+        lines.push({ source: "web_search", message: `query: ${step.data.query}` });
+        const results = Array.isArray(step.data?.results) ? step.data.results : [];
+        for (const item of results.slice(0, 5)) {
+          lines.push({ source: "web_search", message: `result: ${String(item.title || item.url || "Result")} - ${String(item.url || "").trim()}` });
+        }
+      }
+      if (step.tool_name === "knowledge_search") {
+        if (typeof step.data?.query === "string") {
+          lines.push({ source: "knowledge_search", message: `query: ${step.data.query}` });
+        }
+        const groups = Array.isArray(step.data?.resources) ? step.data.resources : extractKnowledgeResources(step.output);
+        lines.push({ source: "trace", message: summarizeKnowledgeResources(groups) });
+        for (const group of groups.slice(0, 7)) {
+          if (!group || typeof group !== "object") continue;
+          const source = String(group.source || "general").trim() || "general";
+          const query = String(group.query || "").trim();
+          lines.push({ source: "knowledge_search", message: `source: ${JSON.stringify({ source, query })}` });
+          const results = Array.isArray(group.results) ? group.results : [];
+          for (const item of results.slice(0, 5)) {
+            lines.push({
+              source: "knowledge_search",
+              message: `result: ${JSON.stringify({ source, title: String(item.title || item.url || "Result"), url: String(item.url || ""), query: String(item.query || query || "") })}`
+            });
+          }
+        }
+      }
+    }
+    if (step.output) lines.push({ source: "trace", message: step.output.split("\n")[0] });
+  }
+  if (!lines.length) {
+    lines.push({ source: "ai", message: result.final_response ? "Finished shaping the response" : "Checked Devenv context" });
+  }
+  return formatThinkingBlock(lines);
+}
+function summarizeStageTrace(trace) {
+  if (!trace || typeof trace !== "object") return null;
+  const stage = String(trace.stage || "").trim().toLowerCase();
+  const payload = trace.payload && typeof trace.payload === "object" ? trace.payload : {};
+  if (stage === "checkpoint_creation") {
+    const checkpointCount = Number(payload.checkpoint_count || 0);
+    const continued = Boolean(payload.continued);
+    return {
+      source: "ai",
+      message: continued ? checkpointCount > 0 ? `Reused the active ${checkpointCount}-step execution plan` : "Reused the active execution plan" : checkpointCount > 0 ? `Mapped the request into ${checkpointCount} execution step${checkpointCount === 1 ? "" : "s"}` : "Mapped the request into an execution plan"
+    };
+  }
+  if (stage === "context_memory") {
+    const workspaceFacts = Number(payload.workspace_fact_count || 0);
+    return {
+      source: "ai",
+      message: workspaceFacts > 0 ? "Built a grounded context packet from memory and workspace facts" : "Built a distilled context packet"
+    };
+  }
+  if (stage === "metadata") {
+    const touched = Array.isArray(payload.files_touched) ? payload.files_touched : [];
+    const destination = String(payload.output_destination || "").trim();
+    return {
+      source: "ai",
+      message: touched.length ? `Recorded runtime output for ${touched.length} touched file${touched.length === 1 ? "" : "s"}` : destination ? `Recorded runtime output for ${destination.replaceAll("_", " ")}` : "Recorded runtime output details"
+    };
+  }
+  if (stage === "verification") {
+    return {
+      source: "ai",
+      message: trace.success === false ? "Verification flagged an issue" : "Verified the runtime result"
+    };
+  }
+  if (stage === "brain") {
+    return {
+      source: "ai",
+      message: "Executed the active checkpoint"
+    };
+  }
+  if (typeof trace.summary === "string" && trace.summary.trim()) {
+    return { source: "ai", message: trace.summary.trim() };
+  }
+  return null;
+}
+function summarizeTraceLog(stage, log) {
+  const text = String(log || "").trim();
+  if (!text) return null;
+  const normalizedStage = String(stage || "").trim().toLowerCase();
+  if (normalizedStage === "metadata") {
+    if (/^Output destination:/i.test(text)) {
+      return { source: "trace", message: text.replace(/^Output destination:\s*/i, "Answer destination: ") };
+    }
+    if (/^Touched files:/i.test(text)) {
+      return { source: "trace", message: text.replace(/^Touched files:\s*/i, "Touched files recorded: ") };
+    }
+  }
+  if (normalizedStage === "context_memory") {
+    if (/^Checkpoint objective:/i.test(text)) {
+      return { source: "trace", message: text.replace(/^Checkpoint objective:\s*/i, "Focused on: ") };
+    }
+    if (/workspace scan/i.test(text)) {
+      return { source: "trace", message: "Scanned the workspace to ground the current step" };
+    }
+  }
+  if (normalizedStage === "checkpoint_creation" && /^Checkpoint count:/i.test(text)) {
+    return { source: "trace", message: text.replace(/^Checkpoint count:\s*/i, "Planned checkpoints: ") };
+  }
+  if (normalizedStage === "verification" && /non-empty answer returned/i.test(text)) {
+    return { source: "trace", message: "Verification confirmed the response was non-empty" };
+  }
+  return { source: "trace", message: text };
+}
+function extractKnowledgeResources(output) {
+  const payload = extractTrailingJsonObject(output);
+  return Array.isArray(payload?.resources) ? payload.resources : [];
+}
+function extractTrailingJsonObject(output) {
+  const text = String(output || "");
+  const start2 = text.lastIndexOf("\n{");
+  const candidate = start2 >= 0 ? text.slice(start2 + 1).trim() : text.trim();
+  if (!candidate.startsWith("{")) return null;
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    return null;
+  }
+}
+function summarizeKnowledgeResources(groups) {
+  const validGroups = Array.isArray(groups) ? groups.filter((group) => group && typeof group === "object") : [];
+  const resultCount = validGroups.reduce((total, group) => total + (Array.isArray(group.results) ? group.results.length : 0), 0);
+  const sources = validGroups.filter((group) => Array.isArray(group.results) && group.results.length > 0).map((group) => String(group.source || "general"));
+  return resultCount ? `Collected ${resultCount} reference result${resultCount === 1 ? "" : "s"} from ${sources.join(", ")}` : "No reference results were found in the selected sources";
+}
+function selectVisibleAssistantResponse(result) {
+  const text = String(result?.final_response || "").trim();
+  if (text) return text;
+  const errText = String(result?.error_message || "").trim();
+  if (errText) return errText;
+  return "No memory answer was returned.";
+}
+function buildRetrievalStatus(metadata) {
+  if (metadata.external_context_state === "reused_prior_context") {
+    const count = Number(metadata.external_context_session_count || 0);
+    return {
+      mode: "reused_prior_context",
+      label: count > 0 ? `Reused prior context${count > 1 ? ` (${count})` : ""}` : "Reused prior context",
+      detail: metadata.external_context_reason || "A prior Devenv session matched this request."
+    };
+  }
+  return {
+    mode: "new_context",
+    label: "New context",
+    detail: metadata.external_context_reason || "No strong prior Devenv session match was found."
+  };
+}
+function buildMessageDiagnostics({
+  result,
+  pendingRunMode: pendingRunMode2,
+  planOnlyMode,
+  overrideSourceLabel = null,
+  overrideDetail = null
+}) {
+  const metadata = result?.metadata || {};
+  const retrieval = buildRetrievalStatus(metadata);
+  const steps = Array.isArray(result?.steps) ? result.steps : [];
+  const backendRaw = result?.backend_used || metadata.backend_used || result?.backend || "local";
+  const backendLabel = backendRaw === "local" ? "Local runtime" : formatBackendLabel(backendRaw);
+  const hasWeb = pendingRunMode2 === "web" || steps.some((step) => step?.tool_name === "web_search");
+  const hasKnowledge = pendingRunMode2 === "knowledge" || steps.some((step) => step?.tool_name === "knowledge_search");
+  const toolCount = steps.filter((step) => step?.tool_name).length;
+  const localRuntime = String(metadata.backend_used || backendRaw) === "local";
+  const evidenceItems = extractEvidenceItems(steps);
+  let routeLabel = planOnlyMode ? "Plan mode" : "Direct route";
+  let sourceLabel = "Direct answer";
+  let detail = overrideDetail || retrieval.detail || "";
+  if (planOnlyMode) {
+    routeLabel = "Plan mode";
+    sourceLabel = "Execution plan";
+    detail = overrideDetail || "This turn stayed in plan mode and returned a renderable execution flow.";
+  } else if (hasWeb) {
+    routeLabel = "Web route";
+    sourceLabel = "Live web";
+    detail = overrideDetail || "This answer used fetched live-source results instead of relying on stale memory.";
+  } else if (hasKnowledge) {
+    routeLabel = "Knowledge route";
+    sourceLabel = "Reference search";
+    detail = overrideDetail || "This answer pulled external references such as repos, docs, or discussion threads.";
+  } else if (metadata.external_context_state === "reused_prior_context") {
+    routeLabel = "Memory route";
+    sourceLabel = "Prior context";
+    detail = overrideDetail || retrieval.detail || "A prior Devenv session was reused to answer this turn.";
+  } else if (metadata.external_context_state === "privacy_blocked") {
+    routeLabel = "Privacy route";
+    sourceLabel = "Memory blocked";
+    detail = overrideDetail || retrieval.detail || "Prior session memory was intentionally blocked for this turn.";
+  } else if (localRuntime && toolCount > 0) {
+    routeLabel = "Tool route";
+    sourceLabel = "Workspace tools";
+    detail = overrideDetail || "The runtime stayed local and answered from bounded workspace inspection.";
+  } else if (localRuntime) {
+    routeLabel = "Local route";
+    sourceLabel = "Local runtime";
+    detail = overrideDetail || "The runtime answered locally without handing the turn to a remote backend.";
+  }
+  return {
+    badgeLabel: planOnlyMode ? "Plan" : overrideSourceLabel ? "Issue" : "Answer",
+    kicker: overrideSourceLabel ? "runtime trace" : sourceLabel.toLowerCase(),
+    routeLabel,
+    backendLabel,
+    sourceLabel: overrideSourceLabel || sourceLabel,
+    toolLabel: toolCount ? `${toolCount} tool step${toolCount === 1 ? "" : "s"}` : "",
+    retrievalLabel: retrieval.label || "",
+    detail,
+    evidenceItems
+  };
+}
+function buildFailureDiagnostics({
+  error,
+  pendingRunMode: pendingRunMode2,
+  planOnlyMode,
+  preferredBackend,
+  parsedRateLimit
+}) {
+  const routeLabel = planOnlyMode ? "Plan mode" : pendingRunMode2 === "web" ? "Web route" : pendingRunMode2 === "knowledge" ? "Knowledge route" : "Direct route";
+  const backendLabel = preferredBackend === "local" ? "Local runtime" : formatBackendLabel(preferredBackend || "opencode");
+  return {
+    badgeLabel: "Issue",
+    kicker: "runtime trace",
+    routeLabel,
+    backendLabel,
+    sourceLabel: parsedRateLimit ? "Rate limited" : "Runtime failure",
+    toolLabel: "",
+    retrievalLabel: "",
+    detail: parsedRateLimit ? "The backend hit a rate limit before the turn could finish." : String(error?.message || "The request failed before a normal answer was produced."),
+    evidenceItems: []
+  };
+}
+function extractEvidenceItems(steps) {
+  const items = [];
+  for (const step of Array.isArray(steps) ? steps : []) {
+    if (!step || typeof step !== "object") continue;
+    if (step.tool_name === "web_search") {
+      const results = Array.isArray(step.data?.results) ? step.data.results : [];
+      for (const result of results.slice(0, 3)) {
+        const title = String(result?.title || result?.url || "Web result").trim();
+        const url = String(result?.url || "").trim();
+        if (!title || !url) continue;
+        items.push({ kind: "web", label: "Web", title, url, meta: "" });
+      }
+    }
+    if (step.tool_name === "knowledge_search") {
+      const resources = Array.isArray(step.data?.resources) ? step.data.resources : [];
+      for (const group of resources.slice(0, 3)) {
+        const source = String(group?.source || "Reference").trim();
+        const results = Array.isArray(group?.results) ? group.results : [];
+        for (const result of results.slice(0, 2)) {
+          const title = String(result?.title || result?.url || "Reference").trim();
+          const url = String(result?.url || "").trim();
+          if (!title || !url) continue;
+          items.push({ kind: "knowledge", label: source, title, url, meta: "" });
+        }
+      }
+    }
+    if (items.length >= 4) break;
+  }
+  return items.slice(0, 4);
+}
+var RUNNING_STATUS_FRAMES = [
+  "Scanning stored sessions",
+  "Matching prior projects",
+  "Collecting relevant details",
+  "Drafting the memory answer"
+];
+var WEB_RUNNING_STATUS_FRAMES = [
+  "Searching the web",
+  "Checking live sources",
+  "Reading the relevant page",
+  "Summarizing the result"
+];
+var KNOWLEDGE_RUNNING_STATUS_FRAMES = [
+  "Searching GitHub and the web",
+  "Collecting repos and references",
+  "Grouping videos, docs, and threads",
+  "Preparing the research summary"
+];
+function renderRunningTicker(dispatch2, state, pendingThinking) {
+  void dispatch2;
+  const clock2 = Date.now();
+  const content = String(pendingThinking.content || "");
+  const useKnowledge = state.pendingRunMode === "knowledge" || /knowledge_search|source:/i.test(content);
+  const useGlobe = state.pendingRunMode === "web" || /query:|result:|searching the web/i.test(content);
+  const steps = parseThinkingText(content);
+  let frame2;
+  if (steps.length) {
+    const recent = Array.from(new Set(steps.slice(-4)));
+    const index = Math.floor(clock2 / 1600) % recent.length;
+    frame2 = recent[index];
+  } else {
+    const frames = useKnowledge ? KNOWLEDGE_RUNNING_STATUS_FRAMES : state.pendingRunMode === "web" ? WEB_RUNNING_STATUS_FRAMES : RUNNING_STATUS_FRAMES;
+    frame2 = frames[Math.floor(clock2 / 1200) % frames.length];
+  }
+  return import_react17.default.createElement(
+    MetalSurface,
+    { className: "composer-running inline-flex items-center gap-2 px-4 py-2 rounded-full border border-outline-variant" },
+    import_react17.default.createElement("span", { className: `material-symbols-outlined text-primary text-[16px] animate-pulse` }, useKnowledge ? "hub" : useGlobe ? "public" : "bolt"),
+    import_react17.default.createElement("span", { className: "font-body-md text-body-md text-on-surface" }, frame2),
+    import_react17.default.createElement(
+      "span",
+      { className: "inline-flex gap-1" },
+      import_react17.default.createElement("span", { className: "composer-running-dot animate-bounce", style: { animationDelay: "0s" } }),
+      import_react17.default.createElement("span", { className: "composer-running-dot animate-bounce", style: { animationDelay: "0.18s" } }),
+      import_react17.default.createElement("span", { className: "composer-running-dot animate-bounce", style: { animationDelay: "0.36s" } })
+    )
+  );
+}
+function parseThinkingText(content) {
+  return String(content || "").split("\n").filter((l) => l && !l.startsWith("```")).map((l) => l.replace(/^[A-Z_]+\s+/, "").trim()).filter(Boolean);
+}
+function buildRuntimePrompt(prompt, replyTarget) {
+  if (!replyTarget?.excerpt) return prompt;
+  return [
+    "Reply context:",
+    `You are replying to an earlier ${replyTarget.role} message from ${replyTarget.author}.`,
+    `Quoted message: """${replyTarget.excerpt}"""`,
+    "Use this replied message as the primary local context for the next answer.",
+    "",
+    "User request:",
+    prompt
+  ].join("\n");
+}
+function autosizeComposer(textarea) {
+  textarea.style.height = "0px";
+  textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 72), 220)}px`;
+}
+function runningVerbForMode(mode) {
+  if (mode === "knowledge") return "Researching";
+  if (mode === "web") return "Searching";
+  return "Thinking";
+}
+function describeComposerState(state, { isCoolingDown, isBudgetBlocked }) {
+  if (isCoolingDown) return "Cooling down after a rate limit";
+  if (isBudgetBlocked) return "Session budget reached";
+  if (state.isRunning) return "Executing the current turn";
+  if (state.planMode) return "Will inspect the repo and return a flowchart before execution";
+  if (state.selectedTools.includes("track_symbol")) return "Biased toward tracing how a symbol moves through the codebase";
+  if (state.selectedTools.includes("inspect_symbols")) return "Biased toward definitions, exports, and structural code inspection";
+  if (state.selectedTools.includes("search_text")) return "Biased toward repo-wide string and usage search";
+  if (state.selectedTools.includes("read_file")) return "Biased toward opening exact files before answering";
+  if (state.selectedTools.includes("locate_files")) return "Biased toward finding the right files before deeper inspection";
+  if (state.selectedTools.includes("list_directory")) return "Biased toward mapping folders and workspace structure";
+  if (state.selectedTools.includes("knowledge_search")) return "Biased toward repos, docs, videos, and reference gathering";
+  if (state.selectedTools.includes("web_search")) return "Biased toward live web results and current facts";
+  if (state.selectedTools.includes("generate_pdf")) return "Biased toward producing a polished PDF artifact";
+  if (state.selectedTools.includes("generate_prompt")) return "Biased toward generating a stronger prompt output";
+  return "Auto-routes between memory, plan, tools, and live search";
+}
+function describeRouteChip(state) {
+  if (state.planMode) return "repo plan";
+  if (!state.selectedTools.length) return "auto route";
+  if (state.selectedTools.length === 1) {
+    const selected = state.selectedTools[0];
+    if (selected === "list_directory") return "files route";
+    if (selected === "locate_files") return "locate route";
+    if (selected === "read_file") return "read route";
+    if (selected === "search_text") return "search route";
+    if (selected === "inspect_symbols") return "symbols route";
+    if (selected === "track_symbol") return "trace route";
+    if (selected === "knowledge_search") return "knowledge route";
+    if (selected === "web_search") return "web route";
+    if (selected === "generate_pdf") return "pdf route";
+    if (selected === "generate_prompt") return "prompt route";
+  }
+  return `${state.selectedTools.length} routes`;
+}
+
+// src/components/ChatColumn.js
+init_MotionPrimitives();
+function ChatColumn() {
+  const { state } = useApp();
+  const routeModes = ["direct", "plan", "memory", "web", "knowledge"];
+  const pendingMode = state.isRunning ? state.pendingRunMode : state.planMode ? "plan" : "direct";
+  const activeModeIndex = Math.max(0, routeModes.indexOf(pendingMode));
+  const statCards = [
+    {
+      label: "Context",
+      value: state.retrievalStatus?.label || "New context",
+      detail: state.retrievalStatus?.detail || "No prior session reused yet."
+    },
+    {
+      label: "Backend",
+      value: state.activeBackend || state.preferredBackend || "opencode",
+      detail: state.isRunning ? "Actively answering" : "Ready for next turn"
+    },
+    {
+      label: "Last turn",
+      value: `${Number(state.latestTurnTokens || 0)}`,
+      detail: state.latestElapsedMs ? `${Math.max(0.1, state.latestElapsedMs / 1e3).toFixed(1)}s end-to-end` : "No completed turn yet",
+      numeric: true
+    }
+  ];
+  return import_react18.default.createElement(
+    "section",
+    { className: "chat-column flex-1 min-w-0 flex flex-col bg-background relative" },
+    import_react18.default.createElement("div", { className: "chat-column-grid", "aria-hidden": "true" }),
+    import_react18.default.createElement("div", { className: "chat-column-orbit chat-column-orbit-one", "aria-hidden": "true" }),
+    import_react18.default.createElement("div", { className: "chat-column-orbit chat-column-orbit-two", "aria-hidden": "true" }),
+    import_react18.default.createElement("div", { className: "chat-column-glow chat-column-glow-one", "aria-hidden": "true" }),
+    import_react18.default.createElement("div", { className: "chat-column-glow chat-column-glow-two", "aria-hidden": "true" }),
+    import_react18.default.createElement("div", { className: "chat-column-ribbon chat-column-ribbon-one", "aria-hidden": "true" }),
+    import_react18.default.createElement("div", { className: "chat-column-ribbon chat-column-ribbon-two", "aria-hidden": "true" }),
+    import_react18.default.createElement("div", { className: "chat-column-scanline", "aria-hidden": "true" }),
+    import_react18.default.createElement(
+      MotionStage,
+      { axis: "x", className: "chat-status-shell px-margin-desktop pt-3" },
+      import_react18.default.createElement(
+        BeamFrame,
+        { active: state.isRunning, tone: "mono", className: "chat-status-rail rounded-[26px] px-4 py-3" },
+        import_react18.default.createElement(
+          "div",
+          {
+            className: "chat-status-mode-tabs",
+            style: { "--active-index": String(activeModeIndex), "--tab-count": String(routeModes.length) }
+          },
+          import_react18.default.createElement("span", { className: "chat-status-mode-indicator", "aria-hidden": "true" }),
+          routeModes.map(
+            (mode) => import_react18.default.createElement(
+              "span",
+              {
+                key: mode,
+                className: `chat-status-tab${pendingMode === mode ? " is-active" : ""}`
+              },
+              mode
+            )
+          )
+        ),
+        import_react18.default.createElement(
+          MotionSwap,
+          { className: "chat-status-routecopy" },
+          import_react18.default.createElement(
+            "span",
+            { className: "chat-status-route-copyline" },
+            import_react18.default.createElement(MotionBadge, { className: "chat-status-route-badge", active: state.isRunning }, pendingMode),
+            import_react18.default.createElement("span", { className: "chat-status-route-label" }, describePendingMode(pendingMode))
+          )
+        ),
+        import_react18.default.createElement(
+          "div",
+          { className: "chat-status-grid" },
+          statCards.map(
+            (card, index) => import_react18.default.createElement(
+              MotionReveal,
+              { key: card.label, delay: index * 70 },
+              import_react18.default.createElement(
+                MotionTilt,
+                null,
+                import_react18.default.createElement(
+                  "div",
+                  { className: "chat-status-card" },
+                  import_react18.default.createElement("div", { className: "chat-status-card-label" }, card.label),
+                  import_react18.default.createElement(
+                    "div",
+                    { className: "chat-status-card-value" },
+                    card.numeric ? import_react18.default.createElement(MotionNumber, { value: card.value }) : import_react18.default.createElement(MotionShimmerText, { active: state.isRunning && card.label === "Backend" }, card.value)
+                  ),
+                  import_react18.default.createElement("div", { className: "chat-status-card-detail" }, card.detail)
+                )
+              )
+            )
+          )
+        )
+      )
+    ),
+    import_react18.default.createElement(Transcript, null),
+    import_react18.default.createElement(Composer, null)
+  );
+}
+function describePendingMode(mode) {
+  if (mode === "plan") return "Blueprint route active. The next turn is staged as a flow before execution.";
+  if (mode === "memory") return "Memory route active. Prior sessions and workspace facts take priority.";
+  if (mode === "web") return "Web route active. Current answers are pushed through live-source retrieval.";
+  if (mode === "knowledge") return "Knowledge route active. Repos, docs, and references are being gathered.";
+  return "Direct route active. The runtime can choose memory, tools, plan, or live search.";
+}
+
+// src/components/Sidebar.js
+var import_react23 = __toESM(require_react(), 1);
+init_AppContext();
+
+// src/components/AccessCard.js
+var import_react19 = __toESM(require_react(), 1);
+init_AppContext();
+init_format();
+init_storage();
+init_Header();
+init_MotionPrimitives();
+var PERFORMANCE_STEPS = ["low", "medium", "high"];
+function AccessCard() {
+  const { state, dispatch: dispatch2 } = useApp();
+  const codexAllowed = Boolean(state.accessPolicy.session_access?.codex);
+  const opencodeSessionAllowed = Boolean(state.accessPolicy.session_access?.opencode);
+  const opencodeBackendAllowed = Boolean(state.accessPolicy.backend_access?.opencode);
+  const ollamaBackendAllowed = Boolean(state.accessPolicy.backend_access?.ollama);
+  const llamaCppBackendAllowed = Boolean(state.accessPolicy.backend_access?.llama_cpp);
+  const codexBackendAllowed = Boolean(state.accessPolicy.backend_access?.codex);
+  const activeBackendLabel = formatBackendLabel(state.activeBackend);
+  const preferredBackendLabel = formatBackendLabel(state.preferredBackend || "opencode");
+  const preferredModel = state.healthMeta.selectedModelsByBackend?.[state.preferredBackend || "opencode"] || state.healthMeta.model || "";
+  const updateSessionAccess2 = async (provider, allowed) => {
+    dispatch2({ type: "SET_ACCESS_UPDATING", payload: true });
+    try {
+      const { updateSessionAccess: apiUpdate } = await Promise.resolve().then(() => (init_api(), api_exports));
+      const payload = await apiUpdate(provider, allowed);
+      dispatch2({ type: "SET_ACCESS_POLICY", payload });
+      persistAccess(payload);
+      if (!allowed) {
+        dispatch2({ type: "SET_PROVIDER_SESSIONS", payload: { provider, sessions: [] } });
+        dispatch2({ type: "SET_VISIBLE_SESSION_PROVIDERS", payload: { provider, visible: false } });
+        if (state.selectedProvider === provider) {
+          dispatch2({ type: "SET_SELECTED_SESSION_ID", payload: "" });
+        }
+      }
+      await refreshHealth(dispatch2);
+      showToast(dispatch2, `${provider} session access ${allowed ? "granted" : "revoked"}`);
+    } finally {
+      dispatch2({ type: "SET_ACCESS_UPDATING", payload: false });
+    }
+  };
+  const updateBackendAccess2 = async (backend, allowed) => {
+    dispatch2({ type: "SET_ACCESS_UPDATING", payload: true });
+    try {
+      const { updateBackendAccess: apiUpdate } = await Promise.resolve().then(() => (init_api(), api_exports));
+      const payload = await apiUpdate(backend, allowed);
+      dispatch2({ type: "SET_ACCESS_POLICY", payload });
+      persistAccess(payload);
+      await refreshHealth(dispatch2);
+      showToast(dispatch2, `${formatBackendLabel(backend)} backend ${allowed ? "enabled" : "disabled"}`);
+    } finally {
+      dispatch2({ type: "SET_ACCESS_UPDATING", payload: false });
+    }
+  };
+  const handlePerformanceChange = async (event) => {
+    const index = Number.parseInt(event.target.value, 10);
+    const value = PERFORMANCE_STEPS[index] || "medium";
+    try {
+      const { updatePerformance: updatePerformance2 } = await Promise.resolve().then(() => (init_api(), api_exports));
+      const payload = await updatePerformance2(value);
+      dispatch2({ type: "SET_PERFORMANCE_MODE", payload: payload.performance_mode || value });
+      await refreshHealth(dispatch2, { silent: true });
+      showToast(dispatch2, `Performance set to ${payload.performance_mode || value}`);
+    } catch {
+      showToast(dispatch2, "Failed to update performance mode");
+    }
+  };
+  const handleIncognitoToggle = async (event) => {
+    const incognito = Boolean(event.target.checked);
+    try {
+      const { updatePrivacy: updatePrivacy2 } = await Promise.resolve().then(() => (init_api(), api_exports));
+      const payload = await updatePrivacy2({ no_memory: incognito, incognito });
+      dispatch2({ type: "SET_PRIVACY_MODE", payload: payload.privacy || { no_memory: incognito, incognito } });
+      await refreshHealth(dispatch2, { silent: true });
+      showToast(dispatch2, incognito ? "Incognito mode enabled" : "Incognito mode disabled");
+    } catch {
+      showToast(dispatch2, "Failed to update privacy mode");
+    }
+  };
+  const handlePlanToggle = async (event) => {
+    const enabled = Boolean(event.target.checked);
+    try {
+      const { resetPlanState: resetPlanState2 } = await Promise.resolve().then(() => (init_api(), api_exports));
+      await resetPlanState2();
+    } catch {
+      showToast(dispatch2, "Failed to sync plan mode with runtime");
+      return;
+    }
+    dispatch2({ type: "SET_PLAN_MODE", payload: enabled });
+    showToast(
+      dispatch2,
+      enabled ? "Plan mode enabled \u2014 runtime plan state was reset" : "Plan mode disabled \u2014 runtime plan state was reset"
+    );
+  };
+  return import_react19.default.createElement(
+    "section",
+    { className: "workspace-card-stack space-y-3" },
+    import_react19.default.createElement(
+      MotionReveal,
+      null,
+      import_react19.default.createElement(
+        "div",
+        { className: "workspace-card-title-row" },
+        import_react19.default.createElement(
+          "h3",
+          { className: "font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2" },
+          import_react19.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "vpn_key"),
+          "ACCESS & PROVIDERS"
+        ),
+        import_react19.default.createElement(
+          MotionShimmerText,
+          { className: "workspace-card-title-meta", active: state.isRunning },
+          state.accessUpdating ? "Syncing runtime access" : "Consent, backends, and privacy controls"
+        )
+      )
+    ),
+    import_react19.default.createElement(
+      "div",
+      { className: "workspace-summary-rail" },
+      import_react19.default.createElement("span", { className: "workspace-summary-pill" }, activeBackendLabel),
+      import_react19.default.createElement("span", { className: "workspace-summary-pill" }, state.performanceMode || "medium"),
+      import_react19.default.createElement("span", { className: "workspace-summary-pill" }, state.privacyMode.incognito ? "Incognito" : "Memory on"),
+      import_react19.default.createElement("span", { className: "workspace-summary-copy" }, "Provider consent, backend access, and runtime privacy live together here.")
+    ),
+    import_react19.default.createElement(
+      BeamFrame,
+      { active: state.accessUpdating, tone: "mono", className: "workspace-card-shell workspace-card-shell-access rounded-[22px] overflow-hidden" },
+      import_react19.default.createElement("span", { className: "workspace-card-ribbon", "aria-hidden": "true" }),
+      import_react19.default.createElement(
+        MotionDeck,
+        { className: "workspace-status-grid p-3 border-b border-outline-variant/30" },
+        statusStat("Active", activeBackendLabel, state.isRunning ? "Handling the current turn" : "Ready for the next prompt"),
+        statusStat("Preferred", preferredBackendLabel, preferredModel ? compactModelName2(preferredModel) : "Routing default"),
+        statusStat("Privacy", state.privacyMode.incognito ? "Incognito" : "Memory on", state.privacyMode.incognito ? "No memory retained" : "Sessions can be grounded")
+      ),
+      import_react19.default.createElement(
+        "div",
+        { className: "workspace-card-section workspace-card-section-head p-3 border-b border-outline-variant/30 flex justify-between items-center" },
+        import_react19.default.createElement("span", { className: "font-body-md text-body-md" }, "Consent"),
+        import_react19.default.createElement("span", { className: "text-primary material-symbols-outlined text-[18px]" }, "check_circle")
+      ),
+      renderProviderRow("codex", "Codex", codexAllowed, "session", state, updateSessionAccess2),
+      renderProviderRow("opencode", "OpenCode", opencodeSessionAllowed, "session", state, updateSessionAccess2),
+      renderBackendRow("opencode", opencodeBackendAllowed, activeBackendLabel, state, updateBackendAccess2),
+      renderBackendRow("ollama", ollamaBackendAllowed, activeBackendLabel, state, updateBackendAccess2),
+      renderBackendRow("llama_cpp", llamaCppBackendAllowed, activeBackendLabel, state, updateBackendAccess2),
+      renderBackendRow("codex", codexBackendAllowed, activeBackendLabel, state, updateBackendAccess2),
+      import_react19.default.createElement(
+        "div",
+        { className: "workspace-card-section space-y-3 pt-4 px-3 pb-3" },
+        import_react19.default.createElement(
+          "div",
+          { className: "flex flex-col gap-1.5" },
+          import_react19.default.createElement("label", { className: "font-label-caps text-label-caps text-on-surface-variant" }, "PERFORMANCE MODE"),
+          import_react19.default.createElement(
+            "div",
+            { className: "workspace-card-subpanel rounded-xl border border-outline-variant bg-surface-container-highest px-3 py-3" },
+            import_react19.default.createElement(
+              "div",
+              { className: "mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.16em] text-on-surface-variant" },
+              import_react19.default.createElement("span", null, "Low"),
+              import_react19.default.createElement("span", { className: "text-primary" }, escapeHtml((state.performanceMode || "medium").replace(/^./, (char) => char.toUpperCase()))),
+              import_react19.default.createElement("span", null, "High")
+            ),
+            import_react19.default.createElement("input", {
+              className: "h-2 w-full cursor-pointer appearance-none rounded-full bg-[linear-gradient(90deg,rgba(79,219,200,0.18),rgba(79,219,200,0.75))] outline-none accent-primary",
+              type: "range",
+              min: "0",
+              max: String(PERFORMANCE_STEPS.length - 1),
+              step: "1",
+              value: String(Math.max(0, PERFORMANCE_STEPS.indexOf(state.performanceMode))),
+              onChange: handlePerformanceChange,
+              "aria-label": "Performance mode"
+            }),
+            import_react19.default.createElement(
+              "div",
+              { className: "mt-2 grid grid-cols-3 text-[10px] uppercase tracking-[0.14em] text-outline" },
+              import_react19.default.createElement("span", { className: "text-left" }, "Quiet"),
+              import_react19.default.createElement("span", { className: "text-center" }, "Balanced"),
+              import_react19.default.createElement("span", { className: "text-right" }, "Fast")
+            )
+          )
+        ),
+        import_react19.default.createElement(
+          "label",
+          { className: "workspace-toggle-row flex items-center gap-3 cursor-pointer" },
+          import_react19.default.createElement("input", {
+            className: "w-4 h-4 rounded border-outline-variant bg-surface-container text-primary focus:ring-0 focus:ring-offset-0",
+            type: "checkbox",
+            checked: state.privacyMode.incognito,
+            onChange: handleIncognitoToggle
+          }),
+          import_react19.default.createElement("span", { className: "font-body-md text-body-md" }, "Incognito")
+        ),
+        import_react19.default.createElement(
+          "label",
+          { className: "workspace-toggle-row flex items-center gap-3 cursor-pointer" },
+          import_react19.default.createElement("input", {
+            className: "w-4 h-4 rounded border-outline-variant bg-surface-container text-primary focus:ring-0 focus:ring-offset-0",
+            type: "checkbox",
+            checked: state.planMode,
+            onChange: handlePlanToggle
+          }),
+          import_react19.default.createElement(
+            "div",
+            { className: "flex flex-col" },
+            import_react19.default.createElement("span", { className: "font-body-md text-body-md" }, "Plan mode"),
+            import_react19.default.createElement("span", { className: "text-[10px] text-on-surface-variant" }, "Generate a flowchart plan only")
+          )
+        )
+      )
+    )
+  );
+}
+function renderProviderRow(provider, label, allowed, type, state, updateSessionAccess2) {
+  const actionAttr = allowed ? "revoke" : "grant";
+  return import_react19.default.createElement(
+    "div",
+    { key: provider, className: "workspace-card-row workspace-access-row p-3 border-b border-outline-variant/30 flex justify-between items-center gap-3" },
+    import_react19.default.createElement(
+      "div",
+      { className: "flex items-center gap-3 min-w-0" },
+      import_react19.default.createElement(
+        "div",
+        { className: `workspace-access-icon${allowed ? " is-live" : ""}` },
+        import_react19.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, allowed ? "lock_open" : "vpn_key_off")
+      ),
+      import_react19.default.createElement(
+        "div",
+        { className: "flex flex-col min-w-0" },
+        import_react19.default.createElement("span", { className: "font-body-md text-body-md" }, escapeHtml(label)),
+        import_react19.default.createElement("span", { className: `text-[10px] uppercase font-bold ${allowed ? "text-primary" : "text-outline"}` }, allowed ? "Granted" : "Not granted")
+      )
+    ),
+    import_react19.default.createElement(
+      "button",
+      {
+        type: "button",
+        className: `workspace-access-action px-3 py-1 rounded font-label-caps text-[10px] transition-colors ${allowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"}`,
+        onClick: () => updateSessionAccess2(provider, actionAttr === "grant"),
+        disabled: state.accessUpdating
+      },
+      allowed ? "Revoke" : "Grant"
+    )
+  );
+}
+function renderBackendRow(backend, allowed, activeBackendLabel, state, updateBackendAccess2) {
+  const label = formatBackendLabel(backend);
+  const isActive = activeBackendLabel === label;
+  const isPreferred = (state.preferredBackend || "opencode") === backend;
+  const backendStatus = state.backends?.[backend] || null;
+  const model = state.healthMeta.selectedModelsByBackend?.[backend] || backendStatus?.model || "";
+  const detail = backendStatus?.detail || (allowed ? "Ready for routing." : "Access is still disabled.");
+  return import_react19.default.createElement(
+    "div",
+    { className: "workspace-card-row workspace-access-row p-3 border-b border-outline-variant/30 flex justify-between items-center gap-3" },
+    import_react19.default.createElement(
+      "div",
+      { className: "flex items-center gap-3 min-w-0" },
+      import_react19.default.createElement(
+        "div",
+        { className: `workspace-access-icon workspace-access-icon-backend${isActive ? " is-live" : ""}` },
+        import_react19.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, backend === "ollama" ? "neurology" : backend === "llama_cpp" ? "memory" : backend === "codex" ? "deployed_code" : "bolt")
+      ),
+      import_react19.default.createElement(
+        "div",
+        { className: "flex flex-col min-w-0" },
+        import_react19.default.createElement(
+          "div",
+          { className: "workspace-access-label-row" },
+          import_react19.default.createElement("span", { className: "font-body-md text-body-md" }, label),
+          isActive ? import_react19.default.createElement("span", { className: "workspace-inline-pill is-active" }, "Active") : null,
+          isPreferred ? import_react19.default.createElement("span", { className: "workspace-inline-pill" }, "Preferred") : null
+        ),
+        import_react19.default.createElement(
+          "span",
+          { className: "text-[10px] text-outline uppercase font-bold" },
+          isActive ? "Active" : allowed ? "Enabled" : "Disabled"
+        ),
+        import_react19.default.createElement(
+          "span",
+          { className: "workspace-access-detail" },
+          model ? `${compactModelName2(model)} \xB7 ${detail}` : detail
+        )
+      )
+    ),
+    import_react19.default.createElement(
+      "button",
+      {
+        type: "button",
+        className: `workspace-access-action px-3 py-1 rounded font-label-caps text-[10px] transition-colors ${allowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"}`,
+        onClick: () => updateBackendAccess2(backend, !allowed),
+        disabled: state.accessUpdating
+      },
+      allowed ? "Revoke" : "Grant"
+    )
+  );
+}
+function statusStat(label, value, detail) {
+  return import_react19.default.createElement(
+    MetalSurface,
+    { className: "workspace-status-stat" },
+    import_react19.default.createElement("span", { className: "workspace-status-label" }, label),
+    import_react19.default.createElement("strong", { className: "workspace-status-value" }, value),
+    import_react19.default.createElement("span", { className: "workspace-status-detail" }, detail)
+  );
+}
+function compactModelName2(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const lastSegment = text.split("/").pop() || text;
+  return lastSegment.length > 24 ? `${lastSegment.slice(0, 21)}...` : lastSegment;
+}
+async function refreshHealth(dispatch2, options = {}) {
+  try {
+    const { fetchHealth: fetchHealth2 } = await Promise.resolve().then(() => (init_api(), api_exports));
+    const healthPayload = await fetchHealth2();
+    const persistedPreferredBackend = loadPreferredBackend();
+    const preferredBackend = persistedPreferredBackend || healthPayload.preferred_backend || "opencode";
+    dispatch2({ type: "SET_HEALTH", payload: healthPayload });
+    dispatch2({
+      type: "SET_HEALTH_META",
+      payload: {
+        provider: healthPayload.ai_provider || "",
+        model: healthPayload.ai_model || "",
+        availableModels: healthPayload.available_models || [],
+        availableModelsByBackend: healthPayload.available_models_by_backend || {},
+        selectedModelsByBackend: healthPayload.selected_models_by_backend || {}
+      }
+    });
+    dispatch2({ type: "SET_ACCESS_POLICY", payload: healthPayload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, llama_cpp: false, codex: false } } });
+    dispatch2({ type: "SET_BACKENDS", payload: healthPayload.ai_backends || {} });
+    dispatch2({ type: "SET_ACTIVE_BACKEND", payload: healthPayload.active_backend || "opencode" });
+    dispatch2({ type: "SET_PREFERRED_BACKEND", payload: preferredBackend });
+    dispatch2({ type: "SET_PERFORMANCE_MODE", payload: healthPayload.performance_mode || "medium" });
+    dispatch2({ type: "SET_PRIVACY_MODE", payload: healthPayload.privacy || { no_memory: false, incognito: false } });
+  } catch (err) {
+    if (!options.silent) {
+      showToast(dispatch2, "Health check failed");
+    }
+  }
+}
+
+// src/components/SessionsCard.js
+var import_react20 = __toESM(require_react(), 1);
+init_AppContext();
+init_format();
+init_Header();
+init_MotionPrimitives();
+function SessionsCard() {
+  const { state, dispatch: dispatch2 } = useApp();
+  const codexAllowed = Boolean(state.accessPolicy.session_access?.codex);
+  const opencodeAllowed = Boolean(state.accessPolicy.session_access?.opencode);
+  const codexVisible = Boolean(state.visibleSessionProviders?.codex);
+  const opencodeVisible = Boolean(state.visibleSessionProviders?.opencode);
+  const toggleProviderVisibility = (provider) => {
+    const nextVisible = !state.visibleSessionProviders[provider];
+    dispatch2({ type: "SET_VISIBLE_SESSION_PROVIDERS", payload: { provider, visible: nextVisible } });
+    if (!nextVisible && state.selectedProvider === provider) {
+      dispatch2({ type: "SET_SELECTED_SESSION_ID", payload: "" });
+    }
+    if (nextVisible && state.accessPolicy.session_access?.[provider] && !state.providerSessions[provider].length) {
+      refreshProviderSessions(provider, state, dispatch2);
+    }
+  };
+  const selectSession = (provider, sessionId) => {
+    dispatch2({ type: "SET_SELECTED_PROVIDER", payload: provider });
+    dispatch2({ type: "SET_SELECTED_SESSION_ID", payload: sessionId });
+    refreshSelectedSession(provider, sessionId, state, dispatch2);
+  };
+  const refreshAllSessions = async () => {
+    const providers = ["codex", "opencode"].filter(
+      (p) => state.visibleSessionProviders[p] && state.accessPolicy.session_access?.[p]
+    );
+    for (const provider of providers) {
+      await refreshProviderSessions(provider, state, dispatch2);
+    }
+    showToast(dispatch2, providers.length ? "Refreshed open session lists" : "Open a provider list to load its sessions");
+  };
+  return import_react20.default.createElement(
+    "section",
+    { className: "workspace-card-stack space-y-3" },
+    import_react20.default.createElement(
+      MotionReveal,
+      null,
+      import_react20.default.createElement(
+        "div",
+        { className: "workspace-card-title-row flex justify-between items-center" },
+        import_react20.default.createElement(
+          "div",
+          { className: "min-w-0" },
+          import_react20.default.createElement(
+            "h3",
+            { className: "font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2" },
+            import_react20.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "history"),
+            "SESSIONS"
+          ),
+          import_react20.default.createElement(
+            MotionShimmerText,
+            { className: "workspace-card-title-meta", active: state.sessionLoading },
+            state.sessionLoading ? "Refreshing visible providers" : "Codex and OpenCode thread history"
+          )
+        ),
+        import_react20.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "p-1 hover:text-primary transition-colors text-on-surface-variant",
+            onClick: refreshAllSessions,
+            disabled: state.sessionLoading
+          },
+          import_react20.default.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "refresh")
+        )
+      )
+    ),
+    import_react20.default.createElement(
+      "div",
+      { className: "workspace-summary-rail workspace-summary-rail-secondary" },
+      import_react20.default.createElement("span", { className: "workspace-summary-pill" }, `${(state.providerSessions?.codex || []).length + (state.providerSessions?.opencode || []).length} loaded`),
+      import_react20.default.createElement("span", { className: "workspace-summary-pill" }, state.selectedProvider ? escapeHtml(state.selectedProvider) : "No selection"),
+      import_react20.default.createElement("span", { className: "workspace-summary-pill" }, codexVisible || opencodeVisible ? "Rail open" : "Rail idle"),
+      import_react20.default.createElement("span", { className: "workspace-summary-copy" }, "Open provider histories, inspect threads, and keep retrieval context visible.")
+    ),
+    import_react20.default.createElement(
+      BeamFrame,
+      { active: state.sessionLoading, tone: "mono", className: "workspace-card-shell rounded-[22px] overflow-hidden" },
+      import_react20.default.createElement("span", { className: "workspace-card-ribbon workspace-card-ribbon-secondary", "aria-hidden": "true" }),
+      import_react20.default.createElement(
+        MotionDeck,
+        { className: "workspace-provider-grid p-3 border-b border-outline-variant/30" },
+        providerStat("Codex", codexAllowed, (state.providerSessions?.codex || []).length, codexVisible),
+        providerStat("OpenCode", opencodeAllowed, (state.providerSessions?.opencode || []).length, opencodeVisible)
+      ),
+      renderSessionRow("codex", "Codex History", codexAllowed, codexVisible, state, dispatch2, toggleProviderVisibility, selectSession),
+      renderSessionRow("opencode", "OpenCode History", opencodeAllowed, opencodeVisible, state, dispatch2, toggleProviderVisibility, selectSession)
+    )
+  );
+}
+function renderSessionRow(provider, label, allowed, visible, state, dispatch2, toggleProviderVisibility, selectSession) {
+  const sessions = state.providerSessions[provider] || [];
+  return import_react20.default.createElement(
+    "div",
+    { key: provider, className: "workspace-card-section workspace-session-section bg-surface-container rounded-lg border border-outline-variant overflow-hidden" },
+    import_react20.default.createElement(
+      "div",
+      { className: "p-3 flex justify-between items-center gap-3" },
+      import_react20.default.createElement(
+        "div",
+        { className: "workspace-session-headline" },
+        import_react20.default.createElement("span", { className: "font-body-md text-body-md" }, escapeHtml(label)),
+        import_react20.default.createElement("span", { className: "workspace-session-meta" }, allowed ? visible ? "Open in rail" : "Available to inspect" : "Grant access to inspect")
+      ),
+      import_react20.default.createElement(
+        "button",
+        {
+          type: "button",
+          className: "px-3 py-1 rounded bg-surface-variant text-on-surface font-label-caps text-[10px] hover:bg-primary hover:text-on-primary transition-colors",
+          onClick: () => toggleProviderVisibility(provider),
+          disabled: !allowed
+        },
+        visible ? "Hide" : "Show"
+      )
+    ),
+    visible && allowed ? import_react20.default.createElement(
+      "div",
+      { className: "border-t border-outline-variant/30 p-2 space-y-1 max-h-48 overflow-y-auto workspace-session-list" },
+      sessions.length ? sessions.map(
+        (session) => import_react20.default.createElement(
+          "button",
+          {
+            key: session.session_id,
+            type: "button",
+            className: `w-full text-left p-2 rounded-lg workspace-session-card ${state.selectedProvider === provider && state.selectedSessionId === session.session_id ? "is-selected bg-surface-container-highest border border-primary" : "bg-surface-dim border border-transparent"} hover:bg-surface-container-highest transition-colors`,
+            onClick: () => selectSession(provider, session.session_id)
+          },
+          import_react20.default.createElement("div", { className: "font-label-caps text-label-caps text-on-surface text-[11px]" }, escapeHtml(session.title || "Untitled session")),
+          import_react20.default.createElement("div", { className: "font-code-sm text-code-sm text-on-surface-variant truncate" }, escapeHtml(session.updated_at || session.workspace_path || ""))
+        )
+      ) : import_react20.default.createElement("div", { className: "font-body-md text-body-md text-on-surface-variant p-2" }, state.sessionLoading ? "Loading..." : "No sessions")
+    ) : null
+  );
+}
+function providerStat(label, allowed, count, visible) {
+  return import_react20.default.createElement(
+    "div",
+    { className: "workspace-provider-stat" },
+    import_react20.default.createElement("span", { className: "workspace-provider-label" }, label),
+    import_react20.default.createElement("strong", { className: "workspace-provider-value" }, allowed ? `${count}` : "Off"),
+    import_react20.default.createElement("span", { className: "workspace-provider-detail" }, allowed ? visible ? "Visible now" : "Ready to open" : "Needs consent")
+  );
+}
+async function refreshProviderSessions(provider, state, dispatch2) {
+  if (!state.accessPolicy.session_access?.[provider]) {
+    dispatch2({ type: "SET_PROVIDER_SESSIONS", payload: { provider, sessions: [] } });
+    return;
+  }
+  dispatch2({ type: "SET_SESSION_LOADING", payload: true });
+  try {
+    const { fetchContextSessions: fetchContextSessions2 } = await Promise.resolve().then(() => (init_api(), api_exports));
+    const payload = await fetchContextSessions2(provider);
+    dispatch2({ type: "SET_PROVIDER_SESSIONS", payload: { provider, sessions: payload.sessions || [] } });
+    if (!state.selectedSessionId && payload.sessions?.[0]) {
+      dispatch2({ type: "SET_SELECTED_PROVIDER", payload: provider });
+      dispatch2({ type: "SET_SELECTED_SESSION_ID", payload: payload.sessions[0].session_id });
+      refreshSelectedSession(provider, payload.sessions[0].session_id, state, dispatch2);
+    }
+  } finally {
+    dispatch2({ type: "SET_SESSION_LOADING", payload: false });
+  }
+}
+async function refreshSelectedSession(provider, sessionId, state, dispatch2) {
+  if (!provider || !sessionId || !state.accessPolicy.session_access?.[provider]) return;
+  try {
+    const { fetchContextSession: fetchContextSession2 } = await Promise.resolve().then(() => (init_api(), api_exports));
+    const payload = await fetchContextSession2(provider, sessionId);
+    dispatch2({ type: "SET_SESSION_DETAILS", payload: { key: `${provider}:${sessionId}`, details: payload } });
+  } catch {
+  }
+}
+
+// src/components/UsageCard.js
+var import_react21 = __toESM(require_react(), 1);
+init_AppContext();
+init_format();
+init_Header();
+init_MotionPrimitives();
+function UsageCard() {
+  const { state, dispatch: dispatch2 } = useApp();
+  const statusLabel = state.isRunning ? "Running" : "Idle";
+  const statusColor = state.isRunning ? "bg-primary" : "bg-outline";
+  const elapsed = state.isRunning ? formatDuration(Date.now() - state.runStartedAt) : formatDuration(state.latestElapsedMs || 0);
+  const usedTokens = Number(state.sessionUsageTotal || 0);
+  const budgetTokens = Number(state.sessionBudgetTokens || 0);
+  const budgetRatio = budgetTokens > 0 ? Math.min(1, usedTokens / budgetTokens) : 0;
+  const applyBudget = () => {
+    const nextValue = Number.parseInt(state.budgetInput, 10);
+    dispatch2({ type: "SET_BUDGET_TOKENS", payload: Number.isFinite(nextValue) && nextValue > 0 ? nextValue : null });
+    showToast(dispatch2, Number.isFinite(nextValue) && nextValue > 0 ? "Session budget updated" : "Session budget cleared");
+  };
+  return import_react21.default.createElement(
+    "section",
+    { className: "workspace-card-stack space-y-3" },
+    import_react21.default.createElement(
+      MotionReveal,
+      null,
+      import_react21.default.createElement(
+        "div",
+        { className: "workspace-card-title-row" },
+        import_react21.default.createElement(
+          "h3",
+          { className: "font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2" },
+          import_react21.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "analytics"),
+          "USAGE & RUNTIME"
+        ),
+        import_react21.default.createElement(
+          MotionShimmerText,
+          { className: "workspace-card-title-meta", active: state.isRunning },
+          state.isRunning ? "Turn in progress" : "Budget, timing, and session burn"
+        )
+      )
+    ),
+    import_react21.default.createElement(
+      "div",
+      { className: "workspace-summary-rail workspace-summary-rail-secondary" },
+      import_react21.default.createElement("span", { className: "workspace-summary-pill" }, statusLabel),
+      import_react21.default.createElement("span", { className: "workspace-summary-pill" }, budgetTokens > 0 ? `${usedTokens}/${budgetTokens}` : "No cap"),
+      import_react21.default.createElement("span", { className: "workspace-summary-pill" }, elapsed),
+      import_react21.default.createElement("span", { className: "workspace-summary-copy" }, "Track live burn, elapsed time, and the session budget before the runtime drifts too far.")
+    ),
+    import_react21.default.createElement(
+      BeamFrame,
+      { active: state.isRunning, tone: "ocean", className: "workspace-card-shell rounded-[22px] p-3" },
+      import_react21.default.createElement("span", { className: "workspace-card-ribbon workspace-card-ribbon-secondary", "aria-hidden": "true" }),
+      import_react21.default.createElement(
+        "div",
+        { className: "workspace-usage-grid grid grid-cols-2 gap-3" },
+        import_react21.default.createElement(
+          "div",
+          { className: "workspace-usage-stat p-3 bg-surface-container rounded-lg border border-outline-variant" },
+          import_react21.default.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Status"),
+          import_react21.default.createElement(
+            "div",
+            { className: "flex items-center gap-2" },
+            import_react21.default.createElement("div", { className: `w-2 h-2 rounded-full ${statusColor}` }),
+            import_react21.default.createElement("span", { className: "font-body-md text-body-md font-bold uppercase" }, escapeHtml(statusLabel))
+          )
+        ),
+        import_react21.default.createElement(
+          "div",
+          { className: "workspace-usage-stat p-3 bg-surface-container rounded-lg border border-outline-variant" },
+          import_react21.default.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Elapsed"),
+          import_react21.default.createElement("div", { className: "font-body-md text-body-md font-bold" }, import_react21.default.createElement(MotionNumber, { value: elapsed }))
+        ),
+        import_react21.default.createElement(
+          "div",
+          { className: "workspace-usage-stat p-3 bg-surface-container rounded-lg border border-outline-variant" },
+          import_react21.default.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Last request"),
+          import_react21.default.createElement("div", { className: "font-body-md text-body-md font-bold" }, import_react21.default.createElement(MotionNumber, { value: formatDuration(state.latestElapsedMs || 0) }))
+        ),
+        import_react21.default.createElement(
+          "div",
+          { className: "workspace-usage-stat p-3 bg-surface-container rounded-lg border border-outline-variant" },
+          import_react21.default.createElement("div", { className: "font-label-caps text-label-caps text-outline mb-1 uppercase" }, "Session total"),
+          import_react21.default.createElement("div", { className: "font-body-md text-body-md font-bold" }, import_react21.default.createElement(MotionNumber, { value: `${String(state.sessionUsageTotal || 0)} tokens` }))
+        )
+      ),
+      import_react21.default.createElement(
+        "div",
+        { className: "workspace-budget-panel mt-3" },
+        import_react21.default.createElement(
+          "div",
+          { className: "workspace-budget-head" },
+          import_react21.default.createElement("span", { className: "workspace-budget-label" }, "Budget load"),
+          import_react21.default.createElement("span", { className: "workspace-budget-value" }, budgetTokens > 0 ? `${Math.round(budgetRatio * 100)}%` : "Open")
+        ),
+        import_react21.default.createElement(
+          "div",
+          { className: "workspace-budget-bar" },
+          import_react21.default.createElement("span", {
+            className: "workspace-budget-fill",
+            style: { width: budgetTokens > 0 ? `${Math.max(6, Math.round(budgetRatio * 100))}%` : "18%" }
+          })
+        ),
+        import_react21.default.createElement("div", { className: "workspace-budget-detail" }, budgetTokens > 0 ? `${usedTokens} of ${budgetTokens} tokens used this session` : "No cap set. The runtime can keep spending until you apply a budget.")
+      ),
+      import_react21.default.createElement(
+        "div",
+        { className: "flex flex-col gap-1.5 pt-3" },
+        import_react21.default.createElement("label", { className: "font-label-caps text-label-caps text-on-surface-variant" }, "TOKEN BUDGET"),
+        import_react21.default.createElement(
+          "div",
+          { className: "flex gap-2" },
+          import_react21.default.createElement("input", {
+            className: "flex-1 bg-surface-container-highest border border-outline-variant rounded-lg font-code-sm text-code-sm px-3 py-2 outline-none focus:border-primary",
+            type: "text",
+            value: state.budgetInput,
+            onChange: (e) => dispatch2({ type: "SET_BUDGET_INPUT", payload: e.target.value })
+          }),
+          import_react21.default.createElement(
+            "button",
+            {
+              type: "button",
+              className: "px-4 py-2 bg-surface-variant text-on-surface rounded-lg font-label-caps text-label-caps hover:bg-outline-variant transition-colors",
+              onClick: applyBudget
+            },
+            "Apply"
+          )
+        )
+      )
+    )
+  );
+}
+
+// src/components/Footer.js
+var import_react22 = __toESM(require_react(), 1);
+init_AppContext();
+init_format();
+init_MotionPrimitives();
+function Footer() {
+  const { state } = useApp();
+  const limit = state.rateLimitInfo?.limit || 12e3;
+  const recentUsage = state.usageWindow.reduce((sum, entry) => sum + entry.totalTokens, 0);
+  const remaining = Math.max(limit - recentUsage, 0);
+  const remainingLabel = `${remaining}/${limit}`;
+  const preferredBackend = state.preferredBackend || state.activeBackend;
+  const preferredStatus = state.backends?.[preferredBackend] || null;
+  const backendReadyLabel = preferredStatus && preferredStatus.available === false ? `${formatBackendLabel(preferredBackend)} offline` : `${formatBackendLabel(state.activeBackend)} ready`;
+  const modelLabel = state.healthMeta.selectedModelsByBackend?.[preferredBackend] || state.healthMeta.model || "";
+  const routeLabel = state.planMode ? "Plan" : !state.selectedTools.length ? "Auto" : `${state.selectedTools.length} route${state.selectedTools.length === 1 ? "" : "s"}`;
+  return import_react22.default.createElement(
+    "footer",
+    { className: "app-footer px-4 pb-4 pt-2 shrink-0" },
+    import_react22.default.createElement(
+      BeamFrame,
+      { active: state.isRunning, tone: "mono", className: "app-footer-shell flex justify-between items-center rounded-[22px] px-4 py-3" },
+      import_react22.default.createElement("span", { className: "app-footer-ribbon", "aria-hidden": "true" }),
+      import_react22.default.createElement("span", { className: "app-footer-orbit", "aria-hidden": "true" }),
+      import_react22.default.createElement("span", { className: "app-footer-gridline", "aria-hidden": "true" }),
+      import_react22.default.createElement(
+        "div",
+        { className: "flex items-center gap-3" },
+        state.isRunning ? import_react22.default.createElement(ThinkingOrb, { state: state.pendingRunMode === "web" || state.pendingRunMode === "knowledge" ? "searching" : "working", size: 20, label: "Runtime process" }) : import_react22.default.createElement("div", { className: "w-2 h-2 rounded-full bg-primary glowing-pip" }),
+        import_react22.default.createElement(
+          "div",
+          { className: "flex flex-col" },
+          import_react22.default.createElement("span", { className: "font-label-caps text-[10px] text-on-surface" }, state.isRunning ? "Running" : backendReadyLabel),
+          import_react22.default.createElement(
+            MotionShimmerText,
+            { className: "font-code-sm text-[9px] text-on-surface-variant", active: state.isRunning },
+            modelLabel
+          )
+        )
+      ),
+      import_react22.default.createElement(
+        "div",
+        { className: "app-footer-metrics" },
+        import_react22.default.createElement(
+          MotionDeck,
+          { className: "app-footer-grid" },
+          footerMetric("Window", import_react22.default.createElement(MotionNumber, { value: remainingLabel })),
+          footerMetric("Route", routeLabel),
+          footerMetric("Mode", state.isRunning ? "Live" : "Idle")
+        )
+      ),
+      import_react22.default.createElement(
+        "div",
+        { className: "app-footer-lane" },
+        import_react22.default.createElement(
+          "div",
+          { className: "app-footer-lane-runway" },
+          import_react22.default.createElement("span", { className: "app-footer-lane-scan", "aria-hidden": "true" }),
+          import_react22.default.createElement(
+            "div",
+            { className: "app-footer-lane-head" },
+            import_react22.default.createElement("span", { className: `app-footer-lane-pip${state.isRunning ? " is-live" : ""}`, "aria-hidden": "true" }),
+            import_react22.default.createElement("span", { className: "app-footer-lane-label" }, state.planMode ? "Plan lane" : "Run lane")
+          ),
+          import_react22.default.createElement("span", { className: "app-footer-lane-copy" }, state.isRunning ? "Runtime is actively shaping this turn." : "Shell is ready for the next routed prompt.")
+        )
+      )
+    )
+  );
+}
+function footerMetric(label, value) {
+  return import_react22.default.createElement(
+    "div",
+    { className: "app-footer-pill app-footer-metric" },
+    import_react22.default.createElement("span", { className: "app-footer-metric-label" }, label),
+    import_react22.default.createElement("strong", { className: "app-footer-metric-value" }, value)
+  );
+}
+
+// src/components/Sidebar.js
+init_MotionPrimitives();
+function Sidebar() {
+  const { state, dispatch: dispatch2 } = useApp();
+  const collapsed = Boolean(state.sidebarCollapsed);
+  const toggleSidebar = () => {
+    dispatch2({ type: "SET_SIDEBAR_COLLAPSED", payload: !collapsed });
+  };
+  if (collapsed) {
+    return import_react23.default.createElement(
+      "aside",
+      { className: "workspace-rail-collapsed w-12 shrink-0 flex flex-col items-center justify-center" },
+      import_react23.default.createElement(
+        MotionStage,
+        { axis: "x" },
+        import_react23.default.createElement(
+          BeamFrame,
+          { active: false, tone: "mono", className: "workspace-rail-collapsed-frame rounded-l-xl rounded-r-md" },
+          import_react23.default.createElement(
+            "button",
+            {
+              type: "button",
+              className: "w-8 h-16 rounded-l-xl rounded-r-md border border-outline-variant bg-surface-container-high text-on-surface-variant hover:text-primary hover:border-primary/40 transition-colors flex items-center justify-center",
+              onClick: toggleSidebar,
+              "aria-label": "Expand workspace panel",
+              title: "Expand workspace panel"
+            },
+            import_react23.default.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "keyboard_double_arrow_left")
+          )
+        )
+      )
+    );
+  }
+  return import_react23.default.createElement(
+    "aside",
+    { className: "workspace-rail w-[24rem] max-w-[32vw] min-w-[20rem] shrink-0 self-start flex flex-col" },
+    import_react23.default.createElement(
+      MotionStage,
+      { axis: "x", delay: 60, className: "flex-1 overflow-y-auto overflow-x-visible p-4 pr-3 space-y-6" },
+      import_react23.default.createElement(
+        "div",
+        { className: "flex items-center justify-between gap-3 mb-2" },
+        import_react23.default.createElement(
+          "div",
+          { className: "workspace-rail-heading" },
+          import_react23.default.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "DEVELOPER WORKSPACE"),
+          import_react23.default.createElement(
+            MotionShimmerText,
+            { className: "workspace-rail-subtitle text-on-surface-variant", active: state.isRunning },
+            state.isRunning ? "Inspecting and responding live" : "Runtime state, access, sessions, and budget"
+          )
+        ),
+        import_react23.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "w-8 h-8 rounded-lg border border-outline-variant bg-surface-container text-on-surface-variant hover:text-primary hover:border-primary/40 transition-colors flex items-center justify-center shrink-0",
+            onClick: toggleSidebar,
+            "aria-label": "Collapse workspace panel",
+            title: "Collapse workspace panel"
+          },
+          import_react23.default.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "keyboard_double_arrow_right")
+        )
+      ),
+      import_react23.default.createElement(
+        MotionStack,
+        { className: "workspace-rail-stack" },
+        import_react23.default.createElement(
+          MotionTilt,
+          null,
+          import_react23.default.createElement(
+            MetalSurface,
+            { className: "workspace-rail-overview-shell rounded-[22px] p-2" },
+            import_react23.default.createElement(
+              MotionDeck,
+              { className: "workspace-rail-overview" },
+              overviewPill("Backend", state.activeBackend || state.preferredBackend || "opencode"),
+              overviewPill("Mode", state.planMode ? "Plan" : state.isRunning ? "Live" : "Ready"),
+              overviewPill("Sessions", String(totalVisibleSessions(state)))
+            )
+          )
+        )
+      ),
+      import_react23.default.createElement(MotionStack, { className: "workspace-rail-stack" }, import_react23.default.createElement(MotionReveal, { delay: 50 }, import_react23.default.createElement(AccessCard, null))),
+      import_react23.default.createElement(MotionStack, { className: "workspace-rail-stack" }, import_react23.default.createElement(MotionReveal, { delay: 100 }, import_react23.default.createElement(SessionsCard, null))),
+      import_react23.default.createElement(MotionStack, { className: "workspace-rail-stack" }, import_react23.default.createElement(MotionReveal, { delay: 150 }, import_react23.default.createElement(UsageCard, null)))
+    ),
+    import_react23.default.createElement(Footer, null)
+  );
+}
+function overviewPill(label, value) {
+  return import_react23.default.createElement(
+    "div",
+    { className: "workspace-rail-pill" },
+    import_react23.default.createElement("span", { className: "workspace-rail-pill-label" }, label),
+    import_react23.default.createElement("strong", { className: "workspace-rail-pill-value" }, value)
+  );
+}
+function totalVisibleSessions(state) {
+  return ["codex", "opencode"].reduce((total, provider) => total + (state.providerSessions?.[provider] || []).length, 0);
+}
+
+// src/components/Toast.js
+var import_react24 = __toESM(require_react(), 1);
+init_AppContext();
+init_MotionPrimitives();
+function Toast() {
+  const { state } = useApp();
+  if (!state.toast) return null;
+  return import_react24.default.createElement(
+    MotionReveal,
+    { delay: 120, className: "toast-banner-shell" },
+    import_react24.default.createElement(
+      BeamFrame,
+      { tone: "sunrise", className: "toast-banner markdown-body inline-markdown" },
+      import_react24.default.createElement("span", { className: "toast-banner-orbit", "aria-hidden": "true" }),
+      import_react24.default.createElement("span", { className: "material-symbols-outlined toast-banner-icon" }, "notifications_active"),
+      import_react24.default.createElement(
+        "span",
+        { className: "toast-banner-copy-wrap" },
+        import_react24.default.createElement("span", { className: "toast-banner-label" }, "Runtime update"),
+        import_react24.default.createElement("span", { className: "toast-banner-copy" }, state.toast)
+      )
+    )
+  );
+}
+
+// src/App.js
+init_MotionPrimitives();
+init_api();
+init_storage();
+function AppInner() {
+  const { state, dispatch: dispatch2 } = useApp();
+  const clockRef = import_react25.default.useRef(null);
+  const healthRef = import_react25.default.useRef(false);
+  const pollingRef = import_react25.default.useRef(null);
+  const [setupDone, setSetupDone] = import_react25.default.useState(state.setupComplete);
+  const setupStartedRef = import_react25.default.useRef(false);
+  const restoreRef = import_react25.default.useRef(false);
+  import_react25.default.useEffect(() => {
+    clockRef.current = window.setInterval(() => {
+      dispatch2({ type: "SET_CLOCK", payload: Date.now() });
+    }, 1e3);
+    return () => window.clearInterval(clockRef.current);
+  }, []);
+  import_react25.default.useEffect(() => {
+    if (!state.clock) return;
+    dispatch2({
+      type: "SET_USAGE_WINDOW",
+      payload: state.usageWindow.filter((entry) => state.clock - entry.timestamp < 6e4)
+    });
+    dispatch2({
+      type: "SET_RATE_LIMIT_INFO",
+      payload: state.rateLimitInfo && state.rateLimitInfo.resetAt > state.clock ? state.rateLimitInfo : null
+    });
+  }, [state.clock]);
+  import_react25.default.useEffect(() => {
+    if (healthRef.current) return;
+    healthRef.current = true;
+    fetchHealth().then((payload) => {
+      dispatch2({ type: "SET_HEALTH", payload });
+      applyHealthPayload(dispatch2, payload);
+    }).catch((error) => {
+      dispatch2({ type: "SET_BOOT_ERROR", payload: error.message });
+    });
+  }, []);
+  import_react25.default.useEffect(() => {
+    if (!state.health || restoreRef.current) return;
+    restoreRef.current = true;
+    const restore = async () => {
+      const persisted = state.persistedAccess || { session_access: {}, backend_access: {} };
+      const preferredBackend = selectReachablePreferredBackend(state.health, loadPreferredBackend());
+      try {
+        if (persisted.session_access?.codex && !state.accessPolicy.session_access?.codex) {
+          const payload2 = await updateSessionAccess("codex", true);
+          dispatch2({ type: "SET_ACCESS_POLICY", payload: payload2 });
+        }
+        if (persisted.session_access?.opencode && !state.accessPolicy.session_access?.opencode) {
+          const payload2 = await updateSessionAccess("opencode", true);
+          dispatch2({ type: "SET_ACCESS_POLICY", payload: payload2 });
+        }
+        for (const backend of ["opencode", "ollama", "llama_cpp", "codex"]) {
+          if (persisted.backend_access?.[backend] && !state.accessPolicy.backend_access?.[backend]) {
+            const payload2 = await updateBackendAccess(backend, true);
+            dispatch2({ type: "SET_ACCESS_POLICY", payload: payload2 });
+          }
+        }
+        if (shouldAutoEnablePreferredBackend({
+          health: state.health,
+          preferredBackend,
+          accessPolicy: state.accessPolicy,
+          persistedAccess: persisted
+        })) {
+          const payload2 = await updateBackendAccess(preferredBackend, true);
+          dispatch2({ type: "SET_ACCESS_POLICY", payload: payload2 });
+        }
+        const payload = await fetchHealth();
+        dispatch2({ type: "SET_HEALTH", payload });
+        applyHealthPayload(dispatch2, payload);
+        persistAccess(payload.access_policy || persisted);
+        persistPreferredModels(payload.selected_models_by_backend || {});
+        if (Object.values(payload.access_policy?.session_access || {}).some(Boolean)) {
+          dispatch2({ type: "SET_SETUP_COMPLETE", payload: true });
+          setSetupDone(true);
+          persistSetupState(true);
+        }
+      } catch {
+        restoreRef.current = false;
+      }
+    };
+    restore();
+  }, [state.health]);
+  import_react25.default.useEffect(() => {
+    const indexing2 = state.health?.indexing;
+    const hasAccess2 = Object.values(state.accessPolicy?.session_access || {}).some(Boolean);
+    const needsPoll = hasAccess2 && indexing2 && !indexing2.completed;
+    if (!needsPoll) {
+      if (pollingRef.current) {
+        window.clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      return;
+    }
+    if (pollingRef.current) return;
+    pollingRef.current = window.setInterval(() => {
+      fetchHealth().then((payload) => {
+        dispatch2({ type: "SET_HEALTH", payload });
+        applyHealthPayload(dispatch2, payload);
+      }).catch(() => {
+      });
+    }, 2e3);
+    return () => {
+      if (pollingRef.current) {
+        window.clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [state.health?.indexing?.active, state.health?.indexing?.completed, state.accessPolicy?.session_access]);
+  import_react25.default.useEffect(() => {
+    const handler = (e) => {
+      if (e.detail?.suggestion) {
+        dispatch2({ type: "SET_PROMPT", payload: e.detail.suggestion });
+        if (Array.isArray(e.detail.selectedTools)) {
+          dispatch2({ type: "SET_SELECTED_TOOLS", payload: e.detail.selectedTools });
+        }
+        if (typeof e.detail.planMode === "boolean") {
+          dispatch2({ type: "SET_PLAN_MODE", payload: e.detail.planMode });
+        }
+        dispatch2({ type: "SET_TOOL_PICKER_OPEN", payload: false });
+      }
+    };
+    window.addEventListener("opencode-suggestion", handler);
+    return () => window.removeEventListener("opencode-suggestion", handler);
+  }, []);
+  import_react25.default.useEffect(() => {
+    if (state.showSettings) {
+      const handler = (e) => {
+        if (!e.target.closest("[data-settings-panel]") && !e.target.closest('[data-action="toggle-settings"]')) {
+          dispatch2({ type: "SET_SHOW_SETTINGS", payload: false });
+        }
+      };
+      window.addEventListener("click", handler);
+      return () => window.removeEventListener("click", handler);
+    }
+  }, [state.showSettings]);
+  if (state.bootError) {
+    return import_react25.default.createElement(BootStateScreen, {
+      icon: "error",
+      eyebrow: "Startup interrupted",
+      title: "Devenv hit a boot failure",
+      body: state.bootError,
+      tone: "ember",
+      detail: "The web shell loaded, but the health handshake did not complete."
+    });
+  }
+  if (!state.health) {
+    return import_react25.default.createElement(BootStateScreen, {
+      icon: "deployed_code",
+      eyebrow: "Preparing workspace",
+      title: "Booting Devenv web interface",
+      body: "Restoring your local shell, checking runtime health, and bringing the workspace online.",
+      tone: "ocean",
+      loading: true
+    });
+  }
+  const indexing = state.health.indexing || null;
+  const hasAccess = Object.values(state.accessPolicy?.session_access || {}).some(Boolean);
+  const needsSetup = !setupDone && indexing && !indexing.completed && (!hasAccess || indexing.active || Number(indexing.total_sessions || 0) > 0);
+  if (needsSetup) {
+    setupStartedRef.current = true;
+  }
+  const showSetup = needsSetup || setupStartedRef.current && !setupDone;
+  if (showSetup) {
+    return import_react25.default.createElement(ConsentScreen, {
+      dispatch: dispatch2,
+      accessPolicy: state.accessPolicy,
+      indexing,
+      onFinish: () => {
+        setSetupDone(true);
+        dispatch2({ type: "SET_SETUP_COMPLETE", payload: true });
+        persistSetupState(true);
+      }
+    });
+  }
+  return import_react25.default.createElement(
+    "div",
+    { className: "app-shell flex flex-col min-h-screen bg-background" },
+    import_react25.default.createElement("div", { className: "app-shell-noise", "aria-hidden": "true" }),
+    import_react25.default.createElement("div", { className: "app-shell-orbit app-shell-orbit-one", "aria-hidden": "true" }),
+    import_react25.default.createElement("div", { className: "app-shell-orbit app-shell-orbit-two", "aria-hidden": "true" }),
+    import_react25.default.createElement("div", { className: "app-shell-veil app-shell-veil-top", "aria-hidden": "true" }),
+    import_react25.default.createElement("div", { className: "app-shell-veil app-shell-veil-bottom", "aria-hidden": "true" }),
+    import_react25.default.createElement("div", { className: "app-shell-aura app-shell-aura-one", "aria-hidden": "true" }),
+    import_react25.default.createElement("div", { className: "app-shell-aura app-shell-aura-two", "aria-hidden": "true" }),
+    import_react25.default.createElement("div", { className: "app-shell-aura app-shell-aura-three", "aria-hidden": "true" }),
+    import_react25.default.createElement("div", { className: "app-shell-beam app-shell-beam-top", "aria-hidden": "true" }),
+    import_react25.default.createElement("div", { className: "app-shell-beam app-shell-beam-bottom", "aria-hidden": "true" }),
+    import_react25.default.createElement(Header, null),
+    state.showSettings ? import_react25.default.createElement(SettingsDropdown, null) : null,
+    import_react25.default.createElement(
+      "main",
+      { className: "app-main flex flex-1 items-start" },
+      import_react25.default.createElement(
+        MotionStage,
+        { axis: "y", className: "app-main-chat flex-1 min-w-0" },
+        import_react25.default.createElement(
+          BeamFrame,
+          { active: state.isRunning, tone: "ocean", className: "app-main-chat-shell" },
+          import_react25.default.createElement("div", { className: "app-main-chat-shell-orbit", "aria-hidden": "true" }),
+          import_react25.default.createElement("div", { className: "app-main-chat-shell-orbit app-main-chat-shell-orbit-two", "aria-hidden": "true" }),
+          import_react25.default.createElement(ChatColumn, null)
+        )
+      ),
+      import_react25.default.createElement(
+        MotionStage,
+        { axis: "x", delay: 110, className: "app-main-sidebar-stage" },
+        import_react25.default.createElement(Sidebar, null)
+      )
+    ),
+    import_react25.default.createElement(Toast, null)
+  );
+}
+function ConsentScreen({ dispatch: dispatch2, accessPolicy, indexing, onFinish }) {
+  const codexGranted = Boolean(accessPolicy.session_access?.codex);
+  const opencodeGranted = Boolean(accessPolicy.session_access?.opencode);
+  const anyGranted = codexGranted || opencodeGranted;
+  const [phase, setPhase] = import_react25.default.useState(() => {
+    if (codexGranted && opencodeGranted) {
+      return indexing?.active ? "indexing_opencode" : "all_done";
+    }
+    if (opencodeGranted) {
+      return indexing?.active ? "indexing_opencode" : "opencode_done";
+    }
+    if (codexGranted) {
+      return indexing?.active ? "indexing_codex" : "codex_done";
+    }
+    return "idle";
+  });
+  const [logs, setLogs] = import_react25.default.useState([]);
+  const logContainerRef = import_react25.default.useRef(null);
+  const lastPercentRef = import_react25.default.useRef(0);
+  const prevActiveRef = import_react25.default.useRef(indexing?.active);
+  const initRef = import_react25.default.useRef(false);
+  const addLog = import_react25.default.useCallback((message, type) => {
+    setLogs((prev) => [...prev, { id: Date.now() + (prev.length + 1), message, type: type || "info", ts: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+  }, []);
+  import_react25.default.useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
+    if (codexGranted && indexing?.active) {
+      addLog("Access granted for Codex");
+      addLog(`Chunking started: ${indexing.total_sessions || "?"} sessions`);
+    } else if (opencodeGranted && indexing?.active) {
+      addLog("Access granted for OpenCode");
+      addLog(`Chunking started: ${indexing.total_sessions || "?"} sessions`);
+    }
+  }, []);
+  import_react25.default.useEffect(() => {
+    const prev = prevActiveRef.current;
+    prevActiveRef.current = indexing?.active;
+    const pct = Math.floor(Number(indexing?.percent) || 0);
+    const proc = Number(indexing?.processed_sessions) || 0;
+    const total = Number(indexing?.total_sessions) || 0;
+    if ((phase === "indexing_codex" || phase === "indexing_opencode") && indexing?.active && !prev) {
+      addLog("Access granted for " + (phase === "indexing_codex" ? "Codex" : "OpenCode"));
+      addLog(`Chunking started: ${total || "?"} sessions`);
+      lastPercentRef.current = pct;
+    }
+    if (indexing?.active && (phase === "indexing_codex" || phase === "indexing_opencode")) {
+      if (pct > lastPercentRef.current) {
+        addLog(`${proc}/${total} sessions chunked (${pct}%)`, "progress");
+        lastPercentRef.current = pct;
+      }
+    }
+    if (!indexing?.active && prev && (phase === "indexing_codex" || phase === "indexing_opencode")) {
+      addLog("Chunking complete!", "done");
+      const next = phase === "indexing_codex" ? "codex_done" : "all_done";
+      window.setTimeout(() => setPhase(next), 600);
+    }
+  }, [indexing?.active, indexing?.percent, indexing?.processed_sessions]);
+  import_react25.default.useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
+  const handleGrant = async (provider) => {
+    setPhase(provider === "codex" ? "indexing_codex" : "indexing_opencode");
+    if (provider === "opencode") {
+      lastPercentRef.current = 0;
+    }
+    try {
+      const payload = await updateSessionAccess(provider, true);
+      dispatch2({ type: "SET_ACCESS_POLICY", payload });
+      persistAccess(payload);
+      try {
+        const bp = await updateBackendAccess("opencode", true);
+        dispatch2({ type: "SET_ACCESS_POLICY", payload: bp });
+        persistAccess(bp);
+      } catch {
+      }
+    } catch {
+      addLog(`Failed to grant ${provider} access`, "error");
+      setPhase("idle");
+    }
+  };
+  const progress = {
+    percent: Math.max(0, Math.min(100, Number(indexing?.percent || 0))),
+    processed: Number(indexing?.processed_sessions || 0),
+    total: Number(indexing?.total_sessions || 0),
+    message: indexing?.message || ""
+  };
+  const isChunking = phase === "indexing_codex" || phase === "indexing_opencode";
+  const activeProvider = phase === "idle" ? "\u2014" : phase === "indexing_codex" || phase === "codex_done" ? "Codex" : "OpenCode";
+  const codexDone = phase === "codex_done" || phase === "all_done";
+  const opencodeDone = phase === "opencode_done" || phase === "all_done";
+  return import_react25.default.createElement(
+    MotionStage,
+    { className: "loading-shell loading-shell-setup", delay: 40 },
+    import_react25.default.createElement("div", { className: "startup-orbit startup-orbit-one", "aria-hidden": "true" }),
+    import_react25.default.createElement("div", { className: "startup-orbit startup-orbit-two", "aria-hidden": "true" }),
+    import_react25.default.createElement(
+      BeamFrame,
+      { tone: "ocean", className: "startup-frame" },
+      import_react25.default.createElement(
+        MetalSurface,
+        { className: "startup-card", style: { maxWidth: "760px" } },
+        import_react25.default.createElement(
+          "div",
+          { className: "flex flex-col gap-4 mb-5" },
+          import_react25.default.createElement(
+            "div",
+            { className: "flex items-center gap-3" },
+            import_react25.default.createElement(
+              "div",
+              { className: "w-10 h-10 rounded-full bg-primary flex items-center justify-center" },
+              import_react25.default.createElement("span", { className: "material-symbols-outlined text-on-primary text-[20px]" }, "vpn_key")
+            ),
+            import_react25.default.createElement(
+              "div",
+              null,
+              import_react25.default.createElement("h1", { className: "font-headline-sm text-headline-sm text-on-surface", style: { margin: 0 } }, "Set up remembered access"),
+              import_react25.default.createElement("p", { className: "font-body-md text-body-md text-on-surface-variant", style: { margin: "2px 0 0" } }, "Grant provider access once, let Devenv restore it next time, and keep your session history ready.")
+            )
+          ),
+          import_react25.default.createElement(
+            "div",
+            { className: "grid md:grid-cols-3 gap-3" },
+            startupFact("Remembered", anyGranted ? "Your last access choices will be restored automatically." : "Once granted, access can be restored on the next launch."),
+            startupFact("Chunking", "Devenv indexes prior sessions in the background after access is granted."),
+            startupFact("Local-first", "You can still prefer Ollama and keep web lookups or PDFs scoped per task.")
+          ),
+          anyGranted ? import_react25.default.createElement(
+            "div",
+            { className: "startup-saved-banner" },
+            import_react25.default.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "bookmark_added"),
+            import_react25.default.createElement(
+              "div",
+              { className: "flex flex-col gap-1 min-w-0" },
+              import_react25.default.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, "Saved access found"),
+              import_react25.default.createElement(
+                "span",
+                { className: "text-[12px] leading-5 text-on-surface-variant" },
+                codexGranted && opencodeGranted ? "Codex and OpenCode are already authorized for session grounding." : codexGranted ? "Codex is already authorized for session grounding." : "OpenCode is already authorized for session grounding."
+              )
+            )
+          ) : null
+        ),
+        import_react25.default.createElement(
+          "div",
+          { className: "startup-summary-rail" },
+          import_react25.default.createElement("span", { className: "startup-summary-pill" }, activeProvider),
+          import_react25.default.createElement("span", { className: "startup-summary-pill" }, isChunking ? "Indexing" : anyGranted ? "Ready" : "Awaiting grant"),
+          import_react25.default.createElement("span", { className: "startup-summary-pill" }, isChunking ? `${progress.percent}%` : anyGranted ? "Saved" : "0%"),
+          import_react25.default.createElement("span", { className: "startup-summary-copy" }, "Remembered provider access unlocks prior-session grounding and background indexing.")
+        ),
+        import_react25.default.createElement(
+          MotionDeck,
+          { className: "startup-status-grid mb-5" },
+          startupStatusChip("Provider", activeProvider),
+          startupStatusChip("Phase", isChunking ? "Indexing" : anyGranted ? "Ready" : "Awaiting grant"),
+          startupStatusChip("Progress", isChunking ? `${progress.percent}%` : anyGranted ? "Saved" : "0%")
+        ),
+        import_react25.default.createElement(
+          "div",
+          { className: "startup-section-intro" },
+          import_react25.default.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, "What happens here"),
+          import_react25.default.createElement(
+            "p",
+            { className: "text-[12px] leading-5 text-on-surface-variant", style: { margin: "6px 0 0" } },
+            "Provider access unlocks prior-session retrieval. Once granted, Devenv can restore that access on the next launch and continue indexing in the background."
+          )
+        ),
+        import_react25.default.createElement(
+          "div",
+          { className: "grid md:grid-cols-[0.95fr,1.05fr] gap-4" },
+          import_react25.default.createElement(
+            "div",
+            { className: "space-y-3" },
+            import_react25.default.createElement(
+              "div",
+              { className: "font-label-caps text-label-caps text-outline mb-2" },
+              "PROVIDERS"
+            ),
+            import_react25.default.createElement(
+              "div",
+              { className: "bg-surface-container-low rounded-lg border border-outline-variant p-3 text-[12px] text-on-surface-variant" },
+              anyGranted ? "A saved provider grant was already detected. You can finish setup immediately or grant the remaining provider." : "Grant the providers you want Devenv to reuse for past-session grounding."
+            ),
+            setupRow("codex", "Codex", codexGranted, codexDone, isChunking && phase === "indexing_codex", handleGrant),
+            setupRow("opencode", "OpenCode", opencodeGranted, opencodeDone, isChunking && phase === "indexing_opencode", handleGrant)
+          ),
+          import_react25.default.createElement(
+            "div",
+            { className: "space-y-3" },
+            import_react25.default.createElement(
+              "div",
+              { className: "font-label-caps text-label-caps text-outline mb-2" },
+              "PROGRESS"
+            ),
+            import_react25.default.createElement(
+              "div",
+              { className: "bg-surface-container rounded-lg border border-outline-variant p-3", style: { minHeight: "180px", maxHeight: "220px", overflowY: "auto", display: "flex", flexDirection: "column" } },
+              isChunking || codexDone || opencodeDone ? import_react25.default.createElement(
+                import_react25.default.Fragment,
+                null,
+                import_react25.default.createElement(
+                  "div",
+                  { className: "font-label-caps text-label-caps text-on-surface mb-2" },
+                  activeProvider,
+                  isChunking ? " chunking" : " chunked"
+                ),
+                isChunking ? import_react25.default.createElement(
+                  import_react25.default.Fragment,
+                  null,
+                  import_react25.default.createElement(
+                    "div",
+                    { className: "startup-progress-track", style: { marginBottom: "8px", height: "6px" } },
+                    import_react25.default.createElement("div", {
+                      className: "startup-progress-fill",
+                      style: { width: `${progress.percent}%`, height: "6px", transition: "width 0.8s ease" }
+                    })
+                  ),
+                  import_react25.default.createElement(
+                    "div",
+                    { className: "flex gap-3 font-code-sm text-code-sm text-on-surface-variant mb-3" },
+                    import_react25.default.createElement("span", { className: "text-on-surface font-bold" }, `${progress.percent}%`),
+                    import_react25.default.createElement("span", null, progress.total ? `${progress.processed}/${progress.total} sessions` : "Counting sessions"),
+                    import_react25.default.createElement("span", null, indexing?.eta_seconds != null ? `ETA ${formatDuration2(Number(indexing.eta_seconds) * 1e3)}` : "Estimating\u2026")
+                  )
+                ) : import_react25.default.createElement(
+                  "div",
+                  { className: "flex items-center gap-2 mb-3 text-primary font-label-caps text-label-caps" },
+                  import_react25.default.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "check_circle"),
+                  "Done"
+                ),
+                import_react25.default.createElement(
+                  "div",
+                  { ref: logContainerRef, className: "space-y-1 flex-1", style: { overflowY: "auto" } },
+                  logs.map(
+                    (log) => import_react25.default.createElement(
+                      "div",
+                      {
+                        key: log.id,
+                        className: "consent-log-row",
+                        style: {
+                          fontSize: "11px",
+                          lineHeight: "1.5",
+                          color: log.type === "done" ? "#4fdbc8" : log.type === "error" ? "#ffb4ab" : log.type === "progress" ? "#859490" : "#bbcac6",
+                          padding: "2px 0",
+                          display: "flex",
+                          gap: "8px"
+                        }
+                      },
+                      import_react25.default.createElement("span", { style: { color: "#3c4947", flexShrink: 0, fontFamily: "JetBrains Mono, monospace" } }, log.ts),
+                      log.message
+                    )
+                  )
+                )
+              ) : import_react25.default.createElement(
+                "div",
+                { className: "flex items-center justify-center h-full text-on-surface-variant font-body-md text-body-md" },
+                "Grant a provider to begin indexing and restore session memory."
+              )
+            )
+          )
+        ),
+        phase === "all_done" || anyGranted ? import_react25.default.createElement(
+          "button",
+          {
+            type: "button",
+            className: "mt-5 w-full py-3 bg-primary text-on-primary rounded-xl font-label-caps text-label-caps font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2",
+            onClick: onFinish
+          },
+          anyGranted && phase !== "all_done" ? "Continue with saved access" : "Finish setup and continue",
+          import_react25.default.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "arrow_forward")
+        ) : null
+      )
+    )
+  );
+}
+function startupFact(label, body) {
+  return import_react25.default.createElement(
+    "div",
+    { className: "rounded-lg border border-outline-variant bg-surface-container-low p-3" },
+    import_react25.default.createElement("div", { className: "font-label-caps text-label-caps text-primary mb-1" }, label),
+    import_react25.default.createElement("div", { className: "text-[12px] leading-5 text-on-surface-variant" }, body)
+  );
+}
+function startupStatusChip(label, value) {
+  return import_react25.default.createElement(
+    "div",
+    { className: "startup-status-chip" },
+    import_react25.default.createElement("span", { className: "startup-status-label" }, label),
+    import_react25.default.createElement("strong", { className: "startup-status-value" }, value)
+  );
+}
+function setupRow(provider, label, granted, done, isActive, handleGrant) {
+  const isButtonDisabled = granted || done || isActive;
+  return import_react25.default.createElement(
+    "div",
+    {
+      key: provider,
+      className: "startup-provider-row flex items-center justify-between p-3 bg-surface-container rounded-lg border " + (done || granted ? "border-primary/40" : "border-outline-variant")
+    },
+    import_react25.default.createElement(
+      "div",
+      { className: "flex items-center gap-3" },
+      import_react25.default.createElement(
+        "span",
+        { className: "material-symbols-outlined text-[18px] " + (done ? "text-primary" : "text-outline") },
+        done ? "check_circle" : "radio_button_unchecked"
+      ),
+      import_react25.default.createElement(
+        "div",
+        null,
+        import_react25.default.createElement("div", { className: "font-body-md text-body-md text-on-surface" }, label),
+        import_react25.default.createElement("div", { className: "font-code-sm text-code-sm " + (done ? "text-primary" : "text-outline") }, done || granted ? "Granted" : "Not granted")
+      )
+    ),
+    import_react25.default.createElement(
+      "button",
+      {
+        type: "button",
+        className: "px-4 py-1.5 rounded-lg font-label-caps text-label-caps transition-colors " + (isButtonDisabled ? "bg-surface-variant text-on-surface-variant cursor-default" : "bg-primary text-on-primary hover:opacity-80"),
+        onClick: () => !isButtonDisabled && handleGrant(provider),
+        disabled: isButtonDisabled
+      },
+      done ? "Done" : granted ? "Granted" : isActive ? "Processing\u2026" : "Grant"
+    )
+  );
+}
+function applyHealthPayload(dispatch2, payload) {
+  const preferredBackend = selectReachablePreferredBackend(payload, loadPreferredBackend());
+  dispatch2({
+    type: "SET_HEALTH_META",
+    payload: {
+      provider: payload.ai_provider || "",
+      model: payload.ai_model || "",
+      availableModels: payload.available_models || [],
+      availableModelsByBackend: payload.available_models_by_backend || {},
+      selectedModelsByBackend: payload.selected_models_by_backend || {}
+    }
+  });
+  dispatch2({ type: "SET_ACCESS_POLICY", payload: payload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, llama_cpp: false, codex: false } } });
+  dispatch2({ type: "SET_BACKENDS", payload: payload.ai_backends || {} });
+  dispatch2({ type: "SET_ACTIVE_BACKEND", payload: payload.active_backend || "opencode" });
+  dispatch2({ type: "SET_PREFERRED_BACKEND", payload: preferredBackend });
+  dispatch2({ type: "SET_PERFORMANCE_MODE", payload: payload.performance_mode || "medium" });
+  dispatch2({ type: "SET_PRIVACY_MODE", payload: payload.privacy || { no_memory: false, incognito: false } });
+}
+function selectReachablePreferredBackend(payload, persistedPreferredBackend) {
+  const requested = String(persistedPreferredBackend || payload?.preferred_backend || "opencode").trim().toLowerCase() || "opencode";
+  if (backendLooksReachable(payload, requested)) return requested;
+  if (backendLooksReachable(payload, "ollama")) return "ollama";
+  if (backendLooksReachable(payload, "llama_cpp")) return "llama_cpp";
+  if (backendLooksReachable(payload, "opencode")) return "opencode";
+  if (backendLooksReachable(payload, "codex")) return "codex";
+  return requested;
+}
+function backendLooksReachable(payload, backend) {
+  const status = payload?.ai_backends?.[backend];
+  return Boolean(status?.available);
+}
+function shouldAutoEnablePreferredBackend({ health, preferredBackend, accessPolicy, persistedAccess }) {
+  if (!preferredBackend || !backendLooksReachable(health, preferredBackend)) return false;
+  if (accessPolicy?.backend_access?.[preferredBackend]) return false;
+  if (persistedAccess?.backend_access?.[preferredBackend]) return false;
+  return preferredBackend === "ollama" || preferredBackend === "llama_cpp";
+}
+function formatDuration2(ms) {
+  const totalSeconds = Math.max(Math.ceil(ms / 1e3), 0);
+  const seconds = totalSeconds % 60;
+  const minutes = Math.floor(totalSeconds / 60);
+  return minutes ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+}
+function BootStateScreen({ icon, eyebrow, title, body, detail, tone = "ocean", loading = false }) {
+  return import_react25.default.createElement(
+    "div",
+    { className: "loading-shell" },
+    import_react25.default.createElement("div", { className: "startup-orbit startup-orbit-one", "aria-hidden": "true" }),
+    import_react25.default.createElement("div", { className: "startup-orbit startup-orbit-two", "aria-hidden": "true" }),
+    import_react25.default.createElement(
+      MotionReveal,
+      { className: "loading-shell-panel", delay: 40 },
+      import_react25.default.createElement(
+        BeamFrame,
+        { tone, className: "startup-frame" },
+        import_react25.default.createElement(
+          MetalSurface,
+          { className: "startup-card startup-card-compact" },
+          import_react25.default.createElement(
+            "div",
+            { className: "startup-hero" },
+            import_react25.default.createElement(
+              "div",
+              { className: "startup-icon-shell" },
+              import_react25.default.createElement("span", { className: "material-symbols-outlined text-[22px]" }, icon)
+            ),
+            import_react25.default.createElement(
+              "div",
+              { className: "startup-hero-copy" },
+              import_react25.default.createElement("div", { className: "startup-kicker" }, eyebrow),
+              import_react25.default.createElement("h1", { className: "startup-title font-headline-sm text-headline-sm text-on-surface" }, title),
+              import_react25.default.createElement(
+                loading ? MotionShimmerText : "p",
+                loading ? { className: "startup-copy is-booting" } : { className: "startup-copy" },
+                body
+              )
+            )
+          ),
+          import_react25.default.createElement(
+            "div",
+            { className: "startup-summary-rail startup-summary-rail-compact" },
+            import_react25.default.createElement("span", { className: "startup-summary-pill" }, loading ? "Booting" : "Error"),
+            import_react25.default.createElement("span", { className: "startup-summary-pill" }, loading ? "Restoring memory" : "Handshake failed"),
+            import_react25.default.createElement("span", { className: "startup-summary-copy" }, loading ? "The shell is mounting while the runtime health handshake completes." : "The web shell rendered, but the backend handshake still needs to recover.")
+          ),
+          import_react25.default.createElement(
+            "div",
+            { className: "startup-section-intro" },
+            import_react25.default.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, loading ? "Live boot status" : "Failure details"),
+            import_react25.default.createElement(
+              "p",
+              { className: "text-[12px] leading-5 text-on-surface-variant", style: { margin: "6px 0 0" } },
+              detail || "Devenv is validating the local runtime before rendering the main workspace."
+            )
+          ),
+          import_react25.default.createElement(
+            "div",
+            { className: "startup-facts-grid" },
+            startupFact("Runtime", loading ? "Health checks and provider wiring are running now." : "Retry after the backend health endpoint is reachable."),
+            startupFact("UI shell", "The local light interface is mounted before chat history is restored."),
+            startupFact("Local-first", "Ollama remains available once the runtime handshake succeeds.")
+          ),
+          import_react25.default.createElement(
+            MotionDeck,
+            { className: "startup-status-grid mt-4" },
+            startupStatusChip("Surface", loading ? "Booting" : "Error"),
+            startupStatusChip("Memory", loading ? "Restoring" : "Paused"),
+            startupStatusChip("Backend", loading ? "Checking" : "Retry needed")
+          )
+        )
+      )
+    )
+  );
+}
+function App() {
+  return import_react25.default.createElement(
+    AppProvider,
+    null,
+    import_react25.default.createElement(AppInner, null)
+  );
+}
+
+// src/index.js
+try {
+  const storedTheme = window.localStorage.getItem("devenv-ui-theme");
+  document.body.dataset.theme = storedTheme === "dark" ? "dark" : "light";
+} catch {
+  document.body.dataset.theme = "light";
+}
+var rootElement = document.getElementById("root");
+var root2 = import_client.default.createRoot(rootElement);
+root2.render(import_react26.default.createElement(import_react26.default.StrictMode, null, import_react26.default.createElement(App, null)));
 /*! Bundled license information:
 
 react/cjs/react.development.js:
@@ -23597,5 +36412,27 @@ react-dom/cjs/react-dom.development.js:
    * @return {boolean} True if the event is supported.
    * @internal
    * @license Modernizr 3.0.0pre (Custom Build) | MIT
+   *)
+
+use-sync-external-store/cjs/use-sync-external-store-shim.development.js:
+  (**
+   * @license React
+   * use-sync-external-store-shim.development.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   *)
+
+use-sync-external-store/cjs/use-sync-external-store-shim/with-selector.development.js:
+  (**
+   * @license React
+   * use-sync-external-store-shim/with-selector.development.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
    *)
 */

@@ -1,4 +1,19 @@
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { JSDOM } from "jsdom";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const websiteDir = path.resolve(scriptDir, "..");
+const buildResult = spawnSync(process.execPath, [path.join(scriptDir, "build-vendor.mjs")], {
+  cwd: websiteDir,
+  stdio: "pipe",
+  encoding: "utf-8",
+});
+
+if (buildResult.status !== 0) {
+  throw new Error(`Mount check failed: vendor build exited with ${buildResult.status}\n${buildResult.stderr || buildResult.stdout}`);
+}
 
 const healthPayload = {
   status: "ok",
@@ -105,7 +120,7 @@ dom.window.ResizeObserver = class {
 };
 setGlobal("ResizeObserver", dom.window.ResizeObserver);
 
-await import("../src/index.js");
+await import(pathToFileURL(path.join(websiteDir, "vendor", "app.js")).href);
 await new Promise((resolve) => setTimeout(resolve, 500));
 
 const root = dom.window.document.getElementById("root");

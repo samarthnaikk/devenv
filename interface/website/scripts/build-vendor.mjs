@@ -11,7 +11,9 @@ const require = createRequire(import.meta.url);
 
 await mkdir(vendorDir, { recursive: true });
 
-const shared = {
+await build({
+  entryPoints: [path.join(websiteDir, "src", "index.js")],
+  outfile: path.join(vendorDir, "app.js"),
   bundle: true,
   format: "esm",
   platform: "browser",
@@ -19,17 +21,9 @@ const shared = {
   sourcemap: false,
   minify: false,
   logLevel: "info",
-};
-
-await build({
-  ...shared,
-  entryPoints: {
-    react: path.join(websiteDir, "vendor-entries", "react.js"),
-    "react-dom-client": path.join(websiteDir, "vendor-entries", "react-dom-client.js"),
-    reactflow: path.join(websiteDir, "vendor-entries", "reactflow.js"),
-    highlight: path.join(websiteDir, "vendor-entries", "highlight.js"),
+  define: {
+    "process.env.NODE_ENV": JSON.stringify("development"),
   },
-  outdir: vendorDir,
 });
 
 await copyFile(

@@ -96,7 +96,7 @@ export function Transcript() {
   if (!state.transcript.length) {
     return React.createElement(
       "div",
-      { className: "flex-1 overflow-y-auto p-margin-desktop space-y-8", ref: scrollRef },
+      { className: "transcript-scroll p-margin-desktop space-y-8", ref: scrollRef },
       React.createElement(
         "div",
         { className: "empty-state-shell flex flex-col items-center justify-center min-h-[60vh] gap-10 px-12" },
@@ -275,7 +275,7 @@ export function Transcript() {
 
   return React.createElement(
     "div",
-    { className: "flex-1 overflow-y-auto p-margin-desktop space-y-8", ref: scrollRef },
+    { className: "transcript-scroll p-margin-desktop space-y-8", ref: scrollRef },
     React.createElement(
       "div",
       { className: "transcript-runway" },

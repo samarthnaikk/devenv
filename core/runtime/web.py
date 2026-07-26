@@ -5,6 +5,8 @@ import logging
 import os
 import inspect
 import re
+import shutil
+import subprocess
 import sysconfig
 import time
 from collections import Counter
@@ -128,6 +130,7 @@ class DevenvWebApp:
         self.config = config
         self.port = port
         self.static_root = _resolve_static_root()
+        _ensure_static_bundle(self.static_root)
         self.performance_mode = (
             config.performance_mode
             if config.performance_mode in {"low", "medium", "high"}
@@ -1430,6 +1433,54 @@ def _is_valid_static_root(path: Path) -> bool:
         and (path / "index.html").is_file()
         and (path / "styles.css").is_file()
     )
+
+
+def _ensure_static_bundle(static_root: Path) -> None:
+    build_script = static_root / "scripts" / "build-vendor.mjs"
+    entry_bundle = static_root / "vendor" / "app.js"
+    if not build_script.is_file():
+        return
+    if entry_bundle.is_file() and not _static_bundle_is_stale(static_root, entry_bundle):
+        return
+    node_path = shutil.which("node")
+    if not node_path:
+        if entry_bundle.is_file():
+            logger.warning("Skipping website bundle rebuild because Node.js is not available on PATH.")
+            return
+        raise RuntimeError("Devenv website bundle is missing and Node.js is not available to rebuild it.")
+    logger.info("Rebuilding website bundle before serving static assets: root=%s", static_root)
+    completed = subprocess.run(
+        [node_path, str(build_script)],
+        cwd=str(static_root),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or f"exit status {completed.returncode}").strip()
+        raise RuntimeError(f"Website asset build failed: {detail}")
+
+
+def _static_bundle_is_stale(static_root: Path, bundle_path: Path) -> bool:
+    bundle_mtime = bundle_path.stat().st_mtime
+    watch_roots = (
+        static_root / "src",
+        static_root / "scripts",
+        static_root / "vendor-entries",
+    )
+    for root in watch_roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if path.is_file() and path.stat().st_mtime > bundle_mtime:
+                return True
+    index_path = static_root / "index.html"
+    if index_path.is_file() and index_path.stat().st_mtime > bundle_mtime:
+        return True
+    package_path = static_root / "package.json"
+    if package_path.is_file() and package_path.stat().st_mtime > bundle_mtime:
+        return True
+    return False
 
 
 def _merge_usage_counts(target: dict[str, int], usage: dict[str, int] | None) -> None:
