@@ -1452,6 +1452,121 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(scope, ["web_search"])
 
+    def test_forced_web_search_reads_top_result_pages_before_synthesis(self) -> None:
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
+            kernel.register_tool(WebSearchTool())
+            search_step = ToolExecutionStep(
+                step_id="search-1",
+                tool_name="web_search",
+                arguments={"mode": "search", "query": "What is Bill Gates net worth?", "result_count": 5},
+                output="ok",
+                success=True,
+                is_sandboxed_violation=False,
+                data={
+                    "results": [
+                        {"title": "Bill Gates - Forbes", "url": "https://www.forbes.com/profile/bill-gates/"},
+                    ]
+                },
+            )
+            read_step = ToolExecutionStep(
+                step_id="read-1",
+                tool_name="web_search",
+                arguments={"mode": "read_url", "url": "https://www.forbes.com/profile/bill-gates/"},
+                output="ok",
+                success=True,
+                is_sandboxed_violation=False,
+                data={
+                    "url": "https://www.forbes.com/profile/bill-gates/",
+                    "title": "Bill Gates - Forbes",
+                    "content": "Bill Gates real time net worth is $105.6B as of 7/24/26.",
+                },
+            )
+
+            with mock.patch.object(kernel, "_execute_tool_call", side_effect=[search_step, read_step]):
+                response = kernel._run_forced_web_search_turn(
+                    user_prompt="What is Bill Gates net worth? Search the web and answer briefly.",
+                    steps=[],
+                    total_usage={},
+                    ai_logs=[],
+                    system_logs=[],
+                    local_only=False,
+                )
+
+        self.assertEqual(
+            response,
+            "Bill Gates's net worth is about $105.6B as of 7/24/26, according to Forbes (https://www.forbes.com/profile/bill-gates/).",
+        )
+        self.assertEqual(len(ai.chat_calls), 0)
+
+    def test_forced_web_search_refuses_secondary_net_worth_when_authoritative_pages_lack_amount(self) -> None:
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
+            kernel.register_tool(WebSearchTool())
+            search_step = ToolExecutionStep(
+                step_id="search-1",
+                tool_name="web_search",
+                arguments={"mode": "search", "query": "What is Bill Gates net worth?", "result_count": 5},
+                output="ok",
+                success=True,
+                is_sandboxed_violation=False,
+                data={
+                    "results": [
+                        {"title": "Bill Gates - Forbes", "url": "https://www.forbes.com/profile/bill-gates/"},
+                        {
+                            "title": "Bill Gates Net Worth 2025: $117 Billion",
+                            "url": "https://www.finance-monthly.com/bill-gates-net-worth-in-2025-a-look-at-his-156-billion-fortune/",
+                        },
+                    ]
+                },
+            )
+            read_forbes_step = ToolExecutionStep(
+                step_id="read-1",
+                tool_name="web_search",
+                arguments={"mode": "read_url", "url": "https://www.forbes.com/profile/bill-gates/"},
+                output="ok",
+                success=True,
+                is_sandboxed_violation=False,
+                data={
+                    "url": "https://www.forbes.com/profile/bill-gates/",
+                    "title": "Bill Gates - Forbes",
+                    "content": "Bill Gates profile and related coverage without a machine-readable net worth number.",
+                },
+            )
+            read_secondary_step = ToolExecutionStep(
+                step_id="read-2",
+                tool_name="web_search",
+                arguments={
+                    "mode": "read_url",
+                    "url": "https://www.finance-monthly.com/bill-gates-net-worth-in-2025-a-look-at-his-156-billion-fortune/",
+                },
+                output="ok",
+                success=True,
+                is_sandboxed_violation=False,
+                data={
+                    "url": "https://www.finance-monthly.com/bill-gates-net-worth-in-2025-a-look-at-his-156-billion-fortune/",
+                    "title": "Bill Gates Net Worth 2025: $117 Billion",
+                    "content": "Bill Gates net worth is $117B as of July 20, 2025 according to a secondary article.",
+                },
+            )
+
+            with mock.patch.object(kernel, "_execute_tool_call", side_effect=[search_step, read_forbes_step, read_secondary_step]):
+                response = kernel._run_forced_web_search_turn(
+                    user_prompt="What is Bill Gates net worth? Search the web and answer briefly.",
+                    steps=[],
+                    total_usage={},
+                    ai_logs=[],
+                    system_logs=[],
+                    local_only=False,
+                )
+
+        self.assertIn("couldn't extract a reliable live net-worth figure", response or "")
+        self.assertIn("$117B", response or "")
+        self.assertIn("wouldn't treat it as fully verified current data", response or "")
+        self.assertEqual(len(ai.chat_calls), 0)
+
     def test_direct_tool_scope_offers_knowledge_search_for_reference_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))

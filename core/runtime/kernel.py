@@ -1479,13 +1479,31 @@ class DevenvKernel:
             for item in results
             if isinstance(item, dict)
         ]
+        page_context, page_extracts = self._collect_live_web_page_context(results, steps=steps, system_logs=system_logs)
         search_context = "Live web results:\n" + "\n".join(result_lines)
+        if page_context:
+            search_context += "\n\nLive page extracts:\n" + page_context
         if local_only:
-            return "I found these current web results:\n\n" + "\n".join(result_lines)
+            local_response = "I found these current web results:\n\n" + "\n".join(result_lines)
+            if page_context:
+                local_response += "\n\nRead from top sources:\n" + page_context
+            return local_response
+        grounded_answer = _build_grounded_live_fact_answer(user_prompt, results, page_extracts)
+        if grounded_answer:
+            ai_logs.append(f"Forced live web search answered directly from {len(page_extracts)} fetched page extract(s)")
+            return grounded_answer
         try:
             response = self.ai.chat(
                 messages=[
-                    {"role": "system", "content": "Answer the user's current-fact question using only the live web results below. Be concise, state uncertainty when sources disagree, and include source links when useful."},
+                    {
+                        "role": "system",
+                        "content": (
+                            "Answer the user's current-fact question using only the live web context below. "
+                            "Prefer explicit facts from the page extracts over search-result titles, and prefer primary or authoritative sources when available. "
+                            "Do not invent numbers, dates, or sources that are not present in the provided context. "
+                            "If the sources disagree, say so briefly. Include source links when useful, and only name a source if its extract explicitly supports the fact you state."
+                        ),
+                    },
                     {"role": "user", "content": f"{user_prompt}\n\n{search_context}"},
                 ],
                 memory_context=search_context,
@@ -1497,6 +1515,47 @@ class DevenvKernel:
         _merge_usage(total_usage, response.usage)
         ai_logs.append(f"Forced live web search completed with {len(results)} result(s)")
         return response.content or ("I found these current web results:\n\n" + "\n".join(result_lines))
+
+    def _collect_live_web_page_context(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        steps: list[ToolExecutionStep],
+        system_logs: list[str],
+    ) -> tuple[str, list[dict[str, str]]]:
+        page_lines: list[str] = []
+        extracts: list[dict[str, str]] = []
+        successful_reads = 0
+        found_structured_fact = False
+        for item in _prioritize_live_search_results(results)[:5]:
+            url = str(item.get("url") or "").strip()
+            if not url:
+                continue
+            read_step = self._execute_tool_call(
+                ToolCallRequest(
+                    call_id=f"live_read_{uuid.uuid4().hex[:10]}",
+                    tool_name="web_search",
+                    arguments={"mode": "read_url", "url": url},
+                )
+            )
+            steps.append(read_step)
+            system_logs.append(f"Tool step {len(steps)}: web_search success={read_step.success}")
+            if not read_step.success:
+                continue
+            successful_reads += 1
+            data = read_step.data if isinstance(read_step.data, dict) else {}
+            title = str(data.get("title") or item.get("title") or "Untitled result").strip()
+            raw_content = str(data.get("content") or "")
+            if _extract_salient_live_search_excerpt(re.sub(r"\s+", " ", raw_content).strip()):
+                found_structured_fact = True
+            content = _truncate_live_search_content(raw_content)
+            if not content:
+                continue
+            page_lines.append(f"- {title} — {url}\n  {content}")
+            extracts.append({"title": title, "url": url, "excerpt": content})
+            if successful_reads >= 3 and found_structured_fact:
+                break
+        return "\n".join(page_lines), extracts
 
     def _verify_active_checkpoint(
         self,
@@ -5272,6 +5331,158 @@ def _runtime_step_from_ai_step(step: AIExecutedToolStep) -> ToolExecutionStep:
 def _merge_usage(total_usage: dict[str, int], usage: dict[str, int]) -> None:
     for key, value in usage.items():
         total_usage[key] = total_usage.get(key, 0) + value
+
+
+def _prioritize_live_search_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    preferred_domains = (
+        "forbes.com",
+        "bloomberg.com",
+        "reuters.com",
+        "apnews.com",
+        "nytimes.com",
+        "wsj.com",
+        "ft.com",
+        "wikipedia.org",
+    )
+
+    def score(item: dict[str, Any]) -> tuple[int, int]:
+        url = str(item.get("url") or "").strip().lower()
+        title = str(item.get("title") or "").strip().lower()
+        domain_rank = next((index for index, domain in enumerate(preferred_domains) if domain in url), len(preferred_domains))
+        if re.match(r"^[^-|]+?\s[-|]\s[^-|]+$", title) and "list" not in title and "rank" not in title:
+            title_priority = 0
+        elif any(token in title for token in ("profile", "real time", "net worth", "index")):
+            title_priority = 1
+        else:
+            title_priority = 2
+        return (title_priority, domain_rank)
+
+    return sorted((item for item in results if isinstance(item, dict)), key=score)
+
+
+def _truncate_live_search_content(content: str, *, max_chars: int = 700) -> str:
+    normalized = re.sub(r"\s+", " ", content or "").strip()
+    salient = _extract_salient_live_search_excerpt(normalized)
+    if salient:
+        return salient
+    if len(normalized) <= max_chars:
+        return normalized
+    clipped = normalized[:max_chars].rsplit(" ", 1)[0].strip()
+    return f"{clipped}..." if clipped else normalized[:max_chars]
+
+
+def _extract_salient_live_search_excerpt(content: str) -> str:
+    if not content:
+        return ""
+    patterns = (
+        r"((?:real time net worth|net worth)[^.]{0,220}?\$\d[\d.,]*(?:\s?[BMK]| billion| million)?[^.]{0,140})",
+        r"(\$\d[\d.,]*(?:\s?[BMK]| billion| million)?[^.]{0,180}?(?:as of|real time net worth|net worth)[^.]{0,80})",
+        r"((?:as of)[^.]{0,140}?\$\d[\d.,]*(?:\s?[BMK]| billion| million)?[^.]{0,120})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, content, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
+def _build_grounded_live_fact_answer(
+    user_prompt: str,
+    search_results: list[dict[str, Any]],
+    page_extracts: list[dict[str, str]],
+) -> str:
+    lowered = user_prompt.lower()
+    if "net worth" not in lowered:
+        return ""
+    subject = _extract_net_worth_subject(user_prompt)
+    authoritative_results = [item for item in search_results if _is_authoritative_live_fact_url(str(item.get("url") or ""))]
+    authoritative_candidates: list[tuple[dict[str, str], str, str]] = []
+    secondary_candidates: list[tuple[dict[str, str], str, str]] = []
+    for extract in page_extracts:
+        excerpt = str(extract.get("excerpt") or "").strip()
+        money_amount = _extract_money_amount(excerpt)
+        if not money_amount:
+            continue
+        as_of = _extract_as_of_phrase(excerpt)
+        candidate = (extract, money_amount, as_of)
+        if _is_authoritative_live_fact_url(str(extract.get("url") or "")):
+            authoritative_candidates.append(candidate)
+        else:
+            secondary_candidates.append(candidate)
+    chosen: tuple[dict[str, str], str, str] | None = authoritative_candidates[0] if authoritative_candidates else None
+    if not chosen and not authoritative_results and secondary_candidates:
+        chosen = secondary_candidates[0]
+    if chosen:
+        extract, money_amount, as_of = chosen
+        source = _normalize_live_fact_source_label(str(extract.get("title") or ""), str(extract.get("url") or ""))
+        prefix = f"{subject}'s" if subject else "The reported"
+        answer = f"{prefix} net worth is about {money_amount}"
+        if as_of:
+            answer += f" {as_of}"
+        if source:
+            answer += f", according to {source}"
+        return answer + "."
+    if authoritative_results and secondary_candidates:
+        fallback_extract, fallback_amount, fallback_as_of = secondary_candidates[0]
+        source = _normalize_live_fact_source_label(
+            str(fallback_extract.get("title") or ""),
+            str(fallback_extract.get("url") or ""),
+        )
+        leader_titles = ", ".join(
+            _normalize_live_fact_source_label(str(item.get("title") or ""), str(item.get("url") or ""))
+            for item in authoritative_results[:2]
+        )
+        answer = "I found current authoritative result pages"
+        if leader_titles:
+            answer += f" from {leader_titles}"
+        answer += ", but I couldn't extract a reliable live net-worth figure from them automatically"
+        answer += f". The only numeric figure I could extract was {fallback_amount}"
+        if fallback_as_of:
+            answer += f" {fallback_as_of}"
+        if source:
+            answer += f" from {source}"
+        answer += ", so I wouldn't treat it as fully verified current data."
+        return answer
+    return ""
+
+
+def _extract_net_worth_subject(prompt: str) -> str:
+    patterns = (
+        r"what(?:'s| is)\s+(.+?)\s+net worth",
+        r"(.+?)\s+net worth",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, prompt, flags=re.IGNORECASE)
+        if not match:
+            continue
+        candidate = re.sub(r"\b(search|online|briefly|please|current|latest|the web)\b", "", match.group(1), flags=re.IGNORECASE)
+        candidate = re.sub(r"[?*,.]+", "", candidate).strip()
+        if candidate:
+            return " ".join(part.capitalize() for part in candidate.split())
+    return ""
+
+
+def _extract_money_amount(text: str) -> str:
+    match = re.search(r"(\$\d[\d.,]*(?:\s?[BMK]| billion| million)?)", text, flags=re.IGNORECASE)
+    return match.group(1).strip() if match else ""
+
+
+def _extract_as_of_phrase(text: str) -> str:
+    match = re.search(r"\b(as of\s+[^.,;:]+)", text, flags=re.IGNORECASE)
+    return match.group(1).strip() if match else ""
+
+
+def _normalize_live_fact_source_label(title: str, url: str) -> str:
+    if "forbes" in title.lower() or "forbes.com" in url.lower():
+        return f"Forbes ({url})"
+    if title.strip():
+        return f"{title.strip()} ({url})" if url else title.strip()
+    return url.strip()
+
+
+def _is_authoritative_live_fact_url(url: str) -> bool:
+    lowered = url.lower()
+    return any(domain in lowered for domain in ("forbes.com", "bloomberg.com", "reuters.com", "apnews.com"))
 
 
 def _compact_conversation(messages: list[dict[str, Any]], max_turns: int) -> list[dict[str, Any]]:
