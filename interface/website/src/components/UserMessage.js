@@ -10,6 +10,7 @@ export function UserMessage({ message, onCopy, onReply }) {
       MetalSurface,
       { className: "message-card user-message-card rounded-[24px] p-4" },
       React.createElement("span", { className: "message-card-orbit", "aria-hidden": "true" }),
+      React.createElement("span", { className: "message-card-ribbon message-card-ribbon-user", "aria-hidden": "true" }),
       React.createElement(
         "div",
         { className: "message-head flex items-center gap-2" },

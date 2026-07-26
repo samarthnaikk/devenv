@@ -217,96 +217,108 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
   }, [flowNodes, flowEdges, setNodes, setEdges]);
 
   return React.createElement(
-    BeamFrame,
-    { active: normalized.nodes.some((node) => node.status === "active"), tone: "ocean", className: "flex flex-col gap-2 w-full max-w-[88rem]" },
+    MotionReveal,
+    { className: "plan-shell w-full max-w-[88rem]" },
     React.createElement(
-      "div",
-      { className: "plan-header flex items-center gap-2 mb-1 flex-wrap" },
+      BeamFrame,
+      { active: normalized.nodes.some((node) => node.status === "active"), tone: "ocean", className: "flex flex-col gap-2 w-full max-w-[88rem]" },
       React.createElement(
         "div",
-        { className: "w-6 h-6 rounded-full bg-surface-container-highest flex items-center justify-center" },
-        React.createElement("span", { className: "material-symbols-outlined text-[14px] text-primary" }, "account_tree")
+        { className: "plan-header flex items-center gap-2 mb-1 flex-wrap" },
+        React.createElement(
+          "div",
+          { className: "w-6 h-6 rounded-full bg-surface-container-highest flex items-center justify-center" },
+          React.createElement("span", { className: "material-symbols-outlined text-[14px] text-primary" }, "account_tree")
+        ),
+        React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "Execution Plan"),
+        React.createElement(
+          MotionShimmerText,
+          { className: "plan-header-copy", active: normalized.nodes.some((node) => node.status === "active") },
+          normalized.nodes.some((node) => node.status === "active")
+            ? "Steps are actively progressing through the graph"
+            : "Blueprint is ready to inspect and execute"
+        ),
+        React.createElement(
+          "span",
+          { className: `plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] ${blueprint.verification_passed ? "text-primary" : allDone ? "text-primary" : "text-on-surface-variant"}` },
+          blueprint.verification_passed ? "Verified" : allDone ? "Done" : "In progress"
+        ),
+        React.createElement(
+          "span",
+          { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
+          mode === "forced" ? "Plan mode" : "Auto-planned"
+        ),
+        React.createElement(
+          "span",
+          { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
+          `${normalized.nodes.length} steps`
+        ),
+        React.createElement(
+          "span",
+          { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
+          `${normalized.edges.length} links`
+        )
       ),
-      React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "Execution Plan"),
-      React.createElement(
-        MotionShimmerText,
-        { className: "plan-header-copy", active: normalized.nodes.some((node) => node.status === "active") },
-        normalized.nodes.some((node) => node.status === "active")
-          ? "Steps are actively progressing through the graph"
-          : "Blueprint is ready to inspect and execute"
-      ),
-      React.createElement(
-        "span",
-        { className: `plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] ${blueprint.verification_passed ? "text-primary" : allDone ? "text-primary" : "text-on-surface-variant"}` },
-        blueprint.verification_passed ? "Verified" : allDone ? "Done" : "In progress"
-      ),
-      React.createElement(
-        "span",
-        { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
-        mode === "forced" ? "Plan mode" : "Auto-planned"
-      ),
-      React.createElement(
-        "span",
-        { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
-        `${normalized.nodes.length} steps`
-      ),
-      React.createElement(
-        "span",
-        { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
-        `${normalized.edges.length} links`
-      )
-    ),
       React.createElement(
         MotionDeck,
         { className: "plan-summary-grid mb-2" },
-        planStat("Layers", String(new Set(normalized.nodes.map((node) => node.level)).size), "Execution depth across the graph"),
-        planStat("Next", nextActionLabel(normalized.nodes), "The step that should move first"),
-        planStat("State", blueprint.verification_passed ? "Verified" : allDone ? "Done" : normalized.nodes.some((node) => node.status === "active") ? "Running" : "Ready", "Current graph status")
+        planStat("Layers", String(new Set(normalized.nodes.map((node) => node.level)).size), "Execution depth across the graph", 0),
+        planStat("Next", nextActionLabel(normalized.nodes), "The step that should move first", 1),
+        planStat("State", blueprint.verification_passed ? "Verified" : allDone ? "Done" : normalized.nodes.some((node) => node.status === "active") ? "Running" : "Ready", "Current graph status", 2)
       ),
       React.createElement(
-        "div",
-        { className: "plan-flow-canvas", style: { height: "380px" } },
+        MetalSurface,
+        { className: "plan-flow-canvas-shell" },
         React.createElement(
-          ReactFlow,
-        {
-          nodes,
-          edges,
-          onNodesChange,
-          onEdgesChange,
-          nodeTypes,
-          fitView: true,
-          fitViewOptions: { padding: 0.28, minZoom: 0.4 },
-          panOnDrag: true,
-          panOnScroll: true,
-          zoomOnScroll: true,
-          zoomOnPinch: true,
-          zoomOnDoubleClick: false,
-          nodesDraggable: false,
-          nodesConnectable: false,
-          elementsSelectable: true,
-          minZoom: 0.35,
-          maxZoom: 2.5,
-          proOptions: { hideAttribution: true },
-        },
-        React.createElement(Controls, { showInteractive: false, position: "bottom-right" }),
-        React.createElement(Background, { color: "rgba(108, 130, 149, 0.2)", gap: 22, size: 1.2 })
+          "div",
+          { className: "plan-flow-canvas", style: { height: "380px" } },
+          React.createElement(
+            ReactFlow,
+            {
+              nodes,
+              edges,
+              onNodesChange,
+              onEdgesChange,
+              nodeTypes,
+              fitView: true,
+              fitViewOptions: { padding: 0.28, minZoom: 0.4 },
+              panOnDrag: true,
+              panOnScroll: true,
+              zoomOnScroll: true,
+              zoomOnPinch: true,
+              zoomOnDoubleClick: false,
+              nodesDraggable: false,
+              nodesConnectable: false,
+              elementsSelectable: true,
+              minZoom: 0.35,
+              maxZoom: 2.5,
+              proOptions: { hideAttribution: true },
+            },
+            React.createElement(Controls, { showInteractive: false, position: "bottom-right" }),
+            React.createElement(Background, { color: "rgba(108, 130, 149, 0.2)", gap: 22, size: 1.2 })
+          )
+        )
       )
     )
   );
 }
 
-function planStat(label, value, detail) {
+function planStat(label, value, detail, index) {
   const numeric = /^\d+$/.test(String(value || "").trim());
   return React.createElement(
-    MetalSurface,
-    { className: "plan-summary-card" },
-    React.createElement("span", { className: "plan-summary-label" }, label),
+    MotionReveal,
+    { delay: index * 70 },
     React.createElement(
-      "strong",
-      { className: "plan-summary-value" },
-      numeric ? React.createElement(MotionNumber, { value }) : React.createElement(MotionShimmerText, { active: false }, value)
+      MetalSurface,
+      { className: "plan-summary-card" },
+      React.createElement("span", { className: "plan-summary-label" }, label),
+      React.createElement(
+        "strong",
+        { className: "plan-summary-value" },
+        numeric ? React.createElement(MotionNumber, { value }) : React.createElement(MotionShimmerText, { active: false }, value)
+      ),
+      React.createElement("span", { className: "plan-summary-detail" }, detail)
     ),
-    React.createElement("span", { className: "plan-summary-detail" }, detail)
   );
 }
 

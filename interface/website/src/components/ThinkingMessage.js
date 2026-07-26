@@ -2,7 +2,7 @@ import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, formatDuration, formatBackendLabel } from "../utils/format.js";
 import { ThinkingOrb, stateForThinkingStep } from "./ThinkingOrb.js";
-import { BeamFrame, MetalSurface, MotionDeck, MotionReveal, MotionShimmerText, MotionStage, MotionSwap } from "./MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionDeck, MotionReveal, MotionShimmerText, MotionStack, MotionStage, MotionSwap } from "./MotionPrimitives.js";
 
 export function ThinkingMessage({ message }) {
   const { state } = useApp();
@@ -37,6 +37,7 @@ export function ThinkingMessage({ message }) {
     React.createElement(
       BeamFrame,
       { active: message.pending, tone: orbState === "searching" ? "ocean" : "mono", className: "thinking-card inset-terminal rounded-[24px] border border-outline-variant p-4" },
+      React.createElement("span", { className: "thinking-card-ribbon", "aria-hidden": "true" }),
       React.createElement(
         "div",
         { className: "thinking-card-head flex justify-between items-center mb-4" },
@@ -76,8 +77,11 @@ export function ThinkingMessage({ message }) {
       ),
       summary
         ? React.createElement(
-            MotionDeck,
-            { className: "mb-4 thinking-summary-deck" },
+            MotionStack,
+            { className: "thinking-summary-stack mb-4" },
+            React.createElement(
+              MotionDeck,
+              { className: "thinking-summary-deck" },
             summary.map((item, index) =>
               React.createElement(
                 "div",
@@ -87,6 +91,7 @@ export function ThinkingMessage({ message }) {
                 },
                 `${item.label}: ${item.value}`
               )
+            )
             )
           )
         : null,
@@ -147,7 +152,13 @@ export function ThinkingMessage({ message }) {
         ? React.createElement(
             "div",
             { className: "space-y-2 mt-3 thinking-results-zone" },
-            searchCards.map((step, i) => step.kind === "knowledge_search" ? renderKnowledgeCard(step, i) : renderSearchCard(step, i))
+            searchCards.map((step, i) =>
+              React.createElement(
+                MotionStack,
+                { key: `${step.kind}-${i}`, className: "thinking-result-stack" },
+                step.kind === "knowledge_search" ? renderKnowledgeCard(step, i) : renderSearchCard(step, i)
+              )
+            )
           )
         : null
     ),

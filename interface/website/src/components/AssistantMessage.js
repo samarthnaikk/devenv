@@ -10,6 +10,7 @@ export function AssistantMessage({ message, onCopy, onReply }) {
       BeamFrame,
       { active: false, tone: "ocean", className: "message-card assistant-message-card rounded-[24px] p-4" },
       React.createElement("span", { className: "message-card-orbit", "aria-hidden": "true" }),
+      React.createElement("span", { className: "message-card-ribbon message-card-ribbon-assistant", "aria-hidden": "true" }),
       React.createElement(
         "div",
         { className: "message-head flex items-center gap-2" },
