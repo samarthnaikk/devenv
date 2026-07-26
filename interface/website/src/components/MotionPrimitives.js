@@ -37,3 +37,28 @@ export function MotionNumber({ value, className = "" }) {
 export function MotionDeck({ children, className = "" }) {
   return React.createElement("div", { className: `motion-deck ${className}`.trim() }, children);
 }
+
+export function MotionStage({ children, className = "", delay = 0, axis = "y" }) {
+  return React.createElement(
+    "div",
+    {
+      className: `motion-stage motion-stage-${axis} ${className}`.trim(),
+      style: { "--motion-delay": `${delay}ms` },
+    },
+    children
+  );
+}
+
+export function MotionShimmerText({ children, className = "", active = true }) {
+  return React.createElement(
+    "span",
+    {
+      className: `motion-shimmer-text${active ? " is-active" : ""} ${className}`.trim(),
+    },
+    children
+  );
+}
+
+export function MotionStack({ children, className = "" }) {
+  return React.createElement("div", { className: `motion-stack ${className}`.trim() }, children);
+}

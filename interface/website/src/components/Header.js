@@ -1,7 +1,7 @@
 import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
 import { formatBackendLabel } from "../utils/format.js";
-import { BeamFrame, MetalSurface } from "./MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionReveal, MotionShimmerText, MotionSwap } from "./MotionPrimitives.js";
 
 export function Header() {
   const { state, dispatch } = useApp();
@@ -56,63 +56,88 @@ export function Header() {
 
   return React.createElement(
     "header",
-    { className: "app-header flex justify-between items-center h-16 px-margin-desktop w-full z-50 shrink-0" },
+    { className: "app-header flex justify-between items-center px-margin-desktop w-full z-50 shrink-0" },
     React.createElement(
-      BeamFrame,
-      { active: state.isRunning, tone: "ocean", className: "app-header-brand rounded-2xl px-3 py-2" },
+      MotionReveal,
+      { className: "min-w-0" },
       React.createElement(
-        "div",
-        { className: "flex items-center gap-4" },
+        BeamFrame,
+        { active: state.isRunning, tone: "ocean", className: "app-header-brand rounded-2xl px-3 py-2" },
         React.createElement(
           "div",
-          { className: "app-header-mark" },
-          React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "auto_awesome")
-        ),
-        React.createElement(
-          "div",
-          { className: "flex flex-col gap-1" },
-          React.createElement("span", { className: "font-headline-md text-headline-md font-bold text-on-surface" }, "Devenv"),
+          { className: "flex items-center gap-4" },
           React.createElement(
             "div",
-            { className: "app-header-pills" },
-            React.createElement("span", { className: "app-header-pill" }, activeBackend),
-            React.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
-            React.createElement("span", { className: "app-header-pill" }, `${toolCount} tool${toolCount === 1 ? "" : "s"}`)
+            { className: "app-header-mark" },
+            React.createElement(
+              MotionSwap,
+              { className: "items-center justify-center" },
+              React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, state.isRunning ? "bolt" : "auto_awesome")
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "flex flex-col gap-1 min-w-0" },
+            React.createElement("span", { className: "font-headline-md text-headline-md font-bold text-on-surface" }, "Devenv"),
+            React.createElement(
+              "div",
+              { className: "app-header-pills" },
+              React.createElement("span", { className: "app-header-pill" }, activeBackend),
+              React.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
+              React.createElement("span", { className: "app-header-pill" }, `${toolCount} tool${toolCount === 1 ? "" : "s"}`)
+            ),
+            React.createElement(
+              "div",
+              { className: "app-header-statusline text-on-surface-variant" },
+              React.createElement(
+                MotionShimmerText,
+                { active: state.isRunning, className: "app-header-statuscopy" },
+                state.isRunning
+                  ? `Running through ${activeBackend}`
+                  : state.planMode
+                    ? "Planning with grounded files and read-only tools first"
+                    : "Light shell, direct answers, and tools only when the task actually needs them"
+              )
+            )
           )
         )
       )
     ),
     React.createElement(
-      MetalSurface,
-      { className: "app-header-actions flex items-center gap-2 rounded-2xl px-2 py-2" },
+      MotionReveal,
+      { delay: 90 },
       React.createElement(
-        "button",
-        {
-          type: "button",
-          "data-action": "toggle-settings",
-          className: `app-header-button icon-button p-2 rounded-2xl text-on-surface-variant ${state.showSettings ? "is-active text-primary" : ""}`,
-          onClick: toggleSettings,
-          "aria-label": "Settings",
-        },
-        React.createElement("span", { className: "material-symbols-outlined text-[20px]" }, "settings")
-      ),
-      React.createElement(
-        "button",
-        {
-          type: "button",
-          className: "app-header-button solid-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
-          onClick: newThread,
-        },
-        "New"
-      ),
-      React.createElement(
-        "button",
-        {
-          type: "button",
-          className: "app-header-button ghost-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
-          onClick: copyThread,
-        },
-        "Copy"
+        MetalSurface,
+        { className: "app-header-actions flex items-center gap-2 rounded-2xl px-2 py-2" },
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            "data-action": "toggle-settings",
+            className: `app-header-button icon-button p-2 rounded-2xl text-on-surface-variant ${state.showSettings ? "is-active text-primary" : ""}`,
+            onClick: toggleSettings,
+            "aria-label": "Settings",
+          },
+          React.createElement("span", { className: "material-symbols-outlined text-[20px]" }, "settings")
+        ),
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            className: "app-header-button solid-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
+            onClick: newThread,
+          },
+          "New"
+        ),
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            className: "app-header-button ghost-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
+            onClick: copyThread,
+          },
+          "Copy"
+        )
       )
     )
   );

@@ -6,7 +6,7 @@ import { AssistantMessage } from "./AssistantMessage.js";
 import { ErrorMessage } from "./ErrorMessage.js";
 import { PlanFlowchart } from "./PlanFlowchart.js?v=flow4";
 import { showToast } from "./Header.js";
-import { BeamFrame, MotionDeck, MotionReveal } from "./MotionPrimitives.js";
+import { BeamFrame, MotionDeck, MotionReveal, MotionShimmerText, MotionStack } from "./MotionPrimitives.js";
 
 const SUGGESTIONS = [
   "Do you remember anything about the old retrieval logic for this project?",
@@ -81,8 +81,40 @@ export function Transcript() {
               { className: "empty-state-badge w-14 h-14 rounded-full flex items-center justify-center text-on-primary" },
               React.createElement("span", { className: "material-symbols-outlined text-[26px]" }, "neurology")
             ),
-            React.createElement("h1", { className: "font-headline-lg text-headline-lg text-on-surface text-center" }, "Inspect faster. Plan cleaner. Ship with motion."),
+            React.createElement(
+              "h1",
+              { className: "font-headline-lg text-headline-lg text-on-surface text-center empty-state-title" },
+              React.createElement(MotionShimmerText, { className: "empty-state-title-line" }, "Inspect faster."),
+              React.createElement("span", { className: "empty-state-title-line" }, "Plan cleaner."),
+              React.createElement("span", { className: "empty-state-title-line" }, "Ship with motion.")
+            ),
             React.createElement("div", { className: "max-w-2xl text-center font-body-lg text-body-lg text-on-surface-variant" }, "Ask Devenv to inspect the codebase, route into a plan, or search live sources. The interface stays light, tactile, and traceable while the runtime decides what to use.")
+          )
+        ),
+        React.createElement(
+          MotionStack,
+          { className: "empty-state-preview-grid w-full max-w-3xl" },
+          [
+            { label: "Plan", icon: "conversion_path", title: "Multi-node flow", copy: "Blueprints render as connected steps instead of a one-line shrug." },
+            { label: "Trace", icon: "network_intelligence", title: "Visible reasoning surface", copy: "Thinking, tools, and retrieval cues stay legible while a turn is running." },
+            { label: "Motion", icon: "animation", title: "Light, tactile shell", copy: "Beams, metal shimmer, stacked cards, and staged panel transitions unify the interface." },
+          ].map((card, index) =>
+            React.createElement(
+              MotionReveal,
+              { key: card.label, delay: index * 90 },
+              React.createElement(
+                "div",
+                { className: "empty-state-preview-card" },
+                React.createElement("span", { className: "empty-state-preview-kicker" }, card.label),
+                React.createElement(
+                  "div",
+                  { className: "empty-state-preview-head" },
+                  React.createElement("span", { className: "material-symbols-outlined text-[20px] text-primary" }, card.icon),
+                  React.createElement("strong", null, card.title)
+                ),
+                React.createElement("p", { className: "empty-state-preview-copy" }, card.copy)
+              )
+            )
           )
         ),
         React.createElement(

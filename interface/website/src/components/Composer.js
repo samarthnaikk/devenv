@@ -4,7 +4,7 @@ import { formatDuration } from "../utils/format.js";
 import { ToolPicker } from "./ToolPicker.js?v=popup3";
 import { validatePlanBlueprint } from "../utils/validation.js";
 import { extractPlanBlueprint, READ_ONLY_PLAN_TOOLS, shouldDisplayPlanResult } from "../utils/plans.js";
-import { BeamFrame, MetalSurface, MotionReveal, MotionSwap } from "./MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionReveal, MotionShimmerText, MotionStack, MotionSwap } from "./MotionPrimitives.js";
 
 export function Composer() {
   const { state, dispatch } = useApp();
@@ -242,6 +242,8 @@ export function Composer() {
       React.createElement(
         BeamFrame,
         { active: state.isRunning, tone: pendingThinking ? "ocean" : "mono", className: "composer-frame relative inset-terminal rounded-[26px] border border-outline-variant p-4" },
+        React.createElement("div", { className: "composer-backdrop composer-backdrop-one", "aria-hidden": "true" }),
+        React.createElement("div", { className: "composer-backdrop composer-backdrop-two", "aria-hidden": "true" }),
         React.createElement(
           "div",
           { className: "composer-topline" },
@@ -249,7 +251,11 @@ export function Composer() {
             "div",
             { className: "composer-topline-copy" },
             React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, state.planMode ? "Plan-first" : "Live prompt"),
-            React.createElement("span", { className: "composer-topline-detail text-on-surface-variant" }, describeComposerState(state, { isCoolingDown, isBudgetBlocked }))
+            React.createElement(
+              MotionShimmerText,
+              { active: state.isRunning, className: "composer-topline-detail text-on-surface-variant" },
+              describeComposerState(state, { isCoolingDown, isBudgetBlocked })
+            )
           ),
           React.createElement(
             "div",
@@ -286,6 +292,13 @@ export function Composer() {
               )
             )
           : null,
+        React.createElement(
+          MotionStack,
+          { className: "composer-signal-row" },
+          React.createElement("span", { className: "composer-signal-dot" }),
+          React.createElement("span", { className: "composer-signal-dot" }),
+          React.createElement("span", { className: "composer-signal-dot" })
+        ),
         React.createElement("textarea", {
           ref: textareaRef,
           className: "composer-input w-full bg-transparent border-none focus:ring-0 font-body-md text-body-md text-on-surface resize-none h-20 placeholder:text-outline outline-none",
@@ -318,11 +331,11 @@ export function Composer() {
             state.isRunning
               ? React.createElement(MotionSwap, { className: "items-center gap-2" },
                   React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, pendingRunMode === "knowledge" ? "hub" : pendingRunMode === "web" ? "public" : "bolt"),
-                  React.createElement("span", null, runningVerbForMode(pendingRunMode))
+                  React.createElement(MotionShimmerText, { className: "composer-submit-copy" }, runningVerbForMode(pendingRunMode))
                 )
               : isCoolingDown
                 ? formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))
-                : isBudgetBlocked
+              : isBudgetBlocked
                   ? "Blocked"
                   : "Ask"
           )
