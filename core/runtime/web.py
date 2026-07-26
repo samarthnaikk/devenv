@@ -224,7 +224,12 @@ class DevenvWebApp:
             "ai_model": model,
             "available_models": list(model_catalog.get(active_backend, [])),
             "available_models_by_backend": model_catalog,
-            "selected_models_by_backend": self._selected_models_by_backend(ai_statuses, fallback_model=model, preferred_backend=preferred_backend),
+            "selected_models_by_backend": self._selected_models_by_backend(
+                ai_statuses,
+                fallback_model=model,
+                preferred_backend=preferred_backend,
+                fallback_backend=active_backend,
+            ),
             "context_builder_enabled": True,
             "context_sources": [
                 source.to_dict() for source in self.context_builder.list_sources()
@@ -360,6 +365,7 @@ class DevenvWebApp:
         *,
         fallback_model: str,
         preferred_backend: str,
+        fallback_backend: str | None = None,
     ) -> dict[str, str]:
         selected = {
             "opencode": str(getattr(getattr(self.kernel.ai, "opencode_ai", None), "model", "") or ""),
@@ -371,7 +377,13 @@ class DevenvWebApp:
                 model_name = str(getattr(status, "model", "") or "").strip()
                 if model_name:
                     selected[backend] = model_name
-        if preferred_backend in selected and not selected[preferred_backend]:
+        effective_fallback_backend = str(fallback_backend or "").strip().lower()
+        if (
+            preferred_backend in selected
+            and not selected[preferred_backend]
+            and effective_fallback_backend == preferred_backend
+            and fallback_model
+        ):
             selected[preferred_backend] = fallback_model
         return selected
 
@@ -932,7 +944,12 @@ class DevenvWebApp:
             "ai_model": cleaned,
             "available_models": list(model_catalog.get(cleaned_backend or preferred_backend or active_backend, [])),
             "available_models_by_backend": model_catalog,
-            "selected_models_by_backend": self._selected_models_by_backend(statuses, fallback_model=cleaned, preferred_backend=preferred_backend),
+            "selected_models_by_backend": self._selected_models_by_backend(
+                statuses,
+                fallback_model=cleaned,
+                preferred_backend=preferred_backend,
+                fallback_backend=cleaned_backend or preferred_backend,
+            ),
         }
 
     def update_session_access(self, provider: str, allowed: bool) -> dict[str, object]:

@@ -47,13 +47,24 @@ export function Composer() {
 
     dispatch({ type: "SET_IS_RUNNING", payload: true });
     dispatch({ type: "SET_RUN_STARTED_AT", payload: Date.now() });
-    dispatch({ type: "SET_PENDING_RUN_MODE", payload: inferPendingRunMode(originalPrompt) });
+    dispatch({
+      type: "SET_PENDING_RUN_MODE",
+      payload: inferPendingRunMode({
+        prompt: originalPrompt,
+        selectedTools: state.selectedTools,
+        planMode: state.planMode,
+      }),
+    });
     dispatch({ type: "SET_TOOL_PICKER_OPEN", payload: false });
     dispatch({ type: "SET_PROMPT", payload: "" });
     dispatch({ type: "SET_REPLY_TARGET", payload: null });
 
     const thinkingId = `thinking-${Date.now()}`;
-    const pendingRunMode = inferPendingRunMode(originalPrompt);
+    const pendingRunMode = inferPendingRunMode({
+      prompt: originalPrompt,
+      selectedTools: state.selectedTools,
+      planMode: state.planMode,
+    });
     const pendingLogs = pendingRunMode === "web"
       ? [
           { source: "tool_call", message: "tool: web_search" },
@@ -241,7 +252,7 @@ export function Composer() {
       }
     } finally {
       dispatch({ type: "SET_IS_RUNNING", payload: false });
-      dispatch({ type: "SET_PENDING_RUN_MODE", payload: "memory" });
+      dispatch({ type: "SET_PENDING_RUN_MODE", payload: "direct" });
     }
   };
 
@@ -445,12 +456,18 @@ function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function inferPendingRunMode(prompt) {
+function inferPendingRunMode({ prompt, selectedTools = [], planMode = false }) {
+  if (planMode) return "plan";
+  const toolSet = new Set(Array.isArray(selectedTools) ? selectedTools : []);
+  if (toolSet.has("knowledge_search")) return "knowledge";
+  if (toolSet.has("web_search")) return "web";
+  if (toolSet.size) return "direct";
   const lowered = String(prompt || "").toLowerCase();
   const webMarkers = ["today", "latest", "current", "currently", "recent", "president", "prime minister", "ceo", "who is"];
   const knowledgeMarkers = ["github", "repo", "reference", "references", "youtube", "reddit", "stackoverflow", "quora", "similar project", "find examples"];
   if (knowledgeMarkers.some((marker) => lowered.includes(marker))) return "knowledge";
-  return webMarkers.some((marker) => lowered.includes(marker)) ? "web" : "memory";
+  if (webMarkers.some((marker) => lowered.includes(marker))) return "web";
+  return "direct";
 }
 
 function formatThinkingFromResult(result) {

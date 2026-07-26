@@ -55,6 +55,7 @@ function AppInner() {
     restoreRef.current = true;
     const restore = async () => {
       const persisted = state.persistedAccess || { session_access: {}, backend_access: {} };
+      const preferredBackend = selectReachablePreferredBackend(state.health, loadPreferredBackend());
       try {
         if (persisted.session_access?.codex && !state.accessPolicy.session_access?.codex) {
           const payload = await apiUpdateSessionAccess("codex", true);
@@ -69,6 +70,17 @@ function AppInner() {
             const payload = await apiUpdateBackendAccess(backend, true);
             dispatch({ type: "SET_ACCESS_POLICY", payload });
           }
+        }
+        if (
+          shouldAutoEnablePreferredBackend({
+            health: state.health,
+            preferredBackend,
+            accessPolicy: state.accessPolicy,
+            persistedAccess: persisted,
+          })
+        ) {
+          const payload = await apiUpdateBackendAccess(preferredBackend, true);
+          dispatch({ type: "SET_ACCESS_POLICY", payload });
         }
         const payload = await fetchHealth();
         dispatch({ type: "SET_HEALTH", payload });
@@ -585,8 +597,7 @@ function setupRow(provider, label, granted, done, isActive, handleGrant) {
 }
 
 function applyHealthPayload(dispatch, payload) {
-  const persistedPreferredBackend = loadPreferredBackend();
-  const preferredBackend = persistedPreferredBackend || payload.preferred_backend || "opencode";
+  const preferredBackend = selectReachablePreferredBackend(payload, loadPreferredBackend());
   dispatch({
     type: "SET_HEALTH_META",
     payload: {
@@ -603,6 +614,27 @@ function applyHealthPayload(dispatch, payload) {
   dispatch({ type: "SET_PREFERRED_BACKEND", payload: preferredBackend });
   dispatch({ type: "SET_PERFORMANCE_MODE", payload: payload.performance_mode || "medium" });
   dispatch({ type: "SET_PRIVACY_MODE", payload: payload.privacy || { no_memory: false, incognito: false } });
+}
+
+function selectReachablePreferredBackend(payload, persistedPreferredBackend) {
+  const requested = String(persistedPreferredBackend || payload?.preferred_backend || "opencode").trim().toLowerCase() || "opencode";
+  if (backendLooksReachable(payload, requested)) return requested;
+  if (backendLooksReachable(payload, "ollama")) return "ollama";
+  if (backendLooksReachable(payload, "opencode")) return "opencode";
+  if (backendLooksReachable(payload, "codex")) return "codex";
+  return requested;
+}
+
+function backendLooksReachable(payload, backend) {
+  const status = payload?.ai_backends?.[backend];
+  return Boolean(status?.available);
+}
+
+function shouldAutoEnablePreferredBackend({ health, preferredBackend, accessPolicy, persistedAccess }) {
+  if (!preferredBackend || !backendLooksReachable(health, preferredBackend)) return false;
+  if (accessPolicy?.backend_access?.[preferredBackend]) return false;
+  if (persistedAccess?.backend_access?.[preferredBackend]) return false;
+  return preferredBackend === "ollama";
 }
 
 function formatDuration(ms) {

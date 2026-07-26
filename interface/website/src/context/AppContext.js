@@ -41,7 +41,7 @@ const initialState = {
   latestElapsedMs: 0,
   runStartedAt: 0,
   healthRefreshPending: false,
-  pendingRunMode: "memory",
+  pendingRunMode: "direct",
   selectedTools: [],
   toolPickerOpen: false,
   planMode: false,

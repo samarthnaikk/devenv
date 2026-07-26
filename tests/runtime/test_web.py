@@ -151,6 +151,41 @@ class CapturingFakeAI(FakeAI):
 
 
 class DevenvWebAppTest(unittest.TestCase):
+    def test_health_payload_does_not_copy_active_model_into_empty_preferred_backend_slot(self) -> None:
+        class PreferredOllamaWithoutSelectedModelAI(FakeAI):
+            def __init__(self) -> None:
+                super().__init__()
+                self.preferred_backend = "ollama"
+
+            def status(self) -> dict[str, object]:
+                statuses = super().status()
+                statuses["ollama"] = type(statuses["ollama"])(
+                    name="ollama",
+                    available=True,
+                    enabled=True,
+                    model="",
+                    detail="Ollama reachable",
+                    metadata={
+                        "models": ["qwen2.5-coder:3b"],
+                        "runtime": "ollama",
+                        "transport": "http_api",
+                    },
+                )
+                return statuses
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=PreferredOllamaWithoutSelectedModelAI(),
+            )
+
+            health = app.build_health_payload()
+
+        self.assertEqual(health["selected_models_by_backend"]["opencode"], "fake-opencode-model")
+        self.assertEqual(health["selected_models_by_backend"]["ollama"], "")
+        self.assertIn("qwen2.5-coder:3b", health["available_models_by_backend"]["ollama"])
+
     def test_health_payload_reuses_cached_setup_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             app = DevenvWebApp(
