@@ -518,6 +518,7 @@ class DevenvWebApp:
         max_tools = max_consecutive_tools or self.config.max_consecutive_tools
         repair_attempts = 0
         detail_refinement_attempts = 0
+        aggressive_local_plan_fallback = backend_preference == "ollama" and local_only
 
         while True:
             ai_response = self.kernel.ai.chat(
@@ -617,9 +618,27 @@ class DevenvWebApp:
             content = ai_response.content or ""
             blueprint = _parse_plan_blueprint(content)
             if blueprint is not None:
+                needs_refinement = _plan_blueprint_needs_refinement(prompt, blueprint, steps)
+                if needs_refinement and aggressive_local_plan_fallback and not steps:
+                    fallback_blueprint = _build_repo_grounded_fallback_plan(
+                        prompt,
+                        repo_grounding=repo_grounding,
+                    )
+                    ai_logs.append("Planner blueprint was generic on Ollama local-only mode; substituted repo-grounded fallback plan")
+                    system_logs.append("Used deterministic repo-grounded fallback blueprint for plan mode")
+                    return _build_plan_result(
+                        final_response=json.dumps(fallback_blueprint, indent=2),
+                        blueprint=fallback_blueprint,
+                        steps=steps,
+                        total_usage=total_usage,
+                        ai_logs=ai_logs,
+                        system_logs=system_logs,
+                        metadata=metadata,
+                        elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                    )
                 if (
-                    detail_refinement_attempts < PLAN_DETAIL_REFINEMENT_LIMIT
-                    and _plan_blueprint_needs_refinement(prompt, blueprint, steps)
+                    needs_refinement
+                    and detail_refinement_attempts < PLAN_DETAIL_REFINEMENT_LIMIT
                 ):
                     detail_refinement_attempts += 1
                     ai_logs.append("Planner blueprint was valid but too generic; requesting a more detailed repo-aware graph")
@@ -631,6 +650,23 @@ class DevenvWebApp:
                         }
                     )
                     continue
+                if needs_refinement:
+                    fallback_blueprint = _build_repo_grounded_fallback_plan(
+                        prompt,
+                        repo_grounding=repo_grounding,
+                    )
+                    ai_logs.append("Planner blueprint remained too generic after refinement; substituted repo-grounded fallback plan")
+                    system_logs.append("Used deterministic repo-grounded fallback blueprint after repeated generic planner output")
+                    return _build_plan_result(
+                        final_response=json.dumps(fallback_blueprint, indent=2),
+                        blueprint=fallback_blueprint,
+                        steps=steps,
+                        total_usage=total_usage,
+                        ai_logs=ai_logs,
+                        system_logs=system_logs,
+                        metadata=metadata,
+                        elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                    )
                 return _build_plan_result(
                     final_response=content,
                     blueprint=blueprint,
@@ -1739,6 +1775,119 @@ def _plan_detail_refinement_prompt(user_prompt: str) -> str:
         "- Name at least 2 existing repository files or concrete integration surfaces from the provided grounding.\n"
         "- Include discovery, implementation, verification, and follow-up/documentation steps where relevant.\n"
         "- If the repository context is still too vague, inspect read-only tools before returning the refined blueprint.\n"
+    )
+
+
+def _build_repo_grounded_fallback_plan(
+    user_prompt: str,
+    *,
+    repo_grounding: str,
+) -> dict[str, object]:
+    prompt_lowered = str(user_prompt or "").lower()
+    paths = _repo_grounding_paths(repo_grounding)
+    if any(token in prompt_lowered for token in ("ui", "shell", "interface", "animation", "theme", "chat")):
+        preferred_ui_paths = [
+            "interface/website/src/App.js",
+            "interface/website/src/components/Composer.js",
+            "interface/website/src/components/Transcript.js",
+            "interface/website/styles.css",
+            "tests/runtime/test_web.py",
+        ]
+        for candidate in reversed(preferred_ui_paths):
+            if candidate not in paths:
+                paths.insert(0, candidate)
+    primary = paths[0] if len(paths) > 0 else "README.md"
+    secondary = paths[1] if len(paths) > 1 else primary
+    tertiary = paths[2] if len(paths) > 2 else secondary
+    verification_path = next(
+        (path for path in paths if path.startswith("tests/")),
+        "tests/runtime/test_web.py" if "plan" in prompt_lowered or "runtime" in prompt_lowered else "README.md",
+    )
+
+    if any(token in prompt_lowered for token in ("ui", "shell", "interface", "animation", "theme", "chat")):
+        tasks = [
+            {
+                "task_id": "inspect-ui-shell",
+                "description": f"Inspect the current UI shell and interaction entrypoints in `{primary}` and `{secondary}` to confirm the animation and layout surfaces that actually drive the experience.",
+                "level": 0,
+            },
+            {
+                "task_id": "upgrade-primary-surface",
+                "description": f"Implement the primary UI-shell improvements in `{primary}`, keeping the light-theme direction and stronger motion language aligned with the existing product surface.",
+                "level": 1,
+            },
+            {
+                "task_id": "upgrade-supporting-surfaces",
+                "description": f"Update supporting interaction surfaces in `{secondary}` and `{tertiary}` so the transcript, composer, or adjacent panels match the upgraded shell instead of feeling visually disconnected.",
+                "level": 2,
+            },
+            {
+                "task_id": "verify-ui-runtime",
+                "description": f"Verify the updated UI behavior through the runtime and web-serving path, using `{verification_path}` or the live web runtime checks as the verification anchor.",
+                "level": 3,
+            },
+            {
+                "task_id": "final-polish-pass",
+                "description": "Do a final polish pass on copy, motion timing, and interaction states so the upgraded shell reads as one coherent product surface rather than a set of isolated tweaks.",
+                "level": 4,
+            },
+        ]
+    else:
+        tasks = [
+            {
+                "task_id": "inspect-current-implementation",
+                "description": f"Inspect the current implementation in `{primary}` and `{secondary}` to confirm the real integration points for this request.",
+                "level": 0,
+            },
+            {
+                "task_id": "implement-primary-change",
+                "description": f"Implement the primary changes in `{primary}` based on the confirmed integration surface rather than a generic project plan.",
+                "level": 1,
+            },
+            {
+                "task_id": "update-dependent-surfaces",
+                "description": f"Update dependent logic in `{secondary}` and `{tertiary}` so the main change is reflected consistently across the runtime or UI flow.",
+                "level": 2,
+            },
+            {
+                "task_id": "verify-behavior",
+                "description": f"Verify the behavior through `{verification_path}` or the closest runtime/web check that exercises the changed path end to end.",
+                "level": 3,
+            },
+            {
+                "task_id": "document-follow-up",
+                "description": "Capture any remaining risks, follow-up cleanup, or validation notes after the main implementation and verification steps are complete.",
+                "level": 4,
+            },
+        ]
+    edges = [
+        {"from": tasks[index]["task_id"], "to": tasks[index + 1]["task_id"]}
+        for index in range(len(tasks) - 1)
+    ]
+    return {"tasks": tasks, "edges": edges}
+
+
+def _repo_grounding_paths(repo_grounding: str) -> list[str]:
+    paths: list[str] = []
+    for match in re.findall(r"`([^`]+)`", str(repo_grounding or "")):
+        cleaned = str(match).strip()
+        if cleaned and _looks_like_repo_path(cleaned) and cleaned not in paths:
+            paths.append(cleaned)
+    return paths
+
+
+def _looks_like_repo_path(value: str) -> bool:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return False
+    lowered = cleaned.lower()
+    if lowered in {"readme.md", "license", "pyproject.toml"}:
+        return True
+    if "/" not in cleaned:
+        return False
+    return any(
+        lowered.endswith(suffix)
+        for suffix in (".py", ".md", ".js", ".jsx", ".ts", ".tsx", ".json", ".css", ".html")
     )
 
 
