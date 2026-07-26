@@ -96,6 +96,7 @@ memory.db
 *.sqlite
 *.sqlite3
 vectors/
+interface/website/node_modules/
 interface/website/dash.html
 stitch_devenv_*
 codereferences

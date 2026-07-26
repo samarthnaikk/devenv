@@ -1,4 +1,4 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { formatBackendLabel } from "../utils/format.js";
 

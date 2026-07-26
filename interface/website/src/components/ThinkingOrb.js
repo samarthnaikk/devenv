@@ -1,4 +1,4 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 
 const ORB_STATES = new Set(["working", "searching", "solving", "listening", "composing", "shaping"]);
 const DOTS = Array.from({ length: 24 }, (_, index) => index);

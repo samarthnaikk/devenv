@@ -1,4 +1,4 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 import { renderMarkdown } from "../lib/markdown.js";
 import { BeamFrame, MotionReveal } from "./MotionPrimitives.js";
 
@@ -56,17 +56,6 @@ export function AssistantMessage({ message, onCopy, onReply }) {
           dangerouslySetInnerHTML: { __html: renderMarkdown(String(message.content || "")) },
         }
       )
-    )
-  );
-}
-        )
-      : null,
-    React.createElement(
-      "div",
-      {
-        className: "font-body-lg text-body-lg text-on-surface ml-8 leading-relaxed markdown-body assistant-markdown",
-        dangerouslySetInnerHTML: { __html: renderMarkdown(String(message.content || "")) },
-      }
     )
   );
 }

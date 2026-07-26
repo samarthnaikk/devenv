@@ -1,4 +1,4 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 import { AppProvider, useApp } from "./context/AppContext.js";
 import { Header } from "./components/Header.js";
 import { SettingsDropdown } from "./components/SettingsDropdown.js";

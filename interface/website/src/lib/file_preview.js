@@ -1,4 +1,4 @@
-import hljs from "https://esm.sh/highlight.js@11.11.1";
+import hljs from "highlight.js";
 import { renderMarkdown } from "./markdown.js";
 
 const LANGUAGE_BY_EXTENSION = {

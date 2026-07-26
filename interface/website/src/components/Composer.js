@@ -1,4 +1,4 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { formatDuration } from "../utils/format.js";
 import { ToolPicker } from "./ToolPicker.js?v=popup3";
@@ -241,7 +241,11 @@ export function Composer() {
       { className: "max-w-4xl mx-auto flex flex-col gap-3" },
       React.createElement(
         BeamFrame,
-        { active: state.isRunning, tone: pendingThinking ? "ocean" : "mono", className: "composer-frame relative inset-terminal rounded-[26px] border border-outline-variant p-4" },
+        {
+          active: state.isRunning,
+          tone: pendingThinking ? "ocean" : "mono",
+          className: "composer-frame relative inset-terminal rounded-[26px] border border-outline-variant p-4",
+        },
         React.createElement("div", { className: "composer-backdrop composer-backdrop-one", "aria-hidden": "true" }),
         React.createElement("div", { className: "composer-backdrop composer-backdrop-two", "aria-hidden": "true" }),
         React.createElement(
@@ -272,23 +276,23 @@ export function Composer() {
               React.createElement(
                 MetalSurface,
                 { className: "composer-reply flex items-start gap-3 rounded-2xl border border-primary/30 bg-surface-container px-3 py-2" },
-              React.createElement("span", { className: "material-symbols-outlined text-primary text-[16px] mt-0.5" }, "reply"),
-              React.createElement(
-                "div",
-                { className: "min-w-0 flex-1" },
-                React.createElement("div", { className: "font-label-caps text-label-caps text-primary" }, `Replying to ${replyTarget.author}`),
-                React.createElement("div", { className: "truncate text-[12px] text-on-surface-variant" }, replyTarget.excerpt)
-              ),
-              React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "rounded-full p-1 text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface",
-                  onClick: () => dispatch({ type: "SET_REPLY_TARGET", payload: null }),
-                  title: "Clear reply",
-                },
-                React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "close")
-              )
+                React.createElement("span", { className: "material-symbols-outlined text-primary text-[16px] mt-0.5" }, "reply"),
+                React.createElement(
+                  "div",
+                  { className: "min-w-0 flex-1" },
+                  React.createElement("div", { className: "font-label-caps text-label-caps text-primary" }, `Replying to ${replyTarget.author}`),
+                  React.createElement("div", { className: "truncate text-[12px] text-on-surface-variant" }, replyTarget.excerpt)
+                ),
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "rounded-full p-1 text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface",
+                    onClick: () => dispatch({ type: "SET_REPLY_TARGET", payload: null }),
+                    title: "Clear reply",
+                  },
+                  React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "close")
+                )
               )
             )
           : null,
@@ -329,13 +333,15 @@ export function Composer() {
               disabled: state.isRunning || isDisabled || !state.prompt.trim(),
             },
             state.isRunning
-              ? React.createElement(MotionSwap, { className: "items-center gap-2" },
+              ? React.createElement(
+                  MotionSwap,
+                  { className: "items-center gap-2" },
                   React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, pendingRunMode === "knowledge" ? "hub" : pendingRunMode === "web" ? "public" : "bolt"),
                   React.createElement(MotionShimmerText, { className: "composer-submit-copy" }, runningVerbForMode(pendingRunMode))
                 )
               : isCoolingDown
                 ? formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))
-              : isBudgetBlocked
+                : isBudgetBlocked
                   ? "Blocked"
                   : "Ask"
           )
@@ -343,7 +349,6 @@ export function Composer() {
         state.isRunning && pendingThinking
           ? React.createElement(MotionReveal, { className: "mt-2" }, renderRunningTicker(dispatch, state, pendingThinking))
           : null
-        )
       )
     )
   );

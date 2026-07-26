@@ -1,4 +1,4 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 import { escapeHtml } from "../utils/format.js";
 
 export function ErrorMessage({ message, onCopy, onReply }) {

@@ -1,4 +1,4 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 
 export function BeamFrame({ children, active = true, tone = "ocean", className = "" }) {
   return React.createElement(
