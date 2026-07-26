@@ -2,6 +2,7 @@ import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { formatBackendLabel } from "../utils/format.js";
 import { ThinkingOrb } from "./ThinkingOrb.js";
+import { BeamFrame, MotionNumber, MotionShimmerText } from "./MotionPrimitives.js";
 
 export function Footer() {
   const { state } = useApp();
@@ -18,20 +19,36 @@ export function Footer() {
 
   return React.createElement(
     "footer",
-    { className: "p-4 bg-surface-container-highest border-t border-outline-variant flex justify-between items-center shrink-0" },
+    { className: "app-footer px-4 pb-4 pt-2 shrink-0" },
     React.createElement(
-      "div",
-      { className: "flex items-center gap-2" },
-      state.isRunning
-        ? React.createElement(ThinkingOrb, { state: state.pendingRunMode === "web" || state.pendingRunMode === "knowledge" ? "searching" : "working", size: 20, label: "Runtime process" })
-        : React.createElement("div", { className: "w-2 h-2 rounded-full bg-primary glowing-pip" }),
+      BeamFrame,
+      { active: state.isRunning, tone: "mono", className: "app-footer-shell flex justify-between items-center rounded-[22px] px-4 py-3" },
       React.createElement(
         "div",
-        { className: "flex flex-col" },
-        React.createElement("span", { className: "font-label-caps text-[10px] text-on-surface" }, state.isRunning ? "Running" : backendReadyLabel),
-        React.createElement("span", { className: "font-code-sm text-[9px] text-on-surface-variant" }, modelLabel)
+        { className: "flex items-center gap-3" },
+        state.isRunning
+          ? React.createElement(ThinkingOrb, { state: state.pendingRunMode === "web" || state.pendingRunMode === "knowledge" ? "searching" : "working", size: 20, label: "Runtime process" })
+          : React.createElement("div", { className: "w-2 h-2 rounded-full bg-primary glowing-pip" }),
+        React.createElement(
+          "div",
+          { className: "flex flex-col" },
+          React.createElement("span", { className: "font-label-caps text-[10px] text-on-surface" }, state.isRunning ? "Running" : backendReadyLabel),
+          React.createElement(
+            MotionShimmerText,
+            { className: "font-code-sm text-[9px] text-on-surface-variant", active: state.isRunning },
+            modelLabel
+          )
+        )
+      ),
+      React.createElement(
+        "div",
+        { className: "app-footer-metrics flex items-center gap-3" },
+        React.createElement(
+          "span",
+          { className: "app-footer-pill font-code-sm text-[10px] text-on-surface-variant" },
+          React.createElement(MotionNumber, { value: remainingLabel })
+        )
       )
-    ),
-    React.createElement("span", { className: "font-code-sm text-[10px] text-on-surface-variant" }, remainingLabel)
+    )
   );
 }

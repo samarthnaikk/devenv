@@ -2,6 +2,7 @@ import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, escapeAttribute, formatBackendLabel } from "../utils/format.js";
 import { persistPreferredBackend, persistPreferredModels } from "../utils/storage.js";
+import { BeamFrame, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 export function SettingsDropdown() {
   const { state, dispatch } = useApp();
@@ -57,71 +58,86 @@ export function SettingsDropdown() {
     "div",
     { className: "relative z-40" },
     React.createElement(
-      "div",
-      {
-        className: "absolute right-4 top-0 w-72 bg-surface-container-high border border-outline-variant rounded-xl shadow-2xl p-4 space-y-4",
-        "data-settings-panel": true,
-      },
+      MotionReveal,
+      null,
       React.createElement(
-        "div",
-        { className: "flex items-center justify-between" },
-        React.createElement("h3", { className: "font-label-caps text-label-caps text-on-surface-variant" }, "Settings"),
+        BeamFrame,
+        {
+          active: false,
+          tone: "mono",
+          className: "settings-panel-shell absolute right-4 top-0 w-72 rounded-[22px] p-4 space-y-4",
+          "data-settings-panel": true,
+        },
         React.createElement(
-          "button",
-          {
-            type: "button",
-            className: "p-1 rounded hover:bg-surface-variant transition-colors text-on-surface-variant",
-            onClick: closeSettings,
-            "aria-label": "Close settings",
-          },
-          React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "close")
-        )
-      ),
-      React.createElement(
-        "div",
-        { className: "space-y-1.5" },
-        React.createElement("label", { className: "font-label-caps text-[11px] text-on-surface-variant block" }, "Preferred Backend"),
-        React.createElement(
-          "select",
-          {
-            className: "w-full bg-surface-container-highest border border-outline-variant rounded-lg font-body-md text-body-md text-on-surface p-2 outline-none focus:border-primary",
-            value: preferredBackend,
-            onChange: handleBackendChange,
-          },
-          ["opencode", "ollama", "codex"].map((backend) =>
-            React.createElement("option", { key: backend, value: backend }, formatBackendLabel(backend))
+          "div",
+          { className: "flex items-center justify-between" },
+          React.createElement(
+            "div",
+            { className: "flex flex-col gap-1" },
+            React.createElement("h3", { className: "font-label-caps text-label-caps text-on-surface-variant" }, "Settings"),
+            React.createElement(
+              MotionShimmerText,
+              { className: "settings-panel-copy", active: state.isRunning },
+              "Preferred backend and model routing"
+            )
+          ),
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              className: "p-1 rounded hover:bg-surface-variant transition-colors text-on-surface-variant",
+              onClick: closeSettings,
+              "aria-label": "Close settings",
+            },
+            React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "close")
           )
-        )
-      ),
-      React.createElement(
-        "div",
-        { className: "space-y-1.5" },
-        React.createElement("label", { className: "font-label-caps text-[11px] text-on-surface-variant block" }, "Model"),
+        ),
         React.createElement(
-          "select",
+          "div",
+          { className: "settings-panel-section space-y-1.5" },
+          React.createElement("label", { className: "font-label-caps text-[11px] text-on-surface-variant block" }, "Preferred Backend"),
+          React.createElement(
+            "select",
+            {
+              className: "w-full bg-surface-container-highest border border-outline-variant rounded-lg font-body-md text-body-md text-on-surface p-2 outline-none focus:border-primary",
+              value: preferredBackend,
+              onChange: handleBackendChange,
+            },
+            ["opencode", "ollama", "codex"].map((backend) =>
+              React.createElement("option", { key: backend, value: backend }, formatBackendLabel(backend))
+            )
+          )
+        ),
+        React.createElement(
+          "div",
+          { className: "settings-panel-section space-y-1.5" },
+          React.createElement("label", { className: "font-label-caps text-[11px] text-on-surface-variant block" }, "Model"),
+          React.createElement(
+            "select",
             {
               className: "w-full bg-surface-container-highest border border-outline-variant rounded-lg font-body-md text-body-md text-on-surface p-2 outline-none focus:border-primary",
               value: currentModel,
               onChange: handleModelChange,
               disabled: !isBackendAvailable,
             },
-          models.map((m) =>
-            React.createElement("option", { key: m, value: m }, m)
+            models.map((m) =>
+              React.createElement("option", { key: m, value: m }, m)
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: `text-[11px] ${isBackendAvailable ? "text-on-surface-variant" : "text-error"}` },
+            isBackendAvailable
+              ? backendDetail || `Choose a ${formatBackendLabel(preferredBackend)} model.`
+              : backendDetail || `${formatBackendLabel(preferredBackend)} is unavailable.`
           )
         ),
         React.createElement(
           "div",
-          { className: `text-[11px] ${isBackendAvailable ? "text-on-surface-variant" : "text-error"}` },
-          isBackendAvailable
-            ? backendDetail || `Choose a ${formatBackendLabel(preferredBackend)} model.`
-            : backendDetail || `${formatBackendLabel(preferredBackend)} is unavailable.`
+          { className: "settings-panel-section pt-2 border-t border-outline-variant/30" },
+          React.createElement("div", { className: "font-label-caps text-[11px] text-on-surface-variant" }, "Backend"),
+          React.createElement("div", { className: "font-body-md text-body-md text-on-surface mt-0.5" }, `${formatBackendLabel(state.activeBackend)} active`)
         )
-      ),
-      React.createElement(
-        "div",
-        { className: "pt-2 border-t border-outline-variant/30" },
-        React.createElement("div", { className: "font-label-caps text-[11px] text-on-surface-variant" }, "Backend"),
-        React.createElement("div", { className: "font-body-md text-body-md text-on-surface mt-0.5" }, `${formatBackendLabel(state.activeBackend)} active`)
       )
     )
   );

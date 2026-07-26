@@ -1,5 +1,6 @@
 import React from "react";
 import { useApp } from "../context/AppContext.js";
+import { BeamFrame, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 const TOOL_META = {
   generate_pdf: { icon: "picture_as_pdf", label: "PDF", hint: "Generate polished PDFs" },
@@ -78,23 +79,36 @@ export function ToolPicker() {
       "div",
       { className: "tool-picker-trigger-row" },
       React.createElement(
-        "button",
-        {
-          type: "button",
-          className: "tool-picker-trigger flex items-center gap-2 px-3 py-1.5 bg-surface-container-highest rounded-lg border border-outline-variant hover:bg-surface-variant transition-colors",
-          onClick: toggleToolPicker,
-          "aria-label": selected.size ? `Choose tools, ${selected.size} selected` : "Choose tools",
-        },
-        React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "TOOLS"),
-        React.createElement("span", { className: "material-symbols-outlined text-[16px] text-on-surface-variant" }, state.toolPickerOpen ? "expand_less" : "expand_more")
+        BeamFrame,
+        { active: state.toolPickerOpen, tone: "mono", className: "tool-picker-trigger-shell rounded-xl" },
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            className: "tool-picker-trigger flex items-center gap-2 px-3 py-1.5 bg-surface-container-highest rounded-xl border border-outline-variant hover:bg-surface-variant transition-colors",
+            onClick: toggleToolPicker,
+            "aria-label": selected.size ? `Choose tools, ${selected.size} selected` : "Choose tools",
+          },
+          React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "TOOLS"),
+          React.createElement(
+            MotionShimmerText,
+            { className: "tool-picker-trigger-copy", active: state.toolPickerOpen },
+            selected.size ? `${selected.size} active` : "Pick a route"
+          ),
+          React.createElement("span", { className: "material-symbols-outlined text-[16px] text-on-surface-variant ml-auto" }, state.toolPickerOpen ? "expand_less" : "expand_more")
+        )
       )
     ),
     selectedTools.length
       ? React.createElement(
-          "div",
-          { className: "tool-picker-selected-row" },
-          React.createElement("span", { className: "tool-picker-selected-label" }, "Active tools"),
-          React.createElement("div", { className: "tool-picker-selected-list" }, selectedToolChips)
+          MotionReveal,
+          null,
+          React.createElement(
+            "div",
+            { className: "tool-picker-selected-row" },
+            React.createElement("span", { className: "tool-picker-selected-label" }, "Active tools"),
+            React.createElement("div", { className: "tool-picker-selected-list" }, selectedToolChips)
+          )
         )
       : null,
     state.toolPickerOpen
