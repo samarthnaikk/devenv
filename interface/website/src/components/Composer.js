@@ -230,6 +230,17 @@ export function Composer() {
     }
   }, [state.prompt]);
 
+  React.useEffect(() => {
+    const handler = () => {
+      if (!textareaRef.current) return;
+      textareaRef.current.focus();
+      const length = textareaRef.current.value.length;
+      textareaRef.current.setSelectionRange(length, length);
+    };
+    window.addEventListener("opencode-suggestion", handler);
+    return () => window.removeEventListener("opencode-suggestion", handler);
+  }, []);
+
   return React.createElement(
     "form",
     {
