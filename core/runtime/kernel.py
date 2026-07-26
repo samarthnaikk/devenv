@@ -2397,8 +2397,6 @@ class DevenvKernel:
         return self._try_fast_direct_memory_answer(user_prompt)
 
     def _can_skip_external_memory_fetch(self, user_prompt: str, *, memory_context: str, local_only: bool) -> bool:
-        if local_only and _should_try_direct_memory_answer(user_prompt):
-            return True
         if not _should_try_direct_memory_answer(user_prompt):
             return False
         if self._answer_known_project_question_local(user_prompt, memory_context) is not None:
@@ -7493,6 +7491,16 @@ def _should_trust_memory_answer_for_prompt(user_prompt: str) -> bool:
     if _is_repo_summary_question(user_prompt):
         return False
     if _is_bug_list_question(user_prompt):
+        return True
+    if any(
+        phrase in lowered
+        for phrase in (
+            "what were the issues",
+            "what were the main issues",
+            "what issues were",
+            "issues sharmil was talking about",
+        )
+    ):
         return True
     if any(
         phrase in lowered

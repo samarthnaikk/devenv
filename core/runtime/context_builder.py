@@ -1353,7 +1353,7 @@ def _collect_relevant_context_lines(
                 )
             )
         for message in detail.messages:
-            if message.role not in {"user", "assistant"}:
+            if message.role not in {"user", "assistant", "tool"}:
                 continue
             content = _compact_context_content(message.role, message.content)
             if not content or content in seen:
@@ -1361,8 +1361,10 @@ def _collect_relevant_context_lines(
             seen.add(content)
             if message.role == "user":
                 prefix = "User asked:"
-            else:
+            elif message.role == "assistant":
                 prefix = "Assistant reported:"
+            else:
+                prefix = "Tool output:"
             candidates.append((f"{prefix} {content}", message.role, session_identity_overlap, session_cleanup_match))
 
     scored: list[tuple[int, str, str]] = []
@@ -1380,6 +1382,10 @@ def _collect_relevant_context_lines(
                 overlap -= 5
             if session_identity_overlap and is_issue_prompt:
                 overlap += 2
+        if line.startswith("Tool output:"):
+            overlap += 3 if is_issue_prompt or any(token in lowered_task for token in ("what did", "what were", "issues", "talking about", "comment")) else 1
+            if session_identity_overlap and (is_issue_prompt or is_project_recall_prompt):
+                overlap += 3
         if "bug" in lowered or "review" in lowered or "fix" in lowered:
             overlap += 3
         if session_identity_overlap and any(
