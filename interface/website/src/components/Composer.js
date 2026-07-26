@@ -685,6 +685,12 @@ function describeComposerState(state, { isCoolingDown, isBudgetBlocked }) {
   if (isBudgetBlocked) return "Session budget reached";
   if (state.isRunning) return "Executing the current turn";
   if (state.planMode) return "Will inspect the repo and return a flowchart before execution";
+  if (state.selectedTools.includes("track_symbol")) return "Biased toward tracing how a symbol moves through the codebase";
+  if (state.selectedTools.includes("inspect_symbols")) return "Biased toward definitions, exports, and structural code inspection";
+  if (state.selectedTools.includes("search_text")) return "Biased toward repo-wide string and usage search";
+  if (state.selectedTools.includes("read_file")) return "Biased toward opening exact files before answering";
+  if (state.selectedTools.includes("locate_files")) return "Biased toward finding the right files before deeper inspection";
+  if (state.selectedTools.includes("list_directory")) return "Biased toward mapping folders and workspace structure";
   if (state.selectedTools.includes("knowledge_search")) return "Biased toward repos, docs, videos, and reference gathering";
   if (state.selectedTools.includes("web_search")) return "Biased toward live web results and current facts";
   if (state.selectedTools.includes("generate_pdf")) return "Biased toward producing a polished PDF artifact";
@@ -697,6 +703,12 @@ function describeRouteChip(state) {
   if (!state.selectedTools.length) return "auto route";
   if (state.selectedTools.length === 1) {
     const selected = state.selectedTools[0];
+    if (selected === "list_directory") return "files route";
+    if (selected === "locate_files") return "locate route";
+    if (selected === "read_file") return "read route";
+    if (selected === "search_text") return "search route";
+    if (selected === "inspect_symbols") return "symbols route";
+    if (selected === "track_symbol") return "trace route";
     if (selected === "knowledge_search") return "knowledge route";
     if (selected === "web_search") return "web route";
     if (selected === "generate_pdf") return "pdf route";

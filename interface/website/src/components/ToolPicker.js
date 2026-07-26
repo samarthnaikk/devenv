@@ -3,6 +3,12 @@ import { useApp } from "../context/AppContext.js";
 import { BeamFrame, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 const TOOL_META = {
+  list_directory: { icon: "folder_open", label: "Files", hint: "Map folders and top-level structure" },
+  locate_files: { icon: "find_in_page", label: "Locate", hint: "Find likely files before reading" },
+  read_file: { icon: "description", label: "Read", hint: "Open exact files and inspect content" },
+  search_text: { icon: "match_case", label: "Search", hint: "Search the repo for strings and usages" },
+  inspect_symbols: { icon: "route", label: "Symbols", hint: "Inspect definitions, exports, and structure" },
+  track_symbol: { icon: "conversion_path", label: "Trace", hint: "Follow a symbol through the codebase" },
   generate_pdf: { icon: "picture_as_pdf", label: "PDF", hint: "Generate polished PDFs" },
   generate_prompt: { icon: "auto_awesome", label: "Prompt", hint: "Prepare a strong prompt" },
   knowledge_search: { icon: "hub", label: "Knowledge", hint: "Pull repos and references" },
@@ -210,6 +216,15 @@ function summarizeRoute(selectedTools, planMode) {
     return {
       trigger: "Auto route",
       panel: "Pick a route card to bias the runtime toward web, knowledge, prompt, or PDF work. Leave everything clear for automatic routing.",
+    };
+  }
+  const workspaceRoutes = selectedTools.filter((toolName) => ["list_directory", "locate_files", "read_file", "search_text", "inspect_symbols", "track_symbol"].includes(toolName));
+  if (workspaceRoutes.length && workspaceRoutes.length === selectedTools.length) {
+    return {
+      trigger: workspaceRoutes.length === 1 ? `${describeTool(workspaceRoutes[0]).label} route` : "Workspace route",
+      panel: workspaceRoutes.length === 1
+        ? `This turn is constrained to ${describeTool(workspaceRoutes[0]).label.toLowerCase()} inspection inside the repo.`
+        : "This turn is constrained to repo inspection tools, which helps Devenv stay grounded in the current codebase before answering or planning.",
     };
   }
   if (selectedTools.length === 1) {
