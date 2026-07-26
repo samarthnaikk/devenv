@@ -3,7 +3,7 @@ import { useApp } from "../context/AppContext.js";
 import { formatBackendLabel, formatDuration } from "../utils/format.js";
 import { ToolPicker } from "./ToolPicker.js?v=popup3";
 import { validatePlanBlueprint } from "../utils/validation.js";
-import { extractPlanBlueprint, READ_ONLY_PLAN_TOOLS, shouldDisplayPlanResult } from "../utils/plans.js";
+import { buildPlanModePrompt, extractPlanBlueprint, READ_ONLY_PLAN_TOOLS, shouldDisplayPlanResult } from "../utils/plans.js";
 import { BeamFrame, MetalSurface, MotionReveal, MotionShimmerText, MotionStack, MotionSwap } from "./MotionPrimitives.js";
 
 export function Composer() {
@@ -90,7 +90,7 @@ export function Composer() {
         try {
           result = planOnlyMode
             ? await runPlan({
-                prompt: requestPrompt,
+                prompt: buildPlanModePrompt(requestPrompt),
                 selectedTools: READ_ONLY_PLAN_TOOLS,
                 backendPreference: state.preferredBackend || "opencode",
               })
