@@ -615,6 +615,12 @@ class DevenvKernel:
         turn_metadata["original_objective"] = execution_objective
 
         if planning_mode is PlanningMode.AUTO and self._is_explicit_plan_request(user_prompt):
+            if _is_generic_explicit_plan_blueprint(blueprint):
+                blueprint = self._parse_markdown_to_blueprint(
+                    self._build_local_plan_markdown(user_prompt),
+                    original_objective=user_prompt,
+                )
+                self.active_blueprint = blueprint
             final_plan_response = _blueprint_markdown_for_chat(blueprint)
             conversation.append({"role": "assistant", "content": final_plan_response})
             self._finalize_turn(
@@ -4199,6 +4205,8 @@ class DevenvKernel:
         expected_artifact = self._infer_expected_artifact(user_prompt, user_prompt, target_path or None)
         if self._is_backend_frontend_integration_request(user_prompt):
             return self._build_backend_frontend_integration_plan(user_prompt, target_path=target_path)
+        if self._is_ui_runtime_polish_request(user_prompt):
+            return self._build_ui_runtime_polish_plan(user_prompt)
         if expected_artifact == "document":
             return "- [ ] Generate the requested PDF artifact and verify that the file was written successfully."
         if self._is_scaffold_request(lowered):
@@ -4286,6 +4294,19 @@ class DevenvKernel:
             marker in lowered for marker in integration_markers
         )
 
+    def _is_ui_runtime_polish_request(self, user_prompt: str) -> bool:
+        lowered = user_prompt.lower()
+        ui_markers = ("ui", "interface", "website", "frontend", "animation", "shell", "light theme")
+        runtime_markers = ("runtime", "plan mode", "planner", "tool", "tools", "routing", "route")
+        quality_markers = ("fix", "polish", "improve", "upgrade", "broken", "reliable", "decide", "motion")
+        return (
+            any(marker in lowered for marker in ui_markers)
+            and any(marker in lowered for marker in quality_markers)
+        ) or (
+            any(marker in lowered for marker in runtime_markers)
+            and any(marker in lowered for marker in quality_markers)
+        )
+
     def _build_backend_frontend_integration_plan(self, user_prompt: str, *, target_path: str) -> str:
         integration_root = target_path or "chatapp"
         backend_surface = "core/runtime/web.py"
@@ -4309,6 +4330,28 @@ class DevenvKernel:
                 f"- [ ] Wire `{routing_surface}` to expose the chat app routing target.",
                 f"- [ ] Connect `{frontend_api_surface}` to call the chat app backend endpoint.",
                 f"- [ ] Connect `{frontend_ui_surface}` to send chat messages through the new frontend API helper.",
+            ]
+        )
+
+    def _build_ui_runtime_polish_plan(self, user_prompt: str) -> str:
+        lowered = user_prompt.lower()
+        ui_surface = "interface/website/src/Transcript.js"
+        if "settings" in lowered or "theme" in lowered:
+            ui_surface = "interface/website/src/components/SettingsDropdown.js"
+        elif "composer" in lowered or "prompt" in lowered:
+            ui_surface = "interface/website/src/components/Composer.js"
+        runtime_surface = "core/runtime/kernel.py"
+        if "web" in lowered or "api" in lowered:
+            runtime_surface = "core/runtime/web.py"
+        return "\n".join(
+            [
+                "- [ ] Inspect `interface/website/styles.css` and `interface/website/src/components/MotionPrimitives.js` to map the current motion system, theme surfaces, and shared animation primitives.",
+                f"- [ ] Inspect `{ui_surface}` plus `interface/website/src/components/ChatColumn.js` and `interface/website/src/components/Sidebar.js` to identify the weakest light-theme and interaction surfaces.",
+                f"- [ ] Inspect `{runtime_surface}` and `tests/runtime/test_kernel.py` to identify where planning, route selection, or tool-choice behavior is still too generic or broken.",
+                "- [ ] Update the shared website motion/theme primitives so the shell uses stronger staged transitions, tactile cards, and a clearer light interface direction.",
+                f"- [ ] Refine `{ui_surface}`, `interface/website/src/components/Transcript.js`, and the surrounding shell components so the empty state, status surfaces, and controls feel intentionally animated instead of flat.",
+                f"- [ ] Tighten `{runtime_surface}` so explicit planning, route choice, and tool selection produce grounded behavior instead of generic fallback responses.",
+                "- [ ] Verify the website changes with `interface/website/scripts/check-mount.mjs` and verify the runtime behavior with targeted kernel/web tests plus an Ollama smoke prompt for planning.",
             ]
         )
 
@@ -6387,6 +6430,17 @@ def _blueprint_markdown_for_chat(blueprint: ExecutionBlueprint) -> str:
         return raw
     lines = [f"- [ ] {task.description}" for task in blueprint.tasks if str(task.description or "").strip()]
     return "\n".join(lines) if lines else "Plan ready."
+
+
+def _is_generic_explicit_plan_blueprint(blueprint: ExecutionBlueprint) -> bool:
+    descriptions = [str(task.description or "").strip().lower() for task in blueprint.tasks]
+    if len(descriptions) != 3:
+        return False
+    return (
+        descriptions[0].startswith("inspect the files and dependencies needed for:")
+        and descriptions[1].startswith("apply the requested implementation for:")
+        and descriptions[2].startswith("verify the workspace result for:")
+    )
 
 
 def _summarize_step_detail(lines: list[str]) -> str:

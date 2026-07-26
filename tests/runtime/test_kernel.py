@@ -307,6 +307,50 @@ class DevenvKernelTest(unittest.TestCase):
             result.system_logs,
         )
 
+    def test_local_plan_markdown_uses_repo_specific_steps_for_ui_runtime_polish_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+            plan = kernel._build_local_plan_markdown(
+                "Plan the UI and runtime fixes needed to make this project feel polished and reliable."
+            )
+
+        self.assertIn("`interface/website/styles.css`", plan)
+        self.assertIn("`interface/website/src/components/MotionPrimitives.js`", plan)
+        self.assertIn("`interface/website/src/Transcript.js`", plan)
+        self.assertIn("`core/runtime/kernel.py`", plan)
+        self.assertIn("`tests/runtime/test_kernel.py`", plan)
+        self.assertIn("check-mount.mjs", plan)
+
+    def test_explicit_plan_prompt_replaces_generic_planner_output_with_repo_specific_local_plan(self) -> None:
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="\n".join(
+                        [
+                            "- [ ] Inspect the files and dependencies needed for: Plan the UI and runtime fixes needed to make this project feel polished and reliable.",
+                            "- [ ] Apply the requested implementation for: Plan the UI and runtime fixes needed to make this project feel polished and reliable.",
+                            "- [ ] Verify the workspace result for: Plan the UI and runtime fixes needed to make this project feel polished and reliable.",
+                        ]
+                    ),
+                    finish_reason="stop",
+                    usage={},
+                )
+            ]
+        )
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
+
+            result = kernel.execute_turn(
+                "Plan the UI and runtime fixes needed to make this project feel polished and reliable.",
+                planning_mode=PlanningMode.AUTO,
+                local_only=False,
+            )
+
+        self.assertIn("`interface/website/styles.css`", result.final_response or "")
+        self.assertIn("`core/runtime/kernel.py`", result.final_response or "")
+        self.assertEqual(result.execution_mode, ExecutionMode.PLAN_ONLY.value)
+        self.assertFalse(result.steps)
+
     def test_direct_memory_answer_skips_repo_explanation_questions(self) -> None:
         self.assertFalse(_should_try_direct_memory_answer("how does retrieval work?"))
         self.assertFalse(_should_try_direct_memory_answer("can you explain how the retrieval works?"))
