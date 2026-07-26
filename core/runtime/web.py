@@ -300,17 +300,17 @@ class DevenvWebApp:
             ),
             "web_search": ToolReadiness(
                 name="web_search",
-                ready=True,
+                ready="web_search" in self.kernel.tools,
                 detail="Structured web and image search are available through the web_search runtime tool.",
             ),
             "generate_prompt": ToolReadiness(
                 name="generate_prompt",
-                ready=True,
+                ready="generate_prompt" in self.kernel.tools,
                 detail="Prompt-preparation primitives are available and will be exposed as a runtime tool.",
             ),
             "generate_pdf": ToolReadiness(
                 name="generate_pdf",
-                ready=True,
+                ready="generate_pdf" in self.kernel.tools,
                 detail="LaTeX-backed PDF generation is available through the generate_pdf runtime tool.",
             ),
         }
