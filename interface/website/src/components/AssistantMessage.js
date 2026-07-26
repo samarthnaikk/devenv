@@ -1,23 +1,30 @@
 import React from "react";
 import { renderMarkdown } from "../lib/markdown.js";
-import { BeamFrame, MotionReveal } from "./MotionPrimitives.js";
+import { BeamFrame, MotionReveal, MotionShimmerText, MotionStage } from "./MotionPrimitives.js";
 
 export function AssistantMessage({ message, onCopy, onReply }) {
   return React.createElement(
-    MotionReveal,
-    { className: "message-stack flex flex-col gap-2 max-w-3xl" },
+    MotionStage,
+    { axis: "x", className: "message-stack flex flex-col gap-2 max-w-3xl message-stack-assistant" },
     React.createElement(
       BeamFrame,
       { active: false, tone: "ocean", className: "message-card assistant-message-card rounded-[24px] p-4" },
+      React.createElement("span", { className: "message-card-orbit", "aria-hidden": "true" }),
       React.createElement(
         "div",
-        { className: "flex items-center gap-2" },
+        { className: "message-head flex items-center gap-2" },
         React.createElement(
           "div",
           { className: "message-avatar assistant-avatar w-7 h-7 rounded-full flex items-center justify-center" },
           React.createElement("span", { className: "material-symbols-outlined text-on-primary text-[14px]" }, "auto_awesome")
         ),
-        React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "Devenv"),
+        React.createElement(
+          "div",
+          { className: "message-title-group" },
+          React.createElement(MotionShimmerText, { className: "font-label-caps text-label-caps text-primary" }, "Devenv"),
+          React.createElement("span", { className: "message-kicker" }, "assistant output")
+        ),
+        React.createElement("span", { className: "message-type-pill" }, "Answer"),
         React.createElement("div", { className: "ml-auto flex items-center gap-1 message-actions" },
         React.createElement(
           "button",

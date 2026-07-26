@@ -5,7 +5,7 @@ import ReactFlow, {
 } from "reactflow";
 import { validatePlanBlueprint, normalizeBlueprint } from "../utils/validation.js";
 import { escapeHtml } from "../utils/format.js";
-import { BeamFrame, MetalSurface, MotionDeck, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionDeck, MotionNumber, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 function BlueprintNode({ data }) {
   const [showModal, setShowModal] = React.useState(false);
@@ -15,36 +15,45 @@ function BlueprintNode({ data }) {
   return React.createElement(
     React.Fragment,
     null,
-    React.createElement(
-      "div",
-      {
-        className: `plan-node-shell${data.status === "active" ? " is-active" : ""}${data.status === "done" ? " is-done" : ""}`,
-        style: { width: `${data.width || 320}px`, maxWidth: `${data.width || 320}px` },
-      },
-      React.createElement(Handle, { type: "target", position: Position.Top, style: { background: "var(--outline)", width: 8, height: 8 } }),
       React.createElement(
         "div",
-        { className: "plan-node-head" },
+        {
+          className: `plan-node-shell${data.status === "active" ? " is-active" : ""}${data.status === "done" ? " is-done" : ""}`,
+          style: { width: `${data.width || 320}px`, maxWidth: `${data.width || 320}px` },
+        },
+        React.createElement("span", { className: "plan-node-orbit", "aria-hidden": "true" }),
+        React.createElement(Handle, { type: "target", position: Position.Top, style: { background: "var(--outline)", width: 8, height: 8 } }),
+        React.createElement(
+          "div",
+          { className: "plan-node-head" },
         React.createElement(
           "span",
           { style: { fontSize: "16px", color: statusColor } },
           React.createElement("span", { className: "material-symbols-outlined", style: { fontSize: "16px", fontVariationSettings: "'FILL' 1" } }, statusIcon)
         ),
+          React.createElement(
+            "span",
+            { className: "plan-node-level" },
+            `L${data.level}`
+          ),
+          React.createElement("span", { className: "plan-node-status" }, formatNodeStatus(data.status))
+        ),
         React.createElement(
-          "span",
-          { className: "plan-node-level" },
-          `L${data.level}`
-        )
-      ),
-      React.createElement(
-        "div",
-        { className: "plan-node-label" },
-        escapeHtml(data.label || "")
-      ),
-      React.createElement(
-        "button",
-        {
-          type: "button",
+          "div",
+          { className: "plan-node-label" },
+          escapeHtml(data.label || "")
+        ),
+        data.desc
+          ? React.createElement(
+              "div",
+              { className: "plan-node-desc-preview" },
+              escapeHtml(truncateNodeCopy(data.desc))
+            )
+          : null,
+        React.createElement(
+          "button",
+          {
+            type: "button",
           className: "plan-node-info",
           onClick: (e) => { e.stopPropagation(); setShowModal(true); },
           title: "Details",
@@ -287,11 +296,16 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
 }
 
 function planStat(label, value, detail) {
+  const numeric = /^\d+$/.test(String(value || "").trim());
   return React.createElement(
     MetalSurface,
     { className: "plan-summary-card" },
     React.createElement("span", { className: "plan-summary-label" }, label),
-    React.createElement("strong", { className: "plan-summary-value" }, value),
+    React.createElement(
+      "strong",
+      { className: "plan-summary-value" },
+      numeric ? React.createElement(MotionNumber, { value }) : React.createElement(MotionShimmerText, { active: false }, value)
+    ),
     React.createElement("span", { className: "plan-summary-detail" }, detail)
   );
 }
@@ -307,4 +321,15 @@ function nextActionLabel(nodes) {
 function truncatePlanStat(value) {
   const text = String(value || "").trim();
   return text.length > 32 ? `${text.slice(0, 29)}...` : text;
+}
+
+function formatNodeStatus(status) {
+  if (status === "done") return "done";
+  if (status === "active") return "live";
+  return "queued";
+}
+
+function truncateNodeCopy(value) {
+  const text = String(value || "").trim();
+  return text.length > 84 ? `${text.slice(0, 81)}...` : text;
 }

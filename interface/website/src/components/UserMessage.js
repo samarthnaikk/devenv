@@ -1,17 +1,18 @@
 import React from "react";
 import { escapeHtml } from "../utils/format.js";
-import { MetalSurface, MotionReveal } from "./MotionPrimitives.js";
+import { MetalSurface, MotionStage } from "./MotionPrimitives.js";
 
 export function UserMessage({ message, onCopy, onReply }) {
   return React.createElement(
-    MotionReveal,
-    { className: "flex flex-col gap-2 max-w-3xl motion-user-entry" },
+    MotionStage,
+    { axis: "x", className: "flex flex-col gap-2 max-w-3xl motion-user-entry message-stack-user" },
     React.createElement(
       MetalSurface,
       { className: "message-card user-message-card rounded-[24px] p-4" },
+      React.createElement("span", { className: "message-card-orbit", "aria-hidden": "true" }),
       React.createElement(
         "div",
-        { className: "flex items-center gap-2" },
+        { className: "message-head flex items-center gap-2" },
         React.createElement(
           "div",
           { className: "message-avatar user-avatar w-7 h-7 rounded-full flex items-center justify-center" },
@@ -21,7 +22,13 @@ export function UserMessage({ message, onCopy, onReply }) {
             "person"
           )
         ),
-        React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface" }, "You"),
+        React.createElement(
+          "div",
+          { className: "message-title-group" },
+          React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface" }, "You"),
+          React.createElement("span", { className: "message-kicker" }, "prompt")
+        ),
+        React.createElement("span", { className: "message-type-pill message-type-pill-user" }, "Input"),
         React.createElement("div", { className: "ml-auto flex items-center gap-1 message-actions" },
         React.createElement(
           "button",

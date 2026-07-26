@@ -1414,6 +1414,7 @@ pre {
 }
 
 .chat-status-mode-tabs {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1425,7 +1426,23 @@ pre {
   flex-wrap: wrap;
 }
 
+.chat-status-mode-indicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / var(--tab-count, 5));
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--secondary) 32%, white 68%));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 22%, transparent);
+  transform: translateX(calc(var(--active-index, 0) * (100% + 8px)));
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1), width 220ms ease;
+  pointer-events: none;
+}
+
 .chat-status-tab {
+  position: relative;
+  z-index: 1;
   min-height: 28px;
   padding: 0 12px;
   border-radius: 999px;
@@ -1441,9 +1458,20 @@ pre {
 
 .chat-status-tab.is-active {
   color: var(--on-primary);
-  background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--secondary) 32%, white 68%));
   transform: translateY(-1px);
-  box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.chat-status-routecopy {
+  display: block;
+  margin-bottom: 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.chat-status-route-label {
+  display: inline-block;
+  max-width: 70ch;
 }
 
 .chat-status-grid {
@@ -2239,16 +2267,81 @@ pre {
   position: relative;
 }
 
+.message-stack-assistant,
+.message-stack-user {
+  transform-origin: 0 50%;
+}
+
 .message-card {
+  position: relative;
+  overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--outline-variant) 72%, transparent);
   box-shadow: 0 18px 54px rgba(20, 35, 33, 0.08);
   transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, box-shadow 220ms ease;
 }
 
 .message-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px) rotate(-0.14deg);
   border-color: color-mix(in srgb, var(--primary) 26%, var(--outline-variant));
   box-shadow: 0 20px 58px rgba(20, 35, 33, 0.1);
+}
+
+.message-card-orbit {
+  position: absolute;
+  inset: auto -12% -38% auto;
+  width: 132px;
+  height: 132px;
+  border-radius: 999px;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(79, 219, 200, 0.16), transparent 72%);
+  transform: translateY(16px);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
+  opacity: 0.9;
+}
+
+.message-card:hover .message-card-orbit {
+  transform: translateY(0);
+}
+
+.message-head {
+  position: relative;
+  z-index: 1;
+}
+
+.message-title-group {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.message-kicker {
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-dim);
+}
+
+.message-type-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 10%, white 90%);
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--outline-variant));
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.message-type-pill-user {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface-container-high) 82%, white 18%);
+  border-color: color-mix(in srgb, var(--outline-variant) 60%, transparent);
 }
 
 .thinking-card {
@@ -2352,6 +2445,15 @@ pre {
     justify-content: space-between;
     min-height: 34px;
   }
+
+  .message-head {
+    flex-wrap: wrap;
+  }
+
+  .message-type-pill,
+  .message-type-pill-user {
+    order: 3;
+  }
 }
 
 .plan-header-copy {
@@ -2382,13 +2484,21 @@ pre {
 
 .message-actions {
   opacity: 0.8;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.message-card:hover .message-actions {
+  opacity: 1;
+  transform: translateX(-1px);
 }
 
 .message-action {
   border: 1px solid transparent;
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease;
 }
 
 .message-action:hover {
+  transform: translateY(-1px) scale(1.04);
   border-color: color-mix(in srgb, var(--outline-variant) 56%, transparent);
 }
 
@@ -2398,6 +2508,8 @@ pre {
 
 .message-body {
   margin-top: 14px;
+  position: relative;
+  z-index: 1;
 }
 
 .assistant-markdown.message-body,
@@ -2406,6 +2518,7 @@ pre {
 }
 
 .plan-flow-canvas {
+  position: relative;
   border: 1px solid color-mix(in srgb, var(--outline-variant) 76%, transparent);
   border-radius: 22px;
   overflow: hidden;
@@ -2416,6 +2529,17 @@ pre {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 22px 56px rgba(20, 35, 33, 0.1);
 }
 
+.plan-flow-canvas::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.04) 42%, transparent 58%),
+    radial-gradient(circle at top left, rgba(79, 219, 200, 0.08), transparent 32%);
+  animation: plan-canvas-scan 9s linear infinite;
+}
+
 .plan-summary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2423,6 +2547,8 @@ pre {
 }
 
 .plan-summary-card {
+  position: relative;
+  overflow: hidden;
   min-height: 92px;
   padding: 13px 15px;
   border-radius: 18px;
@@ -2431,6 +2557,24 @@ pre {
     radial-gradient(circle at top right, rgba(79, 219, 200, 0.1), transparent 30%),
     linear-gradient(180deg, color-mix(in srgb, var(--surface-container-high) 88%, white 12%), color-mix(in srgb, var(--surface-container-low) 94%, white 6%));
   box-shadow: 0 16px 34px rgba(20, 35, 33, 0.08);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.plan-summary-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -16% -52% auto;
+  width: 110px;
+  height: 110px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(79, 219, 200, 0.18), transparent 72%);
+  pointer-events: none;
+}
+
+.plan-summary-card:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--outline-variant));
+  box-shadow: 0 18px 36px rgba(20, 35, 33, 0.1);
 }
 
 .plan-summary-label {
@@ -2460,6 +2604,7 @@ pre {
 .plan-node-shell {
   position: relative;
   box-sizing: border-box;
+  overflow: hidden;
   padding: 12px 16px;
   border-radius: 16px;
   color: var(--text);
@@ -2471,10 +2616,27 @@ pre {
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, box-shadow 220ms ease;
 }
 
+.plan-node-orbit {
+  position: absolute;
+  inset: auto -10% -48% auto;
+  width: 116px;
+  height: 116px;
+  border-radius: 999px;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(79, 219, 200, 0.16), transparent 72%);
+  transform: translateY(14px);
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
+}
+
 .plan-node-shell:hover {
   transform: translateY(-2px) rotate(-0.12deg);
   border-color: color-mix(in srgb, var(--primary) 26%, var(--outline-variant));
   box-shadow: 0 22px 42px rgba(20, 35, 33, 0.12);
+}
+
+.plan-node-shell:hover .plan-node-orbit,
+.plan-node-shell.is-active .plan-node-orbit {
+  transform: translateY(0);
 }
 
 .plan-node-shell.is-active {
@@ -2491,6 +2653,8 @@ pre {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+  position: relative;
+  z-index: 1;
 }
 
 .plan-node-level {
@@ -2504,6 +2668,26 @@ pre {
   letter-spacing: 0.08em;
 }
 
+.plan-node-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-container-high) 82%, white 18%);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 58%, transparent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.plan-node-shell.is-active .plan-node-status {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 26%, var(--outline-variant));
+}
+
 .plan-node-label {
   font-size: 13px;
   font-weight: 600;
@@ -2511,6 +2695,17 @@ pre {
   margin-bottom: 4px;
   white-space: normal;
   word-break: break-word;
+  position: relative;
+  z-index: 1;
+}
+
+.plan-node-desc-preview {
+  position: relative;
+  z-index: 1;
+  margin-right: 28px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 .plan-node-info {
@@ -2630,5 +2825,19 @@ body[data-theme="light"] .react-flow__controls button:hover {
   50% {
     transform: scale(1.18);
     opacity: 1;
+  }
+}
+
+@keyframes plan-canvas-scan {
+  0% {
+    transform: translateX(-24%);
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateX(24%);
+    opacity: 0.45;
   }
 }
