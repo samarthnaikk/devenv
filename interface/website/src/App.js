@@ -191,6 +191,10 @@ function AppInner() {
     "div",
     { className: "app-shell flex flex-col h-screen overflow-hidden bg-background" },
     React.createElement("div", { className: "app-shell-noise", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-orbit app-shell-orbit-one", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-orbit app-shell-orbit-two", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-veil app-shell-veil-top", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-veil app-shell-veil-bottom", "aria-hidden": "true" }),
     React.createElement("div", { className: "app-shell-aura app-shell-aura-one", "aria-hidden": "true" }),
     React.createElement("div", { className: "app-shell-aura app-shell-aura-two", "aria-hidden": "true" }),
     React.createElement("div", { className: "app-shell-aura app-shell-aura-three", "aria-hidden": "true" }),
@@ -207,6 +211,8 @@ function AppInner() {
         React.createElement(
           BeamFrame,
           { active: state.isRunning, tone: "ocean", className: "app-main-chat-shell" },
+          React.createElement("div", { className: "app-main-chat-shell-orbit", "aria-hidden": "true" }),
+          React.createElement("div", { className: "app-main-chat-shell-orbit app-main-chat-shell-orbit-two", "aria-hidden": "true" }),
           React.createElement(ChatColumn, null)
         )
       ),

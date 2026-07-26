@@ -32,10 +32,13 @@ export function ChatColumn() {
     "section",
     { className: "chat-column flex-1 min-w-0 flex flex-col h-full bg-background relative" },
     React.createElement("div", { className: "chat-column-grid", "aria-hidden": "true" }),
+    React.createElement("div", { className: "chat-column-orbit chat-column-orbit-one", "aria-hidden": "true" }),
+    React.createElement("div", { className: "chat-column-orbit chat-column-orbit-two", "aria-hidden": "true" }),
     React.createElement("div", { className: "chat-column-glow chat-column-glow-one", "aria-hidden": "true" }),
     React.createElement("div", { className: "chat-column-glow chat-column-glow-two", "aria-hidden": "true" }),
     React.createElement("div", { className: "chat-column-ribbon chat-column-ribbon-one", "aria-hidden": "true" }),
     React.createElement("div", { className: "chat-column-ribbon chat-column-ribbon-two", "aria-hidden": "true" }),
+    React.createElement("div", { className: "chat-column-scanline", "aria-hidden": "true" }),
     React.createElement(
       MotionStage,
       { axis: "x", className: "chat-status-shell px-margin-desktop pt-3" },

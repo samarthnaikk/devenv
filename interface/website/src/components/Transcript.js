@@ -6,7 +6,7 @@ import { AssistantMessage } from "./AssistantMessage.js";
 import { ErrorMessage } from "./ErrorMessage.js";
 import { PlanFlowchart } from "./PlanFlowchart.js?v=flow4";
 import { showToast } from "./Header.js";
-import { BeamFrame, MotionBadge, MotionDeck, MotionReveal, MotionShimmerText, MotionStack, MotionTilt } from "./MotionPrimitives.js";
+import { BeamFrame, MotionBadge, MotionDeck, MotionNumber, MotionReveal, MotionShimmerText, MotionStack, MotionTilt } from "./MotionPrimitives.js";
 
 const SUGGESTIONS = [
   "Do you remember anything about the old retrieval logic for this project?",
@@ -276,36 +276,97 @@ export function Transcript() {
   return React.createElement(
     "div",
     { className: "flex-1 overflow-y-auto p-margin-desktop space-y-8", ref: scrollRef },
-    state.transcript.map((item) => {
-      switch (item.role) {
-        case "user":
-          return React.createElement(UserMessage, {
-            key: item.id,
-            message: item,
-            onCopy: () => handleCopyMessage(item),
-            onReply: () => handleReplyMessage(item),
-          });
-        case "thinking":
-          return React.createElement(ThinkingMessage, { key: item.id, message: item });
-        case "plan":
-          return React.createElement(PlanFlowchart, { key: item.id, blueprint: item.blueprint, mode: item.mode || "auto" });
-        case "error":
-          return React.createElement(ErrorMessage, {
-            key: item.id,
-            message: item,
-            onCopy: () => handleCopyMessage(item),
-            onReply: () => handleReplyMessage(item),
-          });
-        default:
-          return React.createElement(AssistantMessage, {
-            key: item.id,
-            message: item,
-            onCopy: () => handleCopyMessage(item),
-            onReply: () => handleReplyMessage(item),
-          });
-      }
-    })
+    React.createElement(
+      "div",
+      { className: "transcript-runway" },
+      React.createElement("div", { className: "transcript-runway-grid", "aria-hidden": "true" }),
+      React.createElement("div", { className: "transcript-runway-orbit transcript-runway-orbit-one", "aria-hidden": "true" }),
+      React.createElement("div", { className: "transcript-runway-orbit transcript-runway-orbit-two", "aria-hidden": "true" }),
+      React.createElement(
+        BeamFrame,
+        { active: state.isRunning, tone: "mono", className: "transcript-runway-rail rounded-[24px] px-4 py-3" },
+        React.createElement(
+          "div",
+          { className: "transcript-runway-head" },
+          React.createElement(
+            "div",
+            { className: "transcript-runway-copy" },
+            React.createElement(MotionBadge, { className: "transcript-runway-badge", active: state.isRunning }, state.isRunning ? "Live trace" : "Transcript"),
+            React.createElement(
+              "div",
+              { className: "transcript-runway-text" },
+              React.createElement("strong", null, "Conversation runway"),
+              React.createElement(
+                "span",
+                null,
+                state.isRunning
+                  ? "Reasoning, tools, and responses are landing in a staged stream."
+                  : "The shell keeps every turn legible while the runtime swaps between plans, tools, and direct answers."
+              )
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "transcript-runway-stats" },
+            React.createElement(
+              "div",
+              { className: "transcript-runway-stat" },
+              React.createElement("span", null, "Entries"),
+              React.createElement(MotionNumber, { value: state.transcript.length })
+            ),
+            React.createElement(
+              "div",
+              { className: "transcript-runway-stat" },
+              React.createElement("span", null, "Mode"),
+              React.createElement("strong", null, state.planMode ? "Plan" : state.isRunning ? "Live" : "Direct")
+            )
+          )
+        )
+      ),
+      React.createElement(
+        "div",
+        { className: "transcript-stream" },
+        state.transcript.map((item, index) =>
+          React.createElement(
+            MotionReveal,
+            { key: item.id, delay: Math.min(index * 55, 330), className: "transcript-entry-reveal" },
+            React.createElement(
+              "div",
+              { className: `transcript-entry-shell transcript-entry-${item.role || "assistant"}` },
+              renderTranscriptItem(item, handleCopyMessage, handleReplyMessage)
+            )
+          )
+        )
+      )
+    )
   );
+}
+
+function renderTranscriptItem(item, handleCopyMessage, handleReplyMessage) {
+  switch (item.role) {
+    case "user":
+      return React.createElement(UserMessage, {
+        message: item,
+        onCopy: () => handleCopyMessage(item),
+        onReply: () => handleReplyMessage(item),
+      });
+    case "thinking":
+      return React.createElement(ThinkingMessage, { message: item });
+    case "plan":
+      return React.createElement(PlanFlowchart, { blueprint: item.blueprint, mode: item.mode || "auto" });
+    case "error":
+      return React.createElement(ErrorMessage, {
+        message: item,
+        onCopy: () => handleCopyMessage(item),
+        onReply: () => handleReplyMessage(item),
+      });
+    default:
+      return React.createElement(AssistantMessage, {
+        message: item,
+        onCopy: () => handleCopyMessage(item),
+        onReply: () => handleReplyMessage(item),
+      });
+  }
 }
 
 function buildReplyExcerpt(content) {

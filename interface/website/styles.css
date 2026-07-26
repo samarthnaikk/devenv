@@ -1245,9 +1245,10 @@ pre {
 .app-shell {
   position: relative;
   background:
-    radial-gradient(circle at top left, rgba(36, 93, 168, 0.12), transparent 34%),
-    radial-gradient(circle at 85% 12%, rgba(8, 121, 107, 0.16), transparent 24%),
-    linear-gradient(180deg, color-mix(in srgb, var(--background) 92%, white 8%), var(--background));
+    radial-gradient(circle at top left, rgba(36, 93, 168, 0.14), transparent 34%),
+    radial-gradient(circle at 85% 12%, rgba(8, 121, 107, 0.18), transparent 24%),
+    radial-gradient(circle at 52% -8%, rgba(255, 255, 255, 0.9), transparent 36%),
+    linear-gradient(180deg, color-mix(in srgb, var(--background) 90%, white 10%), var(--background));
 }
 
 .app-shell-noise {
@@ -1260,6 +1261,64 @@ pre {
     radial-gradient(circle at 80% 32%, rgba(36, 93, 168, 0.12) 0, transparent 18%),
     radial-gradient(circle at 62% 74%, rgba(8, 121, 107, 0.12) 0, transparent 20%);
   mix-blend-mode: soft-light;
+}
+
+.app-shell-orbit {
+  position: absolute;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
+  opacity: 0.52;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+.app-shell-orbit::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 14%;
+  width: 22%;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.96), transparent);
+  filter: blur(1px);
+  animation: orbit-satellite 9.8s linear infinite;
+}
+
+.app-shell-orbit-one {
+  top: 106px;
+  right: min(10vw, 120px);
+  width: 220px;
+  height: 220px;
+  animation: orbit-drift 20s ease-in-out infinite;
+}
+
+.app-shell-orbit-two {
+  bottom: 76px;
+  left: min(12vw, 132px);
+  width: 180px;
+  height: 180px;
+  border-color: color-mix(in srgb, var(--secondary) 18%, transparent);
+  animation: orbit-drift 18s ease-in-out infinite reverse;
+}
+
+.app-shell-veil {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 120px;
+  pointer-events: none;
+  opacity: 0.78;
+}
+
+.app-shell-veil-top {
+  top: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent);
+}
+
+.app-shell-veil-bottom {
+  bottom: 0;
+  background: linear-gradient(0deg, rgba(255, 255, 255, 0.34), transparent);
 }
 
 .app-footer-shell {
@@ -1713,11 +1772,70 @@ pre {
   z-index: 0;
 }
 
+.app-main-chat-shell-orbit {
+  position: absolute;
+  top: 26px;
+  right: 42px;
+  width: 168px;
+  height: 168px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--secondary) 18%, transparent);
+  opacity: 0.48;
+  pointer-events: none;
+  animation: orbit-drift 16s ease-in-out infinite;
+}
+
+.app-main-chat-shell-orbit::after {
+  content: "";
+  position: absolute;
+  inset: 16px;
+  border-radius: 999px;
+  border: 1px dashed color-mix(in srgb, var(--primary) 26%, transparent);
+  opacity: 0.65;
+}
+
+.app-main-chat-shell-orbit-two {
+  top: auto;
+  bottom: 46px;
+  right: auto;
+  left: 26px;
+  width: 132px;
+  height: 132px;
+  border-color: color-mix(in srgb, var(--primary) 20%, transparent);
+  animation-direction: reverse;
+}
+
 .chat-column {
   border-radius: 30px;
   overflow: hidden;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--background) 94%, white 6%), color-mix(in srgb, var(--background) 98%, white 2%));
+}
+
+.chat-column-orbit {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 44%, transparent);
+  opacity: 0.56;
+}
+
+.chat-column-orbit-one {
+  top: 118px;
+  right: 5%;
+  width: 190px;
+  height: 190px;
+  animation: orbit-drift 22s ease-in-out infinite;
+}
+
+.chat-column-orbit-two {
+  bottom: 138px;
+  left: 7%;
+  width: 126px;
+  height: 126px;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--primary) 24%, transparent);
+  animation: orbit-drift 18s ease-in-out infinite reverse;
 }
 
 .chat-column-ribbon {
@@ -1743,6 +1861,19 @@ pre {
   width: 120px;
   background: linear-gradient(90deg, rgba(8, 121, 107, 0), rgba(8, 121, 107, 0.3), rgba(255, 255, 255, 0.92));
   animation: ribbon-sweep 11.4s ease-in-out infinite reverse;
+}
+
+.chat-column-scanline {
+  position: absolute;
+  inset: 92px 0 auto;
+  height: 180px;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 28%),
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.44), transparent);
+  opacity: 0.46;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.86), transparent);
+  animation: runway-pulse 9s ease-in-out infinite;
 }
 
 .chat-status-shell {
@@ -2448,6 +2579,182 @@ pre {
   position: relative;
 }
 
+.transcript-runway {
+  position: relative;
+  padding-bottom: 10px;
+}
+
+.transcript-runway-grid {
+  position: absolute;
+  inset: 0 0 36px;
+  pointer-events: none;
+  opacity: 0.18;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--outline-variant) 18%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--outline-variant) 14%, transparent) 1px, transparent 1px);
+  background-size: 54px 54px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.8) 26%, transparent 96%);
+}
+
+.transcript-runway-orbit {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+  filter: blur(2px);
+  opacity: 0.48;
+}
+
+.transcript-runway-orbit-one {
+  top: 52px;
+  right: 12%;
+  width: 170px;
+  height: 80px;
+  background: radial-gradient(circle, rgba(36, 93, 168, 0.16), transparent 70%);
+  animation: drift-aura-wide 18s ease-in-out infinite;
+}
+
+.transcript-runway-orbit-two {
+  top: 210px;
+  left: 6%;
+  width: 140px;
+  height: 70px;
+  background: radial-gradient(circle, rgba(8, 121, 107, 0.18), transparent 72%);
+  animation: drift-aura-wide 22s ease-in-out infinite reverse;
+}
+
+.transcript-runway-rail {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin-bottom: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(36, 93, 168, 0.08), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(8, 121, 107, 0.1), transparent 32%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 82%, white 18%), color-mix(in srgb, var(--surface-container-low) 92%, white 8%));
+  box-shadow: 0 20px 48px rgba(20, 35, 33, 0.08);
+  backdrop-filter: blur(20px);
+}
+
+.transcript-runway-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.transcript-runway-copy {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.transcript-runway-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.transcript-runway-text strong {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.transcript-runway-text span {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.transcript-runway-stats {
+  display: inline-flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.transcript-runway-stat {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 74px;
+  min-height: 50px;
+  padding: 8px 12px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 64%, transparent);
+  background: color-mix(in srgb, var(--surface) 76%, white 24%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.44);
+}
+
+.transcript-runway-stat span {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-dim);
+}
+
+.transcript-runway-stat strong,
+.transcript-runway-stat .motion-number {
+  font-size: 16px;
+  color: var(--text);
+}
+
+.transcript-stream {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.transcript-stream::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 10px;
+  left: 30px;
+  width: 1px;
+  background: linear-gradient(180deg, rgba(36, 93, 168, 0.2), rgba(8, 121, 107, 0.12), transparent);
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.transcript-entry-reveal {
+  position: relative;
+  z-index: 1;
+}
+
+.transcript-entry-shell {
+  position: relative;
+  padding-left: 22px;
+}
+
+.transcript-entry-shell::before {
+  content: "";
+  position: absolute;
+  top: 22px;
+  left: 24px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--secondary) 48%, white 52%));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--surface) 82%, white 18%), 0 10px 24px color-mix(in srgb, var(--primary) 26%, transparent);
+}
+
+.transcript-entry-thinking::before {
+  background: linear-gradient(135deg, rgba(36, 93, 168, 0.9), rgba(8, 121, 107, 0.82));
+}
+
+.transcript-entry-plan::before {
+  background: linear-gradient(135deg, rgba(36, 93, 168, 0.92), rgba(36, 93, 168, 0.52));
+}
+
+.transcript-entry-error::before {
+  background: linear-gradient(135deg, rgba(180, 35, 24, 0.92), rgba(255, 180, 171, 0.72));
+}
+
 .empty-state-hero {
   background:
     radial-gradient(circle at top, rgba(36, 93, 168, 0.08), transparent 44%),
@@ -2935,6 +3242,23 @@ pre {
   70% { transform: translate3d(54px, -4px, 0) scaleX(1.08); opacity: 0.52; }
 }
 
+@keyframes orbit-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+  50% { transform: translate3d(12px, -10px, 0) rotate(6deg) scale(1.04); }
+}
+
+@keyframes orbit-satellite {
+  0% { transform: translateX(-20%) scaleX(0.8); opacity: 0; }
+  18% { opacity: 0.95; }
+  55% { transform: translateX(260%) scaleX(1.05); opacity: 0.82; }
+  100% { transform: translateX(410%) scaleX(0.88); opacity: 0; }
+}
+
+@keyframes runway-pulse {
+  0%, 100% { transform: translate3d(0, 0, 0) scaleY(0.95); opacity: 0.24; }
+  50% { transform: translate3d(0, 8px, 0) scaleY(1.08); opacity: 0.56; }
+}
+
 @media (min-width: 860px) {
   .empty-state-suggestions {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2951,6 +3275,15 @@ pre {
   .empty-state-command-deck,
   .empty-state-preview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .transcript-runway-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .transcript-runway-stats {
+    justify-content: flex-start;
   }
 
   .workspace-rail {
@@ -2983,7 +3316,11 @@ pre {
   .composer-signal-dot,
   .chat-column-glow,
   .chat-column-ribbon,
-  .app-main-chat-shell::after {
+  .chat-column-scanline,
+  .app-main-chat-shell::after,
+  .app-shell-orbit,
+  .app-main-chat-shell-orbit,
+  .transcript-runway-orbit {
     animation: none !important;
     transition: none !important;
     transform: none !important;
