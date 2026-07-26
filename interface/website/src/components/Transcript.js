@@ -6,7 +6,7 @@ import { AssistantMessage } from "./AssistantMessage.js";
 import { ErrorMessage } from "./ErrorMessage.js";
 import { PlanFlowchart } from "./PlanFlowchart.js?v=flow4";
 import { showToast } from "./Header.js";
-import { BeamFrame, MotionDeck, MotionReveal, MotionShimmerText, MotionStack } from "./MotionPrimitives.js";
+import { BeamFrame, MotionBadge, MotionDeck, MotionReveal, MotionShimmerText, MotionStack, MotionTilt } from "./MotionPrimitives.js";
 
 const SUGGESTIONS = [
   "Do you remember anything about the old retrieval logic for this project?",
@@ -122,34 +122,91 @@ export function Transcript() {
           ),
           React.createElement(
             MotionDeck,
+            { className: "empty-state-hero-chips w-full mt-6" },
+            React.createElement(MotionBadge, { className: "empty-state-hero-chip", active: true }, "Light shell"),
+            React.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Plan-ready"),
+            React.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Tool-routed"),
+            React.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Ollama friendly")
+          ),
+          React.createElement(
+            MotionDeck,
+            { className: "empty-state-stage-grid w-full mt-6" },
+            [
+              {
+                label: "Plan",
+                title: "Map first",
+                copy: "Render a real execution flow before code edits land.",
+                icon: "account_tree",
+              },
+              {
+                label: "Trace",
+                title: "Ground every answer",
+                copy: "Bias the turn toward files, symbols, and search when the repo matters.",
+                icon: "conversion_path",
+              },
+              {
+                label: "Web",
+                title: "Verify live facts",
+                copy: "Switch into fetched-source mode for current questions and external references.",
+                icon: "language",
+              },
+            ].map((card, index) =>
+              React.createElement(
+                MotionReveal,
+                { key: card.label, delay: index * 70 },
+                React.createElement(
+                  MotionTilt,
+                  null,
+                  React.createElement(
+                    "div",
+                    { className: "empty-state-stage-card" },
+                    React.createElement("span", { className: "empty-state-stage-kicker" }, card.label),
+                    React.createElement(
+                      "div",
+                      { className: "empty-state-stage-head" },
+                      React.createElement("span", { className: "material-symbols-outlined text-[18px] text-primary" }, card.icon),
+                      React.createElement("strong", null, card.title)
+                    ),
+                    React.createElement("p", { className: "empty-state-stage-copy" }, card.copy)
+                  )
+                )
+              )
+            )
+          ),
+          React.createElement(
+            MotionDeck,
             { className: "empty-state-command-deck w-full mt-6" },
             PLAYBOOKS.map((playbook, index) =>
               React.createElement(
                 MotionReveal,
                 { key: playbook.label, delay: index * 80 },
                 React.createElement(
-                  "button",
-                  {
-                    type: "button",
-                    className: "empty-state-command-card text-left",
-                    onClick: () => {
-                      const event = new CustomEvent("opencode-suggestion", { detail: playbook });
-                      window.dispatchEvent(event);
+                  MotionTilt,
+                  null,
+                  React.createElement(
+                    "button",
+                    {
+                      type: "button",
+                      className: "empty-state-command-card text-left",
+                      onClick: () => {
+                        const event = new CustomEvent("opencode-suggestion", { detail: playbook });
+                        window.dispatchEvent(event);
+                      },
                     },
-                  },
-                  React.createElement("span", { className: "empty-state-command-kicker" }, playbook.label),
-                  React.createElement(
-                    "div",
-                    { className: "empty-state-command-head" },
-                    React.createElement("span", { className: "material-symbols-outlined text-[19px] text-primary" }, playbook.icon),
-                    React.createElement("strong", null, playbook.title)
-                  ),
-                  React.createElement("p", { className: "empty-state-command-copy" }, playbook.copy),
-                  React.createElement(
-                    "div",
-                    { className: "empty-state-command-footer" },
-                    React.createElement("span", { className: "empty-state-command-pill" }, playbook.planMode ? "Plan mode" : `${playbook.selectedTools.length} routes`),
-                    React.createElement("span", { className: "empty-state-command-launch" }, "Load prompt")
+                    React.createElement("span", { className: "empty-state-command-kicker" }, playbook.label),
+                    React.createElement(
+                      "div",
+                      { className: "empty-state-command-head" },
+                      React.createElement("span", { className: "material-symbols-outlined text-[19px] text-primary" }, playbook.icon),
+                      React.createElement("strong", null, playbook.title)
+                    ),
+                    React.createElement("p", { className: "empty-state-command-copy" }, playbook.copy),
+                    React.createElement(
+                      "div",
+                      { className: "empty-state-command-footer" },
+                      React.createElement("span", { className: "empty-state-command-pill" }, playbook.planMode ? "Plan mode" : `${playbook.selectedTools.length} routes`),
+                      React.createElement("span", { className: "empty-state-command-launch" }, "Load prompt")
+                    )
                   )
                 )
               )
@@ -168,16 +225,20 @@ export function Transcript() {
               MotionReveal,
               { key: card.label, delay: index * 90 },
               React.createElement(
-                "div",
-                { className: "empty-state-preview-card" },
-                React.createElement("span", { className: "empty-state-preview-kicker" }, card.label),
+                MotionTilt,
+                null,
                 React.createElement(
                   "div",
-                  { className: "empty-state-preview-head" },
-                  React.createElement("span", { className: "material-symbols-outlined text-[20px] text-primary" }, card.icon),
-                  React.createElement("strong", null, card.title)
-                ),
-                React.createElement("p", { className: "empty-state-preview-copy" }, card.copy)
+                  { className: "empty-state-preview-card" },
+                  React.createElement("span", { className: "empty-state-preview-kicker" }, card.label),
+                  React.createElement(
+                    "div",
+                    { className: "empty-state-preview-head" },
+                    React.createElement("span", { className: "material-symbols-outlined text-[20px] text-primary" }, card.icon),
+                    React.createElement("strong", null, card.title)
+                  ),
+                  React.createElement("p", { className: "empty-state-preview-copy" }, card.copy)
+                )
               )
             )
           )
@@ -190,16 +251,20 @@ export function Transcript() {
               MotionReveal,
               { key: suggestion, delay: SUGGESTIONS.indexOf(suggestion) * 70 },
               React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "empty-state-card text-left p-4 bg-surface-container border border-outline-variant rounded-2xl font-body-md text-body-md text-on-surface",
-                  onClick: () => {
-                    const event = new CustomEvent("opencode-suggestion", { detail: { suggestion, selectedTools: [], planMode: false } });
-                    window.dispatchEvent(event);
+                MotionTilt,
+                null,
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "empty-state-card text-left p-4 bg-surface-container border border-outline-variant rounded-2xl font-body-md text-body-md text-on-surface",
+                    onClick: () => {
+                      const event = new CustomEvent("opencode-suggestion", { detail: { suggestion, selectedTools: [], planMode: false } });
+                      window.dispatchEvent(event);
+                    },
                   },
-                },
-                suggestion
+                  suggestion
+                )
               )
             )
           )

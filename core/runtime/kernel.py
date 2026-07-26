@@ -614,6 +614,33 @@ class DevenvKernel:
         self.active_plan_prompt = execution_objective
         turn_metadata["original_objective"] = execution_objective
 
+        if planning_mode is PlanningMode.AUTO and self._is_explicit_plan_request(user_prompt):
+            final_plan_response = _blueprint_markdown_for_chat(blueprint)
+            conversation.append({"role": "assistant", "content": final_plan_response})
+            self._finalize_turn(
+                user_prompt,
+                final_plan_response,
+                conversation,
+                metadata=turn_metadata,
+                persist_memory=(not incognito) and _should_persist_episodic_response(final_plan_response),
+                persist_working_memory=not incognito,
+            )
+            system_logs.append("Explicit planning request returned blueprint without executing checkpoints")
+            return self._make_turn_result(
+                final_response=final_plan_response,
+                steps=steps,
+                total_usage=total_usage,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                stage_traces=stage_traces,
+                verification_results=verification_results,
+                metadata=turn_metadata,
+                memory_context=memory_context,
+                started_at=turn_started_at,
+                execution_mode=ExecutionMode.PLAN_ONLY.value,
+                tool_policy_events=tool_policy_events,
+            )
+
         active_index = _next_incomplete_task_index(blueprint)
         if active_index is None:
             self.active_plan_prompt = None
@@ -3540,6 +3567,21 @@ class DevenvKernel:
         )
         return any(marker in text for marker in continue_markers)
 
+    def _is_explicit_plan_request(self, user_prompt: str) -> bool:
+        text = user_prompt.lower().strip()
+        plan_markers = (
+            "plan ",
+            "plan:",
+            "make a plan",
+            "give me a plan",
+            "show me a plan",
+            "create a plan",
+            "outline ",
+            "roadmap ",
+            "execution plan",
+        )
+        return any(text.startswith(marker) or marker in text for marker in plan_markers)
+
     def _execution_checkpoint_indexes(self, blueprint: ExecutionBlueprint) -> list[int]:
         indexes: list[int] = []
         for index, task in enumerate(blueprint.tasks):
@@ -6337,6 +6379,14 @@ def _mark_blueprint_verified(blueprint: ExecutionBlueprint, passed: bool) -> Exe
         active_task_pointer=len(blueprint.tasks),
         verification_passed=passed,
     )
+
+
+def _blueprint_markdown_for_chat(blueprint: ExecutionBlueprint) -> str:
+    raw = str(blueprint.raw_plan_markdown or "").strip()
+    if raw:
+        return raw
+    lines = [f"- [ ] {task.description}" for task in blueprint.tasks if str(task.description or "").strip()]
+    return "\n".join(lines) if lines else "Plan ready."
 
 
 def _summarize_step_detail(lines: list[str]) -> str:

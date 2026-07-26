@@ -4,7 +4,7 @@ import { AccessCard } from "./AccessCard.js";
 import { SessionsCard } from "./SessionsCard.js";
 import { UsageCard } from "./UsageCard.js";
 import { Footer } from "./Footer.js";
-import { BeamFrame, MetalSurface, MotionDeck, MotionReveal, MotionShimmerText, MotionStack, MotionStage } from "./MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionDeck, MotionReveal, MotionShimmerText, MotionStack, MotionStage, MotionTilt } from "./MotionPrimitives.js";
 
 export function Sidebar() {
   const { state, dispatch } = useApp();
@@ -75,14 +75,18 @@ export function Sidebar() {
         MotionStack,
         { className: "workspace-rail-stack" },
         React.createElement(
-          MetalSurface,
-          { className: "workspace-rail-overview-shell rounded-[22px] p-2" },
+          MotionTilt,
+          null,
           React.createElement(
-            MotionDeck,
-            { className: "workspace-rail-overview" },
-            overviewPill("Backend", state.activeBackend || state.preferredBackend || "opencode"),
-            overviewPill("Mode", state.planMode ? "Plan" : state.isRunning ? "Live" : "Ready"),
-            overviewPill("Sessions", String(totalVisibleSessions(state)))
+            MetalSurface,
+            { className: "workspace-rail-overview-shell rounded-[22px] p-2" },
+            React.createElement(
+              MotionDeck,
+              { className: "workspace-rail-overview" },
+              overviewPill("Backend", state.activeBackend || state.preferredBackend || "opencode"),
+              overviewPill("Mode", state.planMode ? "Plan" : state.isRunning ? "Live" : "Ready"),
+              overviewPill("Sessions", String(totalVisibleSessions(state)))
+            )
           )
         )
       ),

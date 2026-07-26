@@ -1,7 +1,7 @@
 import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { formatBackendLabel } from "../utils/format.js";
-import { BeamFrame, MetalSurface, MotionReveal, MotionShimmerText, MotionSwap } from "./MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionBadge, MotionReveal, MotionShimmerText, MotionSwap } from "./MotionPrimitives.js";
 
 export function Header() {
   const { state, dispatch } = useApp();
@@ -82,6 +82,11 @@ export function Header() {
             React.createElement(
               "div",
               { className: "app-header-pills" },
+              React.createElement(
+                MotionBadge,
+                { className: "app-header-pill app-header-pill-live", active: state.isRunning },
+                state.isRunning ? "Live turn" : "Shell ready"
+              ),
               React.createElement("span", { className: "app-header-pill" }, activeBackend),
               React.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
               React.createElement("span", { className: "app-header-pill" }, routeLabel)

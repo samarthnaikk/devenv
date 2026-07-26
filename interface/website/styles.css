@@ -1813,6 +1813,17 @@ pre {
   color: var(--muted);
 }
 
+.chat-status-route-copyline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chat-status-route-badge {
+  background: color-mix(in srgb, var(--surface) 88%, white 12%);
+}
+
 .chat-status-route-label {
   display: inline-block;
   max-width: 70ch;
@@ -2444,6 +2455,73 @@ pre {
   box-shadow: 0 30px 80px rgba(20, 35, 33, 0.08);
 }
 
+.empty-state-hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.empty-state-hero-chip {
+  background: color-mix(in srgb, var(--surface-container-high) 78%, white 22%);
+}
+
+.empty-state-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.empty-state-stage-card {
+  position: relative;
+  min-height: 146px;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 70%, transparent);
+  background:
+    radial-gradient(circle at top right, rgba(79, 219, 200, 0.14), transparent 32%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-container-high) 82%, white 18%), color-mix(in srgb, var(--surface) 94%, white 6%));
+  padding: 18px;
+  box-shadow: 0 20px 42px rgba(20, 35, 33, 0.08);
+}
+
+.empty-state-stage-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -12% -42% auto;
+  width: 110px;
+  height: 110px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(36, 93, 168, 0.2), transparent 72%);
+  pointer-events: none;
+}
+
+.empty-state-stage-kicker {
+  display: inline-flex;
+  margin-bottom: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.empty-state-stage-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.empty-state-stage-copy {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
 .empty-state-command-deck {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2679,6 +2757,99 @@ pre {
   position: relative;
 }
 
+.motion-tilt {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.motion-tilt > :not(.motion-tilt-glare) {
+  position: relative;
+  z-index: 1;
+}
+
+.motion-tilt-glare {
+  position: absolute;
+  inset: 8% 10% auto;
+  height: 42%;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0));
+  filter: blur(12px);
+  opacity: 0;
+  transform: translate3d(-12px, -10px, 0) rotate(-6deg);
+  transition: opacity 260ms ease, transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.motion-tilt:hover {
+  transform: perspective(1200px) rotateX(4deg) rotateY(-4deg) translateY(-4px);
+}
+
+.motion-tilt:hover .motion-tilt-glare {
+  opacity: 0.9;
+  transform: translate3d(0, 0, 0) rotate(-3deg);
+}
+
+.motion-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 66%, transparent);
+  background: color-mix(in srgb, var(--surface) 82%, white 18%);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  overflow: hidden;
+}
+
+.motion-badge::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--outline-variant) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--surface) 80%, white 20%);
+  flex: 0 0 auto;
+  transition: background-color 220ms ease, box-shadow 220ms ease, transform 220ms ease;
+}
+
+.motion-badge::after {
+  content: "";
+  position: absolute;
+  inset: auto -12% -50% auto;
+  width: 88px;
+  height: 88px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(79, 219, 200, 0.18), transparent 70%);
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 220ms ease, transform 220ms ease;
+  pointer-events: none;
+}
+
+.motion-badge.is-active {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--outline-variant));
+  background: color-mix(in srgb, var(--primary) 8%, white 92%);
+}
+
+.motion-badge.is-active::before {
+  background: var(--primary);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9), 0 0 18px color-mix(in srgb, var(--primary) 38%, transparent);
+  animation: badge-pulse 1.7s ease-in-out infinite;
+}
+
+.motion-badge.is-active::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .motion-stack::before,
 .motion-stack::after {
   content: "";
@@ -2776,6 +2947,7 @@ pre {
   }
 
   .chat-status-grid,
+  .empty-state-stage-grid,
   .empty-state-command-deck,
   .empty-state-preview-grid {
     grid-template-columns: 1fr;
@@ -2804,6 +2976,9 @@ pre {
   .app-header-button,
   .motion-deck > *,
   .motion-stage,
+  .motion-tilt,
+  .motion-tilt-glare,
+  .motion-badge.is-active::before,
   .motion-shimmer-text.is-active,
   .composer-signal-dot,
   .chat-column-glow,
@@ -2993,6 +3168,109 @@ pre {
   height: 4px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--text) 28%, transparent);
+}
+
+.settings-theme-copy {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.settings-theme-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-theme-chip {
+  min-height: 30px;
+  padding-inline: 12px;
+  background: color-mix(in srgb, var(--surface-container-high) 82%, white 18%);
+}
+
+.settings-theme-chip strong,
+.settings-theme-chip span {
+  position: relative;
+  z-index: 1;
+}
+
+.settings-theme-chip strong {
+  font-size: 10px;
+  color: var(--text);
+}
+
+.settings-theme-chip span {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.settings-theme-chip.is-selected {
+  background: color-mix(in srgb, var(--primary) 10%, white 90%);
+}
+
+.theme-toggle {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.theme-toggle-track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 72px;
+  height: 38px;
+  border-radius: 999px;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 68%, transparent);
+  background: linear-gradient(135deg, rgba(255, 236, 184, 0.72), rgba(230, 240, 255, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 12px 26px rgba(20, 35, 33, 0.08);
+  transition: background 240ms ease, border-color 240ms ease, box-shadow 240ms ease;
+}
+
+.theme-toggle.is-dark .theme-toggle-track {
+  background: linear-gradient(135deg, rgba(27, 35, 58, 0.92), rgba(49, 63, 88, 0.9));
+}
+
+.theme-toggle-icon {
+  position: relative;
+  z-index: 1;
+  font-size: 16px;
+  color: var(--muted-dim);
+  transition: color 220ms ease, transform 220ms ease, opacity 220ms ease;
+}
+
+.theme-toggle.is-light .theme-toggle-icon-light,
+.theme-toggle.is-dark .theme-toggle-icon-dark {
+  color: var(--text);
+}
+
+.theme-toggle.is-light .theme-toggle-icon-light {
+  transform: scale(1.06);
+}
+
+.theme-toggle.is-dark .theme-toggle-icon-dark {
+  transform: scale(1.06);
+}
+
+.theme-toggle-thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(235, 243, 255, 0.94));
+  box-shadow: 0 8px 18px rgba(20, 35, 33, 0.14);
+  transition: transform 320ms cubic-bezier(0.22, 1.2, 0.36, 1), background 220ms ease;
+}
+
+.theme-toggle.is-dark .theme-toggle-thumb {
+  transform: translateX(34px);
+  background: linear-gradient(180deg, rgba(195, 210, 230, 0.96), rgba(146, 160, 184, 0.94));
 }
 
 .message-stack {
@@ -3804,6 +4082,15 @@ body[data-theme="light"] .react-flow__controls button:hover {
   50% {
     transform: scale(1.18);
     opacity: 1;
+  }
+}
+
+@keyframes badge-pulse {
+  0%, 100% {
+    transform: scale(0.9);
+  }
+  50% {
+    transform: scale(1.18);
   }
 }
 

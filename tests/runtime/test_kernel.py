@@ -286,6 +286,27 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertFalse(should_plan)
 
+    def test_explicit_plan_prompt_returns_blueprint_without_executing_checkpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+            result = kernel.execute_turn(
+                "Plan the UI and runtime fixes needed to make this project feel polished and reliable.",
+                planning_mode=PlanningMode.AUTO,
+                local_only=True,
+            )
+
+        self.assertEqual(result.execution_mode, ExecutionMode.PLAN_ONLY.value)
+        self.assertTrue(result.final_response)
+        self.assertIn("- [ ]", result.final_response or "")
+        self.assertTrue(result.blueprint.tasks)
+        self.assertFalse(any(task.is_completed for task in result.blueprint.tasks))
+        self.assertFalse(result.steps)
+        self.assertIn(
+            "Explicit planning request returned blueprint without executing checkpoints",
+            result.system_logs,
+        )
+
     def test_direct_memory_answer_skips_repo_explanation_questions(self) -> None:
         self.assertFalse(_should_try_direct_memory_answer("how does retrieval work?"))
         self.assertFalse(_should_try_direct_memory_answer("can you explain how the retrieval works?"))

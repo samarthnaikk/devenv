@@ -2,7 +2,7 @@ import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { Transcript } from "./Transcript.js";
 import { Composer } from "./Composer.js";
-import { BeamFrame, MotionNumber, MotionReveal, MotionShimmerText, MotionStage, MotionSwap } from "./MotionPrimitives.js";
+import { BeamFrame, MotionBadge, MotionNumber, MotionReveal, MotionShimmerText, MotionStage, MotionSwap, MotionTilt } from "./MotionPrimitives.js";
 
 export function ChatColumn() {
   const { state } = useApp();
@@ -63,7 +63,12 @@ export function ChatColumn() {
         React.createElement(
           MotionSwap,
           { className: "chat-status-routecopy" },
-          React.createElement("span", { className: "chat-status-route-label" }, describePendingMode(pendingMode))
+          React.createElement(
+            "span",
+            { className: "chat-status-route-copyline" },
+            React.createElement(MotionBadge, { className: "chat-status-route-badge", active: state.isRunning }, pendingMode),
+            React.createElement("span", { className: "chat-status-route-label" }, describePendingMode(pendingMode))
+          )
         ),
         React.createElement(
           "div",
@@ -73,17 +78,21 @@ export function ChatColumn() {
               MotionReveal,
               { key: card.label, delay: index * 70 },
               React.createElement(
-                "div",
-                { className: "chat-status-card" },
-                React.createElement("div", { className: "chat-status-card-label" }, card.label),
+                MotionTilt,
+                null,
                 React.createElement(
                   "div",
-                  { className: "chat-status-card-value" },
-                  card.numeric
-                    ? React.createElement(MotionNumber, { value: card.value })
-                    : React.createElement(MotionShimmerText, { active: state.isRunning && card.label === "Backend" }, card.value)
+                  { className: "chat-status-card" },
+                  React.createElement("div", { className: "chat-status-card-label" }, card.label),
+                  React.createElement(
+                    "div",
+                    { className: "chat-status-card-value" },
+                    card.numeric
+                      ? React.createElement(MotionNumber, { value: card.value })
+                      : React.createElement(MotionShimmerText, { active: state.isRunning && card.label === "Backend" }, card.value)
+                  ),
+                  React.createElement("div", { className: "chat-status-card-detail" }, card.detail)
                 ),
-                React.createElement("div", { className: "chat-status-card-detail" }, card.detail)
               )
             )
           )

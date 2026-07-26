@@ -1,8 +1,8 @@
 import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, escapeAttribute, formatBackendLabel } from "../utils/format.js";
-import { persistPreferredBackend, persistPreferredModels } from "../utils/storage.js";
-import { BeamFrame, MotionDeck, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
+import { persistPreferredBackend, persistPreferredModels, persistTheme } from "../utils/storage.js";
+import { BeamFrame, MotionBadge, MotionDeck, MotionReveal, MotionShimmerText, MotionTilt } from "./MotionPrimitives.js";
 
 export function SettingsDropdown() {
   const { state, dispatch } = useApp();
@@ -52,6 +52,12 @@ export function SettingsDropdown() {
 
   const closeSettings = () => {
     dispatch({ type: "SET_SHOW_SETTINGS", payload: false });
+  };
+
+  const toggleTheme = () => {
+    const nextTheme = state.theme === "dark" ? "light" : "dark";
+    dispatch({ type: "SET_THEME", payload: nextTheme });
+    persistTheme(nextTheme);
   };
 
   return React.createElement(
@@ -112,9 +118,49 @@ export function SettingsDropdown() {
         React.createElement(
           MotionDeck,
           { className: "settings-status-grid" },
-          statusChip("Preferred", formatBackendLabel(preferredBackend)),
-          statusChip("Active", formatBackendLabel(state.activeBackend || preferredBackend)),
-          statusChip("Model", compactModelName(currentModel))
+          React.createElement(MotionTilt, null, statusChip("Preferred", formatBackendLabel(preferredBackend))),
+          React.createElement(MotionTilt, null, statusChip("Active", formatBackendLabel(state.activeBackend || preferredBackend))),
+          React.createElement(MotionTilt, null, statusChip("Model", compactModelName(currentModel)))
+        ),
+        React.createElement(
+          "div",
+          { className: "settings-panel-section space-y-3" },
+          React.createElement(
+            "div",
+            { className: "flex items-center justify-between gap-3" },
+            React.createElement(
+              "div",
+              { className: "flex flex-col gap-1 min-w-0" },
+              React.createElement("span", { className: "font-label-caps text-[11px] text-on-surface-variant block" }, "Theme"),
+              React.createElement(
+                MotionShimmerText,
+                { className: "settings-theme-copy", active: state.theme === "light" },
+                state.theme === "light" ? "Light shell with glass, beam, and paper highlights" : "Dark shell with calmer contrast and the same motion system"
+              )
+            ),
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: `theme-toggle${state.theme === "light" ? " is-light" : " is-dark"}`,
+                onClick: toggleTheme,
+                "aria-label": `Switch to ${state.theme === "light" ? "dark" : "light"} theme`,
+              },
+              React.createElement(
+                "span",
+                { className: "theme-toggle-track" },
+                React.createElement("span", { className: "material-symbols-outlined theme-toggle-icon theme-toggle-icon-light" }, "light_mode"),
+                React.createElement("span", { className: "material-symbols-outlined theme-toggle-icon theme-toggle-icon-dark" }, "dark_mode"),
+                React.createElement("span", { className: "theme-toggle-thumb" })
+              )
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "settings-theme-row" },
+            themeChip("Light", "Default shell", state.theme === "light"),
+            themeChip("Dark", "Optional contrast", state.theme === "dark")
+          )
         ),
         React.createElement(
           "div",
@@ -157,6 +203,15 @@ function statusChip(label, value) {
     { className: "settings-status-chip" },
     React.createElement("span", { className: "settings-status-label" }, label),
     React.createElement("strong", { className: "settings-status-value" }, value)
+  );
+}
+
+function themeChip(label, detail, active) {
+  return React.createElement(
+    MotionBadge,
+    { className: `settings-theme-chip${active ? " is-selected" : ""}`, active },
+    React.createElement("strong", null, label),
+    React.createElement("span", null, detail)
   );
 }
 
