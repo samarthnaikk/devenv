@@ -1,56 +1,65 @@
 import React from "react";
 import { escapeHtml } from "../utils/format.js";
+import { BeamFrame, MetalSurface, MotionReveal } from "./MotionPrimitives.js";
 
 export function ErrorMessage({ message, onCopy, onReply }) {
   return React.createElement(
-    "div",
-    { className: "flex flex-col gap-2 max-w-3xl" },
+    MotionReveal,
+    { className: "error-message-shell max-w-3xl", delay: 110 },
     React.createElement(
-      "div",
-      { className: "flex items-center gap-2" },
+      BeamFrame,
+      { tone: "ember", className: "error-message-beam" },
       React.createElement(
-        "div",
-        { className: "w-6 h-6 rounded-full bg-error flex items-center justify-center" },
-        React.createElement("span", { className: "material-symbols-outlined text-[14px] text-on-error" }, "error")
-      ),
-      React.createElement("span", { className: "font-label-caps text-label-caps text-error" }, "Error"),
-      React.createElement("div", { className: "ml-auto flex items-center gap-1" },
+        MetalSurface,
+        { className: "error-message-panel" },
         React.createElement(
-          "button",
-          {
-            type: "button",
-            className: "p-1 rounded hover:bg-surface-container transition-colors text-on-surface-variant",
-            onClick: onReply,
-            title: "Reply",
-          },
-          React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "reply")
+          "div",
+          { className: "flex items-center gap-2" },
+          React.createElement(
+            "div",
+            { className: "error-message-icon" },
+            React.createElement("span", { className: "material-symbols-outlined text-[14px] text-on-error" }, "error")
+          ),
+          React.createElement("span", { className: "font-label-caps text-label-caps text-error" }, "Error"),
+          React.createElement("div", { className: "ml-auto flex items-center gap-1" },
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: "p-1 rounded hover:bg-surface-container transition-colors text-on-surface-variant",
+                onClick: onReply,
+                title: "Reply",
+              },
+              React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "reply")
+            ),
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: "p-1 rounded hover:bg-surface-container transition-colors text-on-surface-variant",
+                onClick: onCopy,
+                title: "Copy",
+              },
+              React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "content_copy")
+            )
+          )
         ),
+        message.replyTo
+          ? React.createElement(
+              "div",
+              { className: "error-message-reply" },
+              React.createElement("div", { className: "mb-1 font-label-caps text-label-caps text-error" }, `Replying to ${message.replyTo.author}`),
+              React.createElement("div", null, message.replyTo.excerpt)
+            )
+          : null,
         React.createElement(
-          "button",
+          "div",
           {
-            type: "button",
-            className: "p-1 rounded hover:bg-surface-container transition-colors text-on-surface-variant",
-            onClick: onCopy,
-            title: "Copy",
-          },
-          React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "content_copy")
+            className: "font-body-lg text-body-lg text-error error-message-copy",
+            dangerouslySetInnerHTML: { __html: renderRichText(message.content) },
+          }
         )
       )
-    ),
-    message.replyTo
-      ? React.createElement(
-          "div",
-          { className: "ml-8 rounded-lg border border-outline-variant/70 bg-surface-container px-3 py-2 text-[12px] text-on-surface-variant" },
-          React.createElement("div", { className: "mb-1 font-label-caps text-label-caps text-error" }, `Replying to ${message.replyTo.author}`),
-          React.createElement("div", null, message.replyTo.excerpt)
-        )
-      : null,
-    React.createElement(
-      "div",
-      {
-        className: "font-body-lg text-body-lg text-error ml-8",
-        dangerouslySetInnerHTML: { __html: renderRichText(message.content) },
-      }
     )
   );
 }

@@ -5,6 +5,7 @@ import { SettingsDropdown } from "./components/SettingsDropdown.js";
 import { ChatColumn } from "./components/ChatColumn.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { Toast } from "./components/Toast.js";
+import { BeamFrame, MetalSurface, MotionReveal, MotionShimmerText, MotionStage } from "./components/MotionPrimitives.js";
 import { fetchHealth, updateSessionAccess as apiUpdateSessionAccess, updateBackendAccess as apiUpdateBackendAccess } from "./api.js";
 import { loadPreferredBackend, persistAccess, persistPreferredModels, persistSetupState } from "./utils/storage.js";
 
@@ -137,11 +138,25 @@ function AppInner() {
   }, [state.showSettings]);
 
   if (state.bootError) {
-    return React.createElement("div", { className: "loading-shell" }, `Failed to load interface: ${state.bootError}`);
+    return React.createElement(BootStateScreen, {
+      icon: "error",
+      eyebrow: "Startup interrupted",
+      title: "Devenv hit a boot failure",
+      body: state.bootError,
+      tone: "ember",
+      detail: "The web shell loaded, but the health handshake did not complete.",
+    });
   }
 
   if (!state.health) {
-    return React.createElement("div", { className: "loading-shell" }, "Booting Devenv web interface...");
+    return React.createElement(BootStateScreen, {
+      icon: "deployed_code",
+      eyebrow: "Preparing workspace",
+      title: "Booting Devenv web interface",
+      body: "Restoring your local shell, checking runtime health, and bringing the workspace online.",
+      tone: "ocean",
+      loading: true,
+    });
   }
 
   const indexing = state.health.indexing || null;
@@ -287,11 +302,14 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
   const opencodeDone = phase === "opencode_done" || phase === "all_done";
 
   return React.createElement(
-    "div",
-    { className: "loading-shell" },
+    MotionStage,
+    { className: "loading-shell loading-shell-setup", delay: 40 },
     React.createElement(
-      "div",
-      { className: "startup-card", style: { maxWidth: "760px" } },
+      BeamFrame,
+      { tone: "ocean", className: "startup-frame" },
+      React.createElement(
+        MetalSurface,
+        { className: "startup-card", style: { maxWidth: "760px" } },
       React.createElement(
         "div",
         { className: "flex flex-col gap-4 mb-5" },
@@ -461,6 +479,7 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
             React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "arrow_forward")
           )
         : null
+      )
     )
   );
 }
@@ -480,7 +499,7 @@ function setupRow(provider, label, granted, done, isActive, handleGrant) {
     "div",
     {
       key: provider,
-      className: "flex items-center justify-between p-3 bg-surface-container rounded-lg border " + (done || granted ? "border-primary/40" : "border-outline-variant"),
+      className: "startup-provider-row flex items-center justify-between p-3 bg-surface-container rounded-lg border " + (done || granted ? "border-primary/40" : "border-outline-variant"),
     },
     React.createElement(
       "div",
@@ -536,6 +555,62 @@ function formatDuration(ms) {
   const seconds = totalSeconds % 60;
   const minutes = Math.floor(totalSeconds / 60);
   return minutes ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+}
+
+function BootStateScreen({ icon, eyebrow, title, body, detail, tone = "ocean", loading = false }) {
+  return React.createElement(
+    "div",
+    { className: "loading-shell" },
+    React.createElement(
+      MotionReveal,
+      { className: "loading-shell-panel", delay: 40 },
+      React.createElement(
+        BeamFrame,
+        { tone, className: "startup-frame" },
+        React.createElement(
+          MetalSurface,
+          { className: "startup-card startup-card-compact" },
+          React.createElement(
+            "div",
+            { className: "startup-hero" },
+            React.createElement(
+              "div",
+              { className: "startup-icon-shell" },
+              React.createElement("span", { className: "material-symbols-outlined text-[22px]" }, icon)
+            ),
+            React.createElement(
+              "div",
+              { className: "startup-hero-copy" },
+              React.createElement("div", { className: "startup-kicker" }, eyebrow),
+              React.createElement("h1", { className: "startup-title font-headline-sm text-headline-sm text-on-surface" }, title),
+              React.createElement(
+                loading ? MotionShimmerText : "p",
+                loading ? { className: "startup-copy is-booting" } : { className: "startup-copy" },
+                body
+              )
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "startup-section-intro" },
+            React.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, loading ? "Live boot status" : "Failure details"),
+            React.createElement(
+              "p",
+              { className: "text-[12px] leading-5 text-on-surface-variant", style: { margin: "6px 0 0" } },
+              detail || "Devenv is validating the local runtime before rendering the main workspace."
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "startup-facts-grid" },
+            startupFact("Runtime", loading ? "Health checks and provider wiring are running now." : "Retry after the backend health endpoint is reachable."),
+            startupFact("UI shell", "The local light interface is mounted before chat history is restored."),
+            startupFact("Local-first", "Ollama remains available once the runtime handshake succeeds.")
+          )
+        )
+      )
+    )
+  );
 }
 
 export function App() {

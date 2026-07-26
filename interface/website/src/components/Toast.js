@@ -1,14 +1,19 @@
 import React from "react";
 import { useApp } from "../context/AppContext.js";
-import { formatBackendLabel } from "../utils/format.js";
+import { BeamFrame, MotionReveal } from "./MotionPrimitives.js";
 
 export function Toast() {
   const { state } = useApp();
   if (!state.toast) return null;
 
   return React.createElement(
-    "div",
-    { className: "toast-banner markdown-body inline-markdown" },
-    state.toast
+    MotionReveal,
+    { delay: 120, className: "toast-banner-shell" },
+    React.createElement(
+      BeamFrame,
+      { tone: "sunrise", className: "toast-banner markdown-body inline-markdown" },
+      React.createElement("span", { className: "material-symbols-outlined toast-banner-icon" }, "notifications_active"),
+      React.createElement("span", { className: "toast-banner-copy" }, state.toast)
+    )
   );
 }
