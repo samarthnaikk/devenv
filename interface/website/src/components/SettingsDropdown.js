@@ -18,6 +18,11 @@ export function SettingsDropdown() {
   const backendStatus = state.backends?.[preferredBackend] || null;
   const backendDetail = backendStatus?.detail || "";
   const isBackendAvailable = backendStatus ? backendStatus.available !== false : true;
+  const routeSummary = state.planMode
+    ? "Plan mode keeps the next turn in blueprint-first flow."
+    : !state.selectedTools.length
+      ? "Auto route lets Devenv choose memory, tools, or live search."
+      : `${state.selectedTools.length} route${state.selectedTools.length === 1 ? "" : "s"} will constrain the next turn.`;
 
   const handleModelChange = async (event) => {
     const model = event.target.value;
@@ -75,6 +80,8 @@ export function SettingsDropdown() {
           "data-settings-panel": true,
         },
         React.createElement("span", { className: "settings-panel-ribbon", "aria-hidden": "true" }),
+        React.createElement("span", { className: "settings-panel-orbit settings-panel-orbit-one", "aria-hidden": "true" }),
+        React.createElement("span", { className: "settings-panel-orbit settings-panel-orbit-two", "aria-hidden": "true" }),
         React.createElement(
           "div",
           { className: "flex items-center justify-between" },
@@ -112,6 +119,38 @@ export function SettingsDropdown() {
             },
             ["opencode", "ollama", "codex"].map((backend) =>
               React.createElement("option", { key: backend, value: backend }, formatBackendLabel(backend))
+            )
+          )
+        ),
+        React.createElement(
+          MotionDeck,
+          { className: "settings-preview-deck" },
+          React.createElement(
+            MotionTilt,
+            null,
+            React.createElement(
+              "div",
+              { className: "settings-preview-card" },
+              React.createElement("span", { className: "settings-preview-kicker" }, "Route"),
+              React.createElement("strong", { className: "settings-preview-title" }, state.planMode ? "Blueprint first" : "Adaptive runtime"),
+              React.createElement("p", { className: "settings-preview-copy" }, routeSummary)
+            )
+          ),
+          React.createElement(
+            MotionTilt,
+            null,
+            React.createElement(
+              "div",
+              { className: "settings-preview-card settings-preview-card-theme" },
+              React.createElement("span", { className: "settings-preview-kicker" }, "Theme"),
+              React.createElement("strong", { className: "settings-preview-title" }, state.theme === "light" ? "Light shell active" : "Dark shell active"),
+              React.createElement(
+                "div",
+                { className: "settings-preview-swatches", "aria-hidden": "true" },
+                React.createElement("span", { className: "settings-preview-swatch settings-preview-swatch-ocean" }),
+                React.createElement("span", { className: "settings-preview-swatch settings-preview-swatch-mint" }),
+                React.createElement("span", { className: "settings-preview-swatch settings-preview-swatch-paper" })
+              )
             )
           )
         ),
@@ -190,7 +229,8 @@ export function SettingsDropdown() {
           "div",
           { className: "settings-panel-section pt-2 border-t border-outline-variant/30" },
           React.createElement("div", { className: "font-label-caps text-[11px] text-on-surface-variant" }, "Backend"),
-          React.createElement("div", { className: "font-body-md text-body-md text-on-surface mt-0.5" }, `${formatBackendLabel(state.activeBackend)} active`)
+          React.createElement("div", { className: "font-body-md text-body-md text-on-surface mt-0.5" }, `${formatBackendLabel(state.activeBackend)} active`),
+          React.createElement("div", { className: "settings-panel-footnote" }, routeSummary)
         )
       )
     )

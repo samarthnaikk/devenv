@@ -26,6 +26,7 @@ export function Footer() {
       { active: state.isRunning, tone: "mono", className: "app-footer-shell flex justify-between items-center rounded-[22px] px-4 py-3" },
       React.createElement("span", { className: "app-footer-ribbon", "aria-hidden": "true" }),
       React.createElement("span", { className: "app-footer-orbit", "aria-hidden": "true" }),
+      React.createElement("span", { className: "app-footer-gridline", "aria-hidden": "true" }),
       React.createElement(
         "div",
         { className: "flex items-center gap-3" },
@@ -57,8 +58,18 @@ export function Footer() {
       React.createElement(
         "div",
         { className: "app-footer-lane" },
-        React.createElement("span", { className: "app-footer-lane-label" }, state.planMode ? "Plan lane" : "Run lane"),
-        React.createElement("span", { className: "app-footer-lane-copy" }, state.isRunning ? "Runtime is actively shaping this turn." : "Shell is ready for the next routed prompt.")
+        React.createElement(
+          "div",
+          { className: "app-footer-lane-runway" },
+          React.createElement("span", { className: "app-footer-lane-scan", "aria-hidden": "true" }),
+          React.createElement(
+            "div",
+            { className: "app-footer-lane-head" },
+            React.createElement("span", { className: `app-footer-lane-pip${state.isRunning ? " is-live" : ""}`, "aria-hidden": "true" }),
+            React.createElement("span", { className: "app-footer-lane-label" }, state.planMode ? "Plan lane" : "Run lane")
+          ),
+          React.createElement("span", { className: "app-footer-lane-copy" }, state.isRunning ? "Runtime is actively shaping this turn." : "Shell is ready for the next routed prompt.")
+        )
       )
     )
   );

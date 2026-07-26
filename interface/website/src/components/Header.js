@@ -1,13 +1,19 @@
 import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { formatBackendLabel } from "../utils/format.js";
-import { BeamFrame, MetalSurface, MotionBadge, MotionReveal, MotionShimmerText, MotionSwap } from "./MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionBadge, MotionDeck, MotionReveal, MotionShimmerText, MotionSwap } from "./MotionPrimitives.js";
 
 export function Header() {
   const { state, dispatch } = useApp();
   const activeBackend = formatBackendLabel(state.activeBackend || state.preferredBackend || "opencode");
   const routeLabel = summarizeHeaderRoute(state.selectedTools, state.planMode);
   const statusLabel = state.isRunning ? "Live" : state.planMode ? "Plan" : "Direct";
+  const laneLabel = state.planMode ? "Blueprint lane" : state.isRunning ? "Runtime lane" : "Ready lane";
+  const laneCopy = state.isRunning
+    ? `Routing this turn through ${activeBackend} with visible tool and trace feedback.`
+    : state.planMode
+      ? "Repo-aware plan mode keeps the next turn staged as a flow before execution."
+      : "The shell stays light and direct until the prompt actually needs tools, memory, or live search.";
 
   const toggleSettings = () => {
     dispatch({ type: "SET_SHOW_SETTINGS", payload: !state.showSettings });
@@ -63,9 +69,12 @@ export function Header() {
       React.createElement(
         BeamFrame,
         { active: state.isRunning, tone: "ocean", className: "app-header-brand rounded-2xl px-3 py-2" },
+        React.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-one", "aria-hidden": "true" }),
+        React.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-two", "aria-hidden": "true" }),
+        React.createElement("span", { className: "app-header-brand-grid", "aria-hidden": "true" }),
         React.createElement(
           "div",
-          { className: "flex items-center gap-4" },
+          { className: "app-header-brand-inner flex items-center gap-4" },
           React.createElement(
             "div",
             { className: "app-header-mark" },
@@ -83,13 +92,17 @@ export function Header() {
               "div",
               { className: "app-header-pills" },
               React.createElement(
-                MotionBadge,
-                { className: "app-header-pill app-header-pill-live", active: state.isRunning },
-                state.isRunning ? "Live turn" : "Shell ready"
-              ),
-              React.createElement("span", { className: "app-header-pill" }, activeBackend),
-              React.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
-              React.createElement("span", { className: "app-header-pill" }, routeLabel)
+                MotionDeck,
+                { className: "app-header-pill-deck" },
+                React.createElement(
+                  MotionBadge,
+                  { className: "app-header-pill app-header-pill-live", active: state.isRunning },
+                  state.isRunning ? "Live turn" : "Shell ready"
+                ),
+                React.createElement("span", { className: "app-header-pill" }, activeBackend),
+                React.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
+                React.createElement("span", { className: "app-header-pill" }, routeLabel)
+              )
             ),
             React.createElement(
               "div",
@@ -103,6 +116,23 @@ export function Header() {
                     ? "Planning with grounded files and read-only tools first"
                     : describeHeaderStatus(state.selectedTools)
               )
+            ),
+            React.createElement(
+              MetalSurface,
+              { className: "app-header-route-runway" },
+              React.createElement("span", { className: "app-header-route-beam", "aria-hidden": "true" }),
+              React.createElement(
+                "div",
+                { className: "app-header-route-head" },
+                React.createElement(
+                  "span",
+                  { className: `app-header-route-pip${state.isRunning ? " is-live" : ""}`, "aria-hidden": "true" }
+                ),
+                React.createElement("span", { className: "app-header-route-kicker" }, laneLabel),
+                React.createElement("span", { className: "app-header-route-divider", "aria-hidden": "true" }),
+                React.createElement("strong", { className: "app-header-route-value" }, routeLabel)
+              ),
+              React.createElement("div", { className: "app-header-route-copy" }, laneCopy)
             )
           )
         )
@@ -114,6 +144,7 @@ export function Header() {
       React.createElement(
         MetalSurface,
         { className: "app-header-actions flex items-center gap-2 rounded-2xl px-2 py-2" },
+        React.createElement("span", { className: "app-header-actions-glow", "aria-hidden": "true" }),
         React.createElement(
           "button",
           {
