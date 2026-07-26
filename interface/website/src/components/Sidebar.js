@@ -42,7 +42,7 @@ export function Sidebar() {
 
   return React.createElement(
     "aside",
-    { className: "workspace-rail w-[24rem] max-w-[32vw] min-w-[20rem] shrink-0 self-start flex flex-col" },
+    { className: "workspace-rail w-[22rem] max-w-[29vw] min-w-[18rem] shrink-0 self-start flex flex-col" },
     React.createElement(
       MotionStage,
       { axis: "x", delay: 60, className: "flex-1 overflow-y-auto overflow-x-visible p-4 pr-3 space-y-6" },

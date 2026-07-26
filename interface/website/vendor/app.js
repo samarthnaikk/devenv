@@ -24111,7 +24111,7 @@ ${String(entry.content || "").trim()}`;
   };
   return import_react3.default.createElement(
     "header",
-    { className: "app-header flex justify-between items-center px-margin-desktop w-full z-50 shrink-0" },
+    { className: "app-header flex justify-between items-start gap-3 flex-wrap px-margin-desktop w-full z-50 shrink-0" },
     import_react3.default.createElement(
       MotionReveal,
       { className: "min-w-0" },
@@ -33920,6 +33920,11 @@ function Composer() {
   const isDisabled = isCoolingDown || isBudgetBlocked;
   const pendingThinking = [...state.transcript].reverse().find((entry) => entry.role === "thinking" && entry.pending);
   const replyTarget = state.replyTarget;
+  const pendingRunMode = state.isRunning ? state.pendingRunMode : inferPendingRunMode({
+    prompt: state.prompt,
+    selectedTools: state.selectedTools,
+    planMode: state.planMode
+  });
   const placeholder = isCoolingDown ? `Cooldown active. Input unlocks in ${formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))}.` : isBudgetBlocked ? "Session budget reached. Increase the limit in the right rail to continue." : "Ask Devenv...";
   const handleInput = (e) => {
     dispatch2({ type: "SET_PROMPT", payload: e.target.value });
@@ -34501,7 +34506,7 @@ function buildRetrievalStatus(metadata) {
 }
 function buildMessageDiagnostics({
   result,
-  pendingRunMode: pendingRunMode2,
+  pendingRunMode,
   planOnlyMode,
   overrideSourceLabel = null,
   overrideDetail = null
@@ -34511,8 +34516,8 @@ function buildMessageDiagnostics({
   const steps = Array.isArray(result?.steps) ? result.steps : [];
   const backendRaw = result?.backend_used || metadata.backend_used || result?.backend || "local";
   const backendLabel = backendRaw === "local" ? "Local runtime" : formatBackendLabel(backendRaw);
-  const hasWeb = pendingRunMode2 === "web" || steps.some((step) => step?.tool_name === "web_search");
-  const hasKnowledge = pendingRunMode2 === "knowledge" || steps.some((step) => step?.tool_name === "knowledge_search");
+  const hasWeb = pendingRunMode === "web" || steps.some((step) => step?.tool_name === "web_search");
+  const hasKnowledge = pendingRunMode === "knowledge" || steps.some((step) => step?.tool_name === "knowledge_search");
   const toolCount = steps.filter((step) => step?.tool_name).length;
   const localRuntime = String(metadata.backend_used || backendRaw) === "local";
   const evidenceItems = extractEvidenceItems(steps);
@@ -34562,12 +34567,12 @@ function buildMessageDiagnostics({
 }
 function buildFailureDiagnostics({
   error,
-  pendingRunMode: pendingRunMode2,
+  pendingRunMode,
   planOnlyMode,
   preferredBackend,
   parsedRateLimit
 }) {
-  const routeLabel = planOnlyMode ? "Plan mode" : pendingRunMode2 === "web" ? "Web route" : pendingRunMode2 === "knowledge" ? "Knowledge route" : "Direct route";
+  const routeLabel = planOnlyMode ? "Plan mode" : pendingRunMode === "web" ? "Web route" : pendingRunMode === "knowledge" ? "Knowledge route" : "Direct route";
   const backendLabel = preferredBackend === "local" ? "Local runtime" : formatBackendLabel(preferredBackend || "opencode");
   return {
     badgeLabel: "Issue",
@@ -35597,7 +35602,7 @@ function Sidebar() {
   }
   return import_react23.default.createElement(
     "aside",
-    { className: "workspace-rail w-[24rem] max-w-[32vw] min-w-[20rem] shrink-0 self-start flex flex-col" },
+    { className: "workspace-rail w-[22rem] max-w-[29vw] min-w-[18rem] shrink-0 self-start flex flex-col" },
     import_react23.default.createElement(
       MotionStage,
       { axis: "x", delay: 60, className: "flex-1 overflow-y-auto overflow-x-visible p-4 pr-3 space-y-6" },
@@ -35879,26 +35884,30 @@ function AppInner() {
     import_react25.default.createElement("div", { className: "app-shell-aura app-shell-aura-three", "aria-hidden": "true" }),
     import_react25.default.createElement("div", { className: "app-shell-beam app-shell-beam-top", "aria-hidden": "true" }),
     import_react25.default.createElement("div", { className: "app-shell-beam app-shell-beam-bottom", "aria-hidden": "true" }),
-    import_react25.default.createElement(Header, null),
-    state.showSettings ? import_react25.default.createElement(SettingsDropdown, null) : null,
     import_react25.default.createElement(
-      "main",
-      { className: "app-main flex flex-1 items-start" },
+      "div",
+      { className: "app-shell-core" },
+      import_react25.default.createElement(Header, null),
+      state.showSettings ? import_react25.default.createElement(SettingsDropdown, null) : null,
       import_react25.default.createElement(
-        MotionStage,
-        { axis: "y", className: "app-main-chat flex-1 min-w-0" },
+        "main",
+        { className: "app-main flex flex-1 items-start" },
         import_react25.default.createElement(
-          BeamFrame,
-          { active: state.isRunning, tone: "ocean", className: "app-main-chat-shell" },
-          import_react25.default.createElement("div", { className: "app-main-chat-shell-orbit", "aria-hidden": "true" }),
-          import_react25.default.createElement("div", { className: "app-main-chat-shell-orbit app-main-chat-shell-orbit-two", "aria-hidden": "true" }),
-          import_react25.default.createElement(ChatColumn, null)
+          MotionStage,
+          { axis: "y", className: "app-main-chat flex-1 min-w-0" },
+          import_react25.default.createElement(
+            BeamFrame,
+            { active: state.isRunning, tone: "ocean", className: "app-main-chat-shell" },
+            import_react25.default.createElement("div", { className: "app-main-chat-shell-orbit", "aria-hidden": "true" }),
+            import_react25.default.createElement("div", { className: "app-main-chat-shell-orbit app-main-chat-shell-orbit-two", "aria-hidden": "true" }),
+            import_react25.default.createElement(ChatColumn, null)
+          )
+        ),
+        import_react25.default.createElement(
+          MotionStage,
+          { axis: "x", delay: 110, className: "app-main-sidebar-stage" },
+          import_react25.default.createElement(Sidebar, null)
         )
-      ),
-      import_react25.default.createElement(
-        MotionStage,
-        { axis: "x", delay: 110, className: "app-main-sidebar-stage" },
-        import_react25.default.createElement(Sidebar, null)
       )
     ),
     import_react25.default.createElement(Toast, null)

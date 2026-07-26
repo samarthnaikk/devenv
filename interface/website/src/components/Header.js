@@ -62,7 +62,7 @@ export function Header() {
 
   return React.createElement(
     "header",
-    { className: "app-header flex justify-between items-center px-margin-desktop w-full z-50 shrink-0" },
+    { className: "app-header flex justify-between items-start gap-3 flex-wrap px-margin-desktop w-full z-50 shrink-0" },
     React.createElement(
       MotionReveal,
       { className: "min-w-0" },

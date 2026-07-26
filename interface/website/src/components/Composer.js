@@ -14,6 +14,13 @@ export function Composer() {
   const isDisabled = isCoolingDown || isBudgetBlocked;
   const pendingThinking = [...state.transcript].reverse().find((entry) => entry.role === "thinking" && entry.pending);
   const replyTarget = state.replyTarget;
+  const pendingRunMode = state.isRunning
+    ? state.pendingRunMode
+    : inferPendingRunMode({
+        prompt: state.prompt,
+        selectedTools: state.selectedTools,
+        planMode: state.planMode,
+      });
 
   const placeholder = isCoolingDown
     ? `Cooldown active. Input unlocks in ${formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))}.`

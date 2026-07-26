@@ -2679,22 +2679,55 @@ pre {
   bottom: 82px;
 }
 
+.app-shell-core {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  margin: 10px 14px 14px;
+  border-radius: 32px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 72%, transparent);
+  background:
+    radial-gradient(circle at top left, rgba(36, 93, 168, 0.08), transparent 24%),
+    radial-gradient(circle at top right, rgba(8, 121, 107, 0.1), transparent 22%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 90%, white 10%), color-mix(in srgb, var(--surface-container-low) 96%, white 4%));
+  box-shadow: 0 28px 70px rgba(20, 35, 33, 0.08);
+  backdrop-filter: blur(24px);
+  overflow: hidden;
+}
+
 .app-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   min-height: 78px;
   padding-top: 12px;
   padding-bottom: 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 68%, transparent);
-  background: color-mix(in srgb, var(--background) 76%, transparent);
-  backdrop-filter: blur(18px);
+  border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 62%, transparent);
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.app-header > *:first-child {
+  flex: 1 1 44rem;
+  min-width: 0;
+}
+
+.app-header > *:last-child {
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 
 .app-header-brand,
 .app-header-actions,
 .workspace-rail,
 .workspace-rail-collapsed {
-  background: color-mix(in srgb, var(--surface) 76%, transparent);
-  border: 1px solid color-mix(in srgb, var(--outline-variant) 76%, transparent);
-  box-shadow: 0 18px 50px rgba(20, 35, 33, 0.08);
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 .app-header-brand,
@@ -2850,13 +2883,11 @@ pre {
   flex-direction: column;
   gap: 6px;
   margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 18px;
-  border: 1px solid color-mix(in srgb, var(--outline-variant) 54%, transparent);
-  background:
-    radial-gradient(circle at top right, rgba(79, 219, 200, 0.08), transparent 30%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 86%, white 14%), color-mix(in srgb, var(--surface-container-low) 94%, white 6%));
-  box-shadow: 0 14px 28px rgba(20, 35, 33, 0.06);
+  padding: 10px 0 0;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 .app-header-route-beam {
@@ -2976,9 +3007,9 @@ pre {
 }
 
 .app-main {
-  gap: 14px;
+  gap: 12px;
   min-height: auto;
-  padding: 0 12px 12px;
+  padding: 0 16px 12px;
   overflow: visible;
   align-items: flex-start;
 }
@@ -2989,6 +3020,10 @@ pre {
   display: flex;
 }
 
+.app-main-chat {
+  min-width: 0;
+}
+
 .app-main-sidebar-stage {
   flex-shrink: 0;
 }
@@ -2997,15 +3032,15 @@ pre {
   position: relative;
   display: flex;
   flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
   min-height: 100%;
   overflow: hidden;
-  border-radius: 30px;
-  border: 1px solid color-mix(in srgb, var(--outline-variant) 72%, transparent);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 88%, white 12%), color-mix(in srgb, var(--surface-container-low) 96%, white 4%));
-  box-shadow: 0 28px 70px rgba(20, 35, 33, 0.08);
-  backdrop-filter: blur(24px);
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .app-main-chat-shell::before {
@@ -3143,10 +3178,9 @@ pre {
 }
 
 .chat-status-rail {
-  background:
-    radial-gradient(circle at top left, rgba(36, 93, 168, 0.08), transparent 28%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 90%, white 10%), color-mix(in srgb, var(--surface-container-low) 96%, white 4%));
-  box-shadow: 0 18px 50px rgba(20, 35, 33, 0.09);
+  background: transparent;
+  box-shadow: none;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 56%, transparent);
 }
 
 .chat-status-mode-tabs {
@@ -3230,11 +3264,9 @@ pre {
 .chat-status-card {
   position: relative;
   overflow: hidden;
-  border-radius: 20px;
-  border: 1px solid color-mix(in srgb, var(--outline-variant) 72%, transparent);
-  background:
-    radial-gradient(circle at top right, rgba(79, 219, 200, 0.08), transparent 34%),
-    color-mix(in srgb, var(--surface-container-low) 92%, white 8%);
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 44%, transparent);
+  background: color-mix(in srgb, var(--surface-container-low) 24%, transparent);
   padding: 14px 16px;
   min-height: 108px;
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, box-shadow 220ms ease;
@@ -3306,7 +3338,11 @@ pre {
 .workspace-rail {
   position: sticky;
   top: 12px;
+  width: min(22rem, 29vw);
+  min-width: 18rem;
   max-height: calc(100vh - 24px);
+  border-left: 1px solid color-mix(in srgb, var(--outline-variant) 54%, transparent);
+  border-radius: 0;
 }
 
 .transcript-scroll {
@@ -3348,17 +3384,13 @@ pre {
   flex-wrap: wrap;
   padding: 10px 12px;
   border-radius: 18px;
-  border: 1px solid color-mix(in srgb, var(--outline-variant) 56%, transparent);
-  background:
-    radial-gradient(circle at top right, rgba(79, 219, 200, 0.08), transparent 32%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 84%, white 16%), color-mix(in srgb, var(--surface-container-low) 92%, white 8%));
-  box-shadow: 0 14px 28px rgba(20, 35, 33, 0.06);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent);
+  background: color-mix(in srgb, var(--surface) 18%, transparent);
+  box-shadow: none;
 }
 
 .workspace-summary-rail-secondary {
-  background:
-    radial-gradient(circle at top right, rgba(36, 93, 168, 0.08), transparent 30%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 84%, white 16%), color-mix(in srgb, var(--surface-container-low) 92%, white 8%));
+  background: color-mix(in srgb, var(--surface) 18%, transparent);
 }
 
 .workspace-summary-pill {
@@ -3383,8 +3415,9 @@ pre {
 }
 
 .workspace-rail-overview-shell {
-  border: 1px solid color-mix(in srgb, var(--outline-variant) 68%, transparent);
-  box-shadow: 0 18px 42px rgba(20, 35, 33, 0.08);
+  background: color-mix(in srgb, var(--surface) 24%, transparent);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent);
+  box-shadow: none;
 }
 
 .workspace-rail-pill {
@@ -3392,11 +3425,9 @@ pre {
   overflow: hidden;
   padding: 11px 12px;
   border-radius: 18px;
-  border: 1px solid color-mix(in srgb, var(--outline-variant) 64%, transparent);
-  background:
-    radial-gradient(circle at top right, rgba(36, 93, 168, 0.1), transparent 30%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-container-high) 82%, white 18%), color-mix(in srgb, var(--surface-container-low) 90%, white 10%));
-  box-shadow: 0 14px 30px rgba(20, 35, 33, 0.08);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent);
+  background: color-mix(in srgb, var(--surface-container-high) 18%, transparent);
+  box-shadow: none;
 }
 
 .workspace-rail-pill-label {
@@ -3453,16 +3484,12 @@ pre {
 .workspace-card-shell {
   position: relative;
   overflow: hidden;
-  background:
-    radial-gradient(circle at top right, rgba(79, 219, 200, 0.08), transparent 32%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, white 8%), color-mix(in srgb, var(--surface-container-low) 96%, white 4%));
-  box-shadow: 0 18px 48px rgba(20, 35, 33, 0.08);
+  background: color-mix(in srgb, var(--surface) 16%, transparent);
+  box-shadow: none;
 }
 
 .workspace-card-shell-access {
-  background:
-    radial-gradient(circle at top left, rgba(36, 93, 168, 0.08), transparent 26%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, white 8%), color-mix(in srgb, var(--surface-container-low) 96%, white 4%));
+  background: color-mix(in srgb, var(--surface) 16%, transparent);
 }
 
 .workspace-status-grid {
@@ -3477,11 +3504,9 @@ pre {
   padding: 12px 13px;
   border-radius: 18px;
   min-height: 94px;
-  background:
-    radial-gradient(circle at top right, rgba(79, 219, 200, 0.12), transparent 30%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-container-high) 84%, white 16%), color-mix(in srgb, var(--surface-container-low) 90%, white 10%));
-  border: 1px solid color-mix(in srgb, var(--outline-variant) 66%, transparent);
-  box-shadow: 0 16px 34px rgba(20, 35, 33, 0.08);
+  background: color-mix(in srgb, var(--surface-container-high) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 40%, transparent);
+  box-shadow: none;
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, box-shadow 220ms ease;
 }
 
@@ -4606,6 +4631,15 @@ pre {
   .workspace-rail {
     max-width: 20rem;
     min-width: 18rem;
+  }
+
+  .app-header > *:first-child,
+  .app-header > *:last-child {
+    flex-basis: 100%;
+  }
+
+  .app-header-actions {
+    margin-left: auto;
   }
 
   .app-main {
@@ -6223,6 +6257,13 @@ body[data-theme="light"] .react-flow__controls button:hover {
 }
 
 @media (max-width: 720px) {
+  .app-shell-core {
+    margin: 0;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
   .content-panel,
   .step-card,
   .context-section-card,
@@ -6265,6 +6306,13 @@ body[data-theme="light"] .react-flow__controls button:hover {
   .chat-status-tab {
     min-height: 24px;
     padding: 0 10px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .app-shell-core {
+    margin: 8px 10px 10px;
+    border-radius: 24px;
   }
 }
 
