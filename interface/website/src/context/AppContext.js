@@ -1,7 +1,7 @@
 import React from "https://esm.sh/react@18.2.0";
 import { loadTheme, loadPersistedAccess, loadPreferredBackend, loadPreferredModels, loadSetupState } from "../utils/storage.js";
 
-const READ_ONLY_TOOLS = ["list_directory", "read_file", "glob", "grep", "inspect_symbols", "search_symbols"];
+const READ_ONLY_TOOLS = ["list_directory", "locate_files", "read_file", "peek_lines", "inspect_symbols", "search_text", "track_symbol"];
 
 const initialState = {
   health: null,

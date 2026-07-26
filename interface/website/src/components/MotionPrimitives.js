@@ -33,3 +33,7 @@ export function MotionSwap({ children, className = "" }) {
 export function MotionNumber({ value, className = "" }) {
   return React.createElement("span", { className: `motion-number ${className}`.trim(), key: String(value) }, String(value));
 }
+
+export function MotionDeck({ children, className = "" }) {
+  return React.createElement("div", { className: `motion-deck ${className}`.trim() }, children);
+}

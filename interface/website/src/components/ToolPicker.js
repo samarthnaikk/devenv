@@ -124,7 +124,7 @@ export function ToolPicker() {
                     className: "font-label-caps text-label-caps text-primary bg-transparent border border-outline-variant rounded-full px-3 py-1 shrink-0 hover:bg-surface-container-high transition-colors",
                     onClick: clearToolSelection,
                   },
-                  "Use all"
+                  "Clear"
                 )
               ),
               React.createElement(

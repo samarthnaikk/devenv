@@ -16,7 +16,7 @@ export function Sidebar() {
   if (collapsed) {
     return React.createElement(
       "aside",
-      { className: "w-12 shrink-0 flex flex-col items-center justify-center border-l border-outline-variant bg-surface-container-low" },
+      { className: "workspace-rail-collapsed w-12 shrink-0 flex flex-col items-center justify-center" },
       React.createElement(
         "button",
         {
@@ -33,7 +33,7 @@ export function Sidebar() {
 
   return React.createElement(
     "aside",
-    { className: "w-[24rem] max-w-[32vw] min-w-[20rem] shrink-0 flex flex-col h-full bg-surface-container-low border-l border-outline-variant" },
+    { className: "workspace-rail w-[24rem] max-w-[32vw] min-w-[20rem] shrink-0 flex flex-col h-full" },
     React.createElement(
       "div",
       { className: "flex-1 overflow-y-auto p-4 space-y-6" },

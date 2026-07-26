@@ -167,12 +167,14 @@ function AppInner() {
 
   return React.createElement(
     "div",
-    { className: "flex flex-col h-screen overflow-hidden bg-background" },
+    { className: "app-shell flex flex-col h-screen overflow-hidden bg-background" },
+    React.createElement("div", { className: "app-shell-aura app-shell-aura-one", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-aura app-shell-aura-two", "aria-hidden": "true" }),
     React.createElement(Header, null),
     state.showSettings ? React.createElement(SettingsDropdown, null) : null,
     React.createElement(
       "main",
-      { className: "flex flex-1 overflow-hidden" },
+      { className: "app-main flex flex-1 overflow-hidden" },
       React.createElement(ChatColumn, null),
       React.createElement(Sidebar, null)
     ),

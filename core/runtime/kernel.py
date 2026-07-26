@@ -474,8 +474,17 @@ class DevenvKernel:
 
         if not incognito:
             self._record_working_memory(conversation)
+        live_search_request = _is_explicit_live_search_prompt(user_prompt)
         if no_memory or incognito:
             memory_context, retrieval_metadata = "", dict(PRIVACY_DISABLED_METADATA)
+        elif live_search_request:
+            memory_context, retrieval_metadata = "", {
+                "external_context_state": "live_search_only",
+                "external_context_reason": "Live fact request routed directly to web search without prior project memory.",
+                "external_context_session_count": 0,
+                "external_context_session_ids": [],
+            }
+            system_logs.append("Skipped project memory for explicit live-search request")
         else:
             memory_context, retrieval_metadata = self._retrieve_memory_context(user_prompt, local_only=local_only)
         turn_metadata.update(retrieval_metadata)
@@ -1125,7 +1134,10 @@ class DevenvKernel:
         if should_plan:
             prefer_local_planning = (
                 local_only
-                or self._is_backend_frontend_integration_request(user_prompt)
+                or (
+                    self._is_backend_frontend_integration_request(user_prompt)
+                    and (self._remote_backend_enabled() or self._local_integration_root_for_prompt(user_prompt))
+                )
                 or (
                 getattr(self.ai, "preferred_backend", "") == "ollama"
                 and self._text_requires_mutation_tools(user_prompt.lower())
@@ -1259,16 +1271,18 @@ class DevenvKernel:
         )
         frontend_markers = ("html", "css", "javascript", "frontend", "ui")
         document_markers = ("pdf", "document", "report", "brief", "handout", "invoice")
-        if any(token in text for token in backend_markers):
+        if any(token in text for token in backend_markers) and self._text_requires_mutation_tools(text):
             return "code"
-        if any(token in text for token in ("html", "css", "javascript", "frontend")):
+        if any(token in text for token in ("html", "css", "javascript", "frontend")) and (
+            self._text_requires_mutation_tools(text) or self._is_scaffold_request(text)
+        ):
             return "frontend"
         if "pdf" in text or (
             any(token in text for token in document_markers)
             and any(token in text for token in ("create", "generate", "build", "make", "export"))
         ):
             return "document"
-        if any(token in text for token in ("create", "write", "edit", "modify", "update", "fix", "implement", "file", "folder")) or target_path_hint:
+        if any(token in text for token in ("create", "write", "edit", "modify", "update", "fix", "implement")):
             return "code"
         return "chat"
 
@@ -1318,7 +1332,29 @@ class DevenvKernel:
         selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
     ) -> tuple[str | None, ExecutionBlueprint, list[ToolExecutionStep]]:
         pre_step_count = len(steps)
-        if checkpoint.expected_artifact == "chat" and not self._checkpoint_is_context_only(user_prompt, checkpoint.description):
+        if checkpoint.expected_artifact == "chat" and _is_explicit_live_search_prompt(user_prompt):
+            forced_response = self._run_forced_web_search_turn(
+                user_prompt=user_prompt,
+                steps=steps,
+                total_usage=total_usage,
+                ai_logs=ai_logs,
+                system_logs=system_logs,
+                local_only=local_only,
+            )
+            if forced_response is not None:
+                updated = _mark_checkpoint_completed(
+                    blueprint,
+                    blueprint.active_task_pointer,
+                    _summarize_execution_note(forced_response),
+                )
+                self.active_blueprint = updated
+                return forced_response, updated, steps[pre_step_count:]
+        direct_file_read = checkpoint.description.lower().startswith("read ") and not self._text_requires_mutation_tools(
+            checkpoint.description.lower()
+        )
+        if checkpoint.expected_artifact == "chat" and (
+            not self._checkpoint_is_context_only(user_prompt, checkpoint.description) or direct_file_read
+        ):
             direct_memory_answer = self._answer_known_project_question_local(user_prompt, raw_memory_context)
             if direct_memory_answer is None:
                 direct_memory_answer = _answer_from_retrieved_memory(user_prompt, raw_memory_context)
@@ -1402,6 +1438,58 @@ class DevenvKernel:
             selected_tools=selected_tools,
         )
         return final_response, self.active_blueprint or blueprint, steps[pre_step_count:]
+
+    def _run_forced_web_search_turn(
+        self,
+        *,
+        user_prompt: str,
+        steps: list[ToolExecutionStep],
+        total_usage: dict[str, int],
+        ai_logs: list[str],
+        system_logs: list[str],
+        local_only: bool,
+    ) -> str | None:
+        if "web_search" not in self.tools:
+            ai_logs.append("Live search requested but web_search is not registered")
+            return None
+        tool_call = ToolCallRequest(
+            call_id=f"live_{uuid.uuid4().hex[:10]}",
+            tool_name="web_search",
+            arguments={"mode": "search", "query": user_prompt, "result_count": 5},
+        )
+        step = self._execute_tool_call(tool_call)
+        steps.append(step)
+        system_logs.append(f"Tool step {len(steps)}: web_search success={step.success}")
+        if not step.success:
+            ai_logs.append(f"Live web search failed: {step.output}")
+            return None
+        results = step.data.get("results") if isinstance(step.data, dict) else None
+        if not isinstance(results, list) or not results:
+            ai_logs.append("Live web search returned no results")
+            return None
+        result_lines = [
+            f"- {item.get('title', 'Untitled result')} — {item.get('url', '')}"
+            for item in results
+            if isinstance(item, dict)
+        ]
+        search_context = "Live web results:\n" + "\n".join(result_lines)
+        if local_only:
+            return "I found these current web results:\n\n" + "\n".join(result_lines)
+        try:
+            response = self.ai.chat(
+                messages=[
+                    {"role": "system", "content": "Answer the user's current-fact question using only the live web results below. Be concise, state uncertainty when sources disagree, and include source links when useful."},
+                    {"role": "user", "content": f"{user_prompt}\n\n{search_context}"},
+                ],
+                memory_context=search_context,
+                tool_names=[],
+            )
+        except RuntimeError as exc:
+            ai_logs.append(f"Live-search synthesis failed: {exc}")
+            return "I found current web results, but answer synthesis failed:\n\n" + "\n".join(result_lines)
+        _merge_usage(total_usage, response.usage)
+        ai_logs.append(f"Forced live web search completed with {len(results)} result(s)")
+        return response.content or ("I found these current web results:\n\n" + "\n".join(result_lines))
 
     def _verify_active_checkpoint(
         self,
@@ -2344,8 +2432,13 @@ class DevenvKernel:
                 direct_candidates.sort(key=lambda item: item[0], reverse=True)
                 best_score, best_response = direct_candidates[0]
                 if best_score >= 1:
-                    self._exact_logged_answer_cache[lowered] = best_response
-                    return best_response
+                    shaped_response = (
+                        best_response
+                        if best_response.lower().startswith("based on the codebase, here's")
+                        else _shape_logged_answer_for_prompt(user_prompt, best_response)
+                    )
+                    self._exact_logged_answer_cache[lowered] = shaped_response
+                    return shaped_response
 
         logs = []
         if hasattr(store, "search_logs_for_external_query"):
@@ -2382,11 +2475,11 @@ class DevenvKernel:
             exact_external_query = str(metadata.get("external_context_query") or "").strip().lower() if isinstance(metadata, dict) else ""
             logged_user = str(payload.get("user") or "").strip().lower()
             if exact_external_query in query_variants:
-                exact_answer = cleaned_agent_text
+                exact_answer = _shape_logged_answer_for_prompt(user_prompt, cleaned_agent_text)
                 self._exact_logged_answer_cache[lowered] = exact_answer
                 return exact_answer
             if logged_user in query_variants:
-                exact_answer = cleaned_agent_text
+                exact_answer = _shape_logged_answer_for_prompt(user_prompt, cleaned_agent_text)
                 self._exact_logged_answer_cache[lowered] = exact_answer
                 return exact_answer
             if allow_fallback_candidates:
@@ -2463,9 +2556,7 @@ class DevenvKernel:
         self.state = AgentState.EXECUTING
         system_logs.append(f"State: {self.state.name}")
         working_blueprint = blueprint
-        # Match remote execution semantics: advance one checkpoint per turn so
-        # follow-up/continue-plan can observe and resume the active plan.
-        checkpoint_indexes = self._execution_checkpoint_indexes(working_blueprint)[:1]
+        checkpoint_indexes = self._execution_checkpoint_indexes(working_blueprint)
         final_response: str | None = None
 
         for index in checkpoint_indexes:
@@ -2643,6 +2734,7 @@ class DevenvKernel:
         system_logs.append(f"State: {self.state.name}")
         final_response: str | None = None
         working_blueprint = blueprint
+        # Execute every remaining checkpoint in one bounded turn, then verify the completed plan.
         checkpoint_indexes = self._execution_checkpoint_indexes(working_blueprint)
 
         for index in checkpoint_indexes:
@@ -3413,7 +3505,7 @@ class DevenvKernel:
         return overlap >= 0.3 or any(marker in lowered for marker in follow_up_markers)
 
     def _checkpoint_is_context_only(self, user_prompt: str, task_description: str) -> bool:
-        lowered = task_description.lower()
+        lowered = task_description.lower().lstrip("- *")
         return lowered.startswith(("inspect ", "gather ", "identify ", "review ", "read ", "list ", "analyze ", "explore "))
 
     def _build_checkpoint_context(self, blueprint: ExecutionBlueprint, task_index: int) -> str:
@@ -4267,7 +4359,9 @@ class DevenvKernel:
 
     def _local_integration_root_for_prompt(self, user_prompt: str) -> str | None:
         lowered = user_prompt.lower()
-        if "chatapp" in lowered and "frontend" in lowered and any(token in lowered for token in ("backend", "integrate", "integration", "chat app")):
+        if ("chatapp" in lowered or "chat app" in lowered) and "frontend" in lowered and any(
+            token in lowered for token in ("backend", "integrate", "integration", "chat app")
+        ):
             return self._derive_scaffold_target_path(user_prompt) or "chatapp"
         return None
 
@@ -6660,6 +6754,7 @@ def _should_try_direct_memory_answer(user_prompt: str) -> bool:
             "list the files",
             "what other work",
             "what were the main issues",
+            "what were the issues",
             "what can be said confidently",
             "what remains unclear",
             "what was the backend",
@@ -6722,6 +6817,9 @@ def _tool_strategy_subject_prompt(user_prompt: str) -> str | None:
     patterns = (
         r"^(?:what|which)\s+tools\s+do\s+you\s+need\s+to\s+answer\s+(.+)$",
         r"^(?:what|which)\s+tools\s+would\s+you\s+use\s+to\s+answer\s+(.+)$",
+        r"^(?:what|which)\s+tools\s+would\s+you\s+use\s+to\s+inspect\s+(.+)$",
+        r"^(?:what|which)\s+tools\s+would\s+you\s+use\s+to\s+analy[sz]e\s+(.+)$",
+        r"^(?:what|which)\s+tools\s+would\s+you\s+use\s+to\s+explore\s+(.+)$",
         r"^how\s+do\s+you\s+decide\s+what\s+tools\s+to\s+use\s+for\s+(.+)$",
         r"^how\s+do\s+you\s+choose\s+what\s+tools\s+to\s+use\s+for\s+(.+)$",
         r"^do\s+you\s+need\s+any\s+tools\s+to\s+answer\s+(.+)$",
@@ -6765,8 +6863,14 @@ def _should_skip_external_session_context(user_prompt: str) -> bool:
 
 def _should_skip_current_workspace_memory_lookup(user_prompt: str) -> bool:
     lowered = user_prompt.lower().strip()
+    tool_strategy_subject = _tool_strategy_subject_prompt(user_prompt)
     if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt) or _is_session_history_question(user_prompt):
         return False
+    if tool_strategy_subject and any(
+        marker in tool_strategy_subject
+        for marker in ("repo", "repository", "codebase", "project", "backend", "frontend", "workspace", "folder")
+    ):
+        return True
     return any(
         phrase in lowered
         for phrase in (
@@ -6787,6 +6891,10 @@ def _should_skip_current_workspace_memory_lookup(user_prompt: str) -> bool:
             "what is the codebase",
             "what is this repo",
             "what is the repo",
+            "inspect this repo",
+            "inspect the repo",
+            "inspect this codebase",
+            "inspect the codebase",
             "how does the backend work",
             "how does this backend work",
             "what is the backend",
@@ -7194,8 +7302,6 @@ def _is_architecture_question(user_prompt: str) -> bool:
             "architecture",
             "backend",
             "system",
-            "same architecture",
-            "look different",
             "how does the repo work",
             "how does the repository work",
             "how does the codebase work",
@@ -7305,8 +7411,6 @@ def _should_skip_exact_logged_fast_path(user_prompt: str) -> bool:
             "what can be said confidently",
             "what remains unclear",
             "what was the backend",
-            "same architecture",
-            "look different",
         )
     )
 
@@ -7375,6 +7479,8 @@ def _should_trust_memory_answer_for_prompt(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     if _is_memory_recall_question(user_prompt) or _is_memory_follow_up_question(user_prompt) or _is_session_history_question(user_prompt):
         return True
+    if _tool_strategy_subject_prompt(user_prompt) is not None:
+        return False
     if _is_repo_summary_question(user_prompt):
         return False
     if _is_bug_list_question(user_prompt):
@@ -9624,6 +9730,14 @@ def _should_enable_web_search(text: str) -> bool:
         "docs",
         "search the web",
         "on the web",
+        "net worth",
+        "stock price",
+        "market cap",
+        "exchange rate",
+        "weather",
+        "forecast",
+        "schedule",
+        "price of",
     )
     return any(marker in lowered for marker in current_fact_markers)
 

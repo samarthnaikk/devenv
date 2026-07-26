@@ -6,6 +6,7 @@ import { AssistantMessage } from "./AssistantMessage.js";
 import { ErrorMessage } from "./ErrorMessage.js";
 import { PlanFlowchart } from "./PlanFlowchart.js?v=flow4";
 import { showToast } from "./Header.js";
+import { BeamFrame, MotionDeck, MotionReveal } from "./MotionPrimitives.js";
 
 const SUGGESTIONS = [
   "Do you remember anything about the old retrieval logic for this project?",
@@ -68,34 +69,41 @@ export function Transcript() {
       { className: "flex-1 overflow-y-auto p-margin-desktop space-y-8", ref: scrollRef },
       React.createElement(
         "div",
-        { className: "flex flex-col items-center justify-center min-h-[60vh] gap-10 px-12" },
+        { className: "empty-state-shell flex flex-col items-center justify-center min-h-[60vh] gap-10 px-12" },
         React.createElement(
-          "div",
-          { className: "flex flex-col items-center gap-4" },
+          BeamFrame,
+          { active: false, tone: "ocean", className: "empty-state-hero rounded-3xl p-8 max-w-3xl w-full" },
           React.createElement(
             "div",
-            { className: "w-12 h-12 rounded-full bg-primary flex items-center justify-center text-on-primary" },
-            React.createElement("span", { className: "material-symbols-outlined text-[24px]" }, "neurology")
-          ),
-          React.createElement("h1", { className: "font-headline-lg text-headline-lg text-on-surface text-center" }, "What should we recall?"),
-          React.createElement("div", { className: "max-w-lg text-center font-body-lg text-body-lg text-on-surface-variant" }, "Ask Devenv to search memory, inspect prior sessions, or route turns through OpenCode with explicit consent.")
+            { className: "flex flex-col items-center gap-4" },
+            React.createElement(
+              "div",
+              { className: "empty-state-badge w-14 h-14 rounded-full flex items-center justify-center text-on-primary" },
+              React.createElement("span", { className: "material-symbols-outlined text-[26px]" }, "neurology")
+            ),
+            React.createElement("h1", { className: "font-headline-lg text-headline-lg text-on-surface text-center" }, "Inspect faster. Plan cleaner. Ship with motion."),
+            React.createElement("div", { className: "max-w-2xl text-center font-body-lg text-body-lg text-on-surface-variant" }, "Ask Devenv to inspect the codebase, route into a plan, or search live sources. The interface stays light, tactile, and traceable while the runtime decides what to use.")
+          )
         ),
         React.createElement(
-          "div",
-          { className: "grid grid-cols-1 gap-3 w-full max-w-2xl" },
+          MotionDeck,
+          { className: "empty-state-suggestions grid grid-cols-1 gap-3 w-full max-w-2xl" },
           SUGGESTIONS.map((suggestion) =>
             React.createElement(
-              "button",
-              {
-                key: suggestion,
-                type: "button",
-                className: "text-left p-4 bg-surface-container border border-outline-variant rounded-lg hover:bg-surface-container-high transition-colors font-body-md text-body-md text-on-surface",
-                onClick: () => {
-                  const event = new CustomEvent("opencode-suggestion", { detail: { suggestion } });
-                  window.dispatchEvent(event);
+              MotionReveal,
+              { key: suggestion, delay: SUGGESTIONS.indexOf(suggestion) * 70 },
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "empty-state-card text-left p-4 bg-surface-container border border-outline-variant rounded-2xl font-body-md text-body-md text-on-surface",
+                  onClick: () => {
+                    const event = new CustomEvent("opencode-suggestion", { detail: { suggestion } });
+                    window.dispatchEvent(event);
+                  },
                 },
-              },
-              suggestion
+                suggestion
+              )
             )
           )
         )

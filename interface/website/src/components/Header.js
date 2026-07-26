@@ -1,8 +1,13 @@
 import React from "https://esm.sh/react@18.2.0";
 import { useApp } from "../context/AppContext.js";
+import { formatBackendLabel } from "../utils/format.js";
+import { BeamFrame, MetalSurface } from "./MotionPrimitives.js";
 
 export function Header() {
   const { state, dispatch } = useApp();
+  const activeBackend = formatBackendLabel(state.activeBackend || state.preferredBackend || "opencode");
+  const toolCount = state.selectedTools.length;
+  const statusLabel = state.isRunning ? "Live" : state.planMode ? "Plan" : "Direct";
 
   const toggleSettings = () => {
     dispatch({ type: "SET_SHOW_SETTINGS", payload: !state.showSettings });
@@ -51,21 +56,41 @@ export function Header() {
 
   return React.createElement(
     "header",
-    { className: "flex justify-between items-center h-14 px-margin-desktop w-full z-50 bg-surface border-b border-outline-variant shrink-0" },
+    { className: "app-header flex justify-between items-center h-16 px-margin-desktop w-full z-50 shrink-0" },
     React.createElement(
-      "div",
-      { className: "flex items-center gap-4" },
-      React.createElement("span", { className: "font-headline-md text-headline-md font-bold text-on-surface" }, "Devenv")
+      BeamFrame,
+      { active: state.isRunning, tone: "ocean", className: "app-header-brand rounded-2xl px-3 py-2" },
+      React.createElement(
+        "div",
+        { className: "flex items-center gap-4" },
+        React.createElement(
+          "div",
+          { className: "app-header-mark" },
+          React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "auto_awesome")
+        ),
+        React.createElement(
+          "div",
+          { className: "flex flex-col gap-1" },
+          React.createElement("span", { className: "font-headline-md text-headline-md font-bold text-on-surface" }, "Devenv"),
+          React.createElement(
+            "div",
+            { className: "app-header-pills" },
+            React.createElement("span", { className: "app-header-pill" }, activeBackend),
+            React.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
+            React.createElement("span", { className: "app-header-pill" }, `${toolCount} tool${toolCount === 1 ? "" : "s"}`)
+          )
+        )
+      )
     ),
     React.createElement(
-      "div",
-      { className: "flex items-center gap-3" },
+      MetalSurface,
+      { className: "app-header-actions flex items-center gap-2 rounded-2xl px-2 py-2" },
       React.createElement(
         "button",
         {
           type: "button",
           "data-action": "toggle-settings",
-          className: `p-2 rounded-lg hover:bg-surface-variant transition-colors text-on-surface-variant ${state.showSettings ? "bg-surface-variant text-primary" : ""}`,
+          className: `app-header-button icon-button p-2 rounded-2xl text-on-surface-variant ${state.showSettings ? "is-active text-primary" : ""}`,
           onClick: toggleSettings,
           "aria-label": "Settings",
         },
@@ -75,7 +100,7 @@ export function Header() {
         "button",
         {
           type: "button",
-          className: "px-3 py-1.5 font-label-caps text-label-caps bg-primary text-on-primary rounded-lg hover:opacity-80 transition-opacity",
+          className: "app-header-button solid-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
           onClick: newThread,
         },
         "New"
@@ -84,7 +109,7 @@ export function Header() {
         "button",
         {
           type: "button",
-          className: "px-3 py-1.5 font-label-caps text-label-caps border border-outline-variant text-on-surface rounded-lg hover:bg-surface-variant transition-colors",
+          className: "app-header-button ghost-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
           onClick: copyThread,
         },
         "Copy"
