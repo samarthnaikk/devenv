@@ -4357,7 +4357,7 @@ class DevenvKernel:
 
     def _build_ui_runtime_polish_plan(self, user_prompt: str) -> str:
         lowered = user_prompt.lower()
-        ui_surface = "interface/website/src/Transcript.js"
+        ui_surface = "interface/website/src/components/Transcript.js"
         if "settings" in lowered or "theme" in lowered:
             ui_surface = "interface/website/src/components/SettingsDropdown.js"
         elif "composer" in lowered or "prompt" in lowered:
@@ -4371,7 +4371,7 @@ class DevenvKernel:
                 f"- [ ] Inspect `{ui_surface}` plus `interface/website/src/components/ChatColumn.js` and `interface/website/src/components/Sidebar.js` to identify the weakest light-theme and interaction surfaces.",
                 f"- [ ] Inspect `{runtime_surface}` and `tests/runtime/test_kernel.py` to identify where planning, route selection, or tool-choice behavior is still too generic or broken.",
                 "- [ ] Update the shared website motion/theme primitives so the shell uses stronger staged transitions, tactile cards, and a clearer light interface direction.",
-                f"- [ ] Refine `{ui_surface}`, `interface/website/src/components/Transcript.js`, and the surrounding shell components so the empty state, status surfaces, and controls feel intentionally animated instead of flat.",
+                f"- [ ] Refine `{ui_surface}` and the surrounding shell components so the empty state, status surfaces, and controls feel intentionally animated instead of flat.",
                 f"- [ ] Tighten `{runtime_surface}` so explicit planning, route choice, and tool selection produce grounded behavior instead of generic fallback responses.",
                 "- [ ] Verify the website changes with `interface/website/scripts/check-mount.mjs` and verify the runtime behavior with targeted kernel/web tests plus an Ollama smoke prompt for planning.",
             ]

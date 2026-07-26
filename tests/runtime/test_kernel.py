@@ -316,7 +316,7 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("`interface/website/styles.css`", plan)
         self.assertIn("`interface/website/src/components/MotionPrimitives.js`", plan)
-        self.assertIn("`interface/website/src/Transcript.js`", plan)
+        self.assertIn("`interface/website/src/components/Transcript.js`", plan)
         self.assertIn("`core/runtime/kernel.py`", plan)
         self.assertIn("`tests/runtime/test_kernel.py`", plan)
         self.assertIn("check-mount.mjs", plan)
