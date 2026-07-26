@@ -2,7 +2,7 @@ import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { formatBackendLabel } from "../utils/format.js";
 import { ThinkingOrb } from "./ThinkingOrb.js";
-import { BeamFrame, MotionNumber, MotionShimmerText } from "./MotionPrimitives.js";
+import { BeamFrame, MotionDeck, MotionNumber, MotionShimmerText } from "./MotionPrimitives.js";
 
 export function Footer() {
   const { state } = useApp();
@@ -16,6 +16,7 @@ export function Footer() {
     ? `${formatBackendLabel(preferredBackend)} offline`
     : `${formatBackendLabel(state.activeBackend)} ready`;
   const modelLabel = state.healthMeta.selectedModelsByBackend?.[preferredBackend] || state.healthMeta.model || "";
+  const routeLabel = state.planMode ? "Plan" : !state.selectedTools.length ? "Auto" : `${state.selectedTools.length} route${state.selectedTools.length === 1 ? "" : "s"}`;
 
   return React.createElement(
     "footer",
@@ -42,13 +43,24 @@ export function Footer() {
       ),
       React.createElement(
         "div",
-        { className: "app-footer-metrics flex items-center gap-3" },
+        { className: "app-footer-metrics" },
         React.createElement(
-          "span",
-          { className: "app-footer-pill font-code-sm text-[10px] text-on-surface-variant" },
-          React.createElement(MotionNumber, { value: remainingLabel })
+          MotionDeck,
+          { className: "app-footer-grid" },
+          footerMetric("Window", React.createElement(MotionNumber, { value: remainingLabel })),
+          footerMetric("Route", routeLabel),
+          footerMetric("Mode", state.isRunning ? "Live" : "Idle")
         )
       )
     )
+  );
+}
+
+function footerMetric(label, value) {
+  return React.createElement(
+    "div",
+    { className: "app-footer-pill app-footer-metric" },
+    React.createElement("span", { className: "app-footer-metric-label" }, label),
+    React.createElement("strong", { className: "app-footer-metric-value" }, value)
   );
 }

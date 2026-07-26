@@ -28,6 +28,7 @@ from core.runtime.kernel import (
     _prefer_reference_results_over_empty_summary,
     _sanitize_logged_answer,
     _sanitize_model_generated_path,
+    _should_trust_memory_answer_for_prompt,
     _should_try_direct_memory_answer,
     _summarize_local_text_file,
     _summarize_directory_listing,
@@ -4676,6 +4677,11 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("Flask", result.final_response or "")
         self.assertIn("server.py", result.final_response or "")
+
+    def test_generic_prompt_does_not_trust_memory_answer_shortcut(self) -> None:
+        self.assertFalse(_should_trust_memory_answer_for_prompt("In seven words, describe recursion."))
+        self.assertFalse(_should_trust_memory_answer_for_prompt("Reply with a poetic sentence about the ocean."))
+        self.assertTrue(_should_trust_memory_answer_for_prompt("Do you remember what backend GetGit used?"))
 
     def test_local_only_prefers_clean_exact_logged_project_answer(self) -> None:
         class FakeStore:

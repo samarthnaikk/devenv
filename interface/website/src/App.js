@@ -5,7 +5,7 @@ import { SettingsDropdown } from "./components/SettingsDropdown.js";
 import { ChatColumn } from "./components/ChatColumn.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { Toast } from "./components/Toast.js";
-import { BeamFrame, MetalSurface, MotionReveal, MotionShimmerText, MotionStage } from "./components/MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionDeck, MotionReveal, MotionShimmerText, MotionStage } from "./components/MotionPrimitives.js";
 import { fetchHealth, updateSessionAccess as apiUpdateSessionAccess, updateBackendAccess as apiUpdateBackendAccess } from "./api.js";
 import { loadPreferredBackend, persistAccess, persistPreferredModels, persistSetupState } from "./utils/storage.js";
 
@@ -365,6 +365,13 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
           : null
       ),
       React.createElement(
+        MotionDeck,
+        { className: "startup-status-grid mb-5" },
+        startupStatusChip("Provider", activeProvider),
+        startupStatusChip("Phase", isChunking ? "Indexing" : anyGranted ? "Ready" : "Awaiting grant"),
+        startupStatusChip("Progress", isChunking ? `${progress.percent}%` : anyGranted ? "Saved" : "0%")
+      ),
+      React.createElement(
         "div",
         { className: "startup-section-intro" },
         React.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, "What happens here"),
@@ -500,6 +507,15 @@ function startupFact(label, body) {
   );
 }
 
+function startupStatusChip(label, value) {
+  return React.createElement(
+    "div",
+    { className: "startup-status-chip" },
+    React.createElement("span", { className: "startup-status-label" }, label),
+    React.createElement("strong", { className: "startup-status-value" }, value)
+  );
+}
+
 function setupRow(provider, label, granted, done, isActive, handleGrant) {
   const isButtonDisabled = granted || done || isActive;
   return React.createElement(
@@ -613,6 +629,13 @@ function BootStateScreen({ icon, eyebrow, title, body, detail, tone = "ocean", l
             startupFact("Runtime", loading ? "Health checks and provider wiring are running now." : "Retry after the backend health endpoint is reachable."),
             startupFact("UI shell", "The local light interface is mounted before chat history is restored."),
             startupFact("Local-first", "Ollama remains available once the runtime handshake succeeds.")
+          ),
+          React.createElement(
+            MotionDeck,
+            { className: "startup-status-grid mt-4" },
+            startupStatusChip("Surface", loading ? "Booting" : "Error"),
+            startupStatusChip("Memory", loading ? "Restoring" : "Paused"),
+            startupStatusChip("Backend", loading ? "Checking" : "Retry needed")
           )
         )
       )

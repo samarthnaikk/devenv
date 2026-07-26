@@ -7547,7 +7547,7 @@ def _should_trust_memory_answer_for_prompt(user_prompt: str) -> bool:
         )
     ) and not _has_explicit_project_subject(user_prompt):
         return False
-    return True
+    return False
 
 
 def _prefers_deeper_workspace_scan(user_prompt: str) -> bool:
