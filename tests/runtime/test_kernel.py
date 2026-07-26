@@ -4683,6 +4683,42 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertFalse(_should_trust_memory_answer_for_prompt("Reply with a poetic sentence about the ocean."))
         self.assertTrue(_should_trust_memory_answer_for_prompt("Do you remember what backend GetGit used?"))
 
+    def test_execute_turn_uses_model_for_generic_prompt_even_with_memory_context(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="\n".join(
+                [
+                    "## Retrieved Memory",
+                    "- [episode] In seven words, describe recursion. | silver comet",
+                    "- [episode] Reply with a poetic sentence about the ocean. | glass thunder",
+                ]
+            )
+        )
+        ai = FakeAI(
+            [
+                AIResponse(
+                    content="Recursion solves problems by reusing itself.",
+                    tool_calls=(),
+                    finish_reason="stop",
+                    usage={"total_tokens": 6},
+                    backend="ollama",
+                )
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            result = kernel.execute_turn(
+                "In seven words, describe recursion.",
+                backend_preference="ollama",
+                ollama_enabled=True,
+            )
+
+        self.assertEqual(result.final_response, "Recursion solves problems by reusing itself.")
+        self.assertEqual(len(ai.chat_calls), 1)
+        self.assertIn("Assistant produced direct response", result.ai_logs)
+        self.assertNotIn("Direct turn answered from focused memory before remote model call", result.ai_logs)
+
     def test_local_only_prefers_clean_exact_logged_project_answer(self) -> None:
         class FakeStore:
             def search_logs(self, terms: list[str], limit: int = 5) -> list[EpisodicLog]:
