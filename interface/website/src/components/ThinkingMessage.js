@@ -38,6 +38,9 @@ export function ThinkingMessage({ message }) {
       BeamFrame,
       { active: message.pending, tone: orbState === "searching" ? "ocean" : "mono", className: "thinking-card inset-terminal rounded-[24px] border border-outline-variant p-4" },
       React.createElement("span", { className: "thinking-card-ribbon", "aria-hidden": "true" }),
+      React.createElement("span", { className: "thinking-card-orbit thinking-card-orbit-one", "aria-hidden": "true" }),
+      React.createElement("span", { className: "thinking-card-orbit thinking-card-orbit-two", "aria-hidden": "true" }),
+      React.createElement("span", { className: "thinking-card-grid", "aria-hidden": "true" }),
       React.createElement(
         "div",
         { className: "thinking-card-head flex justify-between items-center mb-4" },
@@ -81,7 +84,12 @@ export function ThinkingMessage({ message }) {
         React.createElement(
           MotionSwap,
           { className: "thinking-runway-copy" },
-          React.createElement("span", { className: "thinking-runway-label" }, activeStep.label || "Trace"),
+          React.createElement(
+            "div",
+            { className: "thinking-runway-head" },
+            React.createElement("span", { className: `thinking-runway-pip${message.pending ? " is-live" : ""}`, "aria-hidden": "true" }),
+            React.createElement("span", { className: "thinking-runway-label" }, activeStep.label || "Trace")
+          ),
           React.createElement("span", { className: "thinking-runway-text" }, activeStep.text || headline)
         )
       ),

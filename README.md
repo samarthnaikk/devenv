@@ -48,7 +48,7 @@ export OPENAI_BASE_URL=https://api.openai.com/v1   # optional
 export DEVENV_CODEX_TIMEOUT_SECONDS=60             # optional
 ```
 
-At runtime, users can choose `opencode`, `ollama`, or `codex` as the backend per session and override it per turn. OpenCode remains the default for backward compatibility, while Ollama is the recommended local option for lightweight on-device inference.
+At runtime, users can choose `opencode`, `ollama`, `llama_cpp`, or `codex` as the backend per session and override it per turn. OpenCode remains the default for backward compatibility, while Ollama and `llama.cpp` are the local on-device options.
 
 ### Ollama backend
 
@@ -66,6 +66,19 @@ Default behavior:
   - `keep_alive=2m`
 
 If Ollama is not running, the web health payload, setup checks, footer state, and settings panel all report that explicitly so the user can start it before selecting the backend.
+
+### llama.cpp backend
+
+Devenv can also route turns through a local `llama-server` process from `llama.cpp` by speaking to its OpenAI-compatible HTTP API.
+
+Default behavior:
+
+- connects to `http://127.0.0.1:8080`
+- discovers models from `GET /v1/models`
+- sends chat turns through `POST /v1/chat/completions`
+- respects `DEVENV_LLAMACPP_BASE_URL`, `LLAMA_CPP_BASE_URL`, and `DEVENV_LLAMACPP_MODEL` when set
+
+If `llama.cpp` is not running, the same health and setup surfaces report that explicitly before the backend is selected.
 
 Launch the local web experience:
 
@@ -405,16 +418,18 @@ That result is what the web UI and terminal renderer display back to the user.
 
 ### Runtime architecture
 
-Devenv keeps control of planning, memory retrieval, verification, transcript persistence, and tool execution. Users can choose between three backends:
+Devenv keeps control of planning, memory retrieval, verification, transcript persistence, and tool execution. Users can choose between four backends:
 
 - OpenCode: server-backed session transport with default model `openrouter/anthropic/claude-sonnet-4`
 - Ollama: local HTTP transport with discovered installed models such as `qwen2.5:3b`
+- llama.cpp: local OpenAI-compatible HTTP transport against `llama-server`
 - Codex: official OpenAI MCP integration against Devenv's local MCP HTTP server
 
 Behavioral rules:
 
 - Devenv talks to OpenCode through a Python HTTP client instead of scraping `opencode run` output
 - Devenv talks to Ollama through the local HTTP API and applies bounded runtime options for context size, thread count, and keep-alive
+- Devenv talks to `llama.cpp` through the local OpenAI-compatible HTTP API exposed by `llama-server`
 - Codex uses the official OpenAI MCP path and the Devenv MCP HTTP server rather than a CLI subprocess
 - OpenCode sessions are reused across a Devenv conversation and reset when a new thread starts
 - runtime tool execution uses an in-process transport by default to avoid extra MCP subprocess overhead; set `DEVENV_TOOL_TRANSPORT=mcp` if you explicitly want the stdio MCP hop

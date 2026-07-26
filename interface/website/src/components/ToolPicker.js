@@ -150,6 +150,8 @@ export function ToolPicker() {
             "div",
             { className: "tool-picker-panel-inner" },
             React.createElement("span", { className: "tool-picker-panel-ribbon", "aria-hidden": "true" }),
+            React.createElement("span", { className: "tool-picker-panel-orbit tool-picker-panel-orbit-one", "aria-hidden": "true" }),
+            React.createElement("span", { className: "tool-picker-panel-orbit tool-picker-panel-orbit-two", "aria-hidden": "true" }),
             React.createElement(
               React.Fragment,
               null,
@@ -198,6 +200,24 @@ export function ToolPicker() {
                 { className: "tool-picker-route-note" },
                 React.createElement("span", { className: "tool-picker-route-label" }, state.planMode ? "Plan mode" : "Auto route"),
                 React.createElement("span", { className: "tool-picker-route-copy" }, state.planMode ? "The runtime will inspect the repo and return a flowchart only. Live route cards stay selected for normal turns after you exit plan mode." : "Leave the tray empty to let Devenv choose between memory, live search, and tool-assisted execution.")
+              ),
+              React.createElement(
+                MotionDeck,
+                { className: "tool-picker-preview-deck" },
+                React.createElement(
+                  "div",
+                  { className: "tool-picker-preview-card" },
+                  React.createElement("span", { className: "tool-picker-preview-kicker" }, "Lane"),
+                  React.createElement("strong", { className: "tool-picker-preview-title" }, state.planMode ? "Blueprint lane" : routeSummary.trigger),
+                  React.createElement("span", { className: "tool-picker-preview-copy" }, routeSummary.panel)
+                ),
+                React.createElement(
+                  "div",
+                  { className: "tool-picker-preview-card tool-picker-preview-card-secondary" },
+                  React.createElement("span", { className: "tool-picker-preview-kicker" }, "Selection"),
+                  React.createElement("strong", { className: "tool-picker-preview-title" }, selectedTools.length ? `${selectedTools.length} active route${selectedTools.length === 1 ? "" : "s"}` : "Runtime freedom"),
+                  React.createElement("span", { className: "tool-picker-preview-copy" }, selectedTools.length ? "The runtime will stay inside these visible tool surfaces where possible." : "Let the model decide when memory, workspace tools, or live search is actually needed.")
+                )
               ),
               React.createElement(
                 MotionDeck,

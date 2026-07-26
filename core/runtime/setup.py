@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from core.ai.ollama_backend import OllamaAICore
+from core.ai.llama_cpp_backend import LlamaCppAICore
 from core.ai.opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeServerManager, default_opencode_server_config
 from core.memory.storage import SQLiteMemoryStore
 
@@ -67,6 +68,7 @@ def inspect_setup(
         _build_optional_check("opencode_server", _check_opencode_server(opencode_path, start_if_needed=False)),
         _build_optional_check("mcp_http_server", _check_mcp_http_server(config, start_if_needed=False)),
         _build_optional_check("ollama_backend", _check_ollama_backend()),
+        _build_optional_check("llama_cpp_backend", _check_llama_cpp_backend()),
         _build_optional_check("codex_backend", _check_codex_backend()),
         _build_optional_check("sentence_transformer_cache", _check_sentence_transformer_cache(warm_model_cache=warm_model_cache)),
         _build_optional_check("web_search_prerequisites", _check_web_search_prerequisites()),
@@ -216,6 +218,23 @@ def _check_ollama_backend() -> tuple[str, str]:
     if status.available:
         return "ready", detail or "Ollama is reachable."
     return "pending", detail or "Ollama is not running yet."
+
+
+def _check_llama_cpp_backend() -> tuple[str, str]:
+    core = LlamaCppAICore(workspace_path=".")
+    status = core.status()
+    detail = status.detail
+    metadata = dict(status.metadata or {})
+    models = [
+        str(item).strip()
+        for item in metadata.get("models", [])
+        if str(item).strip()
+    ]
+    if status.available and models:
+        return "ready", f"llama.cpp reachable at {metadata.get('base_url', 'http://127.0.0.1:8080')} with models: {', '.join(models[:4])}."
+    if status.available:
+        return "ready", detail or "llama.cpp is reachable."
+    return "pending", detail or "llama.cpp is not running yet."
 
 
 def _ensure_workspace_state(*, db_path: str, vector_dir: str, apply_changes: bool) -> tuple[bool, str]:

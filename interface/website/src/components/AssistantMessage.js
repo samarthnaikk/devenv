@@ -1,6 +1,6 @@
 import React from "react";
 import { renderMarkdown } from "../lib/markdown.js";
-import { BeamFrame, MotionBadge, MotionReveal, MotionShimmerText, MotionStage } from "./MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionBadge, MotionReveal, MotionShimmerText, MotionStage } from "./MotionPrimitives.js";
 
 export function AssistantMessage({ message, onCopy, onReply }) {
   const diagnostics = message.diagnostics || {};
@@ -20,7 +20,9 @@ export function AssistantMessage({ message, onCopy, onReply }) {
       BeamFrame,
       { active: false, tone: "ocean", className: "message-card assistant-message-card rounded-[24px] p-4" },
       React.createElement("span", { className: "message-card-orbit", "aria-hidden": "true" }),
+      React.createElement("span", { className: "message-card-orbit message-card-orbit-secondary", "aria-hidden": "true" }),
       React.createElement("span", { className: "message-card-ribbon message-card-ribbon-assistant", "aria-hidden": "true" }),
+      React.createElement("span", { className: "message-card-grid", "aria-hidden": "true" }),
       React.createElement(
         "div",
         { className: "message-head flex items-center gap-2" },
@@ -71,6 +73,27 @@ export function AssistantMessage({ message, onCopy, onReply }) {
         "div",
         { className: "message-status-row" },
         ...statusChips.map((chip) => React.createElement("span", { key: chip, className: "message-status-chip" }, chip))
+      ),
+      React.createElement(
+        MetalSurface,
+        { className: "message-runway" },
+        React.createElement("span", { className: "message-runway-beam", "aria-hidden": "true" }),
+        React.createElement(
+          "div",
+          { className: "message-runway-head" },
+          React.createElement("span", { className: "message-runway-kicker" }, diagnostics.sourceLabel || "Answer"),
+          React.createElement("span", { className: "message-runway-divider", "aria-hidden": "true" }),
+          React.createElement("strong", { className: "message-runway-value" }, diagnostics.routeLabel || "Direct route")
+        ),
+        React.createElement(
+          "div",
+          { className: "message-runway-copy" },
+          evidenceItems.length
+            ? `${evidenceItems.length} live source${evidenceItems.length === 1 ? "" : "s"} surfaced directly in the answer card.`
+            : diagnostics.toolLabel
+              ? `${diagnostics.toolLabel} shaped this response path.`
+              : "Direct answer path with runtime provenance kept visible."
+        )
       ),
       diagnostics.detail
         ? React.createElement("div", { className: "message-status-copy" }, diagnostics.detail)

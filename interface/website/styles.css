@@ -1071,6 +1071,28 @@ pre {
   overflow: hidden;
 }
 
+.tool-picker-panel-orbit {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.tool-picker-panel-orbit-one {
+  top: -22px;
+  right: -18px;
+  width: 108px;
+  height: 108px;
+  background: radial-gradient(circle, rgba(79, 219, 200, 0.18), transparent 72%);
+}
+
+.tool-picker-panel-orbit-two {
+  bottom: -30px;
+  left: -14px;
+  width: 132px;
+  height: 132px;
+  background: radial-gradient(circle, rgba(36, 93, 168, 0.14), transparent 72%);
+}
+
 .tool-picker-panel-ribbon {
   position: absolute;
   top: 14px;
@@ -1119,6 +1141,53 @@ pre {
   border: 1px solid color-mix(in srgb, var(--outline-variant) 60%, transparent);
   background: color-mix(in srgb, var(--surface-container-low) 78%, white 22%);
   box-shadow: 0 14px 30px rgba(20, 35, 33, 0.06);
+}
+
+.tool-picker-preview-deck {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.tool-picker-preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 58%, transparent);
+  background:
+    radial-gradient(circle at top right, rgba(79, 219, 200, 0.1), transparent 30%),
+    color-mix(in srgb, var(--surface-container-high) 80%, white 20%);
+  box-shadow: 0 14px 28px rgba(20, 35, 33, 0.08);
+}
+
+.tool-picker-preview-card-secondary {
+  background:
+    radial-gradient(circle at top right, rgba(36, 93, 168, 0.1), transparent 30%),
+    color-mix(in srgb, var(--surface) 84%, white 16%);
+}
+
+.tool-picker-preview-kicker {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.tool-picker-preview-title {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.tool-picker-preview-copy {
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted);
 }
 
 .tool-picker-summary-rail {
@@ -4549,6 +4618,11 @@ pre {
   .settings-status-grid {
     grid-template-columns: 1fr;
   }
+
+  .tool-picker-preview-deck,
+  .message-evidence-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -5040,6 +5114,26 @@ pre {
   transform: translateY(0);
 }
 
+.message-card-orbit-secondary {
+  inset: -24% auto auto -10%;
+  width: 104px;
+  height: 104px;
+  background: radial-gradient(circle, rgba(36, 93, 168, 0.12), transparent 72%);
+  opacity: 0.76;
+}
+
+.message-card-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.42;
+  background-image:
+    linear-gradient(90deg, rgba(36, 93, 168, 0.06) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(36, 93, 168, 0.05) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.4), transparent 82%);
+}
+
 .message-head {
   position: relative;
   z-index: 1;
@@ -5110,6 +5204,70 @@ pre {
   background: rgba(255, 255, 255, 0.68);
   font-size: 12px;
   line-height: 1.5;
+  color: var(--muted);
+}
+
+.message-runway {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 58%, transparent);
+  background:
+    radial-gradient(circle at top right, rgba(79, 219, 200, 0.1), transparent 30%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-container-low) 88%, white 12%), color-mix(in srgb, var(--surface) 94%, white 6%));
+  box-shadow: 0 16px 30px rgba(20, 35, 33, 0.08);
+}
+
+.message-runway-beam {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(79, 219, 200, 0.12), rgba(36, 93, 168, 0.78), rgba(79, 219, 200, 0.12));
+  box-shadow: 0 0 18px rgba(36, 93, 168, 0.24);
+}
+
+.message-runway-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-left: 10px;
+}
+
+.message-runway-kicker,
+.message-runway-value {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.message-runway-kicker {
+  color: var(--primary);
+}
+
+.message-runway-divider {
+  width: 28px;
+  height: 1px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--primary) 44%, transparent), color-mix(in srgb, var(--outline-variant) 80%, transparent));
+}
+
+.message-runway-value {
+  color: var(--text);
+}
+
+.message-runway-copy {
+  padding-left: 10px;
+  font-size: 12px;
+  line-height: 1.55;
   color: var(--muted);
 }
 
@@ -5197,6 +5355,40 @@ pre {
   animation: ribbon-sweep 10.8s ease-in-out infinite;
 }
 
+.thinking-card-orbit {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+  filter: blur(0.4px);
+  opacity: 0.9;
+}
+
+.thinking-card-orbit-one {
+  inset: auto -10% -24% auto;
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(circle, rgba(79, 219, 200, 0.16), transparent 70%);
+}
+
+.thinking-card-orbit-two {
+  inset: -18% auto auto -6%;
+  width: 112px;
+  height: 112px;
+  background: radial-gradient(circle, rgba(36, 93, 168, 0.16), transparent 72%);
+}
+
+.thinking-card-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.36;
+  background-image:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.34), transparent 84%);
+}
+
 .thinking-headline-detail {
   font-size: 12px;
   line-height: 1.45;
@@ -5238,6 +5430,26 @@ pre {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+
+.thinking-runway-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.thinking-runway-pip {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 50%, white 50%);
+  box-shadow: 0 0 0 4px rgba(36, 93, 168, 0.08);
+}
+
+.thinking-runway-pip.is-live {
+  background: rgba(79, 219, 200, 0.9);
+  box-shadow: 0 0 0 5px rgba(79, 219, 200, 0.1);
+  animation: ping-soft 1.8s ease-in-out infinite;
 }
 
 .thinking-runway-label {

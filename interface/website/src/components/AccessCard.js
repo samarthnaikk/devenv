@@ -13,6 +13,7 @@ export function AccessCard() {
   const opencodeSessionAllowed = Boolean(state.accessPolicy.session_access?.opencode);
   const opencodeBackendAllowed = Boolean(state.accessPolicy.backend_access?.opencode);
   const ollamaBackendAllowed = Boolean(state.accessPolicy.backend_access?.ollama);
+  const llamaCppBackendAllowed = Boolean(state.accessPolicy.backend_access?.llama_cpp);
   const codexBackendAllowed = Boolean(state.accessPolicy.backend_access?.codex);
   const activeBackendLabel = formatBackendLabel(state.activeBackend);
   const preferredBackendLabel = formatBackendLabel(state.preferredBackend || "opencode");
@@ -149,6 +150,7 @@ export function AccessCard() {
       renderProviderRow("opencode", "OpenCode", opencodeSessionAllowed, "session", state, updateSessionAccess),
       renderBackendRow("opencode", opencodeBackendAllowed, activeBackendLabel, state, updateBackendAccess),
       renderBackendRow("ollama", ollamaBackendAllowed, activeBackendLabel, state, updateBackendAccess),
+      renderBackendRow("llama_cpp", llamaCppBackendAllowed, activeBackendLabel, state, updateBackendAccess),
       renderBackendRow("codex", codexBackendAllowed, activeBackendLabel, state, updateBackendAccess),
       React.createElement(
         "div",
@@ -267,7 +269,7 @@ function renderBackendRow(backend, allowed, activeBackendLabel, state, updateBac
       React.createElement(
         "div",
         { className: `workspace-access-icon workspace-access-icon-backend${isActive ? " is-live" : ""}` },
-        React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, backend === "ollama" ? "neurology" : backend === "codex" ? "deployed_code" : "bolt")
+        React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, backend === "ollama" ? "neurology" : backend === "llama_cpp" ? "memory" : backend === "codex" ? "deployed_code" : "bolt")
       ),
       React.createElement(
         "div",
@@ -338,7 +340,7 @@ async function refreshHealth(dispatch, options = {}) {
         selectedModelsByBackend: healthPayload.selected_models_by_backend || {},
       },
     });
-    dispatch({ type: "SET_ACCESS_POLICY", payload: healthPayload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, codex: false } } });
+    dispatch({ type: "SET_ACCESS_POLICY", payload: healthPayload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, llama_cpp: false, codex: false } } });
     dispatch({ type: "SET_BACKENDS", payload: healthPayload.ai_backends || {} });
     dispatch({ type: "SET_ACTIVE_BACKEND", payload: healthPayload.active_backend || "opencode" });
     dispatch({ type: "SET_PREFERRED_BACKEND", payload: preferredBackend });

@@ -20,7 +20,7 @@ const initialState = {
     label: "New context",
     detail: "No prior Devenv session has been reused yet.",
   },
-  accessPolicy: { session_access: { codex: false, opencode: false }, backend_access: { opencode: false, ollama: false, codex: false } },
+  accessPolicy: { session_access: { codex: false, opencode: false }, backend_access: { opencode: false, ollama: false, llama_cpp: false, codex: false } },
   persistedAccess: loadPersistedAccess(),
   backends: {},
   activeBackend: "opencode",

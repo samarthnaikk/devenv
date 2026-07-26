@@ -117,7 +117,7 @@ export function SettingsDropdown() {
               value: preferredBackend,
               onChange: handleBackendChange,
             },
-            ["opencode", "ollama", "codex"].map((backend) =>
+            ["opencode", "ollama", "llama_cpp", "codex"].map((backend) =>
               React.createElement("option", { key: backend, value: backend }, formatBackendLabel(backend))
             )
           )

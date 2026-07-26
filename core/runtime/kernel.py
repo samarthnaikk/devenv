@@ -246,6 +246,7 @@ class DevenvKernel:
         backend_preference: str = "opencode",
         opencode_enabled: bool = False,
         ollama_enabled: bool = False,
+        llama_cpp_enabled: bool = False,
         codex_enabled: bool = False,
         session_budget_tokens: int | None = None,
         no_memory: bool = False,
@@ -279,6 +280,7 @@ class DevenvKernel:
                 backend_preference,
                 opencode_enabled=opencode_enabled,
                 ollama_enabled=ollama_enabled,
+                llama_cpp_enabled=llama_cpp_enabled,
                 codex_enabled=codex_enabled,
             )
         if session_budget_tokens is not None and self.session_usage_totals.get("total_tokens", 0) >= session_budget_tokens:
@@ -911,7 +913,7 @@ class DevenvKernel:
 
     def _effective_max_consecutive_tools(self, *, requested_limit: int, local_only: bool) -> int:
         preferred_backend = str(getattr(self.ai, "preferred_backend", "") or "").strip().lower()
-        if local_only or preferred_backend == "ollama":
+        if local_only or preferred_backend in {"ollama", "llama_cpp"}:
             return max(requested_limit, 64)
         return requested_limit
 
@@ -1178,7 +1180,7 @@ class DevenvKernel:
                     and (self._remote_backend_enabled() or self._local_integration_root_for_prompt(user_prompt))
                 )
                 or (
-                getattr(self.ai, "preferred_backend", "") == "ollama"
+                getattr(self.ai, "preferred_backend", "") in {"ollama", "llama_cpp"}
                 and self._text_requires_mutation_tools(user_prompt.lower())
                 )
             )

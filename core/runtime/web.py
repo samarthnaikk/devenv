@@ -42,6 +42,7 @@ DEFAULT_WEB_MODELS = (
     "opencode/north-mini-code-free",
 )
 DEFAULT_OLLAMA_MODELS: tuple[str, ...] = ()
+DEFAULT_LLAMACPP_MODELS: tuple[str, ...] = ()
 READ_ONLY_PLAN_TOOLS = (
     "list_directory",
     "locate_files",
@@ -97,7 +98,7 @@ Rules:
 class AccessPolicy:
     def __init__(self) -> None:
         self.session_access: dict[str, bool] = {"codex": False, "opencode": False}
-        self.backend_access: dict[str, bool] = {"opencode": False, "ollama": False, "codex": False}
+        self.backend_access: dict[str, bool] = {"opencode": False, "ollama": False, "llama_cpp": False, "codex": False}
 
     def set_session_access(self, provider: str, allowed: bool) -> dict[str, object]:
         self.session_access[provider] = allowed
@@ -194,6 +195,7 @@ class DevenvWebApp:
         active_provider_label = {
             "opencode": "OpenCode CLI",
             "ollama": "Ollama",
+            "llama_cpp": "llama.cpp",
             "codex": "Codex via OpenAI",
         }.get(active_backend, getattr(self.kernel.ai, "provider_label", "OpenCode CLI"))
         model_catalog = self._model_catalog(ai_statuses=ai_statuses, active_backend=active_backend, current_model=model)
@@ -342,6 +344,7 @@ class DevenvWebApp:
         catalog: dict[str, list[str]] = {
             "opencode": self._available_models(current_model=current_model if active_backend == "opencode" else getattr(getattr(self.kernel.ai, "opencode_ai", None), "model", "")),
             "ollama": list(DEFAULT_OLLAMA_MODELS),
+            "llama_cpp": list(DEFAULT_LLAMACPP_MODELS),
             "codex": [],
         }
         if isinstance(ai_statuses, dict):
@@ -355,6 +358,13 @@ class DevenvWebApp:
                         if candidate and candidate not in ordered:
                             ordered.append(candidate)
                     catalog["ollama"] = ordered
+                elif backend == "llama_cpp":
+                    models = [str(item).strip() for item in metadata.get("models", []) if str(item).strip()]
+                    ordered = []
+                    for candidate in [model_name, *models, *DEFAULT_LLAMACPP_MODELS]:
+                        if candidate and candidate not in ordered:
+                            ordered.append(candidate)
+                    catalog["llama_cpp"] = ordered
                 elif backend == "codex":
                     catalog["codex"] = [model_name] if model_name else []
         return catalog
@@ -370,6 +380,7 @@ class DevenvWebApp:
         selected = {
             "opencode": str(getattr(getattr(self.kernel.ai, "opencode_ai", None), "model", "") or ""),
             "ollama": str(getattr(getattr(self.kernel.ai, "ollama_ai", None), "model", "") or ""),
+            "llama_cpp": str(getattr(getattr(self.kernel.ai, "llama_cpp_ai", None), "model", "") or ""),
             "codex": str(getattr(getattr(self.kernel.ai, "codex_ai", None), "model", "") or ""),
         }
         if isinstance(ai_statuses, dict):
@@ -479,6 +490,8 @@ class DevenvWebApp:
             kwargs["opencode_enabled"] = self.access_policy.can_use_backend("opencode")
         if "ollama_enabled" in parameters:
             kwargs["ollama_enabled"] = self.access_policy.can_use_backend("ollama")
+        if "llama_cpp_enabled" in parameters:
+            kwargs["llama_cpp_enabled"] = self.access_policy.can_use_backend("llama_cpp")
         if "codex_enabled" in parameters:
             kwargs["codex_enabled"] = self.access_policy.can_use_backend("codex")
         if "session_budget_tokens" in parameters:
@@ -533,6 +546,7 @@ class DevenvWebApp:
                 backend_preference,
                 opencode_enabled=self.access_policy.can_use_backend("opencode"),
                 ollama_enabled=self.access_policy.can_use_backend("ollama"),
+                llama_cpp_enabled=self.access_policy.can_use_backend("llama_cpp"),
                 codex_enabled=self.access_policy.can_use_backend("codex"),
             )
         try:
@@ -566,7 +580,7 @@ class DevenvWebApp:
         max_tools = max_consecutive_tools or self.config.max_consecutive_tools
         repair_attempts = 0
         detail_refinement_attempts = 0
-        aggressive_local_plan_fallback = backend_preference == "ollama" and local_only
+        aggressive_local_plan_fallback = backend_preference in {"ollama", "llama_cpp"} and local_only
 
         while True:
             ai_response = self.kernel.ai.chat(
@@ -672,7 +686,7 @@ class DevenvWebApp:
                         prompt,
                         repo_grounding=repo_grounding,
                     )
-                    ai_logs.append("Planner blueprint was generic on Ollama local-only mode; substituted repo-grounded fallback plan")
+                    ai_logs.append("Planner blueprint was generic on local HTTP backend mode; substituted repo-grounded fallback plan")
                     system_logs.append("Used deterministic repo-grounded fallback blueprint for plan mode")
                     return _build_plan_result(
                         final_response=json.dumps(fallback_blueprint, indent=2),
@@ -965,8 +979,8 @@ class DevenvWebApp:
         return snapshot
 
     def update_backend_access(self, backend: str, allowed: bool) -> dict[str, object]:
-        if backend not in {"opencode", "ollama", "codex"}:
-            raise ValueError("backend must be one of: opencode, ollama, codex")
+        if backend not in {"opencode", "ollama", "llama_cpp", "codex"}:
+            raise ValueError("backend must be one of: opencode, ollama, llama_cpp, codex")
         return self.access_policy.set_backend_access(backend, allowed)
 
     def update_performance_mode(self, performance_mode: str) -> dict[str, object]:

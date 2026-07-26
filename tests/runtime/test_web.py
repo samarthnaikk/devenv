@@ -45,6 +45,12 @@ class FakeMemory:
 class FakeAI:
     def __init__(self) -> None:
         self.model = "fake-opencode-model"
+        self.backend_models = {
+            "opencode": "fake-opencode-model",
+            "ollama": "qwen2.5:3b",
+            "llama_cpp": "qwen2.5-coder.gguf",
+            "codex": "gpt-5-codex",
+        }
         self.provider_label = "OpenCode CLI"
         self.preferred_backend = "opencode"
         self.last_backend_used = "opencode"
@@ -65,7 +71,7 @@ class FakeAI:
                 name="opencode",
                 available=True,
                 enabled=True,
-                model=self.model,
+                model=self.backend_models["opencode"],
                 detail="Server reachable",
                 metadata={
                     "server": {
@@ -82,7 +88,7 @@ class FakeAI:
                 name="ollama",
                 available=True,
                 enabled=True,
-                model="qwen2.5:3b",
+                model=self.backend_models["ollama"],
                 detail="Ollama reachable",
                 metadata={
                     "models": ["qwen2.5:3b", "codellama:7b"],
@@ -90,11 +96,23 @@ class FakeAI:
                     "transport": "http_api",
                 },
             ),
+            "llama_cpp": AIBackendStatus(
+                name="llama_cpp",
+                available=True,
+                enabled=True,
+                model=self.backend_models["llama_cpp"],
+                detail="llama.cpp reachable",
+                metadata={
+                    "models": ["qwen2.5-coder.gguf", "deepseek-r1.gguf"],
+                    "runtime": "llama.cpp",
+                    "transport": "openai_compatible_http",
+                },
+            ),
             "codex": AIBackendStatus(
                 name="codex",
                 available=True,
                 enabled=True,
-                model="gpt-5-codex",
+                model=self.backend_models["codex"],
                 detail="Configured",
                 metadata={
                     "transport": "responses_mcp",
@@ -119,7 +137,9 @@ class FakeAI:
         self.reset_session_calls += 1
 
     def set_backend_model(self, backend: str, model: str) -> None:
-        self.model = model
+        self.backend_models[backend] = model
+        if backend == "opencode":
+            self.model = model
 
 
 class CapturingFakeAI(FakeAI):
@@ -531,16 +551,19 @@ class DevenvWebAppTest(unittest.TestCase):
             session_payload = app.update_session_access("codex", True)
             backend_payload = app.update_backend_access("opencode", True)
             ollama_backend_payload = app.update_backend_access("ollama", True)
+            llama_cpp_backend_payload = app.update_backend_access("llama_cpp", True)
             codex_backend_payload = app.update_backend_access("codex", True)
             health = app.build_health_payload()
 
         self.assertTrue(session_payload["session_access"]["codex"])
         self.assertTrue(backend_payload["backend_access"]["opencode"])
         self.assertTrue(ollama_backend_payload["backend_access"]["ollama"])
+        self.assertTrue(llama_cpp_backend_payload["backend_access"]["llama_cpp"])
         self.assertTrue(codex_backend_payload["backend_access"]["codex"])
         self.assertTrue(health["access_policy"]["session_access"]["codex"])
         self.assertTrue(health["access_policy"]["backend_access"]["opencode"])
         self.assertTrue(health["access_policy"]["backend_access"]["ollama"])
+        self.assertTrue(health["access_policy"]["backend_access"]["llama_cpp"])
         self.assertTrue(health["access_policy"]["backend_access"]["codex"])
 
     def test_health_payload_exposes_model_catalog_by_backend(self) -> None:
@@ -554,8 +577,11 @@ class DevenvWebAppTest(unittest.TestCase):
 
         self.assertIn("available_models_by_backend", health)
         self.assertIn("ollama", health["available_models_by_backend"])
+        self.assertIn("llama_cpp", health["available_models_by_backend"])
         self.assertIn("qwen2.5:3b", health["available_models_by_backend"]["ollama"])
+        self.assertIn("qwen2.5-coder.gguf", health["available_models_by_backend"]["llama_cpp"])
         self.assertEqual(health["selected_models_by_backend"]["ollama"], "qwen2.5:3b")
+        self.assertEqual(health["selected_models_by_backend"]["llama_cpp"], "qwen2.5-coder.gguf")
 
     def test_set_model_can_target_specific_backend(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -570,6 +596,20 @@ class DevenvWebAppTest(unittest.TestCase):
 
         self.assertEqual(payload["ai_model"], "qwen2.5:3b")
         self.assertEqual(payload["selected_models_by_backend"]["ollama"], "qwen2.5:3b")
+
+    def test_set_model_can_target_llama_cpp_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            ai = FakeAI()
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=ai,
+            )
+
+            payload = app.set_model("deepseek-r1.gguf", "llama_cpp")
+
+        self.assertEqual(payload["ai_model"], "deepseek-r1.gguf")
+        self.assertEqual(payload["selected_models_by_backend"]["llama_cpp"], "deepseek-r1.gguf")
 
     def test_run_turn_forwards_codex_backend_access_and_preference(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -650,6 +690,48 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(captured["backend_preference"], "ollama")
         self.assertFalse(captured["opencode_enabled"])
         self.assertTrue(captured["ollama_enabled"])
+        self.assertFalse(captured["codex_enabled"])
+
+    def test_run_turn_forwards_llama_cpp_backend_access_and_preference(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.update_backend_access("llama_cpp", True)
+            captured: dict[str, object] = {}
+
+            def fake_execute_turn(
+                prompt,
+                max_consecutive_tools=5,
+                planning_mode=PlanningMode.AUTO,
+                continue_plan=False,
+                local_only=False,
+                selected_tools=None,
+                backend_preference="opencode",
+                opencode_enabled=False,
+                llama_cpp_enabled=False,
+                codex_enabled=False,
+            ):
+                captured.update(
+                    {
+                        "prompt": prompt,
+                        "backend_preference": backend_preference,
+                        "opencode_enabled": opencode_enabled,
+                        "llama_cpp_enabled": llama_cpp_enabled,
+                        "codex_enabled": codex_enabled,
+                    }
+                )
+                return type("Result", (), {"to_dict": lambda self: {"final_response": "ok"}})()
+
+            app.kernel.execute_turn = fake_execute_turn
+            result = app.run_turn("hello", backend_preference="llama_cpp")
+
+        self.assertEqual(result["final_response"], "ok")
+        self.assertEqual(captured["backend_preference"], "llama_cpp")
+        self.assertFalse(captured["opencode_enabled"])
+        self.assertTrue(captured["llama_cpp_enabled"])
         self.assertFalse(captured["codex_enabled"])
 
     def test_reset_thread_clears_kernel_conversation_and_ai_session(self) -> None:

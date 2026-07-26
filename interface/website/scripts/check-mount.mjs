@@ -42,7 +42,7 @@ const healthPayload = {
   indexing: { active: false, completed: true, total_sessions: 0 },
   access_policy: {
     session_access: { codex: false, opencode: false },
-    backend_access: { opencode: false, ollama: false, codex: false },
+    backend_access: { opencode: false, ollama: false, llama_cpp: false, codex: false },
   },
 };
 

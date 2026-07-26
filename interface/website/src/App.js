@@ -65,7 +65,7 @@ function AppInner() {
           const payload = await apiUpdateSessionAccess("opencode", true);
           dispatch({ type: "SET_ACCESS_POLICY", payload });
         }
-        for (const backend of ["opencode", "ollama", "codex"]) {
+        for (const backend of ["opencode", "ollama", "llama_cpp", "codex"]) {
           if (persisted.backend_access?.[backend] && !state.accessPolicy.backend_access?.[backend]) {
             const payload = await apiUpdateBackendAccess(backend, true);
             dispatch({ type: "SET_ACCESS_POLICY", payload });
@@ -608,7 +608,7 @@ function applyHealthPayload(dispatch, payload) {
       selectedModelsByBackend: payload.selected_models_by_backend || {},
     },
   });
-  dispatch({ type: "SET_ACCESS_POLICY", payload: payload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, codex: false } } });
+  dispatch({ type: "SET_ACCESS_POLICY", payload: payload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, llama_cpp: false, codex: false } } });
   dispatch({ type: "SET_BACKENDS", payload: payload.ai_backends || {} });
   dispatch({ type: "SET_ACTIVE_BACKEND", payload: payload.active_backend || "opencode" });
   dispatch({ type: "SET_PREFERRED_BACKEND", payload: preferredBackend });
@@ -620,6 +620,7 @@ function selectReachablePreferredBackend(payload, persistedPreferredBackend) {
   const requested = String(persistedPreferredBackend || payload?.preferred_backend || "opencode").trim().toLowerCase() || "opencode";
   if (backendLooksReachable(payload, requested)) return requested;
   if (backendLooksReachable(payload, "ollama")) return "ollama";
+  if (backendLooksReachable(payload, "llama_cpp")) return "llama_cpp";
   if (backendLooksReachable(payload, "opencode")) return "opencode";
   if (backendLooksReachable(payload, "codex")) return "codex";
   return requested;
@@ -634,7 +635,7 @@ function shouldAutoEnablePreferredBackend({ health, preferredBackend, accessPoli
   if (!preferredBackend || !backendLooksReachable(health, preferredBackend)) return false;
   if (accessPolicy?.backend_access?.[preferredBackend]) return false;
   if (persistedAccess?.backend_access?.[preferredBackend]) return false;
-  return preferredBackend === "ollama";
+  return preferredBackend === "ollama" || preferredBackend === "llama_cpp";
 }
 
 function formatDuration(ms) {
