@@ -4751,6 +4751,64 @@ pre {
   color: var(--muted);
 }
 
+.message-evidence-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.message-evidence-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 58%, transparent);
+  background:
+    radial-gradient(circle at top right, rgba(36, 93, 168, 0.08), transparent 28%),
+    color-mix(in srgb, var(--surface) 80%, white 20%);
+  box-shadow: 0 14px 28px rgba(20, 35, 33, 0.08);
+  text-decoration: none;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.message-evidence-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--outline-variant));
+  box-shadow: 0 18px 34px rgba(20, 35, 33, 0.1);
+}
+
+.message-evidence-card.is-knowledge {
+  background:
+    radial-gradient(circle at top right, rgba(79, 219, 200, 0.1), transparent 28%),
+    color-mix(in srgb, var(--surface-container-high) 80%, white 20%);
+}
+
+.message-evidence-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.message-evidence-title {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.message-evidence-url {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  word-break: break-word;
+}
+
 .message-status-chip-user {
   background: color-mix(in srgb, var(--surface-container-high) 76%, white 24%);
 }

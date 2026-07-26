@@ -664,6 +664,7 @@ function buildMessageDiagnostics({
   const hasKnowledge = pendingRunMode === "knowledge" || steps.some((step) => step?.tool_name === "knowledge_search");
   const toolCount = steps.filter((step) => step?.tool_name).length;
   const localRuntime = String(metadata.backend_used || backendRaw) === "local";
+  const evidenceItems = extractEvidenceItems(steps);
 
   let routeLabel = planOnlyMode ? "Plan mode" : "Direct route";
   let sourceLabel = "Direct answer";
@@ -708,6 +709,7 @@ function buildMessageDiagnostics({
     toolLabel: toolCount ? `${toolCount} tool step${toolCount === 1 ? "" : "s"}` : "",
     retrievalLabel: retrieval.label || "",
     detail,
+    evidenceItems,
   };
 }
 
@@ -729,7 +731,39 @@ function buildFailureDiagnostics({
     toolLabel: "",
     retrievalLabel: "",
     detail: parsedRateLimit ? "The backend hit a rate limit before the turn could finish." : String(error?.message || "The request failed before a normal answer was produced."),
+    evidenceItems: [],
   };
+}
+
+function extractEvidenceItems(steps) {
+  const items = [];
+  for (const step of Array.isArray(steps) ? steps : []) {
+    if (!step || typeof step !== "object") continue;
+    if (step.tool_name === "web_search") {
+      const results = Array.isArray(step.data?.results) ? step.data.results : [];
+      for (const result of results.slice(0, 3)) {
+        const title = String(result?.title || result?.url || "Web result").trim();
+        const url = String(result?.url || "").trim();
+        if (!title || !url) continue;
+        items.push({ kind: "web", label: "Web", title, url, meta: "" });
+      }
+    }
+    if (step.tool_name === "knowledge_search") {
+      const resources = Array.isArray(step.data?.resources) ? step.data.resources : [];
+      for (const group of resources.slice(0, 3)) {
+        const source = String(group?.source || "Reference").trim();
+        const results = Array.isArray(group?.results) ? group.results : [];
+        for (const result of results.slice(0, 2)) {
+          const title = String(result?.title || result?.url || "Reference").trim();
+          const url = String(result?.url || "").trim();
+          if (!title || !url) continue;
+          items.push({ kind: "knowledge", label: source, title, url, meta: "" });
+        }
+      }
+    }
+    if (items.length >= 4) break;
+  }
+  return items.slice(0, 4);
 }
 
 const RUNNING_STATUS_FRAMES = [

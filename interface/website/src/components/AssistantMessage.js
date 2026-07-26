@@ -11,6 +11,7 @@ export function AssistantMessage({ message, onCopy, onReply }) {
     diagnostics.toolLabel,
     diagnostics.retrievalLabel,
   ].filter(Boolean);
+  const evidenceItems = Array.isArray(diagnostics.evidenceItems) ? diagnostics.evidenceItems : [];
 
   return React.createElement(
     MotionStage,
@@ -73,6 +74,27 @@ export function AssistantMessage({ message, onCopy, onReply }) {
       ),
       diagnostics.detail
         ? React.createElement("div", { className: "message-status-copy" }, diagnostics.detail)
+        : null,
+      evidenceItems.length
+        ? React.createElement(
+            "div",
+            { className: "message-evidence-grid" },
+            evidenceItems.map((item) =>
+              React.createElement(
+                "a",
+                {
+                  key: `${item.label}-${item.title}-${item.url}`,
+                  className: `message-evidence-card is-${item.kind || "web"}`,
+                  href: item.url,
+                  target: "_blank",
+                  rel: "noreferrer",
+                },
+                React.createElement("span", { className: "message-evidence-label" }, item.label || "Source"),
+                React.createElement("strong", { className: "message-evidence-title" }, item.title),
+                React.createElement("span", { className: "message-evidence-url" }, item.url.replace(/^https?:\/\//, ""))
+              )
+            )
+          )
         : null,
       React.createElement(
         "div",
