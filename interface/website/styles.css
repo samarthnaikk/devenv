@@ -454,7 +454,7 @@ pre {
   display: grid;
   grid-template-columns: repeat(4, minmax(7.35rem, 7.35rem));
   gap: 7px;
-  max-height: min(8rem, calc(100vh - 14rem));
+  max-height: min(8.75rem, calc(100vh - 14rem));
   overflow-y: auto;
   padding-right: 2px;
   justify-content: start;
@@ -497,6 +497,40 @@ pre {
 .tool-picker-route-copy {
   font-size: 11px;
   line-height: 1.45;
+  color: var(--muted);
+}
+
+.tool-picker-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tool-picker-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-picker-section-copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tool-picker-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.tool-picker-section-detail {
+  font-size: 11px;
+  line-height: 1.4;
   color: var(--muted);
 }
 

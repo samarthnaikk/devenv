@@ -1,18 +1,33 @@
 import React from "react";
 import { useApp } from "../context/AppContext.js";
-import { BeamFrame, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
+import { BeamFrame, MotionDeck, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 const TOOL_META = {
-  list_directory: { icon: "folder_open", label: "Files", hint: "Map folders and top-level structure" },
-  locate_files: { icon: "find_in_page", label: "Locate", hint: "Find likely files before reading" },
-  read_file: { icon: "description", label: "Read", hint: "Open exact files and inspect content" },
-  search_text: { icon: "match_case", label: "Search", hint: "Search the repo for strings and usages" },
-  inspect_symbols: { icon: "route", label: "Symbols", hint: "Inspect definitions, exports, and structure" },
-  track_symbol: { icon: "conversion_path", label: "Trace", hint: "Follow a symbol through the codebase" },
-  generate_pdf: { icon: "picture_as_pdf", label: "PDF", hint: "Generate polished PDFs" },
-  generate_prompt: { icon: "auto_awesome", label: "Prompt", hint: "Prepare a strong prompt" },
-  knowledge_search: { icon: "hub", label: "Knowledge", hint: "Pull repos and references" },
-  web_search: { icon: "language", label: "Web", hint: "Search live sources" },
+  list_directory: { icon: "folder_open", label: "Files", hint: "Map folders and top-level structure", category: "workspace" },
+  locate_files: { icon: "find_in_page", label: "Locate", hint: "Find likely files before reading", category: "workspace" },
+  read_file: { icon: "description", label: "Read", hint: "Open exact files and inspect content", category: "workspace" },
+  search_text: { icon: "match_case", label: "Search", hint: "Search the repo for strings and usages", category: "workspace" },
+  inspect_symbols: { icon: "route", label: "Symbols", hint: "Inspect definitions, exports, and structure", category: "workspace" },
+  track_symbol: { icon: "conversion_path", label: "Trace", hint: "Follow a symbol through the codebase", category: "workspace" },
+  generate_pdf: { icon: "picture_as_pdf", label: "PDF", hint: "Generate polished PDFs", category: "artifacts" },
+  generate_prompt: { icon: "auto_awesome", label: "Prompt", hint: "Prepare a strong prompt", category: "artifacts" },
+  knowledge_search: { icon: "hub", label: "Knowledge", hint: "Pull repos and references", category: "research" },
+  web_search: { icon: "language", label: "Web", hint: "Search live sources", category: "research" },
+};
+
+const TOOL_CATEGORY_META = {
+  workspace: {
+    label: "Workspace",
+    detail: "Stay grounded in the current repo before planning or answering.",
+  },
+  research: {
+    label: "Live Research",
+    detail: "Pull current web facts or external references when memory is not enough.",
+  },
+  artifacts: {
+    label: "Artifacts",
+    detail: "Generate polished outputs instead of only answering in chat.",
+  },
 };
 
 const USER_VISIBLE_TOOLS = new Set(Object.keys(TOOL_META));
@@ -62,6 +77,7 @@ export function ToolPicker() {
 
   const selectedTools = Array.from(selected);
   const routeSummary = summarizeRoute(visibleSelectedTools, state.planMode);
+  const groupedTools = groupToolsByCategory(availableTools);
   const selectedToolChips = selectedTools.map((toolName) => {
     const meta = describeTool(toolName);
     return React.createElement(
@@ -156,40 +172,66 @@ export function ToolPicker() {
                 React.createElement("span", { className: "tool-picker-route-copy" }, state.planMode ? "The runtime will inspect the repo and return a flowchart only. Live route cards stay selected for normal turns after you exit plan mode." : "Leave the tray empty to let Devenv choose between memory, live search, and tool-assisted execution.")
               ),
               React.createElement(
-                "div",
-                { className: "tool-picker-grid" },
-                availableTools.map((toolName) => {
-                  const meta = describeTool(toolName, toolReadiness[toolName]);
-                  return React.createElement(
-                    "button",
-                    {
-                      key: toolName,
-                      type: "button",
-                      className: `tool-picker-tile${selected.has(toolName) ? " is-selected" : ""}`,
-                      onClick: () => toggleTool(toolName),
-                    },
+                MotionDeck,
+                { className: "tool-picker-sections" },
+                groupedTools.map(([category, toolNames]) =>
+                  React.createElement(
+                    "section",
+                    { key: category, className: "tool-picker-section" },
                     React.createElement(
-                      "span",
-                      { className: "tool-picker-tile-icon" },
-                      React.createElement("span", { className: "material-symbols-outlined text-[18px] text-primary" }, meta.icon)
+                      "div",
+                      { className: "tool-picker-section-copy" },
+                      React.createElement("span", { className: "tool-picker-section-label" }, TOOL_CATEGORY_META[category]?.label || "Tools"),
+                      React.createElement("span", { className: "tool-picker-section-detail" }, TOOL_CATEGORY_META[category]?.detail || "Route the runtime through these tools.")
                     ),
-                    React.createElement("span", { className: "tool-picker-tile-label" }, meta.label),
-                    React.createElement("span", { className: "tool-picker-tile-hint" }, meta.hint),
-                    selected.has(toolName)
-                      ? React.createElement(
-                          "span",
-                          { className: "tool-picker-tile-check" },
-                          React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "south")
-                        )
-                      : null
-                  );
-                })
+                    React.createElement(
+                      "div",
+                      { className: "tool-picker-grid" },
+                      toolNames.map((toolName) => {
+                        const meta = describeTool(toolName, toolReadiness[toolName]);
+                        return React.createElement(
+                          "button",
+                          {
+                            key: toolName,
+                            type: "button",
+                            className: `tool-picker-tile${selected.has(toolName) ? " is-selected" : ""}`,
+                            onClick: () => toggleTool(toolName),
+                          },
+                          React.createElement(
+                            "span",
+                            { className: "tool-picker-tile-icon" },
+                            React.createElement("span", { className: "material-symbols-outlined text-[18px] text-primary" }, meta.icon)
+                          ),
+                          React.createElement("span", { className: "tool-picker-tile-label" }, meta.label),
+                          React.createElement("span", { className: "tool-picker-tile-hint" }, meta.hint),
+                          selected.has(toolName)
+                            ? React.createElement(
+                                "span",
+                                { className: "tool-picker-tile-check" },
+                                React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "south")
+                              )
+                            : null
+                        );
+                      })
+                    )
+                  )
+                )
               )
             )
           )
         )
       : null
   );
+}
+
+function groupToolsByCategory(toolNames) {
+  const orderedCategories = ["workspace", "research", "artifacts"];
+  return orderedCategories
+    .map((category) => [
+      category,
+      toolNames.filter((toolName) => (TOOL_META[toolName]?.category || "workspace") === category),
+    ])
+    .filter(([, items]) => items.length);
 }
 
 function describeTool(toolName, readiness = {}) {
