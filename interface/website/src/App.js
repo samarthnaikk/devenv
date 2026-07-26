@@ -333,6 +333,8 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
   return React.createElement(
     MotionStage,
     { className: "loading-shell loading-shell-setup", delay: 40 },
+    React.createElement("div", { className: "startup-orbit startup-orbit-one", "aria-hidden": "true" }),
+    React.createElement("div", { className: "startup-orbit startup-orbit-two", "aria-hidden": "true" }),
     React.createElement(
       BeamFrame,
       { tone: "ocean", className: "startup-frame" },
@@ -385,6 +387,14 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
               )
             )
           : null
+      ),
+      React.createElement(
+        "div",
+        { className: "startup-summary-rail" },
+        React.createElement("span", { className: "startup-summary-pill" }, activeProvider),
+        React.createElement("span", { className: "startup-summary-pill" }, isChunking ? "Indexing" : anyGranted ? "Ready" : "Awaiting grant"),
+        React.createElement("span", { className: "startup-summary-pill" }, isChunking ? `${progress.percent}%` : anyGranted ? "Saved" : "0%"),
+        React.createElement("span", { className: "startup-summary-copy" }, "Remembered provider access unlocks prior-session grounding and background indexing.")
       ),
       React.createElement(
         MotionDeck,
@@ -606,6 +616,8 @@ function BootStateScreen({ icon, eyebrow, title, body, detail, tone = "ocean", l
   return React.createElement(
     "div",
     { className: "loading-shell" },
+    React.createElement("div", { className: "startup-orbit startup-orbit-one", "aria-hidden": "true" }),
+    React.createElement("div", { className: "startup-orbit startup-orbit-two", "aria-hidden": "true" }),
     React.createElement(
       MotionReveal,
       { className: "loading-shell-panel", delay: 40 },
@@ -634,6 +646,13 @@ function BootStateScreen({ icon, eyebrow, title, body, detail, tone = "ocean", l
                 body
               )
             )
+          ),
+          React.createElement(
+            "div",
+            { className: "startup-summary-rail startup-summary-rail-compact" },
+            React.createElement("span", { className: "startup-summary-pill" }, loading ? "Booting" : "Error"),
+            React.createElement("span", { className: "startup-summary-pill" }, loading ? "Restoring memory" : "Handshake failed"),
+            React.createElement("span", { className: "startup-summary-copy" }, loading ? "The shell is mounting while the runtime health handshake completes." : "The web shell rendered, but the backend handshake still needs to recover.")
           ),
           React.createElement(
             "div",
