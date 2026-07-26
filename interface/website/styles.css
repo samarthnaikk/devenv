@@ -1943,6 +1943,38 @@ pre {
   line-height: 1.45;
 }
 
+.thinking-metrics,
+.thinking-summary-deck {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.thinking-metric-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-container-high) 82%, white 18%);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 66%, transparent);
+  box-shadow: 0 12px 28px rgba(36, 93, 168, 0.1);
+}
+
+.thinking-metric-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.thinking-metric-value {
+  font-size: 12px;
+  color: var(--text);
+}
+
 .thinking-pill {
   box-shadow: 0 10px 24px rgba(36, 93, 168, 0.16);
 }
@@ -1950,12 +1982,29 @@ pre {
 .thinking-step-row {
   padding: 7px 8px;
   border-radius: 14px;
-  transition: background-color 180ms ease, transform 180ms ease;
+  border: 1px solid transparent;
+  transition: background-color 180ms ease, transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .thinking-step-row:hover {
   background: color-mix(in srgb, var(--surface-container-low) 74%, white 26%);
   transform: translateX(2px);
+  border-color: color-mix(in srgb, var(--outline-variant) 70%, transparent);
+  box-shadow: 0 14px 28px rgba(20, 35, 33, 0.08);
+}
+
+.thinking-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface-container-high) 76%, white 24%);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 58%, transparent);
 }
 
 .thinking-search-panel {
@@ -1971,6 +2020,19 @@ pre {
 
 .thinking-status-pill {
   box-shadow: 0 14px 30px rgba(20, 35, 33, 0.08);
+}
+
+@media (max-width: 720px) {
+  .thinking-metrics,
+  .thinking-summary-deck {
+    gap: 8px;
+  }
+
+  .thinking-metric-pill {
+    width: 100%;
+    justify-content: space-between;
+    min-height: 34px;
+  }
 }
 
 .plan-header-copy {

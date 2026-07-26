@@ -2,7 +2,7 @@ import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, formatDuration, formatBackendLabel } from "../utils/format.js";
 import { ThinkingOrb, stateForThinkingStep } from "./ThinkingOrb.js";
-import { BeamFrame, MetalSurface, MotionReveal, MotionShimmerText, MotionSwap } from "./MotionPrimitives.js";
+import { BeamFrame, MetalSurface, MotionDeck, MotionReveal, MotionShimmerText, MotionStage, MotionSwap } from "./MotionPrimitives.js";
 
 export function ThinkingMessage({ message }) {
   const { state } = useApp();
@@ -31,8 +31,8 @@ export function ThinkingMessage({ message }) {
   }[orbState];
 
   return React.createElement(
-    "div",
-    { className: "thinking-shell ml-8 space-y-4" },
+    MotionStage,
+    { className: "thinking-shell ml-8 space-y-4", delay: 70 },
     React.createElement(
       BeamFrame,
       { active: message.pending, tone: orbState === "searching" ? "ocean" : "mono", className: "thinking-card inset-terminal rounded-[24px] border border-outline-variant p-4" },
@@ -66,10 +66,17 @@ export function ThinkingMessage({ message }) {
           )
         )
       ),
+      React.createElement(
+        MotionDeck,
+        { className: "thinking-metrics mb-4" },
+        metricPill("Trace", `${timelineSteps.length} step${timelineSteps.length === 1 ? "" : "s"}`),
+        metricPill(searchCards.length ? "Search" : "Mode", searchCards.length ? `${searchCards.length} live source${searchCards.length === 1 ? "" : "s"}` : headline.replace(/ trace$/i, "")),
+        metricPill("Status", message.pending ? statusWord : "Completed")
+      ),
       summary
         ? React.createElement(
-            "div",
-            { className: "mb-4 flex flex-wrap gap-2" },
+            MotionDeck,
+            { className: "mb-4 thinking-summary-deck" },
             summary.map((item, index) =>
               React.createElement(
                 "div",
@@ -98,7 +105,7 @@ export function ThinkingMessage({ message }) {
                 paused: !(message.pending && i === timelineSteps.length - 1),
                 label: `${step.text}: ${stateForThinkingStep(step, message.pending && i === timelineSteps.length - 1)}`,
               }),
-              React.createElement("span", { className: "text-outline w-4 shrink-0" }, i + 1),
+              React.createElement("span", { className: "thinking-step-index" }, i + 1),
               React.createElement("span", null, `[${(step.label || "TRACE").toUpperCase()}] ${step.text}`)
             )
           )
@@ -122,6 +129,15 @@ export function ThinkingMessage({ message }) {
         message.pending ? React.createElement(MotionSwap, null, React.createElement("span", { className: "process-status-word" }, statusWord), React.createElement("span", { className: "process-status-dots", "aria-hidden": "true" }, "...")) : (lastStatus || "Completed")
       )
     )
+  );
+}
+
+function metricPill(label, value) {
+  return React.createElement(
+    "div",
+    { className: "thinking-metric-pill" },
+    React.createElement("span", { className: "thinking-metric-label" }, label),
+    React.createElement("strong", { className: "thinking-metric-value" }, value)
   );
 }
 

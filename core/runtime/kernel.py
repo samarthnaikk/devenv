@@ -2564,9 +2564,11 @@ class DevenvKernel:
         system_logs.append(f"State: {self.state.name}")
         working_blueprint = blueprint
         checkpoint_indexes = self._execution_checkpoint_indexes(working_blueprint)
+        scaffold_kind = _local_scaffold_kind(user_prompt)
+        checkpoint_limit = 1 if scaffold_kind == "calendar" else len(checkpoint_indexes)
         final_response: str | None = None
 
-        for index in checkpoint_indexes:
+        for index in checkpoint_indexes[:checkpoint_limit]:
             task = working_blueprint.tasks[index]
             working_blueprint = _set_active_task(working_blueprint, index)
             self.active_blueprint = working_blueprint
