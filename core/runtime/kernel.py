@@ -2209,6 +2209,8 @@ class DevenvKernel:
             relevant_paths = self._ensure_repo_summary_paths(relevant_paths, listing_step.output)
         if _is_backend_connector_question(user_prompt):
             relevant_paths = self._ensure_backend_connector_paths(relevant_paths, listing_step.output)
+        elif _is_runtime_routing_question(user_prompt):
+            relevant_paths = self._ensure_runtime_routing_paths(relevant_paths, listing_step.output)
         elif _is_architecture_question(user_prompt):
             relevant_paths = self._ensure_architecture_summary_paths(relevant_paths, listing_step.output)
         if not relevant_paths:
@@ -2393,6 +2395,59 @@ class DevenvKernel:
             if len(preferred_paths) >= 3:
                 break
         return preferred_paths[:3]
+
+    def _ensure_runtime_routing_paths(self, relevant_paths: list[str], listing_output: str) -> list[str]:
+        payload = _extract_tool_payload_json(listing_output)
+        entries = payload.get("entries") if isinstance(payload, dict) else None
+        routing_targets = {
+            "core/runtime/kernel.py": 30,
+            "core/ai/routing.py": 28,
+            "core/runtime/web.py": 24,
+            "interface/website/src/components/Composer.js": 18,
+            "interface/website/src/components/ToolPicker.js": 17,
+            "interface/website/src/components/ThinkingMessage.js": 16,
+            "interface/website/src/components/ChatColumn.js": 15,
+            "core/ai/ollama_backend.py": 14,
+            "core/ai/codex_backend.py": 13,
+            "README.md": 3,
+        }
+        discouraged_markers = ("tests/", "sample-test/", "build/", "docs/screenshots/", "devenv.egg-info/", "devenv1a.egg-info/")
+        discouraged_names = {"__init__.py", "env.py", "logging_utils.py"}
+
+        scored_paths: dict[str, int] = {}
+        for path in relevant_paths:
+            if not isinstance(path, str) or not path.strip():
+                continue
+            score = routing_targets.get(path, 0)
+            lowered = path.lower()
+            if any(marker in lowered for marker in discouraged_markers):
+                score -= 10
+            if Path(lowered).name in discouraged_names:
+                score -= 8
+            scored_paths[path] = max(score, scored_paths.get(path, 0))
+
+        if not isinstance(entries, list):
+            ordered = sorted(scored_paths.items(), key=lambda item: (-item[1], item[0]))
+            return [path for path, _score in ordered if _score > 0][:3] or relevant_paths[:3]
+
+        for entry in entries:
+            if not isinstance(entry, dict) or entry.get("is_dir"):
+                continue
+            relative_path = entry.get("relative_path")
+            if not isinstance(relative_path, str) or not relative_path.strip():
+                continue
+            score = routing_targets.get(relative_path, 0)
+            lowered = relative_path.lower()
+            if any(marker in lowered for marker in discouraged_markers):
+                score -= 10
+            if Path(lowered).name in discouraged_names:
+                score -= 8
+            if score > 0:
+                scored_paths[relative_path] = max(score, scored_paths.get(relative_path, 0))
+
+        ordered = sorted(scored_paths.items(), key=lambda item: (-item[1], item[0]))
+        preferred_paths = [path for path, score in ordered if score > 0]
+        return preferred_paths[:3] or relevant_paths[:3]
 
     def _ensure_backend_connector_paths(self, relevant_paths: list[str], listing_output: str) -> list[str]:
         payload = _extract_tool_payload_json(listing_output)
@@ -4688,6 +4743,10 @@ class DevenvKernel:
 
     def _inspect_local_file_summary(self, path: str, steps: list[ToolExecutionStep], system_logs: list[str]) -> str | None:
         absolute_path = Path(path).resolve()
+        try:
+            display_path = str(absolute_path.relative_to(Path(self.workspace_path).resolve())).replace("\\", "/")
+        except ValueError:
+            display_path = absolute_path.name
         if absolute_path.suffix.lower() == ".py" and "inspect_symbols" in self.tools:
             symbol_call = ToolCallRequest(
                 call_id=f"local_symbols_{uuid.uuid4().hex[:10]}",
@@ -4699,7 +4758,7 @@ class DevenvKernel:
             system_logs.append(f"Tool step {len(steps)}: inspect_symbols success={symbol_step.success}")
             if symbol_step.success:
                 symbol_payload = _extract_tool_payload_json(symbol_step.output)
-                symbol_summary = _summarize_symbol_outline(absolute_path.name, symbol_payload)
+                symbol_summary = _summarize_symbol_outline(display_path, symbol_payload)
                 if symbol_summary:
                     return symbol_summary
 
@@ -4719,7 +4778,7 @@ class DevenvKernel:
         content = ""
         if isinstance(payload, dict):
             content = str(payload.get("content") or "")
-        return _summarize_local_text_file(absolute_path.name, content)
+        return _summarize_local_text_file(display_path, content)
 
     def _resolve_workspace_candidate(self, user_prompt: str) -> str | None:
         prompt_tokens = [token for token in re.findall(r"[a-z0-9_]+", user_prompt.lower()) if len(token) >= 3]
@@ -4727,6 +4786,9 @@ class DevenvKernel:
             entries = sorted(Path(self.workspace_path).iterdir(), key=lambda item: item.name.lower())
         except OSError:
             return None
+
+        if _is_architecture_question(user_prompt) or _is_runtime_routing_question(user_prompt):
+            return self.workspace_path if entries else None
 
         directory_candidates: list[Path] = []
         for entry in entries:
@@ -7714,6 +7776,8 @@ def _is_architecture_question(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
     if _is_backend_connector_question(user_prompt):
         return True
+    if _is_runtime_routing_question(user_prompt):
+        return True
     return any(
         marker in lowered
         for marker in (
@@ -7737,6 +7801,45 @@ def _is_architecture_question(user_prompt: str) -> bool:
             "can you explain how retrieval works",
             "can you explain how the memory retrieval works",
         )
+    )
+
+
+def _is_runtime_routing_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    route_markers = (
+        "decides between memory",
+        "decides between planning",
+        "decides between tools",
+        "decides between web search",
+        "between memory, planning, tools, and web search",
+        "between memory planning tools and web search",
+        "between memory, tools, and web search",
+        "between plan mode and tools",
+        "between plan mode, tools, and web search",
+        "memory, planning, tools, and web search",
+        "memory, tools, and web search",
+        "plan mode",
+        "planning mode",
+        "web search",
+        "knowledge search",
+        "tool routing",
+        "routing logic",
+        "route the turn",
+        "route the request",
+        "decide between",
+    )
+    runtime_markers = (
+        "this app",
+        "the app",
+        "runtime",
+        "router",
+        "routing",
+        "turn",
+        "request",
+        "prompt",
+    )
+    return any(marker in lowered for marker in route_markers) and any(
+        marker in lowered for marker in runtime_markers
     )
 
 
@@ -7974,6 +8077,8 @@ def _prefers_deeper_workspace_scan(user_prompt: str) -> bool:
     if _is_backend_connector_question(user_prompt):
         return True
     if _is_repo_summary_question(user_prompt):
+        return True
+    if _is_runtime_routing_question(user_prompt):
         return True
     return any(
         phrase in lowered

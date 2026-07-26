@@ -24,6 +24,7 @@ from core.runtime.kernel import (
     _enforce_exact_output_contract,
     _extract_exact_output_contract,
     _find_reusable_tool_step,
+    _is_architecture_question,
     _memory_context_sections,
     _prefer_reference_results_over_empty_summary,
     _sanitize_logged_answer,
@@ -2006,6 +2007,70 @@ class DevenvKernelTest(unittest.TestCase):
             candidate = kernel._resolve_workspace_candidate("how does the backend work?")
 
         self.assertEqual(candidate, str(Path(tempdir).resolve()))
+
+    def test_runtime_routing_prompt_counts_as_architecture_question(self) -> None:
+        prompt = "Trace how this app decides between memory, planning, tools, and web search."
+
+        self.assertTrue(_is_architecture_question(prompt))
+
+    def test_resolve_workspace_candidate_keeps_routing_prompt_at_workspace_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            (Path(tempdir) / "core" / "memory").mkdir(parents=True)
+            (Path(tempdir) / "core" / "runtime").mkdir(parents=True)
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+            candidate = kernel._resolve_workspace_candidate(
+                "Trace how this app decides between memory, planning, tools, and web search."
+            )
+
+        self.assertEqual(candidate, str(Path(tempdir).resolve()))
+
+    def test_local_only_routing_question_prefers_runtime_and_router_files(self) -> None:
+        memory = FakeMemory()
+        memory.retrieve_context = lambda current_prompt, top_k=5: FakeRetrievalResult(
+            markdown_context="## Retrieved Memory\n- Old notes mentioned memory retrieval, but not the current routing flow."
+        )
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            runtime_dir = Path(tempdir) / "core" / "runtime"
+            ai_dir = Path(tempdir) / "core" / "ai"
+            runtime_dir.mkdir(parents=True)
+            ai_dir.mkdir(parents=True)
+            (runtime_dir / "kernel.py").write_text(
+                "def execute_turn(prompt, planning_mode='auto'):\n"
+                "    return _route_turn(prompt, planning_mode)\n\n"
+                "def _route_turn(prompt, planning_mode):\n"
+                "    return planning_mode or prompt\n",
+                encoding="utf-8",
+            )
+            (runtime_dir / "web.py").write_text(
+                "def handle_turn(payload):\n"
+                "    return payload.get('planning_mode'), payload.get('selected_tools')\n",
+                encoding="utf-8",
+            )
+            (ai_dir / "routing.py").write_text(
+                "class RoutingAICore:\n"
+                "    def set_backend_preference(self, backend, **flags):\n"
+                "        return backend, flags\n",
+                encoding="utf-8",
+            )
+            (Path(tempdir) / "README.md").write_text("# Demo repo\nGeneral summary only.\n", encoding="utf-8")
+
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.register_tool(ListDirectoryTool())
+            kernel.register_tool(ReadFileTool())
+            kernel.register_tool(PeekLinesTool())
+            kernel.register_tool(InspectSymbolsTool())
+            result = kernel.execute_turn(
+                "Trace how this app decides between memory, planning, tools, and web search.",
+                local_only=True,
+            )
+
+        answer = result.final_response or ""
+        self.assertIn("core/runtime/kernel.py", answer)
+        self.assertIn("core/ai/routing.py", answer)
+        self.assertNotIn("README.md says", answer)
 
     def test_execution_tool_scope_adds_mutation_and_shell_tools_only_when_needed(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
