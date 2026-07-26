@@ -1793,9 +1793,10 @@ def _build_repo_grounded_fallback_plan(
             "interface/website/styles.css",
             "tests/runtime/test_web.py",
         ]
-        for candidate in reversed(preferred_ui_paths):
-            if candidate not in paths:
-                paths.insert(0, candidate)
+        prioritized_paths = [candidate for candidate in preferred_ui_paths if candidate in paths]
+        remaining_paths = [candidate for candidate in paths if candidate not in prioritized_paths]
+        missing_paths = [candidate for candidate in preferred_ui_paths if candidate not in prioritized_paths]
+        paths = [*prioritized_paths, *remaining_paths, *missing_paths]
     primary = paths[0] if len(paths) > 0 else "README.md"
     secondary = paths[1] if len(paths) > 1 else primary
     tertiary = paths[2] if len(paths) > 2 else secondary

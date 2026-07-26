@@ -17,7 +17,7 @@ from core.runtime.models import (
 )
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode, RunConfig
 from core.runtime.setup import inspect_setup
-from core.runtime.web import DevenvWebApp
+from core.runtime.web import DevenvWebApp, _build_repo_grounded_fallback_plan
 
 
 @dataclass(frozen=True)
@@ -1265,6 +1265,25 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertIsNone(result["error_message"])
         self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "inspect-web")
         self.assertEqual(len(ai.chat_calls), 2)
+
+    def test_repo_grounded_fallback_plan_prefers_ui_shell_paths_for_animation_work(self) -> None:
+        blueprint = _build_repo_grounded_fallback_plan(
+            "Improve the UI shell animations and chat surface polish",
+            repo_grounding=(
+                "Inspect `core/runtime/web.py`, `interface/website/src/App.js`, "
+                "`interface/website/src/components/Composer.js`, "
+                "`interface/website/src/components/Transcript.js`, "
+                "`interface/website/styles.css`, and `tests/runtime/test_web.py`."
+            ),
+        )
+
+        tasks = blueprint["tasks"]
+        self.assertEqual(tasks[0]["task_id"], "inspect-ui-shell")
+        self.assertIn("`interface/website/src/App.js`", tasks[0]["description"])
+        self.assertIn("`interface/website/src/components/Composer.js`", tasks[0]["description"])
+        self.assertIn("`interface/website/src/components/Transcript.js`", tasks[2]["description"])
+        self.assertIn("`tests/runtime/test_web.py`", tasks[3]["description"])
+        self.assertEqual(blueprint["edges"][0], {"from": "inspect-ui-shell", "to": "upgrade-primary-surface"})
 
     def test_run_turn_sanitizes_replay_json_error_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

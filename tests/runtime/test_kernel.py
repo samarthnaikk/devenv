@@ -20,6 +20,9 @@ from core.runtime.context_builder import ContextBuilderService
 from core.runtime.kernel import (
     _answer_from_retrieved_memory,
     _compose_external_memory_query,
+    _clean_exact_output_candidate,
+    _enforce_exact_output_contract,
+    _extract_exact_output_contract,
     _find_reusable_tool_step,
     _memory_context_sections,
     _prefer_reference_results_over_empty_summary,
@@ -885,6 +888,7 @@ class DevenvKernelTest(unittest.TestCase):
             result.final_response,
             "For that question I would not need workspace tools first. Devenv should answer from memory/retrieval, and only fall back if prior context is not reliable enough.",
         )
+        self.assertEqual(result.metadata["backend_used"], "local")
         self.assertEqual(result.execution_mode, ExecutionMode.DIRECT_ANSWER.value)
         self.assertEqual(result.turn_outcome, TurnOutcome.SUCCESS.value)
 
@@ -901,6 +905,7 @@ class DevenvKernelTest(unittest.TestCase):
             result.final_response,
             "For that question I would use `web_search` first, then answer from the retrieved results.",
         )
+        self.assertEqual(result.metadata["backend_used"], "local")
         self.assertEqual(result.execution_mode, ExecutionMode.DIRECT_ANSWER.value)
         self.assertEqual(result.turn_outcome, TurnOutcome.SUCCESS.value)
 
@@ -916,8 +921,40 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("inspect first with `list_directory`, `read_file`, `inspect_symbols`, `search_text`", result.final_response or "")
         self.assertIn("make the smallest safe file change with `edit_file`, `write_file`", result.final_response or "")
         self.assertIn("verify with `run_diagnostics`, `audit_changes`", result.final_response or "")
+        self.assertEqual(result.metadata["backend_used"], "local")
         self.assertEqual(result.execution_mode, ExecutionMode.DIRECT_ANSWER.value)
         self.assertEqual(result.turn_outcome, TurnOutcome.SUCCESS.value)
+
+    def test_extract_exact_output_contract_supports_single_word_and_quoted_phrases(self) -> None:
+        self.assertEqual(
+            _extract_exact_output_contract("Reply with the single word Ready"),
+            "ready",
+        )
+        self.assertEqual(
+            _extract_exact_output_contract('Return exactly "Silver Comet" and nothing else'),
+            "Silver Comet",
+        )
+        self.assertEqual(
+            _extract_exact_output_contract("Return exactly these two words and nothing else: silver comet."),
+            "silver comet",
+        )
+
+    def test_clean_exact_output_candidate_normalizes_spacing_and_punctuation(self) -> None:
+        self.assertEqual(
+            _clean_exact_output_candidate('  "Silver   Comet."  ', preserve_case=True),
+            "Silver Comet",
+        )
+        self.assertEqual(
+            _clean_exact_output_candidate(" Ready! ", preserve_case=False),
+            "ready",
+        )
+
+    def test_enforce_exact_output_contract_replaces_non_compliant_model_reply(self) -> None:
+        prompt = "Return exactly these two words and nothing else: silver comet"
+
+        self.assertEqual(_enforce_exact_output_contract(prompt, None), "silver comet")
+        self.assertEqual(_enforce_exact_output_contract(prompt, " silver   comet "), "silver comet")
+        self.assertEqual(_enforce_exact_output_contract(prompt, "Here you go: silver comet"), "silver comet")
 
     def test_execute_turn_answers_bug_fix_follow_up_from_recent_conversation(self) -> None:
         memory = FailingMemory()
