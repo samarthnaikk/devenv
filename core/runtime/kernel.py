@@ -5499,6 +5499,9 @@ def _build_grounded_live_fact_answer(
     page_extracts: list[dict[str, str]],
 ) -> str:
     lowered = user_prompt.lower()
+    docs_answer = _build_grounded_live_docs_answer(user_prompt, search_results, page_extracts)
+    if docs_answer:
+        return docs_answer
     if "net worth" not in lowered:
         return ""
     subject = _extract_net_worth_subject(user_prompt)
@@ -5553,6 +5556,36 @@ def _build_grounded_live_fact_answer(
     return ""
 
 
+def _build_grounded_live_docs_answer(
+    user_prompt: str,
+    search_results: list[dict[str, Any]],
+    page_extracts: list[dict[str, str]],
+) -> str:
+    lowered = user_prompt.lower()
+    if "net worth" in lowered:
+        return ""
+    if not any(token in lowered for token in ("docs", "documentation", "official website")):
+        return ""
+    official_results = [item for item in search_results if _looks_like_official_docs_url(str(item.get("url") or ""))]
+    official_extracts = [item for item in page_extracts if _looks_like_official_docs_url(str(item.get("url") or ""))]
+    if not official_results and not official_extracts:
+        return ""
+
+    anchor_url = ""
+    if official_results:
+        anchor_url = _canonical_docs_url(str(official_results[0].get("url") or ""))
+    if not anchor_url and official_extracts:
+        anchor_url = _canonical_docs_url(str(official_extracts[0].get("url") or ""))
+    if not anchor_url:
+        return ""
+
+    topics = _extract_docs_topics(official_extracts)
+    answer = f"The latest official documentation is at {anchor_url}."
+    if topics:
+        answer += f" The fetched pages cover {topics}."
+    return answer
+
+
 def _extract_net_worth_subject(prompt: str) -> str:
     patterns = (
         r"what(?:'s| is)\s+(.+?)\s+net worth",
@@ -5590,6 +5623,47 @@ def _normalize_live_fact_source_label(title: str, url: str) -> str:
 def _is_authoritative_live_fact_url(url: str) -> bool:
     lowered = url.lower()
     return any(domain in lowered for domain in ("forbes.com", "bloomberg.com", "reuters.com", "apnews.com"))
+
+
+def _looks_like_official_docs_url(url: str) -> bool:
+    lowered = url.lower().strip()
+    if not lowered.startswith("http"):
+        return False
+    if any(domain in lowered for domain in ("github.com", "learnopencode.com", "stackoverflow.com", "reddit.com")):
+        return False
+    return "/docs" in lowered or "docs." in lowered
+
+
+def _canonical_docs_url(url: str) -> str:
+    stripped = url.strip().rstrip("/")
+    match = re.match(r"^(https?://[^/]+/docs)(?:/.*)?$", stripped, flags=re.IGNORECASE)
+    if match:
+        return match.group(1) + "/"
+    return stripped + "/" if stripped and not stripped.endswith("/") else stripped
+
+
+def _extract_docs_topics(page_extracts: list[dict[str, str]]) -> str:
+    topic_labels: list[str] = []
+    for extract in page_extracts[:4]:
+        title = str(extract.get("title") or "").strip()
+        if not title:
+            continue
+        label = re.split(r"\s+[|-]\s+", title, maxsplit=1)[0].strip()
+        label = re.sub(r"\bdocs?\b", "", label, flags=re.IGNORECASE).strip(" :,-")
+        label_lower = label.lower()
+        if not label or len(label) > 32:
+            continue
+        if label_lower in {"opencode", "opencode documentation", "documentation", "complete reference guide"}:
+            continue
+        if label not in topic_labels:
+            topic_labels.append(label)
+    if not topic_labels:
+        return ""
+    if len(topic_labels) == 1:
+        return topic_labels[0]
+    if len(topic_labels) == 2:
+        return f"{topic_labels[0]} and {topic_labels[1]}"
+    return f"{', '.join(topic_labels[:-1])}, and {topic_labels[-1]}"
 
 
 def _compact_conversation(messages: list[dict[str, Any]], max_turns: int) -> list[dict[str, Any]]:

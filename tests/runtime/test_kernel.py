@@ -1632,6 +1632,89 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("wouldn't treat it as fully verified current data", response or "")
         self.assertEqual(len(ai.chat_calls), 0)
 
+    def test_forced_web_search_prefers_official_docs_summary_over_third_party_results(self) -> None:
+        ai = FakeAI([])
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
+            kernel.register_tool(WebSearchTool())
+            search_step = ToolExecutionStep(
+                step_id="search-1",
+                tool_name="web_search",
+                arguments={"mode": "search", "query": "Search the latest docs for opencode and answer briefly.", "result_count": 5},
+                output="ok",
+                success=True,
+                is_sandboxed_violation=False,
+                data={
+                    "results": [
+                        {
+                            "title": "open-docs/docs/opencode/README.md at main - GitHub",
+                            "url": "https://github.com/bgauryy/open-docs/blob/main/docs/opencode/README.md",
+                        },
+                        {"title": "Tools | OpenCode", "url": "https://opencode.ai/docs/tools"},
+                        {"title": "Agents | OpenCode", "url": "https://opencode.ai/docs/agents/"},
+                    ]
+                },
+            )
+            read_github_step = ToolExecutionStep(
+                step_id="read-1",
+                tool_name="web_search",
+                arguments={"mode": "read_url", "url": "https://github.com/bgauryy/open-docs/blob/main/docs/opencode/README.md"},
+                output="ok",
+                success=True,
+                is_sandboxed_violation=False,
+                data={
+                    "url": "https://github.com/bgauryy/open-docs/blob/main/docs/opencode/README.md",
+                    "title": "open-docs/docs/opencode/README.md at main - GitHub",
+                    "content": "OpenCode technical documentation mirror on GitHub.",
+                },
+            )
+            read_tools_step = ToolExecutionStep(
+                step_id="read-2",
+                tool_name="web_search",
+                arguments={"mode": "read_url", "url": "https://opencode.ai/docs/tools"},
+                output="ok",
+                success=True,
+                is_sandboxed_violation=False,
+                data={
+                    "url": "https://opencode.ai/docs/tools",
+                    "title": "Tools | OpenCode",
+                    "content": "Tools | OpenCode. Built-in tools include bash, edit, write, read, grep, glob, MCP servers, and plugins.",
+                },
+            )
+            read_agents_step = ToolExecutionStep(
+                step_id="read-3",
+                tool_name="web_search",
+                arguments={"mode": "read_url", "url": "https://opencode.ai/docs/agents/"},
+                output="ok",
+                success=True,
+                is_sandboxed_violation=False,
+                data={
+                    "url": "https://opencode.ai/docs/agents/",
+                    "title": "Agents | OpenCode",
+                    "content": "Agents | OpenCode. The docs cover primary agents, subagents, configuration, permissions, and usage.",
+                },
+            )
+
+            with mock.patch.object(
+                kernel,
+                "_execute_tool_call",
+                side_effect=[search_step, read_github_step, read_tools_step, read_agents_step],
+            ):
+                response = kernel._run_forced_web_search_turn(
+                    user_prompt="Search the latest docs for opencode and answer briefly.",
+                    steps=[],
+                    total_usage={},
+                    ai_logs=[],
+                    system_logs=[],
+                    local_only=False,
+                )
+
+        self.assertIsNotNone(response)
+        self.assertIn("https://opencode.ai/docs/", response or "")
+        self.assertIn("official documentation", response or "")
+        self.assertNotIn("github.com", (response or "").lower())
+        self.assertEqual(len(ai.chat_calls), 0)
+
     def test_direct_tool_scope_offers_knowledge_search_for_reference_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
