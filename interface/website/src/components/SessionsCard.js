@@ -77,6 +77,7 @@ export function SessionsCard() {
     React.createElement(
       BeamFrame,
       { active: state.sessionLoading, tone: "mono", className: "workspace-card-shell rounded-[22px] overflow-hidden" },
+      React.createElement("span", { className: "workspace-card-ribbon workspace-card-ribbon-secondary", "aria-hidden": "true" }),
       React.createElement(
         MotionDeck,
         { className: "workspace-provider-grid p-3 border-b border-outline-variant/30" },

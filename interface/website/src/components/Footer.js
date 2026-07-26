@@ -24,6 +24,7 @@ export function Footer() {
     React.createElement(
       BeamFrame,
       { active: state.isRunning, tone: "mono", className: "app-footer-shell flex justify-between items-center rounded-[22px] px-4 py-3" },
+      React.createElement("span", { className: "app-footer-ribbon", "aria-hidden": "true" }),
       React.createElement(
         "div",
         { className: "flex items-center gap-3" },

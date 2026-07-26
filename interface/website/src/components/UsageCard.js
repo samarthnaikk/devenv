@@ -44,6 +44,7 @@ export function UsageCard() {
     React.createElement(
       BeamFrame,
       { active: state.isRunning, tone: "ocean", className: "workspace-card-shell rounded-[22px] p-3" },
+      React.createElement("span", { className: "workspace-card-ribbon workspace-card-ribbon-secondary", "aria-hidden": "true" }),
       React.createElement(
         "div",
         { className: "workspace-usage-grid grid grid-cols-2 gap-3" },
