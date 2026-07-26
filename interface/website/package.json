@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:vendor": "node ./scripts/build-vendor.mjs"
+    "build:vendor": "node ./scripts/build-vendor.mjs",
+    "check:mount": "node ./scripts/check-mount.mjs"
   },
   "dependencies": {
     "highlight.js": "11.11.1",
