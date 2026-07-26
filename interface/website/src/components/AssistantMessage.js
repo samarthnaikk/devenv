@@ -3,6 +3,15 @@ import { renderMarkdown } from "../lib/markdown.js";
 import { BeamFrame, MotionBadge, MotionReveal, MotionShimmerText, MotionStage } from "./MotionPrimitives.js";
 
 export function AssistantMessage({ message, onCopy, onReply }) {
+  const diagnostics = message.diagnostics || {};
+  const statusChips = [
+    diagnostics.sourceLabel,
+    diagnostics.routeLabel,
+    diagnostics.backendLabel,
+    diagnostics.toolLabel,
+    diagnostics.retrievalLabel,
+  ].filter(Boolean);
+
   return React.createElement(
     MotionStage,
     { axis: "x", className: "message-stack flex flex-col gap-2 max-w-3xl message-stack-assistant" },
@@ -23,9 +32,9 @@ export function AssistantMessage({ message, onCopy, onReply }) {
           "div",
           { className: "message-title-group" },
           React.createElement(MotionShimmerText, { className: "font-label-caps text-label-caps text-primary" }, "Devenv"),
-          React.createElement("span", { className: "message-kicker" }, "assistant output")
+          React.createElement("span", { className: "message-kicker" }, diagnostics.kicker || "assistant output")
         ),
-        React.createElement(MotionBadge, { className: "message-type-pill message-type-pill-assistant", active: true }, "Answer"),
+        React.createElement(MotionBadge, { className: "message-type-pill message-type-pill-assistant", active: true }, diagnostics.badgeLabel || "Answer"),
         React.createElement("div", { className: "ml-auto flex items-center gap-1 message-actions" },
         React.createElement(
           "button",
@@ -60,9 +69,11 @@ export function AssistantMessage({ message, onCopy, onReply }) {
       React.createElement(
         "div",
         { className: "message-status-row" },
-        React.createElement("span", { className: "message-status-chip" }, "Grounded response"),
-        React.createElement("span", { className: "message-status-chip" }, "Reply ready")
+        ...statusChips.map((chip) => React.createElement("span", { key: chip, className: "message-status-chip" }, chip))
       ),
+      diagnostics.detail
+        ? React.createElement("div", { className: "message-status-copy" }, diagnostics.detail)
+        : null,
       React.createElement(
         "div",
         {

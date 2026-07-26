@@ -177,6 +177,13 @@ export function Composer() {
             id: `plan-error-${Date.now()}`,
             role: "error",
             content: `Plan mode expected a valid multi-node flowchart JSON response, but the UI could not render it.\n\nLast error: ${planValidationError}`,
+            diagnostics: buildMessageDiagnostics({
+              result,
+              pendingRunMode,
+              planOnlyMode,
+              overrideSourceLabel: "Plan render issue",
+              overrideDetail: planValidationError,
+            }),
           },
         });
       }
@@ -192,6 +199,13 @@ export function Composer() {
             id: `assistant-${Date.now()}`,
             role: result?.error_message ? "error" : "assistant",
             content: visibleAssistantResponse,
+            diagnostics: buildMessageDiagnostics({
+              result,
+              pendingRunMode,
+              planOnlyMode,
+              overrideSourceLabel: result?.error_message ? "Runtime issue" : null,
+              overrideDetail: result?.error_message || null,
+            }),
           },
         });
       }
@@ -213,6 +227,13 @@ export function Composer() {
           id: `assistant-${Date.now()}`,
           role: parsedRateLimit ? "error" : "assistant",
           content: parsedRateLimit ? "Rate limit reached while checking Devenv memory." : `Request failed: ${error.message}`,
+          diagnostics: buildFailureDiagnostics({
+            error,
+            pendingRunMode,
+            planOnlyMode: Boolean(state.planMode),
+            preferredBackend: state.preferredBackend || state.activeBackend || "opencode",
+            parsedRateLimit,
+          }),
         },
       });
       if (parsedRateLimit) {
@@ -624,6 +645,90 @@ function buildRetrievalStatus(metadata) {
     mode: "new_context",
     label: "New context",
     detail: metadata.external_context_reason || "No strong prior Devenv session match was found.",
+  };
+}
+
+function buildMessageDiagnostics({
+  result,
+  pendingRunMode,
+  planOnlyMode,
+  overrideSourceLabel = null,
+  overrideDetail = null,
+}) {
+  const metadata = result?.metadata || {};
+  const retrieval = buildRetrievalStatus(metadata);
+  const steps = Array.isArray(result?.steps) ? result.steps : [];
+  const backendRaw = result?.backend_used || metadata.backend_used || result?.backend || "local";
+  const backendLabel = backendRaw === "local" ? "Local runtime" : formatBackendLabel(backendRaw);
+  const hasWeb = pendingRunMode === "web" || steps.some((step) => step?.tool_name === "web_search");
+  const hasKnowledge = pendingRunMode === "knowledge" || steps.some((step) => step?.tool_name === "knowledge_search");
+  const toolCount = steps.filter((step) => step?.tool_name).length;
+  const localRuntime = String(metadata.backend_used || backendRaw) === "local";
+
+  let routeLabel = planOnlyMode ? "Plan mode" : "Direct route";
+  let sourceLabel = "Direct answer";
+  let detail = overrideDetail || retrieval.detail || "";
+
+  if (planOnlyMode) {
+    routeLabel = "Plan mode";
+    sourceLabel = "Execution plan";
+    detail = overrideDetail || "This turn stayed in plan mode and returned a renderable execution flow.";
+  } else if (hasWeb) {
+    routeLabel = "Web route";
+    sourceLabel = "Live web";
+    detail = overrideDetail || "This answer used fetched live-source results instead of relying on stale memory.";
+  } else if (hasKnowledge) {
+    routeLabel = "Knowledge route";
+    sourceLabel = "Reference search";
+    detail = overrideDetail || "This answer pulled external references such as repos, docs, or discussion threads.";
+  } else if (metadata.external_context_state === "reused_prior_context") {
+    routeLabel = "Memory route";
+    sourceLabel = "Prior context";
+    detail = overrideDetail || retrieval.detail || "A prior Devenv session was reused to answer this turn.";
+  } else if (metadata.external_context_state === "privacy_blocked") {
+    routeLabel = "Privacy route";
+    sourceLabel = "Memory blocked";
+    detail = overrideDetail || retrieval.detail || "Prior session memory was intentionally blocked for this turn.";
+  } else if (localRuntime && toolCount > 0) {
+    routeLabel = "Tool route";
+    sourceLabel = "Workspace tools";
+    detail = overrideDetail || "The runtime stayed local and answered from bounded workspace inspection.";
+  } else if (localRuntime) {
+    routeLabel = "Local route";
+    sourceLabel = "Local runtime";
+    detail = overrideDetail || "The runtime answered locally without handing the turn to a remote backend.";
+  }
+
+  return {
+    badgeLabel: planOnlyMode ? "Plan" : overrideSourceLabel ? "Issue" : "Answer",
+    kicker: overrideSourceLabel ? "runtime trace" : sourceLabel.toLowerCase(),
+    routeLabel,
+    backendLabel,
+    sourceLabel: overrideSourceLabel || sourceLabel,
+    toolLabel: toolCount ? `${toolCount} tool step${toolCount === 1 ? "" : "s"}` : "",
+    retrievalLabel: retrieval.label || "",
+    detail,
+  };
+}
+
+function buildFailureDiagnostics({
+  error,
+  pendingRunMode,
+  planOnlyMode,
+  preferredBackend,
+  parsedRateLimit,
+}) {
+  const routeLabel = planOnlyMode ? "Plan mode" : pendingRunMode === "web" ? "Web route" : pendingRunMode === "knowledge" ? "Knowledge route" : "Direct route";
+  const backendLabel = preferredBackend === "local" ? "Local runtime" : formatBackendLabel(preferredBackend || "opencode");
+  return {
+    badgeLabel: "Issue",
+    kicker: "runtime trace",
+    routeLabel,
+    backendLabel,
+    sourceLabel: parsedRateLimit ? "Rate limited" : "Runtime failure",
+    toolLabel: "",
+    retrievalLabel: "",
+    detail: parsedRateLimit ? "The backend hit a rate limit before the turn could finish." : String(error?.message || "The request failed before a normal answer was produced."),
   };
 }
 

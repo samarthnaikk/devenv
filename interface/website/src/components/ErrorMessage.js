@@ -3,6 +3,13 @@ import { escapeHtml } from "../utils/format.js";
 import { BeamFrame, MetalSurface, MotionBadge, MotionReveal } from "./MotionPrimitives.js";
 
 export function ErrorMessage({ message, onCopy, onReply }) {
+  const diagnostics = message.diagnostics || {};
+  const railPills = [
+    diagnostics.sourceLabel || "Needs attention",
+    diagnostics.routeLabel,
+    diagnostics.backendLabel,
+  ].filter(Boolean).slice(0, 3);
+
   return React.createElement(
     MotionReveal,
     { className: "error-message-shell max-w-3xl", delay: 110 },
@@ -20,7 +27,7 @@ export function ErrorMessage({ message, onCopy, onReply }) {
             { className: "error-message-icon" },
             React.createElement("span", { className: "material-symbols-outlined text-[14px] text-on-error" }, "error")
           ),
-          React.createElement(MotionBadge, { className: "error-message-pill", active: true }, "Error"),
+          React.createElement(MotionBadge, { className: "error-message-pill", active: true }, diagnostics.badgeLabel || "Error"),
           React.createElement("div", { className: "ml-auto flex items-center gap-1" },
             React.createElement(
               "button",
@@ -55,9 +62,8 @@ export function ErrorMessage({ message, onCopy, onReply }) {
         React.createElement(
           "div",
           { className: "error-message-rail" },
-          React.createElement("span", { className: "error-message-rail-pill" }, "Needs attention"),
-          React.createElement("span", { className: "error-message-rail-pill" }, "Copyable"),
-          React.createElement("span", { className: "error-message-rail-copy" }, "This response surfaced an execution or validation issue instead of a normal answer.")
+          ...railPills.map((pill) => React.createElement("span", { key: pill, className: "error-message-rail-pill" }, pill)),
+          React.createElement("span", { className: "error-message-rail-copy" }, diagnostics.detail || "This response surfaced an execution or validation issue instead of a normal answer.")
         ),
         React.createElement(
           "div",
