@@ -10,29 +10,29 @@ import { BeamFrame, MotionBadge, MotionDeck, MotionNumber, MotionReveal, MotionS
 
 const PLAYBOOKS = [
   {
-    label: "Repo plan",
-    icon: "account_tree",
-    title: "Map the work before touching code",
-    copy: "Flip straight into plan mode and render a multi-step execution flow for the current repo request.",
-    suggestion: "Plan the UI and runtime fixes needed to make this project feel polished and reliable.",
+    label: "Codebase",
+    icon: "folder_code",
+    title: "Ask about this codebase",
+    copy: "Get grounded answers from the current repository.",
+    suggestion: "Explain this codebase and the part I should start with.",
     selectedTools: ["list_directory", "search_text", "inspect_symbols"],
     planMode: true,
   },
   {
-    label: "Trace code",
-    icon: "conversion_path",
-    title: "Follow symbols through the workspace",
-    copy: "Bias the turn toward files, search, symbols, and traces so the answer stays grounded in actual code.",
-    suggestion: "Trace how this app decides between memory, planning, tools, and web search.",
+    label: "Debug",
+    icon: "search",
+    title: "Find a bug or issue",
+    copy: "Trace files and symbols to isolate a problem quickly.",
+    suggestion: "Find the bug causing the current issue in this app.",
     selectedTools: ["locate_files", "read_file", "search_text", "track_symbol"],
     planMode: false,
   },
   {
-    label: "Live research",
+    label: "Research",
     icon: "language",
-    title: "Pull current facts and references",
-    copy: "Route the turn into live sources when the answer depends on recent information or external references.",
-    suggestion: "Look up the latest changes in the tools and UI patterns we should borrow from.",
+    title: "Look something up",
+    copy: "Use live sources when the answer depends on current information.",
+    suggestion: "Look up the latest information relevant to this task.",
     selectedTools: ["web_search", "knowledge_search"],
     planMode: false,
   },
@@ -90,13 +90,13 @@ export function Transcript() {
   if (!state.transcript.length) {
     return React.createElement(
       "div",
-      { className: "transcript-scroll p-margin-desktop space-y-8", ref: scrollRef },
+      { className: "transcript-scroll transcript-scroll-empty p-margin-desktop", ref: scrollRef },
       React.createElement(
         "div",
-        { className: "empty-state-shell empty-state-shell-compact flex flex-col items-start justify-center gap-6 px-4" },
+        { className: "empty-state-shell empty-state-shell-compact flex flex-col items-start justify-center gap-4 px-4" },
         React.createElement(
           BeamFrame,
-          { active: false, tone: "ocean", className: "empty-state-hero empty-state-hero-compact rounded-3xl p-8 w-full" },
+          { active: false, tone: "ocean", className: "empty-state-hero empty-state-hero-compact rounded-3xl p-6 w-full" },
           React.createElement(
             "div",
             { className: "empty-state-hero-stack flex flex-col items-start gap-4" },
@@ -108,9 +108,9 @@ export function Transcript() {
             React.createElement(
               "h1",
               { className: "font-headline-lg text-headline-lg text-on-surface empty-state-title empty-state-title-compact" },
-              React.createElement(MotionShimmerText, { className: "empty-state-title-line" }, "Inspect, plan, or search.")
+              React.createElement(MotionShimmerText, { className: "empty-state-title-line" }, "What do you want to do?")
             ),
-            React.createElement("div", { className: "empty-state-copy max-w-2xl font-body-lg text-body-lg text-on-surface-variant" }, "Pick one route to start. The rest of the interface can stay out of the way.")
+            React.createElement("div", { className: "empty-state-copy max-w-2xl font-body-lg text-body-lg text-on-surface-variant" }, "Ask a question, debug something, or search for current information.")
           ),
           React.createElement(
             MotionDeck,
@@ -140,12 +140,7 @@ export function Transcript() {
                       React.createElement("strong", null, playbook.title)
                     ),
                     React.createElement("p", { className: "empty-state-command-copy" }, playbook.copy),
-                    React.createElement(
-                      "div",
-                      { className: "empty-state-command-footer" },
-                      React.createElement("span", { className: "empty-state-command-pill" }, playbook.planMode ? "Plan mode" : `${playbook.selectedTools.length} routes`),
-                      React.createElement("span", { className: "empty-state-command-launch" }, "Load prompt")
-                    )
+                    React.createElement("div", { className: "empty-state-command-launch-row" }, React.createElement("span", { className: "empty-state-command-launch" }, "Use this"))
                   )
                 )
               )

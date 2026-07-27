@@ -296,30 +296,6 @@ export function Composer() {
           tone: pendingThinking ? "ocean" : "mono",
           className: "composer-frame relative inset-terminal rounded-[26px] border border-outline-variant p-4",
         },
-        React.createElement("span", { className: "composer-ribbon", "aria-hidden": "true" }),
-        React.createElement("div", { className: "composer-backdrop composer-backdrop-one", "aria-hidden": "true" }),
-        React.createElement("div", { className: "composer-backdrop composer-backdrop-two", "aria-hidden": "true" }),
-        React.createElement(
-          "div",
-          { className: "composer-topline" },
-          React.createElement(
-            "div",
-            { className: "composer-topline-copy" },
-            React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, state.planMode ? "Plan-first" : "Live prompt"),
-            React.createElement(
-              MotionShimmerText,
-              { active: state.isRunning, className: "composer-topline-detail text-on-surface-variant" },
-              describeComposerState(state, { isCoolingDown, isBudgetBlocked })
-            )
-          ),
-          React.createElement(
-            "div",
-            { className: "composer-topline-pills" },
-            React.createElement("span", { className: "composer-pill" }, formatBackendLabel(state.preferredBackend || "opencode")),
-            React.createElement("span", { className: "composer-pill" }, describeRouteChip(state)),
-            React.createElement("span", { className: "composer-pill" }, state.planMode ? "plan mode" : "direct/auto")
-          )
-        ),
         replyTarget
           ? React.createElement(
               MotionReveal,
@@ -348,17 +324,8 @@ export function Composer() {
             )
           : null,
         React.createElement(
-          MotionStack,
-          { className: "composer-signal-row" },
-          React.createElement("span", { className: "composer-signal-dot" }),
-          React.createElement("span", { className: "composer-signal-dot" }),
-          React.createElement("span", { className: "composer-signal-dot" })
-        ),
-        React.createElement(
           "div",
           { className: "composer-input-shell" },
-          React.createElement("div", { className: "composer-input-orbit composer-input-orbit-one", "aria-hidden": "true" }),
-          React.createElement("div", { className: "composer-input-orbit composer-input-orbit-two", "aria-hidden": "true" }),
           React.createElement("textarea", {
             ref: textareaRef,
             className: "composer-input w-full bg-transparent border-none focus:ring-0 font-body-md text-body-md text-on-surface resize-none h-20 placeholder:text-outline outline-none",
@@ -367,20 +334,7 @@ export function Composer() {
             value: state.prompt,
             onChange: handleInput,
             onKeyDown: handleKeyDown,
-          }),
-          React.createElement(
-            "div",
-            { className: "composer-input-meta" },
-            React.createElement("span", { className: "composer-input-meta-pill" }, state.planMode ? "Blueprint only" : "Live runtime"),
-            React.createElement("span", { className: "composer-input-meta-pill" }, state.selectedTools.length ? `${state.selectedTools.length} route${state.selectedTools.length === 1 ? "" : "s"}` : "Auto route"),
-            React.createElement("span", { className: "composer-input-meta-pill" }, `${state.prompt.trim().length} chars`)
-          )
-        ),
-        React.createElement(
-          MotionSwap,
-          { className: "composer-route-strip" },
-          React.createElement("span", { className: "composer-route-strip-label" }, state.planMode ? "Plan lane" : "Run lane"),
-          React.createElement("span", { className: "composer-route-strip-copy" }, state.selectedTools.length ? describeRouteChip(state) : "Let Devenv decide between memory, tools, and live search.")
+          })
         ),
         React.createElement(
           "div",
@@ -388,12 +342,7 @@ export function Composer() {
           React.createElement(
             "div",
             { className: "composer-toolbar-left flex items-center gap-2" },
-            React.createElement(ToolPicker, null),
-            React.createElement(
-              "div",
-              { className: "composer-hint text-on-surface-variant" },
-              "Enter to type, Cmd/Ctrl+Enter to run"
-            )
+            React.createElement(ToolPicker, null)
           ),
           React.createElement(
             "button",

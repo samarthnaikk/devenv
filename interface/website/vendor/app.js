@@ -23789,32 +23789,10 @@ var init_AppContext = __esm({
       planBlueprint: null,
       replyTarget: null,
       showSettings: false,
-      sidebarCollapsed: false,
+      sidebarCollapsed: true,
       setupComplete: loadSetupState()
     };
     AppContext = import_react.default.createContext(null);
-  }
-});
-
-// src/utils/format.js
-function formatBackendLabel(value) {
-  if (value === "opencode") return "OpenCode";
-  if (value === "ollama") return "Ollama";
-  if (value === "llama_cpp") return "llama.cpp";
-  if (value === "codex") return "Codex";
-  return String(value || "Unknown");
-}
-function formatDuration(milliseconds) {
-  const totalSeconds = Math.max(Math.ceil(milliseconds / 1e3), 0);
-  const seconds = totalSeconds % 60;
-  const minutes = Math.floor(totalSeconds / 60);
-  return minutes ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
-}
-function escapeHtml(value) {
-  return String(value || "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-}
-var init_format = __esm({
-  "src/utils/format.js"() {
   }
 });
 
@@ -23905,32 +23883,24 @@ __export(Header_exports, {
 });
 function Header() {
   const { state, dispatch: dispatch2 } = useApp();
-  const activeBackend = formatBackendLabel(state.activeBackend || state.preferredBackend || "opencode");
-  const routeLabel = summarizeHeaderRoute(state.selectedTools, state.planMode);
-  const statusLabel = state.isRunning ? "Live" : state.planMode ? "Plan" : "Direct";
-  const laneLabel = state.planMode ? "Blueprint lane" : state.isRunning ? "Runtime lane" : "Ready lane";
-  const laneCopy = state.isRunning ? `Routing this turn through ${activeBackend} with visible tool and trace feedback.` : state.planMode ? "Repo-aware plan mode keeps the next turn staged as a flow before execution." : "The shell stays light and direct until the prompt actually needs tools, memory, or live search.";
   const toggleSettings = () => {
     dispatch2({ type: "SET_SHOW_SETTINGS", payload: !state.showSettings });
   };
   return import_react3.default.createElement(
     "header",
-    { className: "app-header flex justify-between items-start gap-3 flex-wrap px-margin-desktop w-full z-50 shrink-0" },
+    { className: "app-header px-margin-desktop w-full z-50 shrink-0" },
     import_react3.default.createElement(
       MotionReveal,
-      { className: "min-w-0 w-full" },
+      { className: "w-full" },
       import_react3.default.createElement(
-        BeamFrame,
-        { active: state.isRunning, tone: "ocean", className: "app-header-shell rounded-2xl px-3 py-3" },
-        import_react3.default.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-one", "aria-hidden": "true" }),
-        import_react3.default.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-two", "aria-hidden": "true" }),
-        import_react3.default.createElement("span", { className: "app-header-brand-grid", "aria-hidden": "true" }),
+        "div",
+        { className: "app-header-shell app-header-shell-minimal" },
         import_react3.default.createElement(
           "div",
-          { className: "app-header-main" },
+          { className: "app-header-minimal-row" },
           import_react3.default.createElement(
             "div",
-            { className: "app-header-brand-inner flex items-center gap-4 min-w-0" },
+            { className: "app-header-brand-minimal" },
             import_react3.default.createElement(
               "div",
               { className: "app-header-mark" },
@@ -23942,70 +23912,25 @@ function Header() {
             ),
             import_react3.default.createElement(
               "div",
-              { className: "flex flex-col gap-1 min-w-0" },
-              import_react3.default.createElement("span", { className: "font-headline-md text-headline-md font-bold text-on-surface" }, "Devenv"),
+              { className: "app-header-copy-minimal" },
+              import_react3.default.createElement("span", { className: "app-header-title" }, "Devenv"),
               import_react3.default.createElement(
-                "div",
-                { className: "app-header-pills" },
-                import_react3.default.createElement(
-                  MotionDeck,
-                  { className: "app-header-pill-deck" },
-                  import_react3.default.createElement(
-                    MotionBadge,
-                    { className: "app-header-pill app-header-pill-live", active: state.isRunning },
-                    state.isRunning ? "Live turn" : "Shell ready"
-                  ),
-                  import_react3.default.createElement("span", { className: "app-header-pill" }, activeBackend),
-                  import_react3.default.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
-                  import_react3.default.createElement("span", { className: "app-header-pill" }, routeLabel)
-                )
-              ),
-              import_react3.default.createElement(
-                "div",
-                { className: "app-header-statusline text-on-surface-variant" },
-                import_react3.default.createElement(
-                  MotionShimmerText,
-                  { active: state.isRunning, className: "app-header-statuscopy" },
-                  state.isRunning ? `Running through ${activeBackend}` : state.planMode ? "Planning with grounded files and read-only tools first" : describeHeaderStatus(state.selectedTools)
-                )
+                "span",
+                { className: "app-header-subtitle" },
+                state.isRunning ? "Working" : "Ready"
               )
             )
           ),
           import_react3.default.createElement(
-            "div",
-            { className: "app-header-side" },
-            import_react3.default.createElement(
-              "div",
-              { className: "app-header-settings-anchor" },
-              import_react3.default.createElement(
-                "button",
-                {
-                  type: "button",
-                  "data-action": "toggle-settings",
-                  className: `app-header-button app-header-settings-button icon-button p-2 rounded-2xl text-on-surface-variant ${state.showSettings ? "is-active text-primary" : ""}`,
-                  onClick: toggleSettings,
-                  "aria-label": "Settings"
-                },
-                import_react3.default.createElement("span", { className: "material-symbols-outlined text-[20px]" }, "settings")
-              )
-            ),
-            import_react3.default.createElement(
-              MetalSurface,
-              { className: "app-header-route-runway" },
-              import_react3.default.createElement("span", { className: "app-header-route-beam", "aria-hidden": "true" }),
-              import_react3.default.createElement(
-                "div",
-                { className: "app-header-route-head" },
-                import_react3.default.createElement(
-                  "span",
-                  { className: `app-header-route-pip${state.isRunning ? " is-live" : ""}`, "aria-hidden": "true" }
-                ),
-                import_react3.default.createElement("span", { className: "app-header-route-kicker" }, laneLabel),
-                import_react3.default.createElement("span", { className: "app-header-route-divider", "aria-hidden": "true" }),
-                import_react3.default.createElement("strong", { className: "app-header-route-value" }, routeLabel)
-              ),
-              import_react3.default.createElement("div", { className: "app-header-route-copy" }, laneCopy)
-            )
+            "button",
+            {
+              type: "button",
+              "data-action": "toggle-settings",
+              className: `app-header-button app-header-settings-button icon-button p-2 rounded-2xl text-on-surface-variant ${state.showSettings ? "is-active text-primary" : ""}`,
+              onClick: toggleSettings,
+              "aria-label": "Settings"
+            },
+            import_react3.default.createElement("span", { className: "material-symbols-outlined text-[20px]" }, "settings")
           )
         )
       )
@@ -24019,43 +23944,11 @@ function showToast(dispatch2, message) {
     dispatch2({ type: "SET_TOAST", payload: "" });
   }, 1600);
 }
-function summarizeHeaderRoute(selectedTools, planMode) {
-  if (planMode) return "Repo plan";
-  const tools = Array.isArray(selectedTools) ? selectedTools : [];
-  if (!tools.length) return "Auto route";
-  if (tools.includes("track_symbol")) return "Trace route";
-  if (tools.includes("inspect_symbols")) return "Symbols route";
-  if (tools.includes("search_text")) return "Search route";
-  if (tools.includes("read_file")) return "Read route";
-  if (tools.includes("locate_files")) return "Locate route";
-  if (tools.includes("list_directory")) return "Files route";
-  if (tools.includes("knowledge_search")) return "Knowledge route";
-  if (tools.includes("web_search")) return "Web route";
-  if (tools.includes("generate_pdf")) return "PDF route";
-  if (tools.includes("generate_prompt")) return "Prompt route";
-  return `${tools.length} routes`;
-}
-function describeHeaderStatus(selectedTools) {
-  const tools = Array.isArray(selectedTools) ? selectedTools : [];
-  if (!tools.length) return "Light shell, direct answers, and tools only when the task actually needs them";
-  if (tools.includes("track_symbol")) return "Following one symbol through the codebase before answering";
-  if (tools.includes("inspect_symbols")) return "Inspecting definitions, exports, and structure first";
-  if (tools.includes("search_text")) return "Scanning the repo for strings and usage sites first";
-  if (tools.includes("read_file")) return "Opening exact files before answering or planning";
-  if (tools.includes("locate_files")) return "Finding the right files before deeper inspection";
-  if (tools.includes("list_directory")) return "Mapping folders and workspace structure first";
-  if (tools.includes("knowledge_search")) return "Pulling external references, repos, docs, and threads";
-  if (tools.includes("web_search")) return "Biasing toward current web results and live facts";
-  if (tools.includes("generate_pdf")) return "Preparing a polished PDF artifact instead of only chat output";
-  if (tools.includes("generate_prompt")) return "Preparing a stronger prompt output for the task";
-  return "Constraining the runtime to the selected surfaces";
-}
 var import_react3, toastTimeoutId;
 var init_Header = __esm({
   "src/components/Header.js"() {
     import_react3 = __toESM(require_react(), 1);
     init_AppContext();
-    init_format();
     init_MotionPrimitives();
     toastTimeoutId = null;
   }
@@ -24387,7 +24280,26 @@ init_Header();
 // src/components/SettingsDropdown.js
 var import_react4 = __toESM(require_react(), 1);
 init_AppContext();
-init_format();
+
+// src/utils/format.js
+function formatBackendLabel(value) {
+  if (value === "opencode") return "OpenCode";
+  if (value === "ollama") return "Ollama";
+  if (value === "llama_cpp") return "llama.cpp";
+  if (value === "codex") return "Codex";
+  return String(value || "Unknown");
+}
+function formatDuration(milliseconds) {
+  const totalSeconds = Math.max(Math.ceil(milliseconds / 1e3), 0);
+  const seconds = totalSeconds % 60;
+  const minutes = Math.floor(totalSeconds / 60);
+  return minutes ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+}
+function escapeHtml(value) {
+  return String(value || "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+
+// src/components/SettingsDropdown.js
 init_storage();
 init_MotionPrimitives();
 function SettingsDropdown() {
@@ -24632,7 +24544,6 @@ function compactModelName(value) {
 
 // src/components/ChatColumn.js
 var import_react18 = __toESM(require_react(), 1);
-init_AppContext();
 
 // src/components/Transcript.js
 var import_react15 = __toESM(require_react(), 1);
@@ -24640,7 +24551,6 @@ init_AppContext();
 
 // src/components/UserMessage.js
 var import_react5 = __toESM(require_react(), 1);
-init_format();
 init_MotionPrimitives();
 function UserMessage({ message, onCopy, onReply }) {
   return import_react5.default.createElement(
@@ -24754,7 +24664,6 @@ function renderInlineMarkdown(text) {
 // src/components/ThinkingMessage.js?v=trace2
 var import_react7 = __toESM(require_react(), 1);
 init_AppContext();
-init_format();
 
 // src/components/ThinkingOrb.js
 var import_react6 = __toESM(require_react(), 1);
@@ -25424,7 +25333,6 @@ function AssistantMessage({ message, onCopy, onReply }) {
 
 // src/components/ErrorMessage.js
 var import_react9 = __toESM(require_react(), 1);
-init_format();
 init_MotionPrimitives();
 function ErrorMessage({ message, onCopy, onReply }) {
   const diagnostics = message.diagnostics || {};
@@ -32724,7 +32632,6 @@ function inferTaskLevel(task, index) {
 }
 
 // src/components/PlanFlowchart.js?v=flow4
-init_format();
 init_MotionPrimitives();
 function BlueprintNode({ data }) {
   const [showModal, setShowModal] = import_react14.default.useState(false);
@@ -33057,29 +32964,29 @@ init_Header();
 init_MotionPrimitives();
 var PLAYBOOKS = [
   {
-    label: "Repo plan",
-    icon: "account_tree",
-    title: "Map the work before touching code",
-    copy: "Flip straight into plan mode and render a multi-step execution flow for the current repo request.",
-    suggestion: "Plan the UI and runtime fixes needed to make this project feel polished and reliable.",
+    label: "Codebase",
+    icon: "folder_code",
+    title: "Ask about this codebase",
+    copy: "Get grounded answers from the current repository.",
+    suggestion: "Explain this codebase and the part I should start with.",
     selectedTools: ["list_directory", "search_text", "inspect_symbols"],
     planMode: true
   },
   {
-    label: "Trace code",
-    icon: "conversion_path",
-    title: "Follow symbols through the workspace",
-    copy: "Bias the turn toward files, search, symbols, and traces so the answer stays grounded in actual code.",
-    suggestion: "Trace how this app decides between memory, planning, tools, and web search.",
+    label: "Debug",
+    icon: "search",
+    title: "Find a bug or issue",
+    copy: "Trace files and symbols to isolate a problem quickly.",
+    suggestion: "Find the bug causing the current issue in this app.",
     selectedTools: ["locate_files", "read_file", "search_text", "track_symbol"],
     planMode: false
   },
   {
-    label: "Live research",
+    label: "Research",
     icon: "language",
-    title: "Pull current facts and references",
-    copy: "Route the turn into live sources when the answer depends on recent information or external references.",
-    suggestion: "Look up the latest changes in the tools and UI patterns we should borrow from.",
+    title: "Look something up",
+    copy: "Use live sources when the answer depends on current information.",
+    suggestion: "Look up the latest information relevant to this task.",
     selectedTools: ["web_search", "knowledge_search"],
     planMode: false
   }
@@ -33131,13 +33038,13 @@ function Transcript() {
   if (!state.transcript.length) {
     return import_react15.default.createElement(
       "div",
-      { className: "transcript-scroll p-margin-desktop space-y-8", ref: scrollRef },
+      { className: "transcript-scroll transcript-scroll-empty p-margin-desktop", ref: scrollRef },
       import_react15.default.createElement(
         "div",
-        { className: "empty-state-shell empty-state-shell-compact flex flex-col items-start justify-center gap-6 px-4" },
+        { className: "empty-state-shell empty-state-shell-compact flex flex-col items-start justify-center gap-4 px-4" },
         import_react15.default.createElement(
           BeamFrame,
-          { active: false, tone: "ocean", className: "empty-state-hero empty-state-hero-compact rounded-3xl p-8 w-full" },
+          { active: false, tone: "ocean", className: "empty-state-hero empty-state-hero-compact rounded-3xl p-6 w-full" },
           import_react15.default.createElement(
             "div",
             { className: "empty-state-hero-stack flex flex-col items-start gap-4" },
@@ -33149,9 +33056,9 @@ function Transcript() {
             import_react15.default.createElement(
               "h1",
               { className: "font-headline-lg text-headline-lg text-on-surface empty-state-title empty-state-title-compact" },
-              import_react15.default.createElement(MotionShimmerText, { className: "empty-state-title-line" }, "Inspect, plan, or search.")
+              import_react15.default.createElement(MotionShimmerText, { className: "empty-state-title-line" }, "What do you want to do?")
             ),
-            import_react15.default.createElement("div", { className: "empty-state-copy max-w-2xl font-body-lg text-body-lg text-on-surface-variant" }, "Pick one route to start. The rest of the interface can stay out of the way.")
+            import_react15.default.createElement("div", { className: "empty-state-copy max-w-2xl font-body-lg text-body-lg text-on-surface-variant" }, "Ask a question, debug something, or search for current information.")
           ),
           import_react15.default.createElement(
             MotionDeck,
@@ -33181,12 +33088,7 @@ function Transcript() {
                       import_react15.default.createElement("strong", null, playbook.title)
                     ),
                     import_react15.default.createElement("p", { className: "empty-state-command-copy" }, playbook.copy),
-                    import_react15.default.createElement(
-                      "div",
-                      { className: "empty-state-command-footer" },
-                      import_react15.default.createElement("span", { className: "empty-state-command-pill" }, playbook.planMode ? "Plan mode" : `${playbook.selectedTools.length} routes`),
-                      import_react15.default.createElement("span", { className: "empty-state-command-launch" }, "Load prompt")
-                    )
+                    import_react15.default.createElement("div", { className: "empty-state-command-launch-row" }, import_react15.default.createElement("span", { className: "empty-state-command-launch" }, "Use this"))
                   )
                 )
               )
@@ -33297,7 +33199,6 @@ function buildReplyExcerpt(content) {
 // src/components/Composer.js
 var import_react17 = __toESM(require_react(), 1);
 init_AppContext();
-init_format();
 
 // src/components/ToolPicker.js?v=popup3
 var import_react16 = __toESM(require_react(), 1);
@@ -33411,11 +33312,6 @@ function ToolPicker() {
             "aria-label": selected.size ? `Choose tools, ${selected.size} selected` : "Choose tools"
           },
           import_react16.default.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "TOOLS"),
-          import_react16.default.createElement(
-            MotionShimmerText,
-            { className: "tool-picker-trigger-copy", active: state.toolPickerOpen },
-            routeSummary.trigger
-          ),
           import_react16.default.createElement("span", { className: "material-symbols-outlined text-[16px] text-on-surface-variant ml-auto" }, state.toolPickerOpen ? "expand_less" : "expand_more")
         )
       )
@@ -33999,30 +33895,6 @@ Last error: ${planValidationError}`,
           tone: pendingThinking ? "ocean" : "mono",
           className: "composer-frame relative inset-terminal rounded-[26px] border border-outline-variant p-4"
         },
-        import_react17.default.createElement("span", { className: "composer-ribbon", "aria-hidden": "true" }),
-        import_react17.default.createElement("div", { className: "composer-backdrop composer-backdrop-one", "aria-hidden": "true" }),
-        import_react17.default.createElement("div", { className: "composer-backdrop composer-backdrop-two", "aria-hidden": "true" }),
-        import_react17.default.createElement(
-          "div",
-          { className: "composer-topline" },
-          import_react17.default.createElement(
-            "div",
-            { className: "composer-topline-copy" },
-            import_react17.default.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, state.planMode ? "Plan-first" : "Live prompt"),
-            import_react17.default.createElement(
-              MotionShimmerText,
-              { active: state.isRunning, className: "composer-topline-detail text-on-surface-variant" },
-              describeComposerState(state, { isCoolingDown, isBudgetBlocked })
-            )
-          ),
-          import_react17.default.createElement(
-            "div",
-            { className: "composer-topline-pills" },
-            import_react17.default.createElement("span", { className: "composer-pill" }, formatBackendLabel(state.preferredBackend || "opencode")),
-            import_react17.default.createElement("span", { className: "composer-pill" }, describeRouteChip(state)),
-            import_react17.default.createElement("span", { className: "composer-pill" }, state.planMode ? "plan mode" : "direct/auto")
-          )
-        ),
         replyTarget ? import_react17.default.createElement(
           MotionReveal,
           { className: "mb-3" },
@@ -34049,17 +33921,8 @@ Last error: ${planValidationError}`,
           )
         ) : null,
         import_react17.default.createElement(
-          MotionStack,
-          { className: "composer-signal-row" },
-          import_react17.default.createElement("span", { className: "composer-signal-dot" }),
-          import_react17.default.createElement("span", { className: "composer-signal-dot" }),
-          import_react17.default.createElement("span", { className: "composer-signal-dot" })
-        ),
-        import_react17.default.createElement(
           "div",
           { className: "composer-input-shell" },
-          import_react17.default.createElement("div", { className: "composer-input-orbit composer-input-orbit-one", "aria-hidden": "true" }),
-          import_react17.default.createElement("div", { className: "composer-input-orbit composer-input-orbit-two", "aria-hidden": "true" }),
           import_react17.default.createElement("textarea", {
             ref: textareaRef,
             className: "composer-input w-full bg-transparent border-none focus:ring-0 font-body-md text-body-md text-on-surface resize-none h-20 placeholder:text-outline outline-none",
@@ -34068,20 +33931,7 @@ Last error: ${planValidationError}`,
             value: state.prompt,
             onChange: handleInput,
             onKeyDown: handleKeyDown
-          }),
-          import_react17.default.createElement(
-            "div",
-            { className: "composer-input-meta" },
-            import_react17.default.createElement("span", { className: "composer-input-meta-pill" }, state.planMode ? "Blueprint only" : "Live runtime"),
-            import_react17.default.createElement("span", { className: "composer-input-meta-pill" }, state.selectedTools.length ? `${state.selectedTools.length} route${state.selectedTools.length === 1 ? "" : "s"}` : "Auto route"),
-            import_react17.default.createElement("span", { className: "composer-input-meta-pill" }, `${state.prompt.trim().length} chars`)
-          )
-        ),
-        import_react17.default.createElement(
-          MotionSwap,
-          { className: "composer-route-strip" },
-          import_react17.default.createElement("span", { className: "composer-route-strip-label" }, state.planMode ? "Plan lane" : "Run lane"),
-          import_react17.default.createElement("span", { className: "composer-route-strip-copy" }, state.selectedTools.length ? describeRouteChip(state) : "Let Devenv decide between memory, tools, and live search.")
+          })
         ),
         import_react17.default.createElement(
           "div",
@@ -34089,12 +33939,7 @@ Last error: ${planValidationError}`,
           import_react17.default.createElement(
             "div",
             { className: "composer-toolbar-left flex items-center gap-2" },
-            import_react17.default.createElement(ToolPicker, null),
-            import_react17.default.createElement(
-              "div",
-              { className: "composer-hint text-on-surface-variant" },
-              "Enter to type, Cmd/Ctrl+Enter to run"
-            )
+            import_react17.default.createElement(ToolPicker, null)
           ),
           import_react17.default.createElement(
             "button",
@@ -34520,149 +34365,16 @@ function runningVerbForMode(mode) {
   if (mode === "web") return "Searching";
   return "Thinking";
 }
-function describeComposerState(state, { isCoolingDown, isBudgetBlocked }) {
-  if (isCoolingDown) return "Cooling down after a rate limit";
-  if (isBudgetBlocked) return "Session budget reached";
-  if (state.isRunning) return "Executing the current turn";
-  if (state.planMode) return "Will inspect the repo and return a flowchart before execution";
-  if (state.selectedTools.includes("track_symbol")) return "Biased toward tracing how a symbol moves through the codebase";
-  if (state.selectedTools.includes("inspect_symbols")) return "Biased toward definitions, exports, and structural code inspection";
-  if (state.selectedTools.includes("search_text")) return "Biased toward repo-wide string and usage search";
-  if (state.selectedTools.includes("read_file")) return "Biased toward opening exact files before answering";
-  if (state.selectedTools.includes("locate_files")) return "Biased toward finding the right files before deeper inspection";
-  if (state.selectedTools.includes("list_directory")) return "Biased toward mapping folders and workspace structure";
-  if (state.selectedTools.includes("knowledge_search")) return "Biased toward repos, docs, videos, and reference gathering";
-  if (state.selectedTools.includes("web_search")) return "Biased toward live web results and current facts";
-  if (state.selectedTools.includes("generate_pdf")) return "Biased toward producing a polished PDF artifact";
-  if (state.selectedTools.includes("generate_prompt")) return "Biased toward generating a stronger prompt output";
-  return "Auto-routes between memory, plan, tools, and live search";
-}
-function describeRouteChip(state) {
-  if (state.planMode) return "repo plan";
-  if (!state.selectedTools.length) return "auto route";
-  if (state.selectedTools.length === 1) {
-    const selected = state.selectedTools[0];
-    if (selected === "list_directory") return "files route";
-    if (selected === "locate_files") return "locate route";
-    if (selected === "read_file") return "read route";
-    if (selected === "search_text") return "search route";
-    if (selected === "inspect_symbols") return "symbols route";
-    if (selected === "track_symbol") return "trace route";
-    if (selected === "knowledge_search") return "knowledge route";
-    if (selected === "web_search") return "web route";
-    if (selected === "generate_pdf") return "pdf route";
-    if (selected === "generate_prompt") return "prompt route";
-  }
-  return `${state.selectedTools.length} routes`;
-}
 
 // src/components/ChatColumn.js
-init_MotionPrimitives();
 function ChatColumn() {
-  const { state } = useApp();
-  const routeModes = ["direct", "plan", "memory", "web", "knowledge"];
-  const pendingMode = state.isRunning ? state.pendingRunMode : state.planMode ? "plan" : "direct";
-  const activeModeIndex = Math.max(0, routeModes.indexOf(pendingMode));
-  const statCards = [
-    {
-      label: "Context",
-      value: state.retrievalStatus?.label || "New context",
-      detail: state.retrievalStatus?.detail || "No prior session reused yet."
-    },
-    {
-      label: "Backend",
-      value: state.activeBackend || state.preferredBackend || "opencode",
-      detail: state.isRunning ? "Actively answering" : "Ready for next turn"
-    },
-    {
-      label: "Last turn",
-      value: `${Number(state.latestTurnTokens || 0)}`,
-      detail: state.latestElapsedMs ? `${Math.max(0.1, state.latestElapsedMs / 1e3).toFixed(1)}s end-to-end` : "No completed turn yet",
-      numeric: true
-    }
-  ];
   return import_react18.default.createElement(
     "section",
     { className: "chat-column flex-1 min-w-0 flex flex-col bg-background relative" },
     import_react18.default.createElement("div", { className: "chat-column-grid", "aria-hidden": "true" }),
-    import_react18.default.createElement("div", { className: "chat-column-orbit chat-column-orbit-one", "aria-hidden": "true" }),
-    import_react18.default.createElement("div", { className: "chat-column-orbit chat-column-orbit-two", "aria-hidden": "true" }),
-    import_react18.default.createElement("div", { className: "chat-column-glow chat-column-glow-one", "aria-hidden": "true" }),
-    import_react18.default.createElement("div", { className: "chat-column-glow chat-column-glow-two", "aria-hidden": "true" }),
-    import_react18.default.createElement("div", { className: "chat-column-ribbon chat-column-ribbon-one", "aria-hidden": "true" }),
-    import_react18.default.createElement("div", { className: "chat-column-ribbon chat-column-ribbon-two", "aria-hidden": "true" }),
-    import_react18.default.createElement("div", { className: "chat-column-scanline", "aria-hidden": "true" }),
-    import_react18.default.createElement(
-      MotionStage,
-      { axis: "x", className: "chat-status-shell px-margin-desktop pt-3" },
-      import_react18.default.createElement(
-        BeamFrame,
-        { active: state.isRunning, tone: "mono", className: "chat-status-rail rounded-[26px] px-4 py-3" },
-        import_react18.default.createElement(
-          "div",
-          {
-            className: "chat-status-mode-tabs",
-            style: { "--active-index": String(activeModeIndex), "--tab-count": String(routeModes.length) }
-          },
-          import_react18.default.createElement("span", { className: "chat-status-mode-indicator", "aria-hidden": "true" }),
-          routeModes.map(
-            (mode) => import_react18.default.createElement(
-              "span",
-              {
-                key: mode,
-                className: `chat-status-tab${pendingMode === mode ? " is-active" : ""}`
-              },
-              mode
-            )
-          )
-        ),
-        import_react18.default.createElement(
-          MotionSwap,
-          { className: "chat-status-routecopy" },
-          import_react18.default.createElement(
-            "span",
-            { className: "chat-status-route-copyline" },
-            import_react18.default.createElement(MotionBadge, { className: "chat-status-route-badge", active: state.isRunning }, pendingMode),
-            import_react18.default.createElement("span", { className: "chat-status-route-label" }, describePendingMode(pendingMode))
-          )
-        ),
-        import_react18.default.createElement(
-          "div",
-          { className: "chat-status-grid" },
-          statCards.map(
-            (card, index) => import_react18.default.createElement(
-              MotionReveal,
-              { key: card.label, delay: index * 70 },
-              import_react18.default.createElement(
-                MotionTilt,
-                null,
-                import_react18.default.createElement(
-                  "div",
-                  { className: "chat-status-card" },
-                  import_react18.default.createElement("div", { className: "chat-status-card-label" }, card.label),
-                  import_react18.default.createElement(
-                    "div",
-                    { className: "chat-status-card-value" },
-                    card.numeric ? import_react18.default.createElement(MotionNumber, { value: card.value }) : import_react18.default.createElement(MotionShimmerText, { active: state.isRunning && card.label === "Backend" }, card.value)
-                  ),
-                  import_react18.default.createElement("div", { className: "chat-status-card-detail" }, card.detail)
-                )
-              )
-            )
-          )
-        )
-      )
-    ),
     import_react18.default.createElement(Transcript, null),
     import_react18.default.createElement(Composer, null)
   );
-}
-function describePendingMode(mode) {
-  if (mode === "plan") return "Blueprint route active. The next turn is staged as a flow before execution.";
-  if (mode === "memory") return "Memory route active. Prior sessions and workspace facts take priority.";
-  if (mode === "web") return "Web route active. Current answers are pushed through live-source retrieval.";
-  if (mode === "knowledge") return "Knowledge route active. Repos, docs, and references are being gathered.";
-  return "Direct route active. The runtime can choose memory, tools, plan, or live search.";
 }
 
 // src/components/Sidebar.js
@@ -34672,7 +34384,6 @@ init_AppContext();
 // src/components/AccessCard.js
 var import_react19 = __toESM(require_react(), 1);
 init_AppContext();
-init_format();
 init_storage();
 init_Header();
 init_MotionPrimitives();
@@ -35013,7 +34724,6 @@ async function refreshHealth(dispatch2, options = {}) {
 // src/components/SessionsCard.js
 var import_react20 = __toESM(require_react(), 1);
 init_AppContext();
-init_format();
 init_Header();
 init_MotionPrimitives();
 function SessionsCard() {
@@ -35190,7 +34900,6 @@ async function refreshSelectedSession(provider, sessionId, state, dispatch2) {
 // src/components/UsageCard.js
 var import_react21 = __toESM(require_react(), 1);
 init_AppContext();
-init_format();
 init_Header();
 init_MotionPrimitives();
 function UsageCard() {
@@ -35323,7 +35032,6 @@ function UsageCard() {
 // src/components/Footer.js
 var import_react22 = __toESM(require_react(), 1);
 init_AppContext();
-init_format();
 init_MotionPrimitives();
 function Footer() {
   const { state } = useApp();

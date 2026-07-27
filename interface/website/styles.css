@@ -2762,6 +2762,47 @@ pre {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
 }
 
+.app-header-shell-minimal {
+  padding: 16px 18px;
+  border-radius: 22px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 58%, transparent);
+}
+
+.app-header-minimal-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.app-header-brand-minimal {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.app-header-copy-minimal {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.app-header-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.app-header-subtitle {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
 .app-header-brand-orbit {
   position: absolute !important;
   border-radius: 999px;
@@ -3362,8 +3403,16 @@ pre {
 .transcript-scroll {
   position: relative;
   z-index: 1;
-  padding-top: 12px;
+  padding-top: 8px;
   padding-bottom: 8px;
+}
+
+.transcript-scroll-empty {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  min-height: clamp(18rem, 42vh, 28rem);
 }
 
 .transcript-scroll > * {
@@ -4219,7 +4268,7 @@ pre {
   min-height: 164px;
   width: 100%;
   overflow: hidden;
-  border-radius: 24px;
+  border-radius: 20px;
   border: 1px solid color-mix(in srgb, var(--outline-variant) 74%, transparent);
   background:
     radial-gradient(circle at top left, rgba(79, 219, 200, 0.12), transparent 30%),
@@ -4279,34 +4328,22 @@ pre {
   color: var(--muted);
 }
 
-.empty-state-command-footer {
+.empty-state-command-launch-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
   margin-top: 12px;
 }
 
-.empty-state-command-pill,
 .empty-state-command-launch {
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
+  min-height: 26px;
   padding: 0 10px;
   border-radius: 999px;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-}
-
-.empty-state-command-pill {
-  border: 1px solid color-mix(in srgb, var(--outline-variant) 62%, transparent);
-  background: color-mix(in srgb, var(--surface) 76%, white 24%);
-  color: var(--muted);
-}
-
-.empty-state-command-launch {
   color: var(--primary);
   background: color-mix(in srgb, var(--primary) 10%, white 90%);
   border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--outline-variant));
@@ -4814,7 +4851,8 @@ pre {
 .composer-shell {
   background: color-mix(in srgb, var(--surface-container-low) 56%, transparent);
   backdrop-filter: blur(10px);
-  padding-top: 8px;
+  padding-top: 0;
+  margin-top: auto;
 }
 
 .composer-inner {
@@ -4827,6 +4865,7 @@ pre {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--terminal) 90%, white 10%), color-mix(in srgb, var(--surface-container-low) 90%, white 10%));
   box-shadow: 0 16px 42px rgba(20, 35, 33, 0.1);
+  padding: 14px !important;
 }
 
 .composer-ribbon {
