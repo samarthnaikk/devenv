@@ -23897,6 +23897,170 @@ var init_MotionPrimitives = __esm({
   }
 });
 
+// src/components/Header.js
+var Header_exports = {};
+__export(Header_exports, {
+  Header: () => Header,
+  showToast: () => showToast
+});
+function Header() {
+  const { state, dispatch: dispatch2 } = useApp();
+  const activeBackend = formatBackendLabel(state.activeBackend || state.preferredBackend || "opencode");
+  const routeLabel = summarizeHeaderRoute(state.selectedTools, state.planMode);
+  const statusLabel = state.isRunning ? "Live" : state.planMode ? "Plan" : "Direct";
+  const laneLabel = state.planMode ? "Blueprint lane" : state.isRunning ? "Runtime lane" : "Ready lane";
+  const laneCopy = state.isRunning ? `Routing this turn through ${activeBackend} with visible tool and trace feedback.` : state.planMode ? "Repo-aware plan mode keeps the next turn staged as a flow before execution." : "The shell stays light and direct until the prompt actually needs tools, memory, or live search.";
+  const toggleSettings = () => {
+    dispatch2({ type: "SET_SHOW_SETTINGS", payload: !state.showSettings });
+  };
+  return import_react3.default.createElement(
+    "header",
+    { className: "app-header flex justify-between items-start gap-3 flex-wrap px-margin-desktop w-full z-50 shrink-0" },
+    import_react3.default.createElement(
+      MotionReveal,
+      { className: "min-w-0 w-full" },
+      import_react3.default.createElement(
+        BeamFrame,
+        { active: state.isRunning, tone: "ocean", className: "app-header-shell rounded-2xl px-3 py-3" },
+        import_react3.default.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-one", "aria-hidden": "true" }),
+        import_react3.default.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-two", "aria-hidden": "true" }),
+        import_react3.default.createElement("span", { className: "app-header-brand-grid", "aria-hidden": "true" }),
+        import_react3.default.createElement(
+          "div",
+          { className: "app-header-main" },
+          import_react3.default.createElement(
+            "div",
+            { className: "app-header-brand-inner flex items-center gap-4 min-w-0" },
+            import_react3.default.createElement(
+              "div",
+              { className: "app-header-mark" },
+              import_react3.default.createElement(
+                MotionSwap,
+                { className: "items-center justify-center" },
+                import_react3.default.createElement("span", { className: "material-symbols-outlined text-[18px]" }, state.isRunning ? "bolt" : "auto_awesome")
+              )
+            ),
+            import_react3.default.createElement(
+              "div",
+              { className: "flex flex-col gap-1 min-w-0" },
+              import_react3.default.createElement("span", { className: "font-headline-md text-headline-md font-bold text-on-surface" }, "Devenv"),
+              import_react3.default.createElement(
+                "div",
+                { className: "app-header-pills" },
+                import_react3.default.createElement(
+                  MotionDeck,
+                  { className: "app-header-pill-deck" },
+                  import_react3.default.createElement(
+                    MotionBadge,
+                    { className: "app-header-pill app-header-pill-live", active: state.isRunning },
+                    state.isRunning ? "Live turn" : "Shell ready"
+                  ),
+                  import_react3.default.createElement("span", { className: "app-header-pill" }, activeBackend),
+                  import_react3.default.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
+                  import_react3.default.createElement("span", { className: "app-header-pill" }, routeLabel)
+                )
+              ),
+              import_react3.default.createElement(
+                "div",
+                { className: "app-header-statusline text-on-surface-variant" },
+                import_react3.default.createElement(
+                  MotionShimmerText,
+                  { active: state.isRunning, className: "app-header-statuscopy" },
+                  state.isRunning ? `Running through ${activeBackend}` : state.planMode ? "Planning with grounded files and read-only tools first" : describeHeaderStatus(state.selectedTools)
+                )
+              )
+            )
+          ),
+          import_react3.default.createElement(
+            "div",
+            { className: "app-header-side" },
+            import_react3.default.createElement(
+              "div",
+              { className: "app-header-settings-anchor" },
+              import_react3.default.createElement(
+                "button",
+                {
+                  type: "button",
+                  "data-action": "toggle-settings",
+                  className: `app-header-button app-header-settings-button icon-button p-2 rounded-2xl text-on-surface-variant ${state.showSettings ? "is-active text-primary" : ""}`,
+                  onClick: toggleSettings,
+                  "aria-label": "Settings"
+                },
+                import_react3.default.createElement("span", { className: "material-symbols-outlined text-[20px]" }, "settings")
+              )
+            ),
+            import_react3.default.createElement(
+              MetalSurface,
+              { className: "app-header-route-runway" },
+              import_react3.default.createElement("span", { className: "app-header-route-beam", "aria-hidden": "true" }),
+              import_react3.default.createElement(
+                "div",
+                { className: "app-header-route-head" },
+                import_react3.default.createElement(
+                  "span",
+                  { className: `app-header-route-pip${state.isRunning ? " is-live" : ""}`, "aria-hidden": "true" }
+                ),
+                import_react3.default.createElement("span", { className: "app-header-route-kicker" }, laneLabel),
+                import_react3.default.createElement("span", { className: "app-header-route-divider", "aria-hidden": "true" }),
+                import_react3.default.createElement("strong", { className: "app-header-route-value" }, routeLabel)
+              ),
+              import_react3.default.createElement("div", { className: "app-header-route-copy" }, laneCopy)
+            )
+          )
+        )
+      )
+    )
+  );
+}
+function showToast(dispatch2, message) {
+  dispatch2({ type: "SET_TOAST", payload: message });
+  if (toastTimeoutId) window.clearTimeout(toastTimeoutId);
+  toastTimeoutId = window.setTimeout(() => {
+    dispatch2({ type: "SET_TOAST", payload: "" });
+  }, 1600);
+}
+function summarizeHeaderRoute(selectedTools, planMode) {
+  if (planMode) return "Repo plan";
+  const tools = Array.isArray(selectedTools) ? selectedTools : [];
+  if (!tools.length) return "Auto route";
+  if (tools.includes("track_symbol")) return "Trace route";
+  if (tools.includes("inspect_symbols")) return "Symbols route";
+  if (tools.includes("search_text")) return "Search route";
+  if (tools.includes("read_file")) return "Read route";
+  if (tools.includes("locate_files")) return "Locate route";
+  if (tools.includes("list_directory")) return "Files route";
+  if (tools.includes("knowledge_search")) return "Knowledge route";
+  if (tools.includes("web_search")) return "Web route";
+  if (tools.includes("generate_pdf")) return "PDF route";
+  if (tools.includes("generate_prompt")) return "Prompt route";
+  return `${tools.length} routes`;
+}
+function describeHeaderStatus(selectedTools) {
+  const tools = Array.isArray(selectedTools) ? selectedTools : [];
+  if (!tools.length) return "Light shell, direct answers, and tools only when the task actually needs them";
+  if (tools.includes("track_symbol")) return "Following one symbol through the codebase before answering";
+  if (tools.includes("inspect_symbols")) return "Inspecting definitions, exports, and structure first";
+  if (tools.includes("search_text")) return "Scanning the repo for strings and usage sites first";
+  if (tools.includes("read_file")) return "Opening exact files before answering or planning";
+  if (tools.includes("locate_files")) return "Finding the right files before deeper inspection";
+  if (tools.includes("list_directory")) return "Mapping folders and workspace structure first";
+  if (tools.includes("knowledge_search")) return "Pulling external references, repos, docs, and threads";
+  if (tools.includes("web_search")) return "Biasing toward current web results and live facts";
+  if (tools.includes("generate_pdf")) return "Preparing a polished PDF artifact instead of only chat output";
+  if (tools.includes("generate_prompt")) return "Preparing a stronger prompt output for the task";
+  return "Constraining the runtime to the selected surfaces";
+}
+var import_react3, toastTimeoutId;
+var init_Header = __esm({
+  "src/components/Header.js"() {
+    import_react3 = __toESM(require_react(), 1);
+    init_AppContext();
+    init_format();
+    init_MotionPrimitives();
+    toastTimeoutId = null;
+  }
+});
+
 // src/api.js
 var api_exports = {};
 __export(api_exports, {
@@ -24053,226 +24217,6 @@ async function request(url, options = {}) {
 }
 var init_api = __esm({
   "src/api.js"() {
-  }
-});
-
-// src/components/Header.js
-var Header_exports = {};
-__export(Header_exports, {
-  Header: () => Header,
-  showToast: () => showToast
-});
-function Header() {
-  const { state, dispatch: dispatch2 } = useApp();
-  const activeBackend = formatBackendLabel(state.activeBackend || state.preferredBackend || "opencode");
-  const routeLabel = summarizeHeaderRoute(state.selectedTools, state.planMode);
-  const statusLabel = state.isRunning ? "Live" : state.planMode ? "Plan" : "Direct";
-  const laneLabel = state.planMode ? "Blueprint lane" : state.isRunning ? "Runtime lane" : "Ready lane";
-  const laneCopy = state.isRunning ? `Routing this turn through ${activeBackend} with visible tool and trace feedback.` : state.planMode ? "Repo-aware plan mode keeps the next turn staged as a flow before execution." : "The shell stays light and direct until the prompt actually needs tools, memory, or live search.";
-  const toggleSettings = () => {
-    dispatch2({ type: "SET_SHOW_SETTINGS", payload: !state.showSettings });
-  };
-  const newThread = async () => {
-    try {
-      const { resetThread: resetThread2 } = await Promise.resolve().then(() => (init_api(), api_exports));
-      await resetThread2();
-    } catch {
-    }
-    dispatch2({ type: "SET_PROMPT", payload: "" });
-    dispatch2({ type: "SET_TRANSCRIPT", payload: [] });
-    dispatch2({ type: "SET_TOOL_PICKER_OPEN", payload: false });
-    dispatch2({ type: "SET_SELECTED_TOOLS", payload: [] });
-    dispatch2({ type: "SET_PLAN_BLUEPRINT", payload: null });
-    dispatch2({ type: "SET_SESSION_USAGE_TOTAL", payload: 0 });
-    dispatch2({ type: "SET_LATEST_TURN_TOKENS", payload: 0 });
-    dispatch2({ type: "SET_LATEST_ELAPSED_MS", payload: 0 });
-    dispatch2({
-      type: "SET_RETRIEVAL_STATUS",
-      payload: { mode: "new_context", label: "New context", detail: "No prior Devenv session has been reused yet." }
-    });
-    showToast(dispatch2, "Started a new retrieval thread");
-  };
-  const copyThread = async () => {
-    if (!state.transcript.length) {
-      showToast(dispatch2, "Nothing to copy yet");
-      return;
-    }
-    const transcriptText = state.transcript.map((entry) => {
-      const role = entry.role === "user" ? "You" : "Devenv";
-      return `${role}
-${String(entry.content || "").trim()}`;
-    }).join("\n\n");
-    try {
-      await navigator.clipboard.writeText(transcriptText);
-      showToast(dispatch2, "Thread copied");
-    } catch {
-      showToast(dispatch2, "Clipboard access failed");
-    }
-  };
-  return import_react3.default.createElement(
-    "header",
-    { className: "app-header flex justify-between items-start gap-3 flex-wrap px-margin-desktop w-full z-50 shrink-0" },
-    import_react3.default.createElement(
-      MotionReveal,
-      { className: "min-w-0 w-full" },
-      import_react3.default.createElement(
-        BeamFrame,
-        { active: state.isRunning, tone: "ocean", className: "app-header-shell rounded-2xl px-3 py-3" },
-        import_react3.default.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-one", "aria-hidden": "true" }),
-        import_react3.default.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-two", "aria-hidden": "true" }),
-        import_react3.default.createElement("span", { className: "app-header-brand-grid", "aria-hidden": "true" }),
-        import_react3.default.createElement(
-          "div",
-          { className: "app-header-main" },
-          import_react3.default.createElement(
-            "div",
-            { className: "app-header-brand-inner flex items-center gap-4 min-w-0" },
-            import_react3.default.createElement(
-              "div",
-              { className: "app-header-mark" },
-              import_react3.default.createElement(
-                MotionSwap,
-                { className: "items-center justify-center" },
-                import_react3.default.createElement("span", { className: "material-symbols-outlined text-[18px]" }, state.isRunning ? "bolt" : "auto_awesome")
-              )
-            ),
-            import_react3.default.createElement(
-              "div",
-              { className: "flex flex-col gap-1 min-w-0" },
-              import_react3.default.createElement("span", { className: "font-headline-md text-headline-md font-bold text-on-surface" }, "Devenv"),
-              import_react3.default.createElement(
-                "div",
-                { className: "app-header-pills" },
-                import_react3.default.createElement(
-                  MotionDeck,
-                  { className: "app-header-pill-deck" },
-                  import_react3.default.createElement(
-                    MotionBadge,
-                    { className: "app-header-pill app-header-pill-live", active: state.isRunning },
-                    state.isRunning ? "Live turn" : "Shell ready"
-                  ),
-                  import_react3.default.createElement("span", { className: "app-header-pill" }, activeBackend),
-                  import_react3.default.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
-                  import_react3.default.createElement("span", { className: "app-header-pill" }, routeLabel)
-                )
-              ),
-              import_react3.default.createElement(
-                "div",
-                { className: "app-header-statusline text-on-surface-variant" },
-                import_react3.default.createElement(
-                  MotionShimmerText,
-                  { active: state.isRunning, className: "app-header-statuscopy" },
-                  state.isRunning ? `Running through ${activeBackend}` : state.planMode ? "Planning with grounded files and read-only tools first" : describeHeaderStatus(state.selectedTools)
-                )
-              )
-            )
-          ),
-          import_react3.default.createElement(
-            "div",
-            { className: "app-header-side" },
-            import_react3.default.createElement(
-              MetalSurface,
-              { className: "app-header-route-runway" },
-              import_react3.default.createElement("span", { className: "app-header-route-beam", "aria-hidden": "true" }),
-              import_react3.default.createElement(
-                "div",
-                { className: "app-header-route-head" },
-                import_react3.default.createElement(
-                  "span",
-                  { className: `app-header-route-pip${state.isRunning ? " is-live" : ""}`, "aria-hidden": "true" }
-                ),
-                import_react3.default.createElement("span", { className: "app-header-route-kicker" }, laneLabel),
-                import_react3.default.createElement("span", { className: "app-header-route-divider", "aria-hidden": "true" }),
-                import_react3.default.createElement("strong", { className: "app-header-route-value" }, routeLabel)
-              ),
-              import_react3.default.createElement("div", { className: "app-header-route-copy" }, laneCopy)
-            ),
-            import_react3.default.createElement(
-              MetalSurface,
-              { className: "app-header-actions flex items-center gap-2 rounded-2xl px-2 py-2" },
-              import_react3.default.createElement("span", { className: "app-header-actions-glow", "aria-hidden": "true" }),
-              import_react3.default.createElement(
-                "button",
-                {
-                  type: "button",
-                  "data-action": "toggle-settings",
-                  className: `app-header-button icon-button p-2 rounded-2xl text-on-surface-variant ${state.showSettings ? "is-active text-primary" : ""}`,
-                  onClick: toggleSettings,
-                  "aria-label": "Settings"
-                },
-                import_react3.default.createElement("span", { className: "material-symbols-outlined text-[20px]" }, "settings")
-              ),
-              import_react3.default.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "app-header-button solid-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
-                  onClick: newThread
-                },
-                "New"
-              ),
-              import_react3.default.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "app-header-button ghost-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
-                  onClick: copyThread
-                },
-                "Copy"
-              )
-            )
-          )
-        )
-      )
-    )
-  );
-}
-function showToast(dispatch2, message) {
-  dispatch2({ type: "SET_TOAST", payload: message });
-  if (toastTimeoutId) window.clearTimeout(toastTimeoutId);
-  toastTimeoutId = window.setTimeout(() => {
-    dispatch2({ type: "SET_TOAST", payload: "" });
-  }, 1600);
-}
-function summarizeHeaderRoute(selectedTools, planMode) {
-  if (planMode) return "Repo plan";
-  const tools = Array.isArray(selectedTools) ? selectedTools : [];
-  if (!tools.length) return "Auto route";
-  if (tools.includes("track_symbol")) return "Trace route";
-  if (tools.includes("inspect_symbols")) return "Symbols route";
-  if (tools.includes("search_text")) return "Search route";
-  if (tools.includes("read_file")) return "Read route";
-  if (tools.includes("locate_files")) return "Locate route";
-  if (tools.includes("list_directory")) return "Files route";
-  if (tools.includes("knowledge_search")) return "Knowledge route";
-  if (tools.includes("web_search")) return "Web route";
-  if (tools.includes("generate_pdf")) return "PDF route";
-  if (tools.includes("generate_prompt")) return "Prompt route";
-  return `${tools.length} routes`;
-}
-function describeHeaderStatus(selectedTools) {
-  const tools = Array.isArray(selectedTools) ? selectedTools : [];
-  if (!tools.length) return "Light shell, direct answers, and tools only when the task actually needs them";
-  if (tools.includes("track_symbol")) return "Following one symbol through the codebase before answering";
-  if (tools.includes("inspect_symbols")) return "Inspecting definitions, exports, and structure first";
-  if (tools.includes("search_text")) return "Scanning the repo for strings and usage sites first";
-  if (tools.includes("read_file")) return "Opening exact files before answering or planning";
-  if (tools.includes("locate_files")) return "Finding the right files before deeper inspection";
-  if (tools.includes("list_directory")) return "Mapping folders and workspace structure first";
-  if (tools.includes("knowledge_search")) return "Pulling external references, repos, docs, and threads";
-  if (tools.includes("web_search")) return "Biasing toward current web results and live facts";
-  if (tools.includes("generate_pdf")) return "Preparing a polished PDF artifact instead of only chat output";
-  if (tools.includes("generate_prompt")) return "Preparing a stronger prompt output for the task";
-  return "Constraining the runtime to the selected surfaces";
-}
-var import_react3, toastTimeoutId;
-var init_Header = __esm({
-  "src/components/Header.js"() {
-    import_react3 = __toESM(require_react(), 1);
-    init_AppContext();
-    init_format();
-    init_MotionPrimitives();
-    toastTimeoutId = null;
   }
 });
 
@@ -33111,11 +33055,6 @@ function truncateNodeCopy(value) {
 // src/components/Transcript.js
 init_Header();
 init_MotionPrimitives();
-var SUGGESTIONS = [
-  "Do you remember anything about the old retrieval logic for this project?",
-  "What prior Codex session context is relevant to infinite memory here?",
-  "Is this a new context or does it match an older Devenv session?"
-];
 var PLAYBOOKS = [
   {
     label: "Repo plan",
@@ -33210,23 +33149,13 @@ function Transcript() {
             import_react15.default.createElement(
               "h1",
               { className: "font-headline-lg text-headline-lg text-on-surface empty-state-title empty-state-title-compact" },
-              import_react15.default.createElement(MotionShimmerText, { className: "empty-state-title-line" }, "Inspect faster."),
-              import_react15.default.createElement("span", { className: "empty-state-title-line" }, "Plan cleaner."),
-              import_react15.default.createElement("span", { className: "empty-state-title-line" }, "Ship with motion.")
+              import_react15.default.createElement(MotionShimmerText, { className: "empty-state-title-line" }, "Inspect, plan, or search.")
             ),
-            import_react15.default.createElement("div", { className: "empty-state-copy max-w-2xl font-body-lg text-body-lg text-on-surface-variant" }, "Ask Devenv to inspect the codebase, route into a plan, or search live sources. The homepage now keeps the first action in focus instead of scattering it across unrelated sections.")
+            import_react15.default.createElement("div", { className: "empty-state-copy max-w-2xl font-body-lg text-body-lg text-on-surface-variant" }, "Pick one route to start. The rest of the interface can stay out of the way.")
           ),
           import_react15.default.createElement(
             MotionDeck,
-            { className: "empty-state-hero-chips w-full mt-6" },
-            import_react15.default.createElement(MotionBadge, { className: "empty-state-hero-chip", active: true }, "Light shell"),
-            import_react15.default.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Plan-ready"),
-            import_react15.default.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Tool-routed"),
-            import_react15.default.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Ollama friendly")
-          ),
-          import_react15.default.createElement(
-            MotionDeck,
-            { className: "empty-state-command-deck w-full mt-6" },
+            { className: "empty-state-command-deck w-full mt-4" },
             PLAYBOOKS.map(
               (playbook, index) => import_react15.default.createElement(
                 MotionReveal,
@@ -33259,32 +33188,6 @@ function Transcript() {
                       import_react15.default.createElement("span", { className: "empty-state-command-launch" }, "Load prompt")
                     )
                   )
-                )
-              )
-            )
-          )
-        ),
-        import_react15.default.createElement(
-          MotionDeck,
-          { className: "empty-state-suggestions grid grid-cols-1 gap-3 w-full max-w-3xl" },
-          SUGGESTIONS.map(
-            (suggestion) => import_react15.default.createElement(
-              MotionReveal,
-              { key: suggestion, delay: SUGGESTIONS.indexOf(suggestion) * 70 },
-              import_react15.default.createElement(
-                MotionTilt,
-                null,
-                import_react15.default.createElement(
-                  "button",
-                  {
-                    type: "button",
-                    className: "empty-state-card text-left p-4 bg-surface-container border border-outline-variant rounded-2xl font-body-md text-body-md text-on-surface",
-                    onClick: () => {
-                      const event = new CustomEvent("opencode-suggestion", { detail: { suggestion, selectedTools: [], planMode: false } });
-                      window.dispatchEvent(event);
-                    }
-                  },
-                  suggestion
                 )
               )
             )

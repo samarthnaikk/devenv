@@ -2747,9 +2747,19 @@ pre {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 12px;
+  gap: 10px;
   min-width: 17rem;
-  max-width: 23rem;
+  max-width: 20rem;
+}
+
+.app-header-settings-anchor {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.app-header-settings-button {
+  background: color-mix(in srgb, var(--surface-container-low) 94%, black 6%);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
 }
 
 .app-header-brand-orbit {
@@ -2877,31 +2887,13 @@ pre {
   background: color-mix(in srgb, var(--surface-container) 84%, black 16%);
 }
 
-.app-header-actions-glow {
-  position: absolute;
-  inset: auto 8% -46% auto;
-  width: 120px;
-  height: 120px;
-  border-radius: 999px;
-  background: radial-gradient(circle, rgba(83, 214, 196, 0.12), transparent 70%);
-  pointer-events: none;
-}
-
-.app-header-actions {
-  justify-content: flex-end;
-  border: 1px solid color-mix(in srgb, var(--outline-variant) 56%, transparent);
-  background:
-    radial-gradient(circle at top left, rgba(83, 214, 196, 0.08), transparent 30%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-container-low) 90%, black 10%), color-mix(in srgb, var(--surface) 95%, black 5%));
-}
-
 .app-header-route-runway {
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 10px;
+  margin-top: 0;
   padding: 12px 14px;
   border-radius: 18px;
   border: 1px solid color-mix(in srgb, var(--outline-variant) 56%, transparent);
@@ -4143,28 +4135,20 @@ pre {
 
 .empty-state-hero-compact {
   max-width: min(100%, 1120px);
-  box-shadow: 0 18px 48px rgba(20, 35, 33, 0.07);
+  padding: 24px !important;
+  box-shadow: 0 16px 34px rgba(20, 35, 33, 0.07);
   margin-right: auto;
 }
 
 .empty-state-hero-stack {
-  max-width: 760px;
+  max-width: 620px;
   margin: 0;
+  gap: 14px !important;
 }
 
 .empty-state-copy {
-  line-height: 1.6;
-}
-
-.empty-state-hero-chips {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 10px;
-}
-
-.empty-state-hero-chip {
-  background: color-mix(in srgb, var(--surface-container-high) 78%, white 22%);
+  line-height: 1.5;
+  font-size: 15px !important;
 }
 
 .empty-state-stage-grid {
@@ -4226,13 +4210,13 @@ pre {
 .empty-state-command-deck {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: 12px;
   width: min(100%, 1120px);
 }
 
 .empty-state-command-card {
   position: relative;
-  min-height: 186px;
+  min-height: 164px;
   width: 100%;
   overflow: hidden;
   border-radius: 24px;
@@ -4241,8 +4225,8 @@ pre {
     radial-gradient(circle at top left, rgba(79, 219, 200, 0.12), transparent 30%),
     radial-gradient(circle at bottom right, rgba(36, 93, 168, 0.12), transparent 36%),
     linear-gradient(180deg, color-mix(in srgb, var(--surface-container-high) 78%, white 22%), color-mix(in srgb, var(--surface) 92%, white 8%));
-  padding: 18px;
-  box-shadow: 0 20px 44px rgba(20, 35, 33, 0.08);
+  padding: 15px;
+  box-shadow: 0 14px 30px rgba(20, 35, 33, 0.08);
   transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), border-color 220ms ease, box-shadow 220ms ease;
 }
 
@@ -4271,7 +4255,7 @@ pre {
 
 .empty-state-command-kicker {
   display: inline-flex;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -4283,15 +4267,15 @@ pre {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 12px;
-  font-size: 15px;
+  margin-bottom: 10px;
+  font-size: 14px;
   color: var(--text);
 }
 
 .empty-state-command-copy {
   margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--muted);
 }
 
@@ -4300,7 +4284,7 @@ pre {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 18px;
+  margin-top: 12px;
 }
 
 .empty-state-command-pill,
@@ -4336,6 +4320,8 @@ pre {
 
 .empty-state-title-compact {
   gap: 0;
+  font-size: clamp(2rem, 3vw, 2.7rem) !important;
+  line-height: 1.05 !important;
 }
 
 .empty-state-title-line {

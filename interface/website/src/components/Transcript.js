@@ -8,12 +8,6 @@ import { PlanFlowchart } from "./PlanFlowchart.js?v=flow4";
 import { showToast } from "./Header.js";
 import { BeamFrame, MotionBadge, MotionDeck, MotionNumber, MotionReveal, MotionShimmerText, MotionStack, MotionTilt } from "./MotionPrimitives.js";
 
-const SUGGESTIONS = [
-  "Do you remember anything about the old retrieval logic for this project?",
-  "What prior Codex session context is relevant to infinite memory here?",
-  "Is this a new context or does it match an older Devenv session?",
-];
-
 const PLAYBOOKS = [
   {
     label: "Repo plan",
@@ -114,23 +108,13 @@ export function Transcript() {
             React.createElement(
               "h1",
               { className: "font-headline-lg text-headline-lg text-on-surface empty-state-title empty-state-title-compact" },
-              React.createElement(MotionShimmerText, { className: "empty-state-title-line" }, "Inspect faster."),
-              React.createElement("span", { className: "empty-state-title-line" }, "Plan cleaner."),
-              React.createElement("span", { className: "empty-state-title-line" }, "Ship with motion.")
+              React.createElement(MotionShimmerText, { className: "empty-state-title-line" }, "Inspect, plan, or search.")
             ),
-            React.createElement("div", { className: "empty-state-copy max-w-2xl font-body-lg text-body-lg text-on-surface-variant" }, "Ask Devenv to inspect the codebase, route into a plan, or search live sources. The homepage now keeps the first action in focus instead of scattering it across unrelated sections.")
+            React.createElement("div", { className: "empty-state-copy max-w-2xl font-body-lg text-body-lg text-on-surface-variant" }, "Pick one route to start. The rest of the interface can stay out of the way.")
           ),
           React.createElement(
             MotionDeck,
-            { className: "empty-state-hero-chips w-full mt-6" },
-            React.createElement(MotionBadge, { className: "empty-state-hero-chip", active: true }, "Light shell"),
-            React.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Plan-ready"),
-            React.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Tool-routed"),
-            React.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Ollama friendly")
-          ),
-          React.createElement(
-            MotionDeck,
-            { className: "empty-state-command-deck w-full mt-6" },
+            { className: "empty-state-command-deck w-full mt-4" },
             PLAYBOOKS.map((playbook, index) =>
               React.createElement(
                 MotionReveal,
@@ -163,32 +147,6 @@ export function Transcript() {
                       React.createElement("span", { className: "empty-state-command-launch" }, "Load prompt")
                     )
                   )
-                )
-              )
-            )
-          )
-        ),
-        React.createElement(
-          MotionDeck,
-          { className: "empty-state-suggestions grid grid-cols-1 gap-3 w-full max-w-3xl" },
-          SUGGESTIONS.map((suggestion) =>
-            React.createElement(
-              MotionReveal,
-              { key: suggestion, delay: SUGGESTIONS.indexOf(suggestion) * 70 },
-              React.createElement(
-                MotionTilt,
-                null,
-                React.createElement(
-                  "button",
-                  {
-                    type: "button",
-                    className: "empty-state-card text-left p-4 bg-surface-container border border-outline-variant rounded-2xl font-body-md text-body-md text-on-surface",
-                    onClick: () => {
-                      const event = new CustomEvent("opencode-suggestion", { detail: { suggestion, selectedTools: [], planMode: false } });
-                      window.dispatchEvent(event);
-                    },
-                  },
-                  suggestion
                 )
               )
             )
