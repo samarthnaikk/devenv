@@ -4,9 +4,9 @@ import { App } from "./App.js";
 
 try {
   const storedTheme = window.localStorage.getItem("devenv-ui-theme");
-  document.body.dataset.theme = storedTheme === "dark" ? "dark" : "light";
+  document.body.dataset.theme = storedTheme === "light" ? "light" : "dark";
 } catch {
-  document.body.dataset.theme = "light";
+  document.body.dataset.theme = "dark";
 }
 
 const rootElement = document.getElementById("root");

@@ -23546,9 +23546,9 @@ var require_client = __commonJS({
 function loadTheme() {
   try {
     const stored = window.localStorage.getItem(STORAGE_THEME_KEY);
-    return stored === "dark" ? "dark" : "light";
+    return stored === "light" ? "light" : "dark";
   } catch {
-    return "light";
+    return "dark";
   }
 }
 function persistTheme(theme) {
@@ -24114,54 +24114,62 @@ ${String(entry.content || "").trim()}`;
     { className: "app-header flex justify-between items-start gap-3 flex-wrap px-margin-desktop w-full z-50 shrink-0" },
     import_react3.default.createElement(
       MotionReveal,
-      { className: "min-w-0" },
+      { className: "min-w-0 w-full" },
       import_react3.default.createElement(
         BeamFrame,
-        { active: state.isRunning, tone: "ocean", className: "app-header-brand rounded-2xl px-3 py-2" },
+        { active: state.isRunning, tone: "ocean", className: "app-header-shell rounded-2xl px-3 py-3" },
         import_react3.default.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-one", "aria-hidden": "true" }),
         import_react3.default.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-two", "aria-hidden": "true" }),
         import_react3.default.createElement("span", { className: "app-header-brand-grid", "aria-hidden": "true" }),
         import_react3.default.createElement(
           "div",
-          { className: "app-header-brand-inner flex items-center gap-4" },
+          { className: "app-header-main" },
           import_react3.default.createElement(
             "div",
-            { className: "app-header-mark" },
+            { className: "app-header-brand-inner flex items-center gap-4 min-w-0" },
             import_react3.default.createElement(
-              MotionSwap,
-              { className: "items-center justify-center" },
-              import_react3.default.createElement("span", { className: "material-symbols-outlined text-[18px]" }, state.isRunning ? "bolt" : "auto_awesome")
+              "div",
+              { className: "app-header-mark" },
+              import_react3.default.createElement(
+                MotionSwap,
+                { className: "items-center justify-center" },
+                import_react3.default.createElement("span", { className: "material-symbols-outlined text-[18px]" }, state.isRunning ? "bolt" : "auto_awesome")
+              )
+            ),
+            import_react3.default.createElement(
+              "div",
+              { className: "flex flex-col gap-1 min-w-0" },
+              import_react3.default.createElement("span", { className: "font-headline-md text-headline-md font-bold text-on-surface" }, "Devenv"),
+              import_react3.default.createElement(
+                "div",
+                { className: "app-header-pills" },
+                import_react3.default.createElement(
+                  MotionDeck,
+                  { className: "app-header-pill-deck" },
+                  import_react3.default.createElement(
+                    MotionBadge,
+                    { className: "app-header-pill app-header-pill-live", active: state.isRunning },
+                    state.isRunning ? "Live turn" : "Shell ready"
+                  ),
+                  import_react3.default.createElement("span", { className: "app-header-pill" }, activeBackend),
+                  import_react3.default.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
+                  import_react3.default.createElement("span", { className: "app-header-pill" }, routeLabel)
+                )
+              ),
+              import_react3.default.createElement(
+                "div",
+                { className: "app-header-statusline text-on-surface-variant" },
+                import_react3.default.createElement(
+                  MotionShimmerText,
+                  { active: state.isRunning, className: "app-header-statuscopy" },
+                  state.isRunning ? `Running through ${activeBackend}` : state.planMode ? "Planning with grounded files and read-only tools first" : describeHeaderStatus(state.selectedTools)
+                )
+              )
             )
           ),
           import_react3.default.createElement(
             "div",
-            { className: "flex flex-col gap-1 min-w-0" },
-            import_react3.default.createElement("span", { className: "font-headline-md text-headline-md font-bold text-on-surface" }, "Devenv"),
-            import_react3.default.createElement(
-              "div",
-              { className: "app-header-pills" },
-              import_react3.default.createElement(
-                MotionDeck,
-                { className: "app-header-pill-deck" },
-                import_react3.default.createElement(
-                  MotionBadge,
-                  { className: "app-header-pill app-header-pill-live", active: state.isRunning },
-                  state.isRunning ? "Live turn" : "Shell ready"
-                ),
-                import_react3.default.createElement("span", { className: "app-header-pill" }, activeBackend),
-                import_react3.default.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
-                import_react3.default.createElement("span", { className: "app-header-pill" }, routeLabel)
-              )
-            ),
-            import_react3.default.createElement(
-              "div",
-              { className: "app-header-statusline text-on-surface-variant" },
-              import_react3.default.createElement(
-                MotionShimmerText,
-                { active: state.isRunning, className: "app-header-statuscopy" },
-                state.isRunning ? `Running through ${activeBackend}` : state.planMode ? "Planning with grounded files and read-only tools first" : describeHeaderStatus(state.selectedTools)
-              )
-            ),
+            { className: "app-header-side" },
             import_react3.default.createElement(
               MetalSurface,
               { className: "app-header-route-runway" },
@@ -24178,46 +24186,42 @@ ${String(entry.content || "").trim()}`;
                 import_react3.default.createElement("strong", { className: "app-header-route-value" }, routeLabel)
               ),
               import_react3.default.createElement("div", { className: "app-header-route-copy" }, laneCopy)
+            ),
+            import_react3.default.createElement(
+              MetalSurface,
+              { className: "app-header-actions flex items-center gap-2 rounded-2xl px-2 py-2" },
+              import_react3.default.createElement("span", { className: "app-header-actions-glow", "aria-hidden": "true" }),
+              import_react3.default.createElement(
+                "button",
+                {
+                  type: "button",
+                  "data-action": "toggle-settings",
+                  className: `app-header-button icon-button p-2 rounded-2xl text-on-surface-variant ${state.showSettings ? "is-active text-primary" : ""}`,
+                  onClick: toggleSettings,
+                  "aria-label": "Settings"
+                },
+                import_react3.default.createElement("span", { className: "material-symbols-outlined text-[20px]" }, "settings")
+              ),
+              import_react3.default.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "app-header-button solid-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
+                  onClick: newThread
+                },
+                "New"
+              ),
+              import_react3.default.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "app-header-button ghost-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
+                  onClick: copyThread
+                },
+                "Copy"
+              )
             )
           )
-        )
-      )
-    ),
-    import_react3.default.createElement(
-      MotionReveal,
-      { delay: 90 },
-      import_react3.default.createElement(
-        MetalSurface,
-        { className: "app-header-actions flex items-center gap-2 rounded-2xl px-2 py-2" },
-        import_react3.default.createElement("span", { className: "app-header-actions-glow", "aria-hidden": "true" }),
-        import_react3.default.createElement(
-          "button",
-          {
-            type: "button",
-            "data-action": "toggle-settings",
-            className: `app-header-button icon-button p-2 rounded-2xl text-on-surface-variant ${state.showSettings ? "is-active text-primary" : ""}`,
-            onClick: toggleSettings,
-            "aria-label": "Settings"
-          },
-          import_react3.default.createElement("span", { className: "material-symbols-outlined text-[20px]" }, "settings")
-        ),
-        import_react3.default.createElement(
-          "button",
-          {
-            type: "button",
-            className: "app-header-button solid-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
-            onClick: newThread
-          },
-          "New"
-        ),
-        import_react3.default.createElement(
-          "button",
-          {
-            type: "button",
-            className: "app-header-button ghost-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
-            onClick: copyThread
-          },
-          "Copy"
         )
       )
     )
@@ -33191,13 +33195,13 @@ function Transcript() {
       { className: "transcript-scroll p-margin-desktop space-y-8", ref: scrollRef },
       import_react15.default.createElement(
         "div",
-        { className: "empty-state-shell empty-state-shell-compact flex flex-col items-center justify-center gap-6 px-4" },
+        { className: "empty-state-shell empty-state-shell-compact flex flex-col items-start justify-center gap-6 px-4" },
         import_react15.default.createElement(
           BeamFrame,
           { active: false, tone: "ocean", className: "empty-state-hero empty-state-hero-compact rounded-3xl p-8 w-full" },
           import_react15.default.createElement(
             "div",
-            { className: "empty-state-hero-stack flex flex-col items-center gap-4" },
+            { className: "empty-state-hero-stack flex flex-col items-start gap-4" },
             import_react15.default.createElement(
               "div",
               { className: "empty-state-badge w-14 h-14 rounded-full flex items-center justify-center text-on-primary" },
@@ -33205,12 +33209,12 @@ function Transcript() {
             ),
             import_react15.default.createElement(
               "h1",
-              { className: "font-headline-lg text-headline-lg text-on-surface text-center empty-state-title empty-state-title-compact" },
+              { className: "font-headline-lg text-headline-lg text-on-surface empty-state-title empty-state-title-compact" },
               import_react15.default.createElement(MotionShimmerText, { className: "empty-state-title-line" }, "Inspect faster."),
               import_react15.default.createElement("span", { className: "empty-state-title-line" }, "Plan cleaner."),
               import_react15.default.createElement("span", { className: "empty-state-title-line" }, "Ship with motion.")
             ),
-            import_react15.default.createElement("div", { className: "empty-state-copy max-w-2xl text-center font-body-lg text-body-lg text-on-surface-variant" }, "Ask Devenv to inspect the codebase, route into a plan, or search live sources. The homepage now keeps the first action in focus instead of scattering it across unrelated sections.")
+            import_react15.default.createElement("div", { className: "empty-state-copy max-w-2xl font-body-lg text-body-lg text-on-surface-variant" }, "Ask Devenv to inspect the codebase, route into a plan, or search live sources. The homepage now keeps the first action in focus instead of scattering it across unrelated sections.")
           ),
           import_react15.default.createElement(
             MotionDeck,
@@ -34084,7 +34088,7 @@ Last error: ${planValidationError}`,
     },
     import_react17.default.createElement(
       "div",
-      { className: "max-w-4xl mx-auto flex flex-col gap-3" },
+      { className: "composer-inner flex flex-col gap-3" },
       import_react17.default.createElement(
         BeamFrame,
         {
@@ -36293,9 +36297,9 @@ function App() {
 // src/index.js
 try {
   const storedTheme = window.localStorage.getItem("devenv-ui-theme");
-  document.body.dataset.theme = storedTheme === "dark" ? "dark" : "light";
+  document.body.dataset.theme = storedTheme === "light" ? "light" : "dark";
 } catch {
-  document.body.dataset.theme = "light";
+  document.body.dataset.theme = "dark";
 }
 var rootElement = document.getElementById("root");
 var root2 = import_client.default.createRoot(rootElement);

@@ -288,7 +288,7 @@ export function Composer() {
     },
     React.createElement(
       "div",
-      { className: "max-w-4xl mx-auto flex flex-col gap-3" },
+      { className: "composer-inner flex flex-col gap-3" },
       React.createElement(
         BeamFrame,
         {

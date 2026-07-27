@@ -1,20 +1,20 @@
 :root {
   color-scheme: dark;
-  --background: #0d0f12;
-  --surface: #111317;
-  --surface-container-low: #1a1c1f;
-  --surface-container: #1e2023;
-  --surface-container-high: #282a2d;
-  --surface-container-highest: #333538;
-  --terminal: #0a0c0e;
-  --text: #e2e2e6;
-  --muted: #bbcac6;
-  --muted-dim: #859490;
-  --outline: #3c4947;
-  --outline-variant: #3c4947;
-  --primary: #4fdbc8;
+  --background: #071015;
+  --surface: #0d171d;
+  --surface-container-low: #112028;
+  --surface-container: #16262f;
+  --surface-container-high: #1d313b;
+  --surface-container-highest: #27404c;
+  --terminal: #091117;
+  --text: #ebf7f6;
+  --muted: #b2cac8;
+  --muted-dim: #7f9d9a;
+  --outline: #335059;
+  --outline-variant: #335059;
+  --primary: #53d6c4;
   --on-primary: #003731;
-  --secondary: #0566d9;
+  --secondary: #3a84da;
   --danger: #ffb4ab;
   --font-ui: "Inter", "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", "SF Mono", monospace;
@@ -2698,11 +2698,7 @@ pre {
 }
 
 .app-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  display: block;
   min-height: 78px;
   padding-top: 12px;
   padding-bottom: 10px;
@@ -2711,17 +2707,7 @@ pre {
   backdrop-filter: none;
 }
 
-.app-header > *:first-child {
-  flex: 1 1 44rem;
-  min-width: 0;
-}
-
-.app-header > *:last-child {
-  flex: 0 0 auto;
-  max-width: 100%;
-}
-
-.app-header-brand,
+.app-header-shell,
 .app-header-actions,
 .workspace-rail,
 .workspace-rail-collapsed {
@@ -2730,10 +2716,26 @@ pre {
   box-shadow: none;
 }
 
-.app-header-brand,
+.app-header-shell,
 .app-header-actions {
   position: relative;
   overflow: hidden;
+}
+
+.app-header-shell {
+  background:
+    radial-gradient(circle at top left, rgba(58, 132, 218, 0.12), transparent 26%),
+    radial-gradient(circle at top right, rgba(83, 214, 196, 0.12), transparent 24%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, white 8%), color-mix(in srgb, var(--surface-container-low) 94%, black 6%));
+}
+
+.app-header-main {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
 }
 
 .app-header-brand-inner {
@@ -2741,8 +2743,17 @@ pre {
   z-index: 1;
 }
 
+.app-header-side {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  min-width: 17rem;
+  max-width: 23rem;
+}
+
 .app-header-brand-orbit {
-  position: absolute;
+  position: absolute !important;
   border-radius: 999px;
   pointer-events: none;
   filter: blur(20px);
@@ -2807,10 +2818,10 @@ pre {
 .app-header-statusline {
   font-size: 12px;
   line-height: 1.4;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: min(54vw, 680px);
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: min(62vw, 760px);
 }
 
 .app-header-statuscopy {
@@ -2827,9 +2838,9 @@ pre {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--muted);
-  background: color-mix(in srgb, var(--surface-container-high) 90%, white 10%);
-  border: 1px solid color-mix(in srgb, var(--outline-variant) 80%, transparent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface-container-high) 88%, black 12%);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 72%, transparent);
 }
 
 .app-header-button {
@@ -2847,7 +2858,7 @@ pre {
 }
 
 .app-header-button.icon-button {
-  background: color-mix(in srgb, var(--surface-container-low) 82%, transparent);
+  background: color-mix(in srgb, var(--surface-container-low) 92%, black 8%);
 }
 
 .app-header-button.icon-button.is-active,
@@ -2863,7 +2874,7 @@ pre {
 
 .app-header-button.ghost-button {
   color: var(--text);
-  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  background: color-mix(in srgb, var(--surface-container) 84%, black 16%);
 }
 
 .app-header-actions-glow {
@@ -2872,8 +2883,16 @@ pre {
   width: 120px;
   height: 120px;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(79, 219, 200, 0.14), transparent 70%);
+  background: radial-gradient(circle, rgba(83, 214, 196, 0.12), transparent 70%);
   pointer-events: none;
+}
+
+.app-header-actions {
+  justify-content: flex-end;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 56%, transparent);
+  background:
+    radial-gradient(circle at top left, rgba(83, 214, 196, 0.08), transparent 30%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-container-low) 90%, black 10%), color-mix(in srgb, var(--surface) 95%, black 5%));
 }
 
 .app-header-route-runway {
@@ -2883,11 +2902,13 @@ pre {
   flex-direction: column;
   gap: 6px;
   margin-top: 10px;
-  padding: 10px 0 0;
-  border-radius: 0;
-  border: none;
-  background: transparent;
-  box-shadow: none;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 56%, transparent);
+  background:
+    radial-gradient(circle at top right, rgba(58, 132, 218, 0.12), transparent 32%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-container-low) 88%, black 12%), color-mix(in srgb, var(--surface) 94%, black 6%));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .app-header-route-beam {
@@ -3069,7 +3090,7 @@ pre {
 }
 
 .app-main-chat-shell-orbit {
-  position: absolute;
+  position: absolute !important;
   top: 26px;
   right: 42px;
   width: 168px;
@@ -3351,6 +3372,10 @@ pre {
   z-index: 1;
   padding-top: 12px;
   padding-bottom: 8px;
+}
+
+.transcript-scroll > * {
+  width: min(100%, 1120px);
 }
 
 .workspace-rail-collapsed {
@@ -3924,8 +3949,8 @@ pre {
 .empty-state-shell {
   position: relative;
   width: 100%;
-  max-width: 1040px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
 }
 
 .empty-state-shell-compact {
@@ -4117,13 +4142,14 @@ pre {
 }
 
 .empty-state-hero-compact {
-  max-width: 100%;
+  max-width: min(100%, 1120px);
   box-shadow: 0 18px 48px rgba(20, 35, 33, 0.07);
+  margin-right: auto;
 }
 
 .empty-state-hero-stack {
   max-width: 760px;
-  margin: 0 auto;
+  margin: 0;
 }
 
 .empty-state-copy {
@@ -4133,7 +4159,7 @@ pre {
 .empty-state-hero-chips {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 10px;
 }
 
@@ -4201,6 +4227,7 @@ pre {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+  width: min(100%, 1120px);
 }
 
 .empty-state-command-card {
@@ -4368,6 +4395,7 @@ pre {
 
 .empty-state-suggestions {
   width: 100%;
+  max-width: 880px;
 }
 
 .empty-state-card {
@@ -4663,13 +4691,13 @@ pre {
     min-width: 18rem;
   }
 
-  .app-header > *:first-child,
-  .app-header > *:last-child {
-    flex-basis: 100%;
+  .app-header-main {
+    grid-template-columns: 1fr;
   }
 
-  .app-header-actions {
-    margin-left: auto;
+  .app-header-side {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .app-main {
@@ -4801,6 +4829,11 @@ pre {
   background: color-mix(in srgb, var(--surface-container-low) 56%, transparent);
   backdrop-filter: blur(10px);
   padding-top: 8px;
+}
+
+.composer-inner {
+  width: min(100%, 1120px);
+  margin: 0;
 }
 
 .composer-frame {

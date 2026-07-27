@@ -99,13 +99,13 @@ export function Transcript() {
       { className: "transcript-scroll p-margin-desktop space-y-8", ref: scrollRef },
       React.createElement(
         "div",
-        { className: "empty-state-shell empty-state-shell-compact flex flex-col items-center justify-center gap-6 px-4" },
+        { className: "empty-state-shell empty-state-shell-compact flex flex-col items-start justify-center gap-6 px-4" },
         React.createElement(
           BeamFrame,
           { active: false, tone: "ocean", className: "empty-state-hero empty-state-hero-compact rounded-3xl p-8 w-full" },
           React.createElement(
             "div",
-            { className: "empty-state-hero-stack flex flex-col items-center gap-4" },
+            { className: "empty-state-hero-stack flex flex-col items-start gap-4" },
             React.createElement(
               "div",
               { className: "empty-state-badge w-14 h-14 rounded-full flex items-center justify-center text-on-primary" },
@@ -113,12 +113,12 @@ export function Transcript() {
             ),
             React.createElement(
               "h1",
-              { className: "font-headline-lg text-headline-lg text-on-surface text-center empty-state-title empty-state-title-compact" },
+              { className: "font-headline-lg text-headline-lg text-on-surface empty-state-title empty-state-title-compact" },
               React.createElement(MotionShimmerText, { className: "empty-state-title-line" }, "Inspect faster."),
               React.createElement("span", { className: "empty-state-title-line" }, "Plan cleaner."),
               React.createElement("span", { className: "empty-state-title-line" }, "Ship with motion.")
             ),
-            React.createElement("div", { className: "empty-state-copy max-w-2xl text-center font-body-lg text-body-lg text-on-surface-variant" }, "Ask Devenv to inspect the codebase, route into a plan, or search live sources. The homepage now keeps the first action in focus instead of scattering it across unrelated sections.")
+            React.createElement("div", { className: "empty-state-copy max-w-2xl font-body-lg text-body-lg text-on-surface-variant" }, "Ask Devenv to inspect the codebase, route into a plan, or search live sources. The homepage now keeps the first action in focus instead of scattering it across unrelated sections.")
           ),
           React.createElement(
             MotionDeck,

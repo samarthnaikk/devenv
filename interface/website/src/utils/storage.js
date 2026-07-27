@@ -7,9 +7,9 @@ const STORAGE_SETUP_KEY = "devenv-ui-setup";
 export function loadTheme() {
   try {
     const stored = window.localStorage.getItem(STORAGE_THEME_KEY);
-    return stored === "dark" ? "dark" : "light";
+    return stored === "light" ? "light" : "dark";
   } catch {
-    return "light";
+    return "dark";
   }
 }
 

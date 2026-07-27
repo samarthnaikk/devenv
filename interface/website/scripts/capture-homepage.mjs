@@ -12,6 +12,7 @@ const executablePath = process.env.PLAYWRIGHT_CHROME_PATH || "/usr/sbin/google-c
 const viewportWidth = Number(process.env.VISUAL_WIDTH || 1440);
 const viewportHeight = Number(process.env.VISUAL_HEIGHT || 2200);
 const colorScheme = process.env.VISUAL_COLOR_SCHEME === "dark" ? "dark" : "light";
+const uiTheme = process.env.VISUAL_THEME || "dark";
 
 const browser = await chromium.launch({
   executablePath,
@@ -23,6 +24,10 @@ try {
     viewport: { width: viewportWidth, height: viewportHeight },
     colorScheme,
   });
+
+  await page.addInitScript((theme) => {
+    window.localStorage.setItem("devenv-ui-theme", theme === "light" ? "light" : "dark");
+  }, uiTheme);
 
   await page.goto(targetUrl, { waitUntil: "networkidle" });
   await page.screenshot({ path: outputPath, fullPage: true });

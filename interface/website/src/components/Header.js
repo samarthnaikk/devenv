@@ -65,58 +65,66 @@ export function Header() {
     { className: "app-header flex justify-between items-start gap-3 flex-wrap px-margin-desktop w-full z-50 shrink-0" },
     React.createElement(
       MotionReveal,
-      { className: "min-w-0" },
+      { className: "min-w-0 w-full" },
       React.createElement(
         BeamFrame,
-        { active: state.isRunning, tone: "ocean", className: "app-header-brand rounded-2xl px-3 py-2" },
+        { active: state.isRunning, tone: "ocean", className: "app-header-shell rounded-2xl px-3 py-3" },
         React.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-one", "aria-hidden": "true" }),
         React.createElement("span", { className: "app-header-brand-orbit app-header-brand-orbit-two", "aria-hidden": "true" }),
         React.createElement("span", { className: "app-header-brand-grid", "aria-hidden": "true" }),
         React.createElement(
           "div",
-          { className: "app-header-brand-inner flex items-center gap-4" },
+          { className: "app-header-main" },
           React.createElement(
             "div",
-            { className: "app-header-mark" },
+            { className: "app-header-brand-inner flex items-center gap-4 min-w-0" },
             React.createElement(
-              MotionSwap,
-              { className: "items-center justify-center" },
-              React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, state.isRunning ? "bolt" : "auto_awesome")
+              "div",
+              { className: "app-header-mark" },
+              React.createElement(
+                MotionSwap,
+                { className: "items-center justify-center" },
+                React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, state.isRunning ? "bolt" : "auto_awesome")
+              )
+            ),
+            React.createElement(
+              "div",
+              { className: "flex flex-col gap-1 min-w-0" },
+              React.createElement("span", { className: "font-headline-md text-headline-md font-bold text-on-surface" }, "Devenv"),
+              React.createElement(
+                "div",
+                { className: "app-header-pills" },
+                React.createElement(
+                  MotionDeck,
+                  { className: "app-header-pill-deck" },
+                  React.createElement(
+                    MotionBadge,
+                    { className: "app-header-pill app-header-pill-live", active: state.isRunning },
+                    state.isRunning ? "Live turn" : "Shell ready"
+                  ),
+                  React.createElement("span", { className: "app-header-pill" }, activeBackend),
+                  React.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
+                  React.createElement("span", { className: "app-header-pill" }, routeLabel)
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "app-header-statusline text-on-surface-variant" },
+                React.createElement(
+                  MotionShimmerText,
+                  { active: state.isRunning, className: "app-header-statuscopy" },
+                  state.isRunning
+                    ? `Running through ${activeBackend}`
+                    : state.planMode
+                      ? "Planning with grounded files and read-only tools first"
+                      : describeHeaderStatus(state.selectedTools)
+                )
+              )
             )
           ),
           React.createElement(
             "div",
-            { className: "flex flex-col gap-1 min-w-0" },
-            React.createElement("span", { className: "font-headline-md text-headline-md font-bold text-on-surface" }, "Devenv"),
-            React.createElement(
-              "div",
-              { className: "app-header-pills" },
-              React.createElement(
-                MotionDeck,
-                { className: "app-header-pill-deck" },
-                React.createElement(
-                  MotionBadge,
-                  { className: "app-header-pill app-header-pill-live", active: state.isRunning },
-                  state.isRunning ? "Live turn" : "Shell ready"
-                ),
-                React.createElement("span", { className: "app-header-pill" }, activeBackend),
-                React.createElement("span", { className: "app-header-pill" }, `${statusLabel} mode`),
-                React.createElement("span", { className: "app-header-pill" }, routeLabel)
-              )
-            ),
-            React.createElement(
-              "div",
-              { className: "app-header-statusline text-on-surface-variant" },
-              React.createElement(
-                MotionShimmerText,
-                { active: state.isRunning, className: "app-header-statuscopy" },
-                state.isRunning
-                  ? `Running through ${activeBackend}`
-                  : state.planMode
-                    ? "Planning with grounded files and read-only tools first"
-                    : describeHeaderStatus(state.selectedTools)
-              )
-            ),
+            { className: "app-header-side" },
             React.createElement(
               MetalSurface,
               { className: "app-header-route-runway" },
@@ -133,46 +141,42 @@ export function Header() {
                 React.createElement("strong", { className: "app-header-route-value" }, routeLabel)
               ),
               React.createElement("div", { className: "app-header-route-copy" }, laneCopy)
+            ),
+            React.createElement(
+              MetalSurface,
+              { className: "app-header-actions flex items-center gap-2 rounded-2xl px-2 py-2" },
+              React.createElement("span", { className: "app-header-actions-glow", "aria-hidden": "true" }),
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  "data-action": "toggle-settings",
+                  className: `app-header-button icon-button p-2 rounded-2xl text-on-surface-variant ${state.showSettings ? "is-active text-primary" : ""}`,
+                  onClick: toggleSettings,
+                  "aria-label": "Settings",
+                },
+                React.createElement("span", { className: "material-symbols-outlined text-[20px]" }, "settings")
+              ),
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "app-header-button solid-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
+                  onClick: newThread,
+                },
+                "New"
+              ),
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "app-header-button ghost-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
+                  onClick: copyThread,
+                },
+                "Copy"
+              )
             )
           )
-        )
-      )
-    ),
-    React.createElement(
-      MotionReveal,
-      { delay: 90 },
-      React.createElement(
-        MetalSurface,
-        { className: "app-header-actions flex items-center gap-2 rounded-2xl px-2 py-2" },
-        React.createElement("span", { className: "app-header-actions-glow", "aria-hidden": "true" }),
-        React.createElement(
-          "button",
-          {
-            type: "button",
-            "data-action": "toggle-settings",
-            className: `app-header-button icon-button p-2 rounded-2xl text-on-surface-variant ${state.showSettings ? "is-active text-primary" : ""}`,
-            onClick: toggleSettings,
-            "aria-label": "Settings",
-          },
-          React.createElement("span", { className: "material-symbols-outlined text-[20px]" }, "settings")
-        ),
-        React.createElement(
-          "button",
-          {
-            type: "button",
-            className: "app-header-button solid-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
-            onClick: newThread,
-          },
-          "New"
-        ),
-        React.createElement(
-          "button",
-          {
-            type: "button",
-            className: "app-header-button ghost-button px-3.5 py-2 font-label-caps text-label-caps rounded-2xl",
-            onClick: copyThread,
-          },
-          "Copy"
         )
       )
     )
