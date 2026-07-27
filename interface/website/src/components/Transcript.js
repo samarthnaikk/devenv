@@ -99,13 +99,13 @@ export function Transcript() {
       { className: "transcript-scroll p-margin-desktop space-y-8", ref: scrollRef },
       React.createElement(
         "div",
-        { className: "empty-state-shell flex flex-col items-center justify-center min-h-[60vh] gap-10 px-12" },
+        { className: "empty-state-shell empty-state-shell-compact flex flex-col items-center justify-center gap-6 px-4" },
         React.createElement(
           BeamFrame,
-          { active: false, tone: "ocean", className: "empty-state-hero rounded-3xl p-8 max-w-3xl w-full" },
+          { active: false, tone: "ocean", className: "empty-state-hero empty-state-hero-compact rounded-3xl p-8 w-full" },
           React.createElement(
             "div",
-            { className: "flex flex-col items-center gap-4" },
+            { className: "empty-state-hero-stack flex flex-col items-center gap-4" },
             React.createElement(
               "div",
               { className: "empty-state-badge w-14 h-14 rounded-full flex items-center justify-center text-on-primary" },
@@ -113,12 +113,12 @@ export function Transcript() {
             ),
             React.createElement(
               "h1",
-              { className: "font-headline-lg text-headline-lg text-on-surface text-center empty-state-title" },
+              { className: "font-headline-lg text-headline-lg text-on-surface text-center empty-state-title empty-state-title-compact" },
               React.createElement(MotionShimmerText, { className: "empty-state-title-line" }, "Inspect faster."),
               React.createElement("span", { className: "empty-state-title-line" }, "Plan cleaner."),
               React.createElement("span", { className: "empty-state-title-line" }, "Ship with motion.")
             ),
-            React.createElement("div", { className: "max-w-2xl text-center font-body-lg text-body-lg text-on-surface-variant" }, "Ask Devenv to inspect the codebase, route into a plan, or search live sources. The interface stays light, tactile, and traceable while the runtime decides what to use.")
+            React.createElement("div", { className: "empty-state-copy max-w-2xl text-center font-body-lg text-body-lg text-on-surface-variant" }, "Ask Devenv to inspect the codebase, route into a plan, or search live sources. The homepage now keeps the first action in focus instead of scattering it across unrelated sections.")
           ),
           React.createElement(
             MotionDeck,
@@ -127,51 +127,6 @@ export function Transcript() {
             React.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Plan-ready"),
             React.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Tool-routed"),
             React.createElement(MotionBadge, { className: "empty-state-hero-chip" }, "Ollama friendly")
-          ),
-          React.createElement(
-            MotionDeck,
-            { className: "empty-state-stage-grid w-full mt-6" },
-            [
-              {
-                label: "Plan",
-                title: "Map first",
-                copy: "Render a real execution flow before code edits land.",
-                icon: "account_tree",
-              },
-              {
-                label: "Trace",
-                title: "Ground every answer",
-                copy: "Bias the turn toward files, symbols, and search when the repo matters.",
-                icon: "conversion_path",
-              },
-              {
-                label: "Web",
-                title: "Verify live facts",
-                copy: "Switch into fetched-source mode for current questions and external references.",
-                icon: "language",
-              },
-            ].map((card, index) =>
-              React.createElement(
-                MotionReveal,
-                { key: card.label, delay: index * 70 },
-                React.createElement(
-                  MotionTilt,
-                  null,
-                  React.createElement(
-                    "div",
-                    { className: "empty-state-stage-card" },
-                    React.createElement("span", { className: "empty-state-stage-kicker" }, card.label),
-                    React.createElement(
-                      "div",
-                      { className: "empty-state-stage-head" },
-                      React.createElement("span", { className: "material-symbols-outlined text-[18px] text-primary" }, card.icon),
-                      React.createElement("strong", null, card.title)
-                    ),
-                    React.createElement("p", { className: "empty-state-stage-copy" }, card.copy)
-                  )
-                )
-              )
-            )
           ),
           React.createElement(
             MotionDeck,
@@ -214,38 +169,8 @@ export function Transcript() {
           )
         ),
         React.createElement(
-          MotionStack,
-          { className: "empty-state-preview-grid w-full max-w-3xl" },
-          [
-            { label: "Plan", icon: "conversion_path", title: "Multi-node flow", copy: "Blueprints render as connected steps instead of a one-line shrug." },
-            { label: "Trace", icon: "network_intelligence", title: "Visible reasoning surface", copy: "Thinking, tools, and retrieval cues stay legible while a turn is running." },
-            { label: "Motion", icon: "animation", title: "Light, tactile shell", copy: "Beams, metal shimmer, stacked cards, and staged panel transitions unify the interface." },
-          ].map((card, index) =>
-            React.createElement(
-              MotionReveal,
-              { key: card.label, delay: index * 90 },
-              React.createElement(
-                MotionTilt,
-                null,
-                React.createElement(
-                  "div",
-                  { className: "empty-state-preview-card" },
-                  React.createElement("span", { className: "empty-state-preview-kicker" }, card.label),
-                  React.createElement(
-                    "div",
-                    { className: "empty-state-preview-head" },
-                    React.createElement("span", { className: "material-symbols-outlined text-[20px] text-primary" }, card.icon),
-                    React.createElement("strong", null, card.title)
-                  ),
-                  React.createElement("p", { className: "empty-state-preview-copy" }, card.copy)
-                )
-              )
-            )
-          )
-        ),
-        React.createElement(
           MotionDeck,
-          { className: "empty-state-suggestions grid grid-cols-1 gap-3 w-full max-w-2xl" },
+          { className: "empty-state-suggestions grid grid-cols-1 gap-3 w-full max-w-3xl" },
           SUGGESTIONS.map((suggestion) =>
             React.createElement(
               MotionReveal,

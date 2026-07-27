@@ -2094,10 +2094,10 @@ pre {
 .app-shell {
   position: relative;
   background:
-    radial-gradient(circle at top left, rgba(36, 93, 168, 0.14), transparent 34%),
-    radial-gradient(circle at 85% 12%, rgba(8, 121, 107, 0.18), transparent 24%),
-    radial-gradient(circle at 52% -8%, rgba(255, 255, 255, 0.9), transparent 36%),
-    linear-gradient(180deg, color-mix(in srgb, var(--background) 90%, white 10%), var(--background));
+    radial-gradient(circle at top left, rgba(36, 93, 168, 0.1), transparent 30%),
+    radial-gradient(circle at 86% 12%, rgba(8, 121, 107, 0.12), transparent 22%),
+    radial-gradient(circle at 50% -8%, rgba(255, 255, 255, 0.4), transparent 28%),
+    linear-gradient(180deg, color-mix(in srgb, var(--background) 94%, white 6%), var(--background));
 }
 
 .app-shell-noise {
@@ -2689,11 +2689,11 @@ pre {
   border-radius: 32px;
   border: 1px solid color-mix(in srgb, var(--outline-variant) 72%, transparent);
   background:
-    radial-gradient(circle at top left, rgba(36, 93, 168, 0.08), transparent 24%),
-    radial-gradient(circle at top right, rgba(8, 121, 107, 0.1), transparent 22%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface) 90%, white 10%), color-mix(in srgb, var(--surface-container-low) 96%, white 4%));
-  box-shadow: 0 28px 70px rgba(20, 35, 33, 0.08);
-  backdrop-filter: blur(24px);
+    radial-gradient(circle at top left, rgba(36, 93, 168, 0.06), transparent 22%),
+    radial-gradient(circle at top right, rgba(8, 121, 107, 0.08), transparent 20%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 94%, white 6%), color-mix(in srgb, var(--surface-container-low) 98%, white 2%));
+  box-shadow: 0 18px 48px rgba(20, 35, 33, 0.08);
+  backdrop-filter: blur(16px);
   overflow: hidden;
 }
 
@@ -3007,9 +3007,9 @@ pre {
 }
 
 .app-main {
-  gap: 12px;
+  gap: 0;
   min-height: auto;
-  padding: 0 16px 12px;
+  padding: 0 12px 12px;
   overflow: visible;
   align-items: flex-start;
 }
@@ -3105,7 +3105,7 @@ pre {
   border-radius: 30px;
   overflow: visible;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--background) 94%, white 6%), color-mix(in srgb, var(--background) 98%, white 2%));
+    linear-gradient(180deg, color-mix(in srgb, var(--background) 96%, white 4%), color-mix(in srgb, var(--background) 99%, white 1%));
 }
 
 .chat-column-orbit {
@@ -3330,7 +3330,6 @@ pre {
 .workspace-rail,
 .workspace-rail-collapsed {
   margin: 0;
-  height: 100%;
   border-radius: 24px;
   overflow: hidden;
 }
@@ -3340,17 +3339,22 @@ pre {
   top: 12px;
   width: min(22rem, 29vw);
   min-width: 18rem;
+  height: calc(100vh - 24px);
   max-height: calc(100vh - 24px);
   border-left: 1px solid color-mix(in srgb, var(--outline-variant) 54%, transparent);
   border-radius: 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 42%, transparent), color-mix(in srgb, var(--surface-container-low) 30%, transparent));
 }
 
 .transcript-scroll {
   position: relative;
   z-index: 1;
+  padding-top: 12px;
+  padding-bottom: 8px;
 }
 
 .workspace-rail-collapsed {
+  height: calc(100vh - 24px);
   border-right: none;
   border-left: 1px solid color-mix(in srgb, var(--outline-variant) 76%, transparent);
 }
@@ -3919,6 +3923,14 @@ pre {
 
 .empty-state-shell {
   position: relative;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.empty-state-shell-compact {
+  min-height: 0;
+  align-items: stretch;
 }
 
 .transcript-runway {
@@ -4104,6 +4116,20 @@ pre {
   box-shadow: 0 30px 80px rgba(20, 35, 33, 0.08);
 }
 
+.empty-state-hero-compact {
+  max-width: 100%;
+  box-shadow: 0 18px 48px rgba(20, 35, 33, 0.07);
+}
+
+.empty-state-hero-stack {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.empty-state-copy {
+  line-height: 1.6;
+}
+
 .empty-state-hero-chips {
   display: flex;
   flex-wrap: wrap;
@@ -4279,6 +4305,10 @@ pre {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.empty-state-title-compact {
+  gap: 0;
 }
 
 .empty-state-title-line {
@@ -4646,6 +4676,7 @@ pre {
     flex-direction: column;
   }
 
+  .app-main-chat,
   .app-main-sidebar-stage,
   .workspace-rail {
     width: 100%;
@@ -4653,8 +4684,26 @@ pre {
     min-width: 0;
   }
 
+  .app-main-chat-shell,
+  .chat-column,
+  .transcript-scroll,
+  .composer-shell {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .app-main-chat-shell {
+    display: block;
+  }
+
+  .chat-column {
+    flex: none;
+  }
+
   .workspace-rail {
     position: static;
+    height: auto;
     max-height: none;
   }
 
@@ -4699,6 +4748,21 @@ pre {
     width: auto;
     max-height: calc(100vh - 96px);
   }
+
+  .chat-status-mode-tabs {
+    flex-wrap: wrap;
+    padding-right: 0;
+  }
+
+  .chat-status-mode-indicator,
+  .chat-column-orbit,
+  .chat-column-glow,
+  .chat-column-ribbon,
+  .chat-column-scanline,
+  .app-main-chat-shell-orbit,
+  .app-shell-aura-three {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4734,15 +4798,16 @@ pre {
 }
 
 .composer-shell {
-  background: color-mix(in srgb, var(--surface-container-low) 70%, transparent);
-  backdrop-filter: blur(16px);
+  background: color-mix(in srgb, var(--surface-container-low) 56%, transparent);
+  backdrop-filter: blur(10px);
+  padding-top: 8px;
 }
 
 .composer-frame {
   overflow: hidden;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--terminal) 90%, white 10%), color-mix(in srgb, var(--surface-container-low) 90%, white 10%));
-  box-shadow: 0 24px 70px rgba(20, 35, 33, 0.12);
+  box-shadow: 0 16px 42px rgba(20, 35, 33, 0.1);
 }
 
 .composer-ribbon {
