@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "build:vendor": "node ./scripts/build-vendor.mjs",
-    "check:mount": "node ./scripts/check-mount.mjs"
+    "check:mount": "node ./scripts/check-mount.mjs",
+    "visual:serve": "node ./scripts/visual-server.mjs",
+    "visual:capture": "node ./scripts/capture-homepage.mjs"
   },
   "dependencies": {
     "highlight.js": "11.11.1",
@@ -14,6 +16,7 @@
   },
   "devDependencies": {
     "esbuild": "0.25.8",
-    "jsdom": "^29.1.1"
+    "jsdom": "^29.1.1",
+    "playwright": "^1.62.0"
   }
 }
