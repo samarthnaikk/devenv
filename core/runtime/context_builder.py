@@ -900,13 +900,10 @@ class OpenCodeSessionProvider(ExternalSessionProvider):
         return rows[0] if rows else None
 
     def _query_all(self, query: str, parameters: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
-        connection = sqlite3.connect(str(self.root))
-        connection.row_factory = sqlite3.Row
         try:
-            rows = connection.execute(query, parameters).fetchall()
-        finally:
-            connection.close()
-        return [dict(row) for row in rows]
+            return _fetch_sqlite_rows(self.root, query, parameters, immutable=False)
+        except sqlite3.OperationalError:
+            return _fetch_sqlite_rows(self.root, query, parameters, immutable=True)
 
 
 class ContextBuilderService:
@@ -1372,7 +1369,7 @@ def _extract_session_messages(*, row_type: str | None, payload: dict[str, Any], 
             )
     elif row_type == "response_item" and payload.get("type") == "function_call_output":
         output_text = _normalize_whitespace(_clean_tool_output(str(payload.get("output") or "")))
-        if output_text and not _is_noise_message_content(output_text):
+        if output_text and not _is_noise_message_content(output_text) and _is_useful_tool_output(output_text):
             messages.append(
                 ExternalSessionMessage(
                     role="tool",
@@ -1675,6 +1672,7 @@ def _collect_indexed_context_lines(task: str, selected_matches: list[dict[str, A
     if not selected_matches:
         return ()
     tokens = _tokenize(task)
+    prefer_tool_output = _is_tool_output_query(task)
     candidates: list[tuple[int, str]] = []
     seen: set[str] = set()
     for match in selected_matches:
@@ -1696,8 +1694,10 @@ def _collect_indexed_context_lines(task: str, selected_matches: list[dict[str, A
             score = sum(2 for token in tokens if _token_matches(token, lowered))
             if chunk.source == "reasoning":
                 score += 1
+            if chunk.role in {"user", "assistant"}:
+                score += 1
             if chunk.role == "tool":
-                score += 2
+                score += 3 if prefer_tool_output else -3
             candidates.append((score, line))
     candidates.sort(key=lambda item: (-item[0], item[1]))
     return tuple(line for score, line in candidates if score > 0)[:MAX_INDEX_CONTEXT_LINES]
@@ -1776,7 +1776,7 @@ def _extract_opencode_message_part(role: str, payload: dict[str, Any], timestamp
         else:
             content = ""
         content = _normalize_whitespace(content)
-        if content:
+        if content and _is_useful_tool_output(content):
             return ExternalSessionMessage(role="tool", content=_truncate_tool_output(content), timestamp=timestamp)
     return None
 
@@ -1887,7 +1887,7 @@ def _compact_context_content(role: str, text: str) -> str:
     cleaned = _normalize_whitespace(text)
     if not cleaned:
         return ""
-    max_chars = 480 if role == "tool" else 260
+    max_chars = 220 if role == "tool" else 260
     if len(cleaned) <= max_chars:
         return cleaned
     return f"{cleaned[: max_chars - 3].rstrip()}..."
@@ -1922,6 +1922,83 @@ def _clean_tool_output(text: str) -> str:
             continue
         filtered_lines.append(stripped)
     return "\n".join(filtered_lines).strip()
+
+
+def _is_useful_tool_output(text: str) -> bool:
+    lowered = _normalize_whitespace(text).lower()
+    if not lowered:
+        return False
+    return not _looks_like_noisy_tool_output(lowered)
+
+
+def _looks_like_noisy_tool_output(lowered: str) -> bool:
+    noisy_markers = (
+        "session_index_lines ",
+        "\"thread_name\":",
+        "\"updated_at\":",
+        "<path>",
+        "<content>",
+        "<diagnostics ",
+        "traceback (most recent call last)",
+        "warning: the directory",
+        "processing /users/",
+        "preparing metadata",
+        "installing build dependencies",
+        "subprocess-exited-with-error",
+        "original token count:",
+        "process exited with code",
+        "edit applied successfully",
+        "lsp errors detected",
+    )
+    if any(marker in lowered for marker in noisy_markers):
+        return True
+    if re.search(r": line \d+:", lowered):
+        return True
+    if re.search(r"\bfound \d+ matches\b", lowered):
+        return True
+    if len(lowered) > 260:
+        structured_chars = sum(lowered.count(char) for char in "{}[]|/\\")
+        if structured_chars >= max(18, len(lowered) // 12):
+            return True
+    return False
+
+
+def _is_tool_output_query(task: str) -> bool:
+    lowered = task.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "tool output",
+            "command output",
+            "error log",
+            "traceback",
+            "review comment",
+            "what did",
+            "comment",
+            "issue",
+            "issues",
+            "error",
+            "warning",
+        )
+    )
+
+
+def _open_sqlite_connection(path: Path, *, immutable: bool = False) -> sqlite3.Connection:
+    resolved = str(path)
+    if immutable:
+        uri = f"file:{resolved}?mode=ro&immutable=1"
+        return sqlite3.connect(uri, uri=True)
+    return sqlite3.connect(resolved)
+
+
+def _fetch_sqlite_rows(path: Path, query: str, parameters: tuple[Any, ...], *, immutable: bool) -> list[dict[str, Any]]:
+    connection = _open_sqlite_connection(path, immutable=immutable)
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(query, parameters).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
 
 
 def _timestamp_from_path(path: Path) -> str:

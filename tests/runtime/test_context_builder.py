@@ -5,6 +5,7 @@ import sqlite3
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from core.runtime.context_builder import ContextBuilderService
@@ -283,6 +284,59 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertNotIn("chunk id", result.prompt.lower())
         self.assertNotIn("operation not permitted", result.prompt.lower())
 
+    def test_codex_provider_drops_noisy_function_call_output_from_runtime_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "08" / "12"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-noisy-tool-output"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Improve retrieval", "updated_at": "2026-08-12T06:10:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-08-12T06-09-00-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-08-12T06:09:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": str(workspace)}}),
+                        json.dumps(
+                            {
+                                "timestamp": "2026-08-12T06:09:01Z",
+                                "type": "response_item",
+                                "payload": {
+                                    "type": "function_call_output",
+                                    "output": 'session_index_lines 49 {"id":"x","thread_name":"Fix search tool selection","updated_at":"2026-07-04T11:30:14Z"}',
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": "2026-08-12T06:09:02Z",
+                                "type": "event_msg",
+                                "payload": {"type": "agent_message", "message": "We improved retrieval by splitting compound recall prompts and fusing the matches."},
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            context, session_ids, _metadata = service.build_runtime_memory_context("improve retrieval")
+
+        self.assertEqual(session_ids, (session_id,))
+        self.assertIn("splitting compound recall prompts", context)
+        self.assertNotIn("session_index_lines", context)
+        self.assertNotIn('"thread_name"', context)
+
     def test_opencode_provider_reports_not_configured(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir) / "workspace"
@@ -415,6 +469,38 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertEqual(session_ids, ("ses_getdrip_1",))
         self.assertTrue(metadata["index_ready"])
         self.assertIn("open email relay", context.lower())
+
+    def test_opencode_provider_query_falls_back_to_immutable_read_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            db_path = Path(tempdir) / "opencode.db"
+            self._create_opencode_db(db_path)
+            provider = ContextBuilderService(
+                str(Path(tempdir) / "workspace"),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="opencode", root_path=str(db_path)),
+                ),
+            ).providers["opencode"]
+
+            original_connect = sqlite3.connect
+
+            def flaky_connect(target, *args, **kwargs):
+                if target == str(db_path):
+                    class FlakyConnection:
+                        row_factory = None
+
+                        def execute(self, *_args, **_kwargs):
+                            raise sqlite3.OperationalError("unable to open database file")
+
+                        def close(self):
+                            return None
+
+                    return FlakyConnection()
+                return original_connect(target, *args, **kwargs)
+
+            with mock.patch("core.runtime.context_builder.sqlite3.connect", side_effect=flaky_connect):
+                rows = provider._query_all("select name from sqlite_master where type = 'table'")
+
+        self.assertTrue(rows)
 
     def test_prepare_prompt_merges_session_and_workspace_context(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
