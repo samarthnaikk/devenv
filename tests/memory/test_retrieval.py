@@ -190,6 +190,26 @@ class RetrievalFlowTest(unittest.TestCase):
         self.assertIn("Do you remember the calendar project we were building?", query)
         self.assertIn("Yes, it used a Python backend and React frontend.", query)
 
+    def test_query_variants_split_compound_recall_prompt(self) -> None:
+        variants = self.engine.retrieval_service._query_variants(
+            "What did we decide about django auth and React preferences?",
+            "What did we decide about django auth and React preferences?",
+        )
+
+        self.assertIn("What did we decide about django auth and React preferences?", variants)
+        self.assertIn("What did we decide about django auth", variants)
+        self.assertIn("React preferences", variants)
+
+    def test_compound_prompt_retrieves_multiple_topics_via_divide_and_conquer(self) -> None:
+        result = self.engine.retrieve_context(
+            "What did we decide about django auth and React preferences?",
+            top_k=5,
+        )
+
+        lowered = result.markdown_context.lower()
+        self.assertIn("django authentication", lowered)
+        self.assertIn("functional react components", lowered)
+
     def test_reopened_engine_can_recall_from_persisted_storage_without_rehydration(self) -> None:
         self.engine.add_episodic_log(
             "The calendar project used a React frontend and Python backend.",

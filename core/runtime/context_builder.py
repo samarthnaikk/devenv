@@ -33,6 +33,7 @@ MAX_README_CHARS = 500
 MIN_SESSION_CONTENT_SCORE = 6
 MAX_INDEX_CHUNK_CHARS = 720
 MAX_INDEX_CONTEXT_LINES = 12
+MAX_QUERY_VARIANTS = 4
 COMMON_CONTEXT_TOKENS = {
     "about",
     "again",
@@ -1020,8 +1021,9 @@ class ContextBuilderService:
         if self.runtime_allowed_providers == set():
             return "", (), {"context_match_state": "new_context", "context_match_reason": "External session access has not been granted."}
         provider = self._get_provider(resolved_provider)
-        indexed_matches, indexed_metadata = self.index.query(task, provider_name=resolved_provider, workspace_path=self.workspace_path)
-        selected_matches = indexed_matches or self._select_relevant_sessions(provider, task)
+        query_variants = _build_query_variants(task)
+        indexed_matches, indexed_metadata = self._query_index_variants(query_variants, provider_name=resolved_provider)
+        selected_matches = indexed_matches or self._select_relevant_sessions(provider, task, query_variants=query_variants)
         selected_session_ids = tuple(match["summary"].session_id for match in selected_matches)
         selection_metadata = self._selection_metadata(selected_matches)
         selection_metadata["index_ready"] = indexed_metadata.get("index_ready", False)
@@ -1037,6 +1039,58 @@ class ContextBuilderService:
             return "", selected_session_ids, selection_metadata
         lines = ["## External Session Context", *(f"- {line}" for line in context_lines)]
         return "\n".join(lines), selected_session_ids, selection_metadata
+
+    def _query_index_variants(
+        self,
+        query_variants: tuple[str, ...],
+        *,
+        provider_name: str,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        aggregated: dict[str, dict[str, Any]] = {}
+        index_ready = False
+        for variant in query_variants:
+            matches, metadata = self.index.query(variant, provider_name=provider_name, workspace_path=self.workspace_path)
+            index_ready = index_ready or bool(metadata.get("index_ready", False))
+            for match in matches:
+                summary = match.get("summary")
+                if not isinstance(summary, ExternalSessionSummary):
+                    continue
+                existing = aggregated.get(summary.session_id)
+                if existing is None:
+                    aggregated[summary.session_id] = {
+                        **match,
+                        "score": match.get("score", 0),
+                        "chunks": list(match.get("chunks") or []),
+                    }
+                    continue
+                existing["score"] = max(int(existing.get("score", 0)), int(match.get("score", 0)))
+                existing["strong_match"] = bool(existing.get("strong_match")) or bool(match.get("strong_match"))
+                existing["identity_token_hits"] = max(
+                    int(existing.get("identity_token_hits", 0)),
+                    int(match.get("identity_token_hits", 0)),
+                )
+                existing["identity_focus_hits"] = max(
+                    int(existing.get("identity_focus_hits", 0)),
+                    int(match.get("identity_focus_hits", 0)),
+                )
+                existing["token_hits"] = max(int(existing.get("token_hits", 0)), int(match.get("token_hits", 0)))
+                existing_chunks = {chunk.text: chunk for chunk in existing.get("chunks", []) if isinstance(chunk, ExternalSessionChunk)}
+                for chunk in match.get("chunks", []) or ():
+                    if isinstance(chunk, ExternalSessionChunk):
+                        existing_chunks.setdefault(chunk.text, chunk)
+                existing["chunks"] = list(existing_chunks.values())[:3]
+
+        ranked = sorted(
+            aggregated.values(),
+            key=lambda item: (
+                bool(item.get("strong_match")),
+                int(item.get("identity_focus_hits", 0)),
+                int(item.get("score", 0)),
+                getattr(item.get("summary"), "updated_at", ""),
+            ),
+            reverse=True,
+        )
+        return ranked[:6], {"index_ready": index_ready}
 
     def _workspace_facts(self, task: str) -> tuple[str, ...]:
         facts: list[str] = []
@@ -1107,15 +1161,22 @@ class ContextBuilderService:
     def _select_relevant_session_ids(self, provider: ExternalSessionProvider, task: str) -> tuple[str, ...]:
         return tuple(match["summary"].session_id for match in self._select_relevant_sessions(provider, task))
 
-    def _select_relevant_sessions(self, provider: ExternalSessionProvider, task: str) -> list[dict[str, Any]]:
+    def _select_relevant_sessions(
+        self,
+        provider: ExternalSessionProvider,
+        task: str,
+        *,
+        query_variants: tuple[str, ...] | None = None,
+    ) -> list[dict[str, Any]]:
         summaries = provider.list_sessions()
         if not summaries:
             return []
 
-        prompt_tokens = _tokenize(task)
+        variants = query_variants or _build_query_variants(task)
+        prompt_tokens = set().union(*(_tokenize(variant) for variant in variants))
         if not prompt_tokens:
             return []
-        focus_tokens = _focus_tokens(task)
+        focus_tokens = set().union(*(_focus_tokens(variant) for variant in variants))
         preliminary: list[dict[str, Any]] = []
         recent_window = 12
         for index, summary in enumerate(summaries):
@@ -1181,7 +1242,7 @@ class ContextBuilderService:
             identity_token_hits = sum(1 for token in prompt_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
             identity_exact_hits = _exact_prompt_hits(prompt_tokens, identity_haystacks)
             identity_focus_hits = sum(1 for token in focus_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
-            best_overlap = _best_message_overlap(prompt_tokens, detail)
+            best_overlap = max(_best_message_overlap(_tokenize(variant), detail) for variant in variants)
             workspace_bonus = 0
             issue_bonus = 0
             session_workspace = (summary.workspace_path or "").lower()
@@ -1572,6 +1633,23 @@ def _tokenize(text: str) -> set[str]:
         if token not in COMMON_CONTEXT_TOKENS
     }
     return tokens | compound_tokens
+
+
+def _build_query_variants(task: str) -> tuple[str, ...]:
+    normalized = _normalize_whitespace(task)
+    if not normalized:
+        return ()
+    variants = [normalized]
+    for raw_part in re.split(r"[?.!;]+|\b(?:and|also|then|plus|while|versus|vs)\b", normalized, flags=re.IGNORECASE):
+        fragment = _normalize_whitespace(raw_part).strip(" ,.;:-")
+        if not fragment or fragment in variants:
+            continue
+        if len(_tokenize(fragment)) < 2:
+            continue
+        variants.append(fragment)
+        if len(variants) >= MAX_QUERY_VARIANTS:
+            break
+    return tuple(variants[:MAX_QUERY_VARIANTS])
 
 
 def _is_noise_message_content(text: str) -> bool:

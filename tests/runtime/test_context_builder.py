@@ -1074,6 +1074,62 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertIn("root URL redirects", context)
         self.assertNotIn("validators", context.lower())
 
+    def test_runtime_memory_context_can_match_compound_prompt_via_query_variants(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "07" / "06"
+            sessions_dir.mkdir(parents=True)
+            auth_id = "session-auth"
+            react_id = "session-react"
+            (codex_root / "session_index.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"id": auth_id, "thread_name": "Django auth fixes", "updated_at": "2026-07-06T12:00:00Z"}),
+                        json.dumps({"id": react_id, "thread_name": "React preference notes", "updated_at": "2026-07-06T12:05:00Z"}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-06T12-00-00-{auth_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-06T12:00:00Z", "type": "session_meta", "payload": {"id": auth_id, "cwd": "/tmp/rxgpt"}}),
+                        json.dumps({"timestamp": "2026-07-06T12:00:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Django auth used custom middleware and session cookies."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-06T12-05-00-{react_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-06T12:05:00Z", "type": "session_meta", "payload": {"id": react_id, "cwd": "/tmp/rxgpt"}}),
+                        json.dumps({"timestamp": "2026-07-06T12:05:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "The user preferred functional React components over class components."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            context, session_ids, metadata = service.build_runtime_memory_context(
+                "What did we decide about django auth and React preferences?"
+            )
+
+        self.assertEqual(session_ids, (auth_id, react_id))
+        self.assertEqual(metadata["context_match_state"], "reused_prior_context")
+        self.assertIn("custom middleware and session cookies", context)
+        self.assertIn("functional React components", context)
+
 
 if __name__ == "__main__":
     unittest.main()

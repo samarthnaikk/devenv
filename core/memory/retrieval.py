@@ -29,6 +29,7 @@ REFERENTIAL_CONTEXT_MARKERS = {
     "those",
     "this",
 }
+MAX_QUERY_VARIANTS = 4
 
 
 class RetrievalService:
@@ -49,16 +50,14 @@ class RetrievalService:
 
     def retrieve(self, current_prompt: str, top_k: int) -> RetrievalResult:
         query_text = self._compose_query(current_prompt)
-        query_vector = self.embedder.embed(query_text)
-        vector_matches = self.vector_index.query(query_vector, top_k=max(top_k, 5), min_similarity=self.similarity_threshold)
-        lexical_matches = self._lexical_seed_matches(query_text, top_k=max(top_k, 5))
-        matches = self._fuse_seed_matches(vector_matches, lexical_matches, top_k=max(top_k, 5))
+        query_variants = self._query_variants(current_prompt, query_text)
+        matches, short_circuit_expansion = self._retrieve_seed_matches(query_variants, top_k=max(top_k, 5))
         if not matches:
             markdown = self._compile_markdown([], include_working_memory=True)
             trace = RetrievalTrace(markdown_context=markdown)
             return RetrievalResult(markdown_context=markdown, selected_nodes=(), trace=trace)
 
-        candidates = self._seed_candidates(matches) if self._should_short_circuit_expansion(vector_matches) else self._expand_candidates(matches)
+        candidates = self._seed_candidates(matches) if short_circuit_expansion else self._expand_candidates(matches)
         scored = self._score_candidates(candidates)
         selected = tuple(
             RetrievalSelectedNode(
@@ -80,6 +79,22 @@ class RetrievalService:
         )
         self.store.touch_nodes([node.node_id for node in selected], accessed_at=time.time())
         return RetrievalResult(markdown_context=markdown, selected_nodes=selected, trace=trace)
+
+    def _retrieve_seed_matches(self, query_variants: list[str], top_k: int) -> tuple[list[VectorMatch], bool]:
+        vector_variants: list[list[VectorMatch]] = []
+        lexical_variants: list[list[VectorMatch]] = []
+        short_circuit_expansion = False
+        for variant in query_variants:
+            query_vector = self.embedder.embed(variant)
+            vector_matches = self.vector_index.query(
+                query_vector,
+                top_k=top_k,
+                min_similarity=self.similarity_threshold,
+            )
+            vector_variants.append(vector_matches)
+            short_circuit_expansion = short_circuit_expansion or self._should_short_circuit_expansion(vector_matches)
+            lexical_variants.append(self._lexical_seed_matches(variant, top_k=top_k))
+        return self._fuse_variant_seed_matches(vector_variants, lexical_variants, top_k=top_k), short_circuit_expansion
 
     def _expand_candidates(self, matches: list[VectorMatch]) -> list[RetrievalCandidate]:
         expanded: dict[str, RetrievalCandidate] = {}
@@ -205,6 +220,31 @@ class RetrievalService:
             for node_id, score in ordered[:top_k]
         ]
 
+    def _fuse_variant_seed_matches(
+        self,
+        vector_variants: list[list[VectorMatch]],
+        lexical_variants: list[list[VectorMatch]],
+        top_k: int,
+    ) -> list[VectorMatch]:
+        fused_scores: dict[str, float] = {}
+        text_chunks: dict[str, str] = {}
+
+        for vector_matches, lexical_matches in zip(vector_variants, lexical_variants):
+            fused = self._fuse_seed_matches(vector_matches, lexical_matches, top_k=top_k)
+            for rank, match in enumerate(fused, start=1):
+                fused_scores[match.node_id] = fused_scores.get(match.node_id, 0.0) + (1.0 / (RRF_K + rank))
+                text_chunks.setdefault(match.node_id, match.text_chunk)
+
+        ordered = sorted(fused_scores.items(), key=lambda item: item[1], reverse=True)
+        return [
+            VectorMatch(
+                node_id=node_id,
+                similarity=score,
+                text_chunk=text_chunks.get(node_id, ""),
+            )
+            for node_id, score in ordered[:top_k]
+        ]
+
     def _score_candidates(self, candidates: list[RetrievalCandidate]) -> list[RetrievalCandidate]:
         similarity_values = [candidate.similarity for candidate in candidates]
         frequency_values = [float(candidate.node.access_count) for candidate in candidates]
@@ -266,6 +306,17 @@ class RetrievalService:
 
         return "\n".join([current_prompt, *recent_context])
 
+    def _query_variants(self, current_prompt: str, query_text: str) -> list[str]:
+        variants = [query_text]
+        if query_text != current_prompt:
+            variants.append(current_prompt)
+        for fragment in _split_query_fragments(current_prompt):
+            if fragment not in variants:
+                variants.append(fragment)
+            if len(variants) >= MAX_QUERY_VARIANTS:
+                break
+        return variants[:MAX_QUERY_VARIANTS]
+
 
 def _normalize(values: list[float]) -> list[float]:
     if not values:
@@ -309,3 +360,25 @@ def _jaccard_overlap(left: set[str], right: set[str]) -> float:
     if not union:
         return 0.0
     return len(left & right) / len(union)
+
+
+def _split_query_fragments(text: str) -> list[str]:
+    normalized = _normalize_fragment(text)
+    if not normalized:
+        return []
+
+    fragments: list[str] = []
+    seen: set[str] = set()
+    for raw_part in re.split(r"[?.!;]+|\b(?:and|also|then|plus|while|versus|vs)\b", normalized, flags=re.IGNORECASE):
+        fragment = _normalize_fragment(raw_part)
+        if len(_context_tokens(fragment)) < 2 or fragment in seen:
+            continue
+        seen.add(fragment)
+        fragments.append(fragment)
+        if len(fragments) >= MAX_QUERY_VARIANTS - 1:
+            break
+    return fragments
+
+
+def _normalize_fragment(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip(" ,.;:-")
