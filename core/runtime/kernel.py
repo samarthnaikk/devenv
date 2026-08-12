@@ -2548,9 +2548,15 @@ class DevenvKernel:
     def _can_skip_external_memory_fetch(self, user_prompt: str, *, memory_context: str, local_only: bool) -> bool:
         if not _should_try_direct_memory_answer(user_prompt):
             return False
-        if self._answer_known_project_question_local(user_prompt, memory_context) is not None:
+        project_answer = self._answer_known_project_question_local(user_prompt, memory_context)
+        if project_answer is not None:
+            if _is_error_fix_memory_question(user_prompt) and "we fixed it by" not in project_answer.lower():
+                return False
             return True
-        if _answer_from_retrieved_memory(user_prompt, memory_context) is not None:
+        retrieved_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
+        if retrieved_answer is not None:
+            if _is_error_fix_memory_question(user_prompt) and "we fixed it by" not in retrieved_answer.lower():
+                return False
             return True
         return False
 
@@ -6044,6 +6050,9 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
 
     sections = _memory_context_sections(memory_context)
     cleaned_lines = [_clean_memory_line(line) for line in [*sections["working"], *sections["external"], *sections["retrieved"]]]
+    error_fix_summary = _summarize_error_fix_memory_answer(user_prompt, cleaned_lines)
+    if error_fix_summary:
+        return error_fix_summary
     cleanup_summary = _cleanup_summary_from_lines(user_prompt, cleaned_lines)
     if cleanup_summary:
         return cleanup_summary
@@ -6260,6 +6269,116 @@ def _memory_context_sections(memory_context: str) -> dict[str, list[str]]:
         if current_index is not None and stripped:
             lines[active_section][current_index] += f"\n{stripped}"
     return lines
+
+
+def _summarize_error_fix_memory_answer(user_prompt: str, lines: list[str]) -> str | None:
+    if not _is_error_fix_memory_question(user_prompt):
+        return None
+
+    issue_text: str | None = None
+    fix_text: str | None = None
+    for line in lines:
+        cleaned = re.sub(r"\s+", " ", _clean_memory_line(line)).strip()
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if issue_text is None:
+            issue_text = _extract_issue_summary_from_line(cleaned, lowered) or issue_text
+        if fix_text is None:
+            fix_text = _extract_fix_summary_from_line(cleaned, lowered) or fix_text
+        if issue_text and fix_text:
+            break
+
+    if not issue_text and not fix_text:
+        return None
+    if issue_text and fix_text:
+        return f"Yes. The error was {issue_text}. We fixed it by {fix_text}."
+    if issue_text:
+        return f"Yes. The error was {issue_text}."
+    return f"Yes. We fixed it by {fix_text}."
+
+
+def _extract_issue_summary_from_line(cleaned: str, lowered: str) -> str | None:
+    normalized = re.sub(r"^fixed and committed\.\s*", "", cleaned, flags=re.IGNORECASE)
+    lowered_normalized = normalized.lower()
+    issue_markers = (
+        "the issue was ",
+        "the error was ",
+        "error: ",
+        "issue: ",
+    )
+    for marker in issue_markers:
+        index = lowered_normalized.find(marker)
+        if index >= 0:
+            summary = _trim_error_fix_noise(normalized[index + len(marker):])
+            return summary if summary else None
+    if any(
+        token in lowered_normalized
+        for token in (
+            "unknown columns",
+            "unconsumed column names",
+            "does not match the schema",
+            "schema validation failed",
+            "authentication bypass",
+            "open email relay",
+        )
+    ):
+        return _trim_error_fix_noise(normalized)
+    return None
+
+
+def _extract_fix_summary_from_line(cleaned: str, lowered: str) -> str | None:
+    if lowered.startswith("the patch is in place."):
+        tail = cleaned.split(".", 1)[1].strip() if "." in cleaned else ""
+        if tail:
+            nested = _extract_fix_summary_from_line(tail, tail.lower())
+            if nested:
+                return nested
+
+    fix_markers = (
+        "we fixed it by ",
+        "fixed by ",
+        "i added ",
+        "we added ",
+        "i updated ",
+        "we updated ",
+        "i replaced ",
+        "we replaced ",
+        "i refreshed ",
+        "we refreshed ",
+    )
+    for marker in fix_markers:
+        index = lowered.find(marker)
+        if index < 0:
+            continue
+        summary = cleaned[index + len(marker):].strip(" .")
+        summary = _trim_error_fix_noise(summary)
+        if not summary:
+            continue
+        if marker.endswith("added "):
+            return f"adding {summary}"
+        if marker.endswith("updated "):
+            return f"updating {summary}"
+        if marker.endswith("replaced "):
+            return f"replacing {summary}"
+        if marker.endswith("refreshed "):
+            return f"refreshing {summary}"
+        return summary
+
+    if "lazy metadata refreshes" in lowered:
+        index = lowered.find("lazy metadata refreshes")
+        summary = _trim_error_fix_noise(cleaned[index:])
+        if summary:
+            return f"adding {summary}"
+    return None
+
+
+def _trim_error_fix_noise(text: str) -> str:
+    trimmed = str(text or "").strip(" .")
+    for marker in ("Commit:", "```", "Now I’m running", "Now I'm running", "Both checks passed.", "The patch is in place."):
+        if marker in trimmed:
+            trimmed = trimmed.split(marker, 1)[0].strip(" .")
+    return trimmed
 
 
 def _recent_working_follow_up_lines(lines: list[str], user_prompt: str) -> list[str]:
@@ -7002,9 +7121,28 @@ def _is_explicit_project_fact_memory_question(user_prompt: str) -> bool:
     return _has_explicit_memory_subject(user_prompt)
 
 
+def _is_error_fix_memory_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower().strip()
+    if not _has_explicit_memory_subject(user_prompt):
+        return False
+    has_issue_marker = any(token in lowered for token in ("error", "issue", "bug", "failed", "failure"))
+    has_recall_shape = lowered.startswith(("what was", "which was", "what exact", "which exact"))
+    has_fix_marker = any(
+        phrase in lowered
+        for phrase in (
+            "how did we fix",
+            "how was it fixed",
+            "how we fixed",
+            "how did we solve",
+            "how was it solved",
+        )
+    )
+    return has_issue_marker and (has_recall_shape or has_fix_marker)
+
+
 def _is_memory_recall_question(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
-    return _is_explicit_project_fact_memory_question(user_prompt) or any(
+    return _is_explicit_project_fact_memory_question(user_prompt) or _is_error_fix_memory_question(user_prompt) or any(
         phrase in lowered
         for phrase in (
             "do you remember",

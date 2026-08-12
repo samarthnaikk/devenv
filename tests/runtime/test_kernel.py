@@ -24,6 +24,7 @@ from core.runtime.kernel import (
     _enforce_exact_output_contract,
     _extract_exact_output_contract,
     _find_reusable_tool_step,
+    _is_error_fix_memory_question,
     _is_architecture_question,
     _memory_context_sections,
     _prefer_reference_results_over_empty_summary,
@@ -1080,6 +1081,26 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(
             result.final_response,
             "Yes. The niche codename is saffron-orbit and the rollback file is infra/edge/reconcile.ts.",
+        )
+
+    def test_error_fix_question_is_treated_as_memory_recall(self) -> None:
+        self.assertTrue(_is_error_fix_memory_question("what was the codeguide error and how did we fix it?"))
+        self.assertTrue(_should_try_direct_memory_answer("what was the codeguide error and how did we fix it?"))
+
+    def test_answer_from_retrieved_memory_summarizes_error_and_fix(self) -> None:
+        memory_context = "\n".join(
+            [
+                "## External Session Context",
+                "- Assistant reported: Fixed and committed. The issue was stale SQLAlchemy reflected metadata: CodeGuide routes were imported before Alembic finished adding `skills`, `expires_at`, and `feedback`, so inserts saw those as unknown columns.",
+                "- Assistant reported: The patch is in place. I added lazy metadata refreshes right before CodeGuide reads/writes the migrated columns, plus the same guard in the worker’s table cache for `feedback`.",
+            ]
+        )
+
+        answer = _answer_from_retrieved_memory("what was the codeguide error and how did we fix it?", memory_context)
+
+        self.assertEqual(
+            answer,
+            "Yes. The error was stale SQLAlchemy reflected metadata: CodeGuide routes were imported before Alembic finished adding `skills`, `expires_at`, and `feedback`, so inserts saw those as unknown columns. We fixed it by adding lazy metadata refreshes right before CodeGuide reads/writes the migrated columns, plus the same guard in the worker’s table cache for `feedback`.",
         )
 
     def test_execute_turn_answers_what_are_those_follow_up_from_recent_conversation(self) -> None:
