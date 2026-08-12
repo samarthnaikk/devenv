@@ -5766,6 +5766,15 @@ class _InProcessToolClient:
     def __init__(self, tools: dict[str, BaseTool]) -> None:
         self._tools = tools
 
+    def list_tools(self) -> dict[str, dict[str, Any]]:
+        return {
+            name: {
+                "description": tool.description,
+                "inputSchema": tool.input_schema(),
+            }
+            for name, tool in self._tools.items()
+        }
+
     def call_tool(self, name: str, arguments: dict[str, Any]):
         tool = self._tools.get(name)
         if tool is None:
