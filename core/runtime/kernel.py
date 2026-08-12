@@ -7067,10 +7067,37 @@ def _is_memory_follow_up_question(user_prompt: str) -> bool:
         "how were those fixed",
         "a few reviews",
         "a few bugs",
+        "i told you earlier",
+        "i told you before",
+        "i mentioned earlier",
+        "i mentioned before",
     )
+    referential_question_shapes = (
+        "what was the",
+        "what were the",
+        "which was the",
+        "which were the",
+    )
+    explicit_referential_recall = _is_explicit_referential_recall_question(user_prompt)
     if not any(marker in lowered for marker in referential_markers):
-        return False
+        if not explicit_referential_recall:
+            return False
+    if explicit_referential_recall:
+        return True
     return not _has_explicit_memory_subject(user_prompt)
+
+
+def _is_explicit_referential_recall_question(user_prompt: str) -> bool:
+    lowered = user_prompt.lower()
+    referential_question_shapes = (
+        "what was the",
+        "what were the",
+        "which was the",
+        "which were the",
+    )
+    return any(lowered.startswith(shape) for shape in referential_question_shapes) and any(
+        marker in lowered for marker in ("earlier", "before", "told you", "mentioned")
+    )
 
 
 def _is_bug_fix_follow_up_question(user_prompt: str) -> bool:
@@ -7144,6 +7171,10 @@ def _answer_from_recent_conversation_follow_up(user_prompt: str, conversation: l
             last_assistant = content
 
     if not last_assistant or not _is_high_signal_memory_answer(last_assistant, user_prompt):
+        if _is_explicit_referential_recall_question(user_prompt):
+            recent_user_fact = _recent_user_recall_fact(user_prompt, conversation)
+            if recent_user_fact:
+                return _affirm_memory_answer(recent_user_fact)
         return None
 
     subject = _preferred_memory_subject(user_prompt, recent_lines)
@@ -7169,6 +7200,30 @@ def _answer_from_recent_conversation_follow_up(user_prompt: str, conversation: l
     if cleanup_summary and _is_issue_explanation_follow_up_question(user_prompt):
         return f"Yes. It was mainly about {cleanup_summary}."
     return _affirm_memory_answer(_humanize_recalled_line(last_assistant, user_prompt))
+
+
+def _recent_user_recall_fact(user_prompt: str, conversation: list[dict[str, Any]]) -> str | None:
+    for message in reversed(conversation[-8:]):
+        role = str(message.get("role") or "")
+        if role != "user":
+            continue
+        content = _sanitize_logged_answer(str(message.get("content") or "").strip())
+        if not content or content == user_prompt:
+            continue
+        normalized = re.sub(
+            r"^(remember this exactly(?: for later(?: in this runtime)?)?:\s*)",
+            "",
+            content,
+            flags=re.IGNORECASE,
+        ).strip()
+        if not normalized:
+            continue
+        if normalized[:1].islower():
+            normalized = normalized[:1].upper() + normalized[1:]
+        if normalized.endswith("."):
+            return normalized[:-1] + "."
+        return normalized
+    return None
 
 
 def _is_bug_list_question(user_prompt: str) -> bool:

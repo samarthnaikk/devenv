@@ -1059,6 +1059,29 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("It was mainly about root URL redirects", result.final_response or "")
         self.assertNotIn("main.py", result.final_response or "")
 
+    def test_execute_turn_answers_explicit_earlier_recall_from_recent_conversation(self) -> None:
+        memory = FailingMemory()
+        ai = ExplodingAI([])
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.ephemeral_history = [
+                {
+                    "role": "user",
+                    "content": "Remember this exactly for later in this runtime: the niche codename is saffron-orbit and the rollback file is infra/edge/reconcile.ts.",
+                },
+                {
+                    "role": "assistant",
+                    "content": "Local-only mode needs workspace inspection tools to answer that prompt.",
+                }
+            ]
+            result = kernel.execute_turn("what was the niche codename and rollback file I told you earlier?")
+
+        self.assertEqual(
+            result.final_response,
+            "Yes. The niche codename is saffron-orbit and the rollback file is infra/edge/reconcile.ts.",
+        )
+
     def test_execute_turn_answers_what_are_those_follow_up_from_recent_conversation(self) -> None:
         memory = FailingMemory()
         ai = ExplodingAI([])
