@@ -86,6 +86,18 @@ class FakeKernel:
         return None
 
 
+class PromptFeeder:
+    def __init__(self, answers: list[str]) -> None:
+        self.answers = list(answers)
+        self.prompts: list[str] = []
+
+    def __call__(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        if not self.answers:
+            raise AssertionError("PromptFeeder ran out of answers")
+        return self.answers.pop(0)
+
+
 class DevenvTUITest(unittest.TestCase):
     def test_permission_command_updates_runtime_state(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -161,6 +173,48 @@ class DevenvTUITest(unittest.TestCase):
 
         self.assertIn("session-reset", result.message)
         self.assertEqual(kernel.reset_calls, 1)
+
+    def test_permission_command_opens_interactive_picker(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            feeder = PromptFeeder(["1", "1", "1"])
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir, performance_mode="medium"),
+                kernel=FakeKernel(),
+                prompt_input=feeder,
+            )
+
+            result = controller.handle_command("/permission")
+
+        self.assertIn("Backend `opencode` permission is now on.", result.message)
+        self.assertTrue(controller.access_policy.can_use_backend("opencode"))
+
+    def test_backend_command_opens_interactive_picker(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            feeder = PromptFeeder(["4"])
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+                prompt_input=feeder,
+            )
+
+            result = controller.handle_command("/backend")
+
+        self.assertIn("Preferred backend set to `codex`", result.message)
+        self.assertEqual(controller.preferred_backend, "codex")
+
+    def test_model_command_opens_interactive_picker(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            feeder = PromptFeeder(["4", "2"])
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+                prompt_input=feeder,
+            )
+
+            result = controller.handle_command("/model")
+
+        self.assertIn("gpt-5-codex-high", result.message)
+        self.assertEqual(controller.kernel.ai.backend_models["codex"], "gpt-5-codex-high")
 
 
 if __name__ == "__main__":

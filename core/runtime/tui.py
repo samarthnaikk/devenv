@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from core.logging_utils import configure_logging
 
@@ -40,13 +40,20 @@ class TUICommandResult:
 
 
 class DevenvTUIController:
-    def __init__(self, config: RunConfig, *, kernel: DevenvKernel | None = None) -> None:
+    def __init__(
+        self,
+        config: RunConfig,
+        *,
+        kernel: DevenvKernel | None = None,
+        prompt_input: Callable[[str], str] | None = None,
+    ) -> None:
         self.config = config
         self.kernel = kernel or DevenvKernel(
             workspace_path=config.workspace_path,
             db_path=config.db_path,
             vector_dir=config.vector_dir,
         )
+        self.prompt_input = prompt_input or input
         self.context_builder = ContextBuilderService(
             config.workspace_path,
             memory=self.kernel.memory,
@@ -123,10 +130,12 @@ class DevenvTUIController:
             [
                 _style("Command Palette", Ansi.BOLD, Ansi.CYAN),
                 "/status                 Show active backend, model, and permissions",
-                "/permissions            Show available permission commands",
+                "/permissions            Open the permission picker or show command help",
                 "/permission backend <name> <on|off>",
                 "/permission provider <codex|opencode> <on|off>",
+                "/backend                Open the backend picker",
                 "/backend <name>         Switch preferred backend",
+                "/model                  Open the model picker",
                 "/model <name>           Set model for the preferred backend",
                 "/model <backend> <name> Set model for a specific backend",
                 "/providers              Show session-source health",
@@ -179,6 +188,9 @@ class DevenvTUIController:
 
     def _handle_permission_command(self, args: list[str]) -> str:
         if not args:
+            interactive = self._interactive_permission_picker()
+            if interactive is not None:
+                return interactive
             return "\n".join(
                 [
                     _style("Permission Controls", Ansi.BOLD, Ansi.CYAN),
@@ -200,10 +212,7 @@ class DevenvTUIController:
             if name not in BACKENDS:
                 return "Backends must be one of: opencode, ollama, llama_cpp, codex."
             self.access_policy.set_backend_access(name, allowed)
-            if allowed and self.preferred_backend == name:
-                self._apply_runtime_preferences()
-            else:
-                self._apply_runtime_preferences()
+            self._apply_runtime_preferences()
             return f"Backend `{name}` permission is now {value}."
         if target_type == "provider":
             if name not in SESSION_PROVIDERS:
@@ -214,6 +223,8 @@ class DevenvTUIController:
         return "Permission target must be `backend` or `provider`."
 
     def _handle_backend_command(self, args: list[str]) -> str:
+        if not args:
+            return self._interactive_backend_picker() or "Backend selection cancelled."
         if len(args) != 1:
             return "Usage: /backend <opencode|ollama|llama_cpp|codex>"
         backend = args[0].lower()
@@ -230,7 +241,7 @@ class DevenvTUIController:
 
     def _handle_model_command(self, args: list[str]) -> str:
         if not args:
-            return "Usage: /model <name> or /model <backend> <name>"
+            return self._interactive_model_picker() or "Model selection cancelled."
         backend = self.preferred_backend
         if len(args) == 1:
             model = args[0]
@@ -256,6 +267,110 @@ class DevenvTUIController:
             else:
                 self.kernel.ai.model = cleaned_model
         return f"Model for `{backend}` set to `{cleaned_model}`."
+
+    def _prompt_choice(self, title: str, options: list[str], *, allow_cancel: bool = True) -> int | None:
+        lines = [_style(title, Ansi.BOLD, Ansi.CYAN)]
+        for index, option in enumerate(options, start=1):
+            lines.append(f"{index}. {option}")
+        if allow_cancel:
+            lines.append("0. Cancel")
+        prompt = "\n".join(lines) + "\n> "
+        try:
+            raw_value = self.prompt_input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+        if allow_cancel and raw_value in {"", "0"}:
+            return None
+        if not raw_value.isdigit():
+            return None
+        selected = int(raw_value) - 1
+        if 0 <= selected < len(options):
+            return selected
+        return None
+
+    def _prompt_text(self, prompt: str) -> str | None:
+        try:
+            value = self.prompt_input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+        return value or None
+
+    def _interactive_permission_picker(self) -> str | None:
+        target_index = self._prompt_choice("Permission Picker", ["Backend access", "Session provider access"])
+        if target_index is None:
+            return None
+        if target_index == 0:
+            backend_options = [
+                f"{backend} [{'on' if self.access_policy.can_use_backend(backend) else 'off'}]"
+                for backend in BACKENDS
+            ]
+            backend_index = self._prompt_choice("Select Backend", backend_options)
+            if backend_index is None:
+                return None
+            value_index = self._prompt_choice("Set Backend Access", ["on", "off"])
+            if value_index is None:
+                return None
+            return self._handle_permission_command(["backend", BACKENDS[backend_index], ("on", "off")[value_index]])
+        provider_options = [
+            f"{provider} [{'on' if self.access_policy.can_access_provider(provider) else 'off'}]"
+            for provider in SESSION_PROVIDERS
+        ]
+        provider_index = self._prompt_choice("Select Session Provider", provider_options)
+        if provider_index is None:
+            return None
+        value_index = self._prompt_choice("Set Provider Access", ["on", "off"])
+        if value_index is None:
+            return None
+        return self._handle_permission_command(["provider", SESSION_PROVIDERS[provider_index], ("on", "off")[value_index]])
+
+    def _interactive_backend_picker(self) -> str | None:
+        statuses = getattr(self.kernel.ai, "status", lambda: {})()
+        options = []
+        for backend in BACKENDS:
+            model = self._backend_model(statuses, backend)
+            state = "on" if self.access_policy.can_use_backend(backend) else "off"
+            suffix = f" [{model}]" if model else ""
+            options.append(f"{backend} ({state}){suffix}")
+        backend_index = self._prompt_choice("Backend Picker", options)
+        if backend_index is None:
+            return None
+        return self._handle_backend_command([BACKENDS[backend_index]])
+
+    def _interactive_model_picker(self) -> str | None:
+        backend_options = []
+        statuses = getattr(self.kernel.ai, "status", lambda: {})()
+        for backend in BACKENDS:
+            current = self._backend_model(statuses, backend) or "unset"
+            backend_options.append(f"{backend} [{current}]")
+        backend_index = self._prompt_choice("Choose Backend For Model", backend_options)
+        if backend_index is None:
+            return None
+        backend = BACKENDS[backend_index]
+        known_models: list[str] = []
+        backend_models = getattr(self.kernel.ai, "backend_models", {})
+        if isinstance(backend_models, dict):
+            current = str(backend_models.get(backend, "") or "").strip()
+            if current:
+                known_models.append(current)
+        defaults = {
+            "opencode": ("opencode/claude-sonnet-4", "opencode/gpt-5-codex"),
+            "ollama": ("qwen2.5:3b", "qwen2.5-coder:7b"),
+            "llama_cpp": ("qwen2.5-coder.gguf", "deepseek-coder.gguf"),
+            "codex": ("gpt-5-codex", "gpt-5-codex-high"),
+        }
+        for model in defaults.get(backend, ()):
+            if model not in known_models:
+                known_models.append(model)
+        options = [*known_models, "Enter custom model…"]
+        model_index = self._prompt_choice("Model Picker", options)
+        if model_index is None:
+            return None
+        if model_index == len(options) - 1:
+            custom_model = self._prompt_text("Custom model name\n> ")
+            if custom_model is None:
+                return None
+            return self._handle_model_command([backend, custom_model])
+        return self._handle_model_command([backend, options[model_index]])
 
     def _backend_model(self, statuses: dict[str, Any], backend: str) -> str:
         status = statuses.get(backend) if isinstance(statuses, dict) else None
