@@ -1,72 +1,350 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from core.logging_utils import configure_logging
 
+from .context_builder import ContextBuilderService
 from .kernel import DevenvKernel
 from .models import DEFAULT_MAX_CONSECUTIVE_TOOLS, RunConfig, RuntimeTurnResult
 from .tooling import build_runtime_tools
+from .web import AccessPolicy
+
+BACKENDS = ("opencode", "ollama", "llama_cpp", "codex")
+SESSION_PROVIDERS = ("codex", "opencode")
+
+
+class Ansi:
+    RESET = "\033[0m"
+    DIM = "\033[2m"
+    BOLD = "\033[1m"
+    CYAN = "\033[36m"
+    BLUE = "\033[34m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    RED = "\033[31m"
+    MAGENTA = "\033[35m"
+
+
+def _style(text: str, *codes: str) -> str:
+    return "".join(codes) + text + Ansi.RESET
+
+
+@dataclass
+class TUICommandResult:
+    message: str
+    should_exit: bool = False
+
+
+class DevenvTUIController:
+    def __init__(self, config: RunConfig, *, kernel: DevenvKernel | None = None) -> None:
+        self.config = config
+        self.kernel = kernel or DevenvKernel(
+            workspace_path=config.workspace_path,
+            db_path=config.db_path,
+            vector_dir=config.vector_dir,
+        )
+        self.context_builder = ContextBuilderService(
+            config.workspace_path,
+            memory=self.kernel.memory,
+            provider_configs=config.external_session_configs,
+            performance_mode=config.performance_mode,
+        )
+        self.context_builder.set_runtime_allowed_providers(set())
+        self.kernel.context_builder = self.context_builder
+        for tool in build_runtime_tools(
+            self.kernel.memory,
+            context_builder=self.context_builder,
+        ):
+            self.kernel.register_tool(tool)
+        self.access_policy = AccessPolicy()
+        self.preferred_backend = getattr(self.kernel.ai, "preferred_backend", "opencode") or "opencode"
+        self._apply_runtime_preferences()
+
+    def close(self) -> None:
+        self.kernel.close()
+
+    def _apply_runtime_preferences(self) -> None:
+        allowed_providers = {
+            name
+            for name, allowed in self.access_policy.session_access.items()
+            if allowed
+        }
+        self.context_builder.set_runtime_allowed_providers(allowed_providers)
+        if hasattr(self.kernel.ai, "set_backend_preference"):
+            self.kernel.ai.set_backend_preference(
+                self.preferred_backend,
+                opencode_enabled=self.access_policy.can_use_backend("opencode"),
+                ollama_enabled=self.access_policy.can_use_backend("ollama"),
+                llama_cpp_enabled=self.access_policy.can_use_backend("llama_cpp"),
+                codex_enabled=self.access_policy.can_use_backend("codex"),
+            )
+
+    def handle_input(self, raw_text: str) -> TUICommandResult | None:
+        prompt = raw_text.strip()
+        if not prompt:
+            return None
+        if prompt.lower() in {"exit", "quit"}:
+            return TUICommandResult("Closing Devenv TUI.", should_exit=True)
+        if prompt.startswith("/"):
+            return self.handle_command(prompt)
+        return None
+
+    def handle_command(self, raw_command: str) -> TUICommandResult:
+        parts = raw_command.strip().split()
+        command = parts[0].lower()
+        args = parts[1:]
+        if command in {"/help", "/?"}:
+            return TUICommandResult(self.help_text())
+        if command == "/status":
+            return TUICommandResult(self.status_text())
+        if command in {"/permission", "/permissions"}:
+            return TUICommandResult(self._handle_permission_command(args))
+        if command == "/backend":
+            return TUICommandResult(self._handle_backend_command(args))
+        if command == "/model":
+            return TUICommandResult(self._handle_model_command(args))
+        if command == "/providers":
+            return TUICommandResult(self.providers_text())
+        if command == "/clear":
+            session_id = self.kernel.reset_conversation()
+            return TUICommandResult(f"Started a fresh thread. Session id: {session_id}")
+        if command in {"/exit", "/quit"}:
+            return TUICommandResult("Closing Devenv TUI.", should_exit=True)
+        return TUICommandResult(
+            f"Unknown command `{command}`.\n\n{self.help_text()}"
+        )
+
+    def help_text(self) -> str:
+        return "\n".join(
+            [
+                _style("Command Palette", Ansi.BOLD, Ansi.CYAN),
+                "/status                 Show active backend, model, and permissions",
+                "/permissions            Show available permission commands",
+                "/permission backend <name> <on|off>",
+                "/permission provider <codex|opencode> <on|off>",
+                "/backend <name>         Switch preferred backend",
+                "/model <name>           Set model for the preferred backend",
+                "/model <backend> <name> Set model for a specific backend",
+                "/providers              Show session-source health",
+                "/clear                  Start a fresh runtime thread",
+                "/exit                   Quit the TUI",
+            ]
+        )
+
+    def status_text(self) -> str:
+        statuses = getattr(self.kernel.ai, "status", lambda: {})()
+        preferred_backend = getattr(self.kernel.ai, "preferred_backend", self.preferred_backend) or self.preferred_backend
+        current_model = getattr(self.kernel.ai, "model", "unknown")
+        lines = [
+            _style("Devenv Status", Ansi.BOLD, Ansi.CYAN),
+            f"Workspace: {self.config.workspace_path}",
+            f"Performance: {self.config.performance_mode}",
+            f"Preferred backend: {preferred_backend}",
+            f"Current model: {current_model}",
+            "",
+            _style("Backend Access", Ansi.BOLD, Ansi.BLUE),
+        ]
+        for backend in BACKENDS:
+            allowed = self.access_policy.can_use_backend(backend)
+            label = "on" if allowed else "off"
+            color = Ansi.GREEN if allowed else Ansi.DIM
+            backend_model = self._backend_model(statuses, backend)
+            suffix = f" [{backend_model}]" if backend_model else ""
+            lines.append(f"- {backend}: {_style(label, color)}{suffix}")
+        lines.extend(["", _style("Session Providers", Ansi.BOLD, Ansi.MAGENTA)])
+        for provider in SESSION_PROVIDERS:
+            allowed = self.access_policy.can_access_provider(provider)
+            label = "on" if allowed else "off"
+            color = Ansi.GREEN if allowed else Ansi.DIM
+            lines.append(f"- {provider}: {_style(label, color)}")
+        return "\n".join(lines)
+
+    def providers_text(self) -> str:
+        sources = self.context_builder.list_sources()
+        lines = [_style("Session Source Health", Ansi.BOLD, Ansi.CYAN)]
+        if not sources:
+            lines.append("No external session providers are configured.")
+            return "\n".join(lines)
+        for source in sources:
+            state = "ready" if source.available else "unavailable"
+            allowed = "allowed" if self.access_policy.can_access_provider(source.provider) else "blocked"
+            lines.append(
+                f"- {source.provider}: {state}, {allowed}, sessions={source.session_count}, root={source.root_path}"
+            )
+        return "\n".join(lines)
+
+    def _handle_permission_command(self, args: list[str]) -> str:
+        if not args:
+            return "\n".join(
+                [
+                    _style("Permission Controls", Ansi.BOLD, Ansi.CYAN),
+                    "Grant what the TUI is allowed to use before asking memory-heavy questions.",
+                    "Examples:",
+                    "/permission backend opencode on",
+                    "/permission backend codex on",
+                    "/permission provider codex on",
+                    "/permission provider opencode on",
+                ]
+            )
+        if len(args) != 3:
+            return "Usage: /permission <backend|provider> <name> <on|off>"
+        target_type, name, value = args[0].lower(), args[1].lower(), args[2].lower()
+        if value not in {"on", "off"}:
+            return "Permission values must be `on` or `off`."
+        allowed = value == "on"
+        if target_type == "backend":
+            if name not in BACKENDS:
+                return "Backends must be one of: opencode, ollama, llama_cpp, codex."
+            self.access_policy.set_backend_access(name, allowed)
+            if allowed and self.preferred_backend == name:
+                self._apply_runtime_preferences()
+            else:
+                self._apply_runtime_preferences()
+            return f"Backend `{name}` permission is now {value}."
+        if target_type == "provider":
+            if name not in SESSION_PROVIDERS:
+                return "Providers must be one of: codex, opencode."
+            self.access_policy.set_session_access(name, allowed)
+            self._apply_runtime_preferences()
+            return f"Provider `{name}` permission is now {value}."
+        return "Permission target must be `backend` or `provider`."
+
+    def _handle_backend_command(self, args: list[str]) -> str:
+        if len(args) != 1:
+            return "Usage: /backend <opencode|ollama|llama_cpp|codex>"
+        backend = args[0].lower()
+        if backend not in BACKENDS:
+            return "Backends must be one of: opencode, ollama, llama_cpp, codex."
+        self.preferred_backend = backend
+        self._apply_runtime_preferences()
+        if not self.access_policy.can_use_backend(backend):
+            return (
+                f"Preferred backend set to `{backend}`, but it is still blocked. "
+                f"Run `/permission backend {backend} on` before chatting."
+            )
+        return f"Preferred backend set to `{backend}`."
+
+    def _handle_model_command(self, args: list[str]) -> str:
+        if not args:
+            return "Usage: /model <name> or /model <backend> <name>"
+        backend = self.preferred_backend
+        if len(args) == 1:
+            model = args[0]
+        elif len(args) == 2:
+            backend = args[0].lower()
+            model = args[1]
+            if backend not in BACKENDS:
+                return "Backends must be one of: opencode, ollama, llama_cpp, codex."
+        else:
+            return "Usage: /model <name> or /model <backend> <name>"
+        cleaned_model = model.strip()
+        if not cleaned_model:
+            return "Model name cannot be empty."
+        if hasattr(self.kernel.ai, "set_backend_model"):
+            self.kernel.ai.set_backend_model(backend, cleaned_model)
+        elif hasattr(self.kernel.ai, "set_model"):
+            self.kernel.ai.set_model(cleaned_model)
+        else:
+            self.kernel.ai.model = cleaned_model
+        if backend == self.preferred_backend:
+            if hasattr(self.kernel.ai, "set_model"):
+                self.kernel.ai.set_model(cleaned_model)
+            else:
+                self.kernel.ai.model = cleaned_model
+        return f"Model for `{backend}` set to `{cleaned_model}`."
+
+    def _backend_model(self, statuses: dict[str, Any], backend: str) -> str:
+        status = statuses.get(backend) if isinstance(statuses, dict) else None
+        model = getattr(status, "model", "")
+        if model:
+            return str(model)
+        backend_models = getattr(self.kernel.ai, "backend_models", {})
+        if isinstance(backend_models, dict):
+            return str(backend_models.get(backend, "") or "")
+        if backend == self.preferred_backend:
+            return str(getattr(self.kernel.ai, "model", "") or "")
+        return ""
+
+    def run_prompt(self, prompt: str) -> RuntimeTurnResult:
+        self._apply_runtime_preferences()
+        return self.kernel.execute_turn(
+            prompt,
+            max_consecutive_tools=self.config.max_consecutive_tools,
+            backend_preference=self.preferred_backend,
+            opencode_enabled=self.access_policy.can_use_backend("opencode"),
+            ollama_enabled=self.access_policy.can_use_backend("ollama"),
+            llama_cpp_enabled=self.access_policy.can_use_backend("llama_cpp"),
+            codex_enabled=self.access_policy.can_use_backend("codex"),
+            no_memory=self.config.no_memory,
+            incognito=self.config.incognito,
+        )
 
 
 def render_banner(config: RunConfig) -> None:
-    line = "=" * 80
+    line = _style("━" * 78, Ansi.DIM)
     print(line)
-    print(f" DEVENV CORE TUI v1.0 | Workspace: {config.workspace_path}")
+    print(
+        _style("DEVENV CORE TUI", Ansi.BOLD, Ansi.CYAN)
+        + f"  {_style('workspace', Ansi.DIM)} {config.workspace_path}"
+    )
+    print(
+        f"{_style('memory', Ansi.GREEN)} online   "
+        f"{_style('performance', Ansi.BLUE)} {config.performance_mode}   "
+        f"{_style('commands', Ansi.MAGENTA)} /help /status /permissions"
+    )
     print(line)
-    print("[SYSTEM]: Connected to OpenCode CLI pipeline. Memory engine online.")
-    print(f"[SYSTEM]: Performance mode: {config.performance_mode}")
 
 
 def render_turn_result(result: RuntimeTurnResult) -> None:
     for trace in result.stage_traces:
         checkpoint_label = f" checkpoint={trace.checkpoint_id}" if trace.checkpoint_id is not None else ""
-        status = "ok" if trace.success else "failed"
-        print(f"🧭 [STAGE]: {trace.stage}{checkpoint_label} -> {status}. {trace.summary}")
+        status = _style("ok", Ansi.GREEN) if trace.success else _style("failed", Ansi.RED)
+        print(f"{_style('stage', Ansi.DIM)} {trace.stage}{checkpoint_label} -> {status}. {trace.summary}")
     for step in result.steps:
         if step.is_sandboxed_violation:
-            print(f"🔒 [SANDBOX CHECK]: {step.output}")
+            print(f"{_style('sandbox', Ansi.YELLOW)} {step.output}")
             continue
-        status = "Success" if step.success else "Failure"
-        print(f"⚙️  [EXECUTING TOOL]: {step.tool_name} -> {status}.")
+        status = _style("success", Ansi.GREEN) if step.success else _style("failure", Ansi.RED)
+        print(f"{_style('tool', Ansi.DIM)} {step.tool_name} -> {status}")
 
     if result.final_response:
-        print("\n[ASSISTANT]:")
+        print()
+        print(_style("assistant", Ansi.BOLD, Ansi.CYAN))
         print(result.final_response)
 
 
 def run_tui(config: RunConfig) -> int:
-    kernel = DevenvKernel(
-        workspace_path=config.workspace_path,
-        db_path=config.db_path,
-        vector_dir=config.vector_dir,
-    )
-    for tool in build_runtime_tools(kernel.memory):
-        kernel.register_tool(tool)
+    controller = DevenvTUIController(config)
     render_banner(config)
 
     while True:
         try:
-            prompt = input("devenv@local_workspace:~$ ").strip()
+            prompt = input(_style("devenv", Ansi.BOLD, Ansi.CYAN) + _style(" › ", Ansi.DIM)).strip()
         except EOFError:
             print()
-            kernel.close()
+            controller.close()
             return 0
         except KeyboardInterrupt:
             print()
-            kernel.close()
+            controller.close()
             return 0
 
-        if not prompt:
+        command_result = controller.handle_input(prompt)
+        if command_result is not None:
+            print(command_result.message)
+            print()
+            if command_result.should_exit:
+                controller.close()
+                return 0
             continue
-        if prompt.lower() in {"exit", "quit"}:
-            kernel.close()
-            return 0
 
-        print("⏳ [RETRIEVING MEMORY CONTEXT]...")
-        print("🤖 [AI REASONING]...")
-        result = kernel.execute_turn(prompt, max_consecutive_tools=config.max_consecutive_tools)
+        print(_style("retrieving memory context…", Ansi.DIM))
+        print(_style("reasoning…", Ansi.DIM))
+        result = controller.run_prompt(prompt)
         render_turn_result(result)
         print()
 

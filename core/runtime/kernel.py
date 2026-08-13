@@ -714,6 +714,7 @@ class DevenvKernel:
             degraded_response = self._fallback_response_for_runtime_error(
                 user_prompt=user_prompt,
                 error=exc,
+                memory_context=memory_context,
                 steps=steps,
                 ai_logs=ai_logs,
                 system_logs=system_logs,
@@ -3732,6 +3733,7 @@ class DevenvKernel:
         *,
         user_prompt: str,
         error: RuntimeError,
+        memory_context: str,
         steps: list[ToolExecutionStep],
         ai_logs: list[str],
         system_logs: list[str],
@@ -3767,11 +3769,21 @@ class DevenvKernel:
             ai_logs.append("Returned recent-conversation fallback after OpenCode transport failure")
             return recent_follow_up
 
-        if _should_try_direct_memory_answer(user_prompt):
-            memory_context, _metadata = self._retrieve_memory_context(user_prompt, local_only=True)
+        if memory_context.strip():
             memory_answer = self._answer_known_project_question_local(user_prompt, memory_context)
             if memory_answer is None and _should_trust_memory_answer_for_prompt(user_prompt):
                 memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
+            if memory_answer:
+                ai_logs.append("Returned already-retrieved memory fallback after OpenCode transport failure")
+                return memory_answer
+
+        if _should_try_direct_memory_answer(user_prompt):
+            local_memory_context = memory_context
+            if not local_memory_context.strip():
+                local_memory_context, _metadata = self._retrieve_memory_context(user_prompt, local_only=True)
+            memory_answer = self._answer_known_project_question_local(user_prompt, local_memory_context)
+            if memory_answer is None and _should_trust_memory_answer_for_prompt(user_prompt):
+                memory_answer = _answer_from_retrieved_memory(user_prompt, local_memory_context)
             if memory_answer is None and not _should_skip_exact_logged_fast_path(user_prompt):
                 memory_answer = self._lookup_exact_logged_answer(user_prompt)
             if memory_answer:
@@ -7375,6 +7387,9 @@ def _is_bug_list_question(user_prompt: str) -> bool:
             "bug list",
             "list the bugs",
             "exact bugs",
+            "what were the bugs we found",
+            "which bugs did we find",
+            "what bugs did we find",
             "what bugs did we fix",
             "give get-drip bug list",
             "give the bug list",
@@ -7679,6 +7694,9 @@ def _is_opencode_transport_error(error: RuntimeError) -> bool:
         "opencode server failed" in lowered
         or "opencode cli failed" in lowered
         or "unable to reach opencode server" in lowered
+        or ("opencode cli failed" in lowered and "unable to connect" in lowered)
+        or ("opencode cli failed" in lowered and "failed to fetch" in lowered)
+        or ("opencode cli failed" in lowered and "pragma journal_mode = wal" in lowered)
     )
 
 
@@ -8096,6 +8114,14 @@ def _exact_logged_query_variants(user_prompt: str) -> tuple[str, ...]:
         add(re.sub(r"\bproject\b", "", base, flags=re.IGNORECASE))
     if re.search(r"\bwe did\b", lowered):
         add(re.sub(r"\bwe did\b", "", base, flags=re.IGNORECASE))
+    if "get-drip" in lowered and (
+        "what were the bugs we found" in lowered
+        or "which bugs did we find" in lowered
+        or "what bugs did we find" in lowered
+    ):
+        add("what exact bugs did we fix in get-drip")
+        add("what bugs did we fix in get-drip")
+        add("get-drip bug list")
     if any(
         phrase in lowered
         for phrase in (

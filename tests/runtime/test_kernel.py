@@ -4690,6 +4690,33 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("Relevant paths I found", result.final_response or "")
         self.assertIn("OpenCode server request failed with status 400.", result.error_message or "")
 
+    def test_runtime_error_fallback_reuses_existing_memory_context_before_retrying_lookup(self) -> None:
+        memory = FailingMemory()
+        ai = TransportErrorAI([])
+        memory_context = "\n".join(
+            [
+                "## External Session Context",
+                "- get-drip was described as a Convex-backed app.",
+                "- The main issues were root URL redirects, Convex generated imports, and authentication bypass.",
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            answer = kernel._fallback_response_for_runtime_error(
+                user_prompt="what were the bugs we found in get-drip",
+                error=RuntimeError("OpenCode server failed: OpenCode server request failed with status 400."),
+                memory_context=memory_context,
+                steps=[],
+                ai_logs=[],
+                system_logs=[],
+            )
+
+        self.assertIsNotNone(answer)
+        self.assertIn("root URL redirects", answer or "")
+        self.assertIn("Convex generated imports", answer or "")
+        self.assertIn("authentication bypass", answer or "")
+
     def test_execute_turn_clarifies_underspecified_troubleshooting_prompt_without_memory_or_ai(self) -> None:
         memory = FakeMemory()
         memory.retrieve_context = lambda current_prompt, top_k=5: (_ for _ in ()).throw(AssertionError("retrieve_context should be skipped"))
