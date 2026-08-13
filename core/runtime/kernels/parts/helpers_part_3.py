@@ -52,6 +52,9 @@ def _exact_logged_query_variants(user_prompt: str) -> tuple[str, ...]:
         "what were the bugs we found" in lowered
         or "which bugs did we find" in lowered
         or "what bugs did we find" in lowered
+        or "what were the bugs we faced" in lowered
+        or "which bugs did we face" in lowered
+        or "what bugs did we face" in lowered
         or "what were the bugs we fixed" in lowered
         or "which bugs did we fix" in lowered
         or "what bugs did we fix" in lowered
@@ -326,6 +329,10 @@ def _compose_external_memory_query(user_prompt: str, conversation: list[dict[str
         "last time" in lowered
         or "what issue did we get" in lowered
         or "what issues did we get" in lowered
+        or "what were the bugs we faced" in lowered
+        or "which bugs did we face" in lowered
+        or "what bugs did we face" in lowered
+        or "while working with get-drip" in lowered
     ):
         for variant in (
             "what exact bugs did we fix in get-drip",

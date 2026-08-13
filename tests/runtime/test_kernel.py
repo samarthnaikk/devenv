@@ -3409,6 +3409,36 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertIn("In get-drip, the recalled bug list was:", result or "")
         self.assertIn("Create Workspace accepting https links", result or "")
 
+    def test_lookup_exact_logged_answer_supports_bugs_we_faced_while_working_variant(self) -> None:
+        memory = FakeMemory()
+
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                if query == "what bugs did we fix in get-drip":
+                    return [
+                        "\n".join(
+                            [
+                                "Based on the code in `core/runtime/kernel.py:2940-2980`, the 7 bugs tracked for get-drip are:",
+                                "",
+                                "1. Create Workspace accepting https links and converting them internally",
+                                "2. Salesforce being marked as coming soon or disabled",
+                                "3. The DRIP pipeline chat flow not working",
+                            ]
+                        )
+                    ]
+                return []
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return []
+
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel._lookup_exact_logged_answer("what were the bugs we faced while working with get-drip")
+
+        self.assertIn("In get-drip, the recalled bug list was:", result or "")
+        self.assertIn("Create Workspace accepting https links", result or "")
+
     def test_answer_from_retrieved_memory_explains_bug_fix_follow_up(self) -> None:
         answer = _answer_from_retrieved_memory(
             "how did we fix those bugs",

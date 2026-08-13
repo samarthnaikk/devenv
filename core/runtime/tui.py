@@ -688,6 +688,10 @@ if TEXTUAL_AVAILABLE:
             margin: 1 0 0 0;
         }
 
+        #status {
+            color: #7fb7ff;
+        }
+
         #palette {
             layer: overlay;
             align: center middle;
@@ -741,6 +745,7 @@ if TEXTUAL_AVAILABLE:
             with Container(id="shell"):
                 yield RichLog(id="log", markup=True, wrap=True)
                 yield Static("Type a prompt to chat. Type `/` for the command palette.", id="hint")
+                yield Static("Idle.", id="status")
                 yield Input(placeholder="Ask devenv anything…", id="composer")
             with Container(id="palette"):
                 with Vertical(id="palette-panel"):
@@ -754,6 +759,7 @@ if TEXTUAL_AVAILABLE:
             self.sub_title = self.controller.config.workspace_path
             self._write_shell_line(f"[bold cyan]Workspace[/] {self.controller.config.workspace_path}")
             self._write_shell_line("[dim]Use / to search commands, toggle permissions, switch backends, and set models.[/]")
+            self._set_status("Idle.")
             self.query_one("#composer", Input).focus()
 
         def action_open_palette(self) -> None:
@@ -792,7 +798,7 @@ if TEXTUAL_AVAILABLE:
                 self._write_shell_line("[dim]Retrieving memory context…[/]")
                 self._write_shell_line("[dim]Reasoning…[/]")
                 self._turn_in_flight = True
-                self.query_one("#composer", Input).disabled = True
+                self._set_status("Running turn...")
                 self._run_prompt(value)
                 return
             if event.input.id == "palette-query":
@@ -847,6 +853,9 @@ if TEXTUAL_AVAILABLE:
         def _write_shell_line(self, message: str) -> None:
             self.query_one("#log", RichLog).write(message)
 
+        def _set_status(self, message: str) -> None:
+            self.query_one("#status", Static).update(message)
+
         @work(thread=True)
         def _run_prompt(self, prompt: str) -> None:
             try:
@@ -860,13 +869,13 @@ if TEXTUAL_AVAILABLE:
             for line in _format_turn_result_lines(result):
                 self._write_shell_line(line)
             self._turn_in_flight = False
-            self.query_one("#composer", Input).disabled = False
+            self._set_status("Idle.")
             self.query_one("#composer", Input).focus()
 
         def _render_prompt_failure(self, error_message: str) -> None:
             self._write_shell_line(f"[red]error[/] {error_message}")
             self._turn_in_flight = False
-            self.query_one("#composer", Input).disabled = False
+            self._set_status("Idle.")
             self.query_one("#composer", Input).focus()
 
 
