@@ -71,6 +71,41 @@ class PaletteEntry:
     keywords: str
 
 
+def _format_turn_result_lines(result: RuntimeTurnResult) -> list[str]:
+    lines: list[str] = []
+    for trace in result.stage_traces:
+        checkpoint_label = f" checkpoint={trace.checkpoint_id}" if trace.checkpoint_id is not None else ""
+        state = "ok" if trace.success else "failed"
+        color = "green" if trace.success else "red"
+        lines.append(f"[dim]stage[/] {trace.stage}{checkpoint_label} -> [{color}]{state}[/]. {trace.summary}")
+        for log_line in trace.logs:
+            cleaned_log = str(log_line or "").strip()
+            if cleaned_log:
+                lines.append(f"[dim]  {cleaned_log}[/]")
+    for log_line in result.system_logs:
+        cleaned_log = str(log_line or "").strip()
+        if cleaned_log:
+            lines.append(f"[dim]system[/] {cleaned_log}")
+    for log_line in result.ai_logs:
+        cleaned_log = str(log_line or "").strip()
+        if cleaned_log:
+            lines.append(f"[dim]thinking[/] {cleaned_log}")
+    for step in result.steps:
+        if step.is_sandboxed_violation:
+            lines.append(f"[yellow]sandbox[/] {step.output}")
+        else:
+            state = "success" if step.success else "failure"
+            color = "green" if step.success else "red"
+            lines.append(f"[dim]tool[/] {step.tool_name} -> [{color}]{state}[/]")
+    if result.error_message:
+        lines.append(f"[red]error[/] {result.error_message}")
+    if result.final_response:
+        lines.append(f"[bold cyan]Assistant[/] {result.final_response}")
+    elif not lines:
+        lines.append("[yellow]Assistant[/] The runtime completed without producing a visible response.")
+    return lines
+
+
 class DevenvTUIController:
     def __init__(
         self,
@@ -541,21 +576,20 @@ def render_banner(config: RunConfig) -> None:
 
 
 def render_turn_result(result: RuntimeTurnResult) -> None:
-    for trace in result.stage_traces:
-        checkpoint_label = f" checkpoint={trace.checkpoint_id}" if trace.checkpoint_id is not None else ""
-        status = _style("ok", Ansi.GREEN) if trace.success else _style("failed", Ansi.RED)
-        print(f"{_style('stage', Ansi.DIM)} {trace.stage}{checkpoint_label} -> {status}. {trace.summary}")
-    for step in result.steps:
-        if step.is_sandboxed_violation:
-            print(f"{_style('sandbox', Ansi.YELLOW)} {step.output}")
-            continue
-        status = _style("success", Ansi.GREEN) if step.success else _style("failure", Ansi.RED)
-        print(f"{_style('tool', Ansi.DIM)} {step.tool_name} -> {status}")
-
-    if result.final_response:
-        print()
-        print(_style("assistant", Ansi.BOLD, Ansi.CYAN))
-        print(result.final_response)
+    for line in _format_turn_result_lines(result):
+        rendered = (
+            line.replace("[bold cyan]", f"{Ansi.BOLD}{Ansi.CYAN}")
+            .replace("[yellow]", Ansi.YELLOW)
+            .replace("[red]", Ansi.RED)
+            .replace("[green]", Ansi.GREEN)
+            .replace("[dim]", Ansi.DIM)
+            .replace("[/]", Ansi.RESET)
+            .replace("[/yellow]", Ansi.RESET)
+            .replace("[/red]", Ansi.RESET)
+            .replace("[/green]", Ansi.RESET)
+            .replace("[/dim]", Ansi.RESET)
+        )
+        print(rendered + (Ansi.RESET if not rendered.endswith(Ansi.RESET) else ""))
 
 
 if TEXTUAL_AVAILABLE:
@@ -635,6 +669,7 @@ if TEXTUAL_AVAILABLE:
             super().__init__()
             self.controller = controller
             self._palette_entries: list[PaletteEntry] = []
+            self._turn_in_flight = False
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=False)
@@ -679,6 +714,9 @@ if TEXTUAL_AVAILABLE:
                 event.input.value = ""
                 if not value:
                     return
+                if self._turn_in_flight:
+                    self._write_shell_line("[yellow]Turn already running.[/] Wait for the current response to finish before sending another prompt.")
+                    return
                 if value.startswith("/"):
                     self.action_open_palette()
                     query = self.query_one("#palette-query", Input)
@@ -688,6 +726,8 @@ if TEXTUAL_AVAILABLE:
                 self._write_shell_line(f"[bold cyan]You[/] {value}")
                 self._write_shell_line("[dim]Retrieving memory context…[/]")
                 self._write_shell_line("[dim]Reasoning…[/]")
+                self._turn_in_flight = True
+                self.query_one("#composer", Input).disabled = True
                 self._run_prompt(value)
                 return
             if event.input.id == "palette-query":
@@ -744,24 +784,24 @@ if TEXTUAL_AVAILABLE:
 
         @work(thread=True)
         def _run_prompt(self, prompt: str) -> None:
-            result = self.controller.run_prompt(prompt)
+            try:
+                result = self.controller.run_prompt(prompt)
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self.call_from_thread(self._render_prompt_failure, str(exc))
+                return
             self.call_from_thread(self._render_prompt_result, result)
 
         def _render_prompt_result(self, result: RuntimeTurnResult) -> None:
-            for trace in result.stage_traces:
-                checkpoint_label = f" checkpoint={trace.checkpoint_id}" if trace.checkpoint_id is not None else ""
-                state = "ok" if trace.success else "failed"
-                color = "green" if trace.success else "red"
-                self._write_shell_line(f"[dim]stage[/] {trace.stage}{checkpoint_label} -> [{color}]{state}[/]. {trace.summary}")
-            for step in result.steps:
-                if step.is_sandboxed_violation:
-                    self._write_shell_line(f"[yellow]sandbox[/] {step.output}")
-                else:
-                    state = "success" if step.success else "failure"
-                    color = "green" if step.success else "red"
-                    self._write_shell_line(f"[dim]tool[/] {step.tool_name} -> [{color}]{state}[/]")
-            if result.final_response:
-                self._write_shell_line(f"[bold cyan]Assistant[/] {result.final_response}")
+            for line in _format_turn_result_lines(result):
+                self._write_shell_line(line)
+            self._turn_in_flight = False
+            self.query_one("#composer", Input).disabled = False
+            self.query_one("#composer", Input).focus()
+
+        def _render_prompt_failure(self, error_message: str) -> None:
+            self._write_shell_line(f"[red]error[/] {error_message}")
+            self._turn_in_flight = False
+            self.query_one("#composer", Input).disabled = False
             self.query_one("#composer", Input).focus()
 
 

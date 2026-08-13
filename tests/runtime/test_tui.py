@@ -3,8 +3,8 @@ from __future__ import annotations
 import tempfile
 import unittest
 
-from core.runtime.models import RunConfig, RuntimeTurnResult
-from core.runtime.tui import DevenvTUIController
+from core.runtime.models import RunConfig, RuntimeTurnResult, StageTrace, ToolExecutionStep
+from core.runtime.tui import DevenvTUIController, _format_turn_result_lines
 
 
 class FakeMemory:
@@ -247,6 +247,36 @@ class DevenvTUITest(unittest.TestCase):
 
         self.assertIn("gpt-5-codex", models)
         self.assertIn("gpt-5-codex-high", models)
+
+    def test_format_turn_result_lines_includes_thinking_and_system_logs(self) -> None:
+        result = RuntimeTurnResult(
+            final_response="stub response",
+            ai_logs=["Assistant produced direct response"],
+            system_logs=["Direct memory chars sent: 42"],
+            stage_traces=[StageTrace(stage="brain", success=True, summary="Answered directly", logs=["Used focused memory"])],
+            steps=[
+                ToolExecutionStep(
+                    step_id="1",
+                    tool_name="read_file",
+                    arguments={"path": "note.txt"},
+                    output="ok",
+                    success=True,
+                    is_sandboxed_violation=False,
+                )
+            ],
+        )
+
+        lines = _format_turn_result_lines(result)
+
+        self.assertTrue(any("thinking" in line and "Assistant produced direct response" in line for line in lines))
+        self.assertTrue(any("system" in line and "Direct memory chars sent: 42" in line for line in lines))
+        self.assertTrue(any("Used focused memory" in line for line in lines))
+        self.assertTrue(any("Assistant" in line and "stub response" in line for line in lines))
+
+    def test_format_turn_result_lines_shows_empty_response_message(self) -> None:
+        lines = _format_turn_result_lines(RuntimeTurnResult(final_response=None))
+
+        self.assertEqual(lines, ["[yellow]Assistant[/] The runtime completed without producing a visible response."])
 
 
 if __name__ == "__main__":
