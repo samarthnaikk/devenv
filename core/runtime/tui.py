@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -11,7 +12,7 @@ from .context_builder import ContextBuilderService
 from .kernel import DevenvKernel
 from .models import DEFAULT_MAX_CONSECUTIVE_TOOLS, RunConfig, RuntimeTurnResult
 from .tooling import build_runtime_tools
-from .web import AccessPolicy
+from .web import AccessPolicy, DEFAULT_LLAMACPP_MODELS, DEFAULT_OLLAMA_MODELS, DEFAULT_WEB_MODELS
 
 try:
     from textual import work
@@ -415,23 +416,42 @@ class DevenvTUIController:
             return str(getattr(self.kernel.ai, "model", "") or "")
         return ""
 
-    def model_options_for_backend(self, backend: str) -> list[str]:
-        known_models: list[str] = []
-        backend_models = getattr(self.kernel.ai, "backend_models", {})
-        if isinstance(backend_models, dict):
-            current = str(backend_models.get(backend, "") or "").strip()
-            if current:
-                known_models.append(current)
-        defaults = {
-            "opencode": ("opencode/claude-sonnet-4", "opencode/gpt-5-codex"),
-            "ollama": ("qwen2.5:3b", "qwen2.5-coder:7b"),
-            "llama_cpp": ("qwen2.5-coder.gguf", "deepseek-coder.gguf"),
-            "codex": ("gpt-5-codex", "gpt-5-codex-high"),
+    def _available_opencode_models(self, current_model: str) -> list[str]:
+        configured = os.getenv("DEVENV_AVAILABLE_MODELS", "")
+        configured_models = [item.strip() for item in configured.split(",") if item.strip()]
+        ordered: list[str] = []
+        for model_name in [current_model, *configured_models, *DEFAULT_WEB_MODELS]:
+            if model_name and model_name not in ordered:
+                ordered.append(model_name)
+        return ordered
+
+    def _model_catalog(self) -> dict[str, list[str]]:
+        statuses = getattr(self.kernel.ai, "status", lambda: {})()
+        current_backend = getattr(self.kernel.ai, "preferred_backend", self.preferred_backend) or self.preferred_backend
+        current_model = str(getattr(self.kernel.ai, "model", "") or "")
+        catalog: dict[str, list[str]] = {
+            "opencode": self._available_opencode_models(
+                current_model if current_backend == "opencode" else self._backend_model(statuses, "opencode")
+            ),
+            "ollama": list(DEFAULT_OLLAMA_MODELS),
+            "llama_cpp": list(DEFAULT_LLAMACPP_MODELS),
+            "codex": [],
         }
-        for model in defaults.get(backend, ()):
-            if model not in known_models:
-                known_models.append(model)
-        return known_models
+        if isinstance(statuses, dict):
+            for backend in BACKENDS:
+                status = statuses.get(backend)
+                metadata = dict(getattr(status, "metadata", {}) or {})
+                reported = [str(item).strip() for item in metadata.get("models", []) or [] if str(item).strip()]
+                ordered = list(catalog.get(backend, []))
+                selected = self._backend_model(statuses, backend).strip()
+                for model_name in [selected, *reported]:
+                    if model_name and model_name not in ordered:
+                        ordered.append(model_name)
+                catalog[backend] = ordered
+        return catalog
+
+    def model_options_for_backend(self, backend: str) -> list[str]:
+        return list(self._model_catalog().get(backend, []))
 
     def palette_entries(self, query: str = "") -> list[PaletteEntry]:
         statuses = getattr(self.kernel.ai, "status", lambda: {})()

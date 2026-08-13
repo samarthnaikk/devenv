@@ -50,11 +50,17 @@ class FakeAI:
             self.model = model
 
     def status(self):
+        metadata_by_backend = {
+            "opencode": {"models": ["opencode/claude-sonnet-4", "opencode/gpt-5-codex"]},
+            "ollama": {"models": ["qwen2.5:3b", "qwen2.5-coder:7b"]},
+            "llama_cpp": {"models": ["qwen2.5-coder.gguf", "deepseek-coder.gguf"]},
+            "codex": {"models": ["gpt-5-codex", "gpt-5-codex-high"]},
+        }
         return {
             backend: type(
                 "Status",
                 (),
-                {"model": model},
+                {"model": model, "metadata": metadata_by_backend.get(backend, {})},
             )()
             for backend, model in self.backend_models.items()
         }
@@ -229,6 +235,18 @@ class DevenvTUITest(unittest.TestCase):
         self.assertTrue(any("Toggle backend codex" in label for label in labels))
         self.assertTrue(any("Use backend codex" in label for label in labels))
         self.assertTrue(any("Set codex model to gpt-5-codex-high" in label for label in labels))
+
+    def test_model_options_use_backend_reported_models(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+            models = controller.model_options_for_backend("codex")
+
+        self.assertIn("gpt-5-codex", models)
+        self.assertIn("gpt-5-codex-high", models)
 
 
 if __name__ == "__main__":
