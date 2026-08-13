@@ -1013,11 +1013,15 @@ class ContextBuilderService:
         if self.runtime_allowed_providers == set():
             return "", (), {"context_match_state": "new_context", "context_match_reason": "External session access has not been granted."}
         if provider_name is not None:
-            return self._build_runtime_memory_context_for_provider(
-                task,
-                provider_name=provider_name,
-                max_lines=max_lines,
-            )
+            try:
+                return self._build_runtime_memory_context_for_provider(
+                    task,
+                    provider_name=provider_name,
+                    max_lines=max_lines,
+                )
+            except Exception as exc:
+                logger.warning("Failed to build runtime memory context for provider=%s: error=%s", provider_name, exc)
+                return "", (), {"context_match_state": "new_context", "context_match_reason": f"External {provider_name} lookup failed."}
 
         candidate_providers = self._candidate_provider_names()
         if not candidate_providers:
@@ -1025,13 +1029,23 @@ class ContextBuilderService:
 
         candidates: list[tuple[int, str, tuple[str, ...], dict[str, Any], str]] = []
         for candidate_provider in candidate_providers:
-            context, session_ids, metadata = self._build_runtime_memory_context_for_provider(
-                task,
-                provider_name=candidate_provider,
-                max_lines=max_lines,
-            )
+            try:
+                context, session_ids, metadata = self._build_runtime_memory_context_for_provider(
+                    task,
+                    provider_name=candidate_provider,
+                    max_lines=max_lines,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Skipping failed external session provider during runtime retrieval: provider=%s error=%s",
+                    candidate_provider,
+                    exc,
+                )
+                continue
             score = _score_runtime_context_candidate(task, context, metadata)
             candidates.append((score, context, session_ids, metadata, candidate_provider))
+        if not candidates:
+            return "", (), {"context_match_state": "new_context", "context_match_reason": "No external session provider yielded usable context."}
         candidates.sort(key=lambda item: (item[0], len(item[2]), item[4]), reverse=True)
         _score, context, session_ids, metadata, _provider_name = candidates[0]
         return context, session_ids, metadata
@@ -1075,8 +1089,7 @@ class ContextBuilderService:
         provider_names = list(self.providers)
         if self.runtime_allowed_providers is not None:
             provider_names = [name for name in provider_names if name in self.runtime_allowed_providers]
-        available_names = [name for name in provider_names if self.providers[name].health().available]
-        return available_names or provider_names
+        return provider_names
 
     def _query_index_variants(
         self,

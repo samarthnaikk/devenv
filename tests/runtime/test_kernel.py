@@ -4748,6 +4748,42 @@ class DevenvKernelTest(unittest.TestCase):
         self.assertEqual(metadata["external_context_state"], "reused_prior_context")
         self.assertIn("what exact bugs did we fix in get-drip", builder.task)
 
+    def test_execute_turn_uses_exact_logged_answer_after_unusable_retrieval_context(self) -> None:
+        memory = EmptyMemory()
+        ai = ExplodingAI([])
+
+        class FakeBuilder:
+            def build_runtime_memory_context(self, task: str):
+                return (
+                    "\n".join(
+                        [
+                            "## External Session Context",
+                            "- User asked: # AGENTS.md instructions for /Users/samarthnaik/Desktop/LoopedIn/get-drip",
+                            "- Assistant reported: Implemented all items from `reviews.md` with minimal, non-core-logic changes.",
+                        ]
+                    ),
+                    ("session-noisy",),
+                    {
+                        "context_match_state": "reused_prior_context",
+                        "context_match_reason": "Matched prior get-drip review session.",
+                    },
+                )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            kernel.context_builder = FakeBuilder()
+            kernel._try_fast_direct_memory_answer = lambda prompt: None  # type: ignore[method-assign]
+            kernel._lookup_exact_logged_answer = lambda prompt: (
+                "Based on memory from prior sessions, the get-drip bug list is: "
+                "root URL redirects, Convex generated imports, and the DRIP pipeline chat flow not working."
+            )
+            result = kernel.execute_turn("hey, do you remember what issue did we get while working with get-drip last time?")
+
+        self.assertIn("root URL redirects", result.final_response or "")
+        self.assertIn("Convex generated imports", result.final_response or "")
+        self.assertEqual(result.steps, [])
+        self.assertEqual(result.execution_mode, ExecutionMode.DIRECT_ANSWER.value)
+
     def test_runtime_error_fallback_reuses_existing_memory_context_before_retrying_lookup(self) -> None:
         memory = FailingMemory()
         ai = TransportErrorAI([])

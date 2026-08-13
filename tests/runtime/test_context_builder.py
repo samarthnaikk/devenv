@@ -1273,6 +1273,43 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertIn("custom middleware and session cookies", context)
         self.assertIn("functional React components", context)
 
+    def test_runtime_memory_context_skips_failing_provider_and_uses_successful_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            service = ContextBuilderService(str(workspace), provider_configs=())
+            service.providers = {"broken": mock.Mock(), "good": mock.Mock()}
+            service.set_runtime_allowed_providers({"broken", "good"})
+
+            def fake_build(task: str, *, provider_name: str, max_lines: int):
+                if provider_name == "broken":
+                    raise sqlite3.OperationalError("unable to open database file")
+                return (
+                    "\n".join(
+                        [
+                            "## External Session Context",
+                            "- Assistant reported: Based on memory from prior sessions, the get-drip bug list is root URL redirects and Convex generated imports.",
+                        ]
+                    ),
+                    ("session-good",),
+                    {
+                        "context_match_state": "reused_prior_context",
+                        "context_match_reason": "Matched prior get-drip bug session.",
+                        "context_match_score": 99,
+                    },
+                )
+
+            service._build_runtime_memory_context_for_provider = fake_build  # type: ignore[method-assign]
+
+            context, session_ids, metadata = service.build_runtime_memory_context(
+                "hey, do you remember what issue did we get while working with get-drip last time?"
+            )
+
+        self.assertEqual(session_ids, ("session-good",))
+        self.assertIn("root URL redirects", context)
+        self.assertEqual(metadata["context_match_state"], "reused_prior_context")
+
 
 if __name__ == "__main__":
     unittest.main()
