@@ -954,18 +954,6 @@ def _lexical_memory_terms(user_prompt: str) -> list[str]:
         for extra in ("flask", "backend", "server.py", "core.py", "rag", "retriever.py", "readme.md", "documentation.md"):
             if extra not in terms:
                 terms.append(extra)
-    if "get-drip" in lowered:
-        for extra in ("convex", "journey", "pipeline", "salesforce", "workspace", "campaign", "route"):
-            if extra not in terms:
-                terms.append(extra)
-        if "infer the parts of the app" in lowered or "look different" in lowered:
-            for extra in ("convex-api.ts", "convex-types.ts", "journey.ts", "test-activate.tsx", "pipeline.tsx"):
-                if extra not in terms:
-                    terms.append(extra)
-    if _is_bug_list_question(user_prompt) and "get-drip" in lowered:
-        for extra in ("https", "disabled", "pipeline chat", "test/publish", "root url redirects", "convex generated imports", "authentication bypass"):
-            if extra not in terms:
-                terms.append(extra)
     if "main issues" in lowered or "issues being worked" in lowered:
         for extra in ("salesforce", "pipeline", "workspace", "disabled", "https"):
             if extra not in terms:
@@ -1182,8 +1170,6 @@ def _answer_known_project_question(user_prompt: str, memory_context: str) -> str
     getgit_server = "server.py" in context_lower
     getdrip_convex = "convex" in context_lower
     issue_summary = _summarize_follow_up_issues(_memory_context_lines(memory_context))
-    if issue_summary and "pipeline" in context_lower and "pipeline chat" not in issue_summary and "drip pipeline chat flow not working" not in issue_summary:
-        issue_summary = issue_summary + ", and the DRIP pipeline chat flow not working"
     path_mentions = _extract_path_mentions(memory_context)
     high_signal_paths = [
         path for path in path_mentions

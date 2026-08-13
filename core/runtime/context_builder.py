@@ -1229,9 +1229,7 @@ class ContextBuilderService:
             return []
         focus_tokens = set().union(*(_focus_tokens(variant) for variant in variants))
         lowered_task = task.lower()
-        issue_recall_prompt = any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews", "issue", "issues"}) or (
-            "last time" in lowered_task and any(project in lowered_task for project in ("get-drip", "getgit"))
-        )
+        issue_recall_prompt = any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews", "issue", "issues"}) or "last time" in lowered_task
         issue_focus_markers = (
             "bug list",
             "exact bugs",
@@ -1287,8 +1285,6 @@ class ContextBuilderService:
                 elif any(term in summary.preview.lower() for term in issue_terms):
                     issue_bonus += 3
                 issue_bonus += sum(18 for marker in issue_focus_markers if marker in summary.preview.lower())
-                if "get-drip bug list" in summary.preview.lower():
-                    issue_bonus += 60
             summary_score = (
                 (identity_exact_hits * 14)
                 + (identity_token_hits * 8)
@@ -1370,9 +1366,6 @@ class ContextBuilderService:
                     issue_bonus += 4
                 issue_bonus += sum(16 for marker in issue_focus_markers if marker in summary.preview.lower())
                 issue_bonus += sum(8 for marker in issue_focus_markers if any(marker in haystack for haystack in haystacks))
-                if "get-drip bug list" in summary.preview.lower():
-                    issue_bonus += 80
-
             content_score = (
                 (identity_exact_hits * 14)
                 + (identity_token_hits * 8)
@@ -1682,7 +1675,7 @@ def _collect_relevant_context_lines(
             matching_session_summaries = [
                 line
                 for _score, line, kind in scored
-                if kind == "session" and any(marker in line.lower() for marker in ("get-drip", "getgit"))
+                if kind == "session" and any(token in line.lower() for token in _tokenize(task))
             ]
             if matching_session_summaries and len(selected) < MAX_CONTEXT_LINES:
                 selected.append(matching_session_summaries[0])
@@ -1866,7 +1859,7 @@ def _preview_issue_recall_matches(
 
 def _session_has_issue_focus(summary: ExternalSessionSummary, detail: ExternalSessionDetail) -> bool:
     markers = (
-        "get-drip bug list",
+        "bug list",
         "root url redirects",
         "convex generated imports",
         "authentication bypass",
@@ -1888,7 +1881,7 @@ def _session_has_issue_focus(summary: ExternalSessionSummary, detail: ExternalSe
 
 def _issue_focus_score(summary: ExternalSessionSummary, detail: ExternalSessionDetail) -> int:
     markers = (
-        "get-drip bug list",
+        "bug list",
         "root url redirects",
         "convex generated imports",
         "authentication bypass",
@@ -1897,7 +1890,7 @@ def _issue_focus_score(summary: ExternalSessionSummary, detail: ExternalSessionD
         "pipeline chat",
         "test/publish",
         "salesforce being marked as coming soon",
-        "get-drip bugs tracked",
+        "bugs tracked",
     )
     score = 0
     preview = (summary.preview or "").lower()
@@ -1915,7 +1908,7 @@ def _score_runtime_context_candidate(task: str, context: str, metadata: dict[str
     issue_prompt = any(marker in lowered_task for marker in ("bug", "bugs", "issue", "issues", "fix", "fixed", "review", "last time"))
     if issue_prompt:
         focus_markers = (
-            "get-drip bug list",
+            "bug list",
             "root url redirects",
             "convex generated imports",
             "authentication bypass",
@@ -2151,8 +2144,6 @@ def _focus_tokens(text: str) -> set[str]:
 
 def _is_cleanup_schema_task(task: str) -> bool:
     lowered = task.lower()
-    if "get-drip" not in lowered:
-        return False
     return any(marker in lowered for marker in ("cleanup", "clean up", "schema", "schrema"))
 
 

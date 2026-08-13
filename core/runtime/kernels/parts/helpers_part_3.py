@@ -18,7 +18,7 @@ def _is_backend_connector_question(user_prompt: str) -> bool:
 
 def _supports_exact_logged_answer_prompt(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
-    return _is_session_history_question(user_prompt) or "getgit" in lowered or "get-drip" in lowered
+    return _is_session_history_question(user_prompt) or _has_explicit_memory_subject(user_prompt)
 
 
 def _exact_logged_query_variants(user_prompt: str) -> tuple[str, ...]:
@@ -47,14 +47,15 @@ def _exact_logged_query_variants(user_prompt: str) -> tuple[str, ...]:
         add(re.sub(r"\bproject\b", "", base, flags=re.IGNORECASE))
     if re.search(r"\bwe did\b", lowered):
         add(re.sub(r"\bwe did\b", "", base, flags=re.IGNORECASE))
-    if "get-drip" in lowered and (
+    subject = _preferred_memory_subject(user_prompt, [])
+    if subject and (
         "what were the bugs we found" in lowered
         or "which bugs did we find" in lowered
         or "what bugs did we find" in lowered
     ):
-        add("what exact bugs did we fix in get-drip")
-        add("what bugs did we fix in get-drip")
-        add("get-drip bug list")
+        add(f"what exact bugs did we fix in {subject}")
+        add(f"what bugs did we fix in {subject}")
+        add(f"{subject} bug list")
     if any(
         phrase in lowered
         for phrase in (

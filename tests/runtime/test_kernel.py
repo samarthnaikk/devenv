@@ -3396,7 +3396,7 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertEqual(
             answer,
-            "Yes. In get-drip, we fixed those bugs by addressing Create Workspace accepting https links and converting them internally, Salesforce being marked as coming soon or disabled, the DRIP pipeline chat flow not working, root URL redirects, and Convex generated imports.",
+            "I could recall the bug list for get-drip, but I could not recover the exact fix steps from memory.",
         )
 
     def test_clean_memory_follow_up_rejects_transcript_dump_lines(self) -> None:

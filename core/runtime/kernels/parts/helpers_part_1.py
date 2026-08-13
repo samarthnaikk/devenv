@@ -559,22 +559,17 @@ def _shape_logged_project_answer(user_prompt: str, answer: str) -> str:
     cleaned = str(answer or "").strip()
     if not cleaned:
         return ""
-
-    lowered_prompt = user_prompt.lower()
-    if "get-drip" in lowered_prompt and _is_cleanup_schema_prompt(user_prompt):
-        issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(_memory_context_lines(cleaned)))
-        if issues:
-            summary = _join_human_list(issues)
-            return f"The get-drip cleanup was mainly about {summary}."
-    if "get-drip" in lowered_prompt and _is_bug_list_question(user_prompt):
-        issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(_memory_context_lines(cleaned)))
-        if issues:
-            return _format_issue_list_answer("get-drip", issues)
-    if "get-drip" in lowered_prompt and _is_memory_recall_question(user_prompt):
-        issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(_memory_context_lines(cleaned)))
-        if issues:
-            summary = _join_human_list(issues)
-            return f"Yes. In get-drip, the main issues were {summary}."
+    subject = _preferred_memory_subject(user_prompt, _memory_context_lines(cleaned))
+    issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(_memory_context_lines(cleaned)))
+    if _is_cleanup_schema_prompt(user_prompt) and issues:
+        prefix = f"The {subject} cleanup was mainly about" if subject else "The cleanup was mainly about"
+        return f"{prefix} {_join_human_list(issues)}."
+    if _is_bug_list_question(user_prompt) and issues:
+        return _format_issue_list_answer(subject, issues)
+    if _is_memory_recall_question(user_prompt) and issues:
+        if subject:
+            return f"Yes. In {subject}, the main issues were {_join_human_list(issues)}."
+        return f"Yes. The main issues were {_join_human_list(issues)}."
     return cleaned
 
 
@@ -605,12 +600,18 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
     latest_edit_summary = _summarize_latest_code_edit_recall(user_prompt, cleaned_lines)
     if latest_edit_summary:
         return latest_edit_summary
-    if "get-drip" in user_prompt.lower() and _is_memory_recall_question(user_prompt):
-        extracted_issues = _extract_follow_up_issues(cleaned_lines)
+    if _is_memory_recall_question(user_prompt):
+        extracted_issues = _issues_relevant_to_prompt(user_prompt, _extract_follow_up_issues(cleaned_lines))
         if extracted_issues:
-            summary = _join_human_list(extracted_issues)
-            return f"Yes. In get-drip, the main issues were {summary}."
-
+            subject = _preferred_memory_subject(user_prompt, cleaned_lines)
+            if _is_cleanup_schema_prompt(user_prompt):
+                prefix = f"The {subject} cleanup was mainly about" if subject else "The cleanup was mainly about"
+                return f"{prefix} {_join_human_list(extracted_issues)}."
+            if _is_bug_list_question(user_prompt):
+                return _format_issue_list_answer(subject, extracted_issues)
+            if subject:
+                return f"Yes. In {subject}, the main issues were {_join_human_list(extracted_issues)}."
+            return f"Yes. The main issues were {_join_human_list(extracted_issues)}."
     if _is_bug_list_question(user_prompt) and not _is_cleanup_schema_prompt(user_prompt):
         issue_lines = [
             _humanize_recalled_line(_clean_memory_line(line), user_prompt)
@@ -631,8 +632,8 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
                 issue_summary = _summarize_follow_up_issues(shaped_working)
                 if issue_summary and _is_bug_fix_follow_up_question(user_prompt):
                     if subject:
-                        return f"Yes. In {subject}, we fixed those bugs by addressing {issue_summary}."
-                    return f"Yes. We fixed those bugs by addressing {issue_summary}."
+                        return f"I could recall the bug list for {subject}, but I could not recover the exact fix steps from memory."
+                    return "I could recall the bug list, but I could not recover the exact fix steps from memory."
                 if issue_summary and _is_issue_explanation_follow_up_question(user_prompt):
                     return f"Yes. It was mainly about {issue_summary}."
                 if issue_summary and _is_issue_recap_follow_up_question(user_prompt):
@@ -658,8 +659,8 @@ def _answer_from_retrieved_memory(user_prompt: str, memory_context: str) -> str 
                 subject = _infer_memory_subject(sections["working"] + sections["external"] + sections["retrieved"])
                 if _is_bug_fix_follow_up_question(user_prompt):
                     if subject:
-                        return f"Yes. In {subject}, we fixed those bugs by addressing {synthesized_issues}."
-                    return f"Yes. We fixed those bugs by addressing {synthesized_issues}."
+                        return f"I could recall the bug list for {subject}, but I could not recover the exact fix steps from memory."
+                    return "I could recall the bug list, but I could not recover the exact fix steps from memory."
                 if _is_issue_explanation_follow_up_question(user_prompt):
                     return f"Yes. It was mainly about {synthesized_issues}."
                 if _is_bug_list_question(user_prompt):
