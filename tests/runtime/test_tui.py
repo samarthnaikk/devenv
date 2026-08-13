@@ -216,6 +216,20 @@ class DevenvTUITest(unittest.TestCase):
         self.assertIn("gpt-5-codex-high", result.message)
         self.assertEqual(controller.kernel.ai.backend_models["codex"], "gpt-5-codex-high")
 
+    def test_palette_entries_include_toggle_and_model_actions(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+            entries = controller.palette_entries("codex")
+
+        labels = [entry.label for entry in entries]
+        self.assertTrue(any("Toggle backend codex" in label for label in labels))
+        self.assertTrue(any("Use backend codex" in label for label in labels))
+        self.assertTrue(any("Set codex model to gpt-5-codex-high" in label for label in labels))
+
 
 if __name__ == "__main__":
     unittest.main()

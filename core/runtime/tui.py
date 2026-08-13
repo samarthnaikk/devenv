@@ -13,6 +13,29 @@ from .models import DEFAULT_MAX_CONSECUTIVE_TOOLS, RunConfig, RuntimeTurnResult
 from .tooling import build_runtime_tools
 from .web import AccessPolicy
 
+try:
+    from textual import work
+    from textual.app import App, ComposeResult
+    from textual.containers import Container, Vertical
+    from textual.widgets import Footer, Header, Input, OptionList, RichLog, Static
+    from textual.widgets.option_list import Option
+
+    TEXTUAL_AVAILABLE = True
+except Exception:  # pragma: no cover - fallback path for environments without textual
+    work = None
+    App = object
+    ComposeResult = object
+    Container = object
+    Vertical = object
+    Footer = object
+    Header = object
+    Input = object
+    OptionList = object
+    RichLog = object
+    Static = object
+    Option = object
+    TEXTUAL_AVAILABLE = False
+
 BACKENDS = ("opencode", "ollama", "llama_cpp", "codex")
 SESSION_PROVIDERS = ("codex", "opencode")
 
@@ -37,6 +60,14 @@ def _style(text: str, *codes: str) -> str:
 class TUICommandResult:
     message: str
     should_exit: bool = False
+
+
+@dataclass(frozen=True)
+class PaletteEntry:
+    entry_id: str
+    label: str
+    command: str
+    keywords: str
 
 
 class DevenvTUIController:
@@ -384,6 +415,81 @@ class DevenvTUIController:
             return str(getattr(self.kernel.ai, "model", "") or "")
         return ""
 
+    def model_options_for_backend(self, backend: str) -> list[str]:
+        known_models: list[str] = []
+        backend_models = getattr(self.kernel.ai, "backend_models", {})
+        if isinstance(backend_models, dict):
+            current = str(backend_models.get(backend, "") or "").strip()
+            if current:
+                known_models.append(current)
+        defaults = {
+            "opencode": ("opencode/claude-sonnet-4", "opencode/gpt-5-codex"),
+            "ollama": ("qwen2.5:3b", "qwen2.5-coder:7b"),
+            "llama_cpp": ("qwen2.5-coder.gguf", "deepseek-coder.gguf"),
+            "codex": ("gpt-5-codex", "gpt-5-codex-high"),
+        }
+        for model in defaults.get(backend, ()):
+            if model not in known_models:
+                known_models.append(model)
+        return known_models
+
+    def palette_entries(self, query: str = "") -> list[PaletteEntry]:
+        statuses = getattr(self.kernel.ai, "status", lambda: {})()
+        entries: list[PaletteEntry] = [
+            PaletteEntry("status", "Show status", "/status", "status summary permissions backend model"),
+            PaletteEntry("providers", "Show session providers", "/providers", "providers sessions health codex opencode"),
+            PaletteEntry("clear", "Start fresh thread", "/clear", "clear reset thread conversation"),
+            PaletteEntry("quit", "Quit TUI", "/quit", "quit exit close"),
+        ]
+        for backend in BACKENDS:
+            state = "on" if self.access_policy.can_use_backend(backend) else "off"
+            entries.append(
+                PaletteEntry(
+                    f"toggle_backend:{backend}",
+                    f"Toggle backend {backend} [{state}]",
+                    f"/permission backend {backend} {'off' if state == 'on' else 'on'}",
+                    f"permission backend toggle {backend} {state}",
+                )
+            )
+            model = self._backend_model(statuses, backend) or "unset"
+            entries.append(
+                PaletteEntry(
+                    f"select_backend:{backend}",
+                    f"Use backend {backend} [{model}]",
+                    f"/backend {backend}",
+                    f"backend preferred select {backend} model {model}",
+                )
+            )
+            for model_name in self.model_options_for_backend(backend):
+                entries.append(
+                    PaletteEntry(
+                        f"model:{backend}:{model_name}",
+                        f"Set {backend} model to {model_name}",
+                        f"/model {backend} {model_name}",
+                        f"model {backend} {model_name}",
+                    )
+                )
+        for provider in SESSION_PROVIDERS:
+            state = "on" if self.access_policy.can_access_provider(provider) else "off"
+            entries.append(
+                PaletteEntry(
+                    f"toggle_provider:{provider}",
+                    f"Toggle session provider {provider} [{state}]",
+                    f"/permission provider {provider} {'off' if state == 'on' else 'on'}",
+                    f"permission provider session toggle {provider} {state}",
+                )
+            )
+        normalized_query = query.strip().lower()
+        if not normalized_query:
+            return entries
+        tokens = [token for token in normalized_query.split() if token]
+        filtered: list[PaletteEntry] = []
+        for entry in entries:
+            haystack = f"{entry.label.lower()} {entry.command.lower()} {entry.keywords.lower()}"
+            if all(token in haystack for token in tokens):
+                filtered.append(entry)
+        return filtered or entries
+
     def run_prompt(self, prompt: str) -> RuntimeTurnResult:
         self._apply_runtime_preferences()
         return self.kernel.execute_turn(
@@ -432,8 +538,224 @@ def render_turn_result(result: RuntimeTurnResult) -> None:
         print(result.final_response)
 
 
+if TEXTUAL_AVAILABLE:
+    class DevenvTextualApp(App[None]):
+        CSS = """
+        Screen {
+            layout: vertical;
+            background: #0b1220;
+            color: #f7f4ea;
+        }
+
+        #shell {
+            height: 1fr;
+        }
+
+        #log {
+            height: 1fr;
+            border: round #2f6fed;
+            background: #11192b;
+            padding: 0 1;
+        }
+
+        #composer {
+            margin: 1 0 0 0;
+            border: round #f08a24;
+            background: #0f1727;
+        }
+
+        #hint {
+            color: #8ca3c7;
+            margin: 1 0 0 0;
+        }
+
+        #palette {
+            layer: overlay;
+            align: center middle;
+            width: 84;
+            height: 28;
+            display: none;
+        }
+
+        #palette.visible {
+            display: block;
+        }
+
+        #palette-panel {
+            border: round #f08a24;
+            background: #101826;
+            padding: 1 2;
+        }
+
+        #palette-title {
+            color: #f7f4ea;
+            text-style: bold;
+            margin: 0 0 1 0;
+        }
+
+        #palette-query {
+            margin: 0 0 1 0;
+            border: round #2f6fed;
+            background: #0f1727;
+        }
+
+        #palette-options {
+            height: 1fr;
+            border: round #24324c;
+            background: #0c1320;
+        }
+        """
+
+        BINDINGS = [
+            ("/", "open_palette", "Command Palette"),
+            ("escape", "close_palette", "Close Palette"),
+        ]
+
+        def __init__(self, controller: DevenvTUIController) -> None:
+            super().__init__()
+            self.controller = controller
+            self._palette_entries: list[PaletteEntry] = []
+
+        def compose(self) -> ComposeResult:
+            yield Header(show_clock=False)
+            with Container(id="shell"):
+                yield RichLog(id="log", markup=True, wrap=True)
+                yield Static("Type a prompt to chat. Type `/` for the command palette.", id="hint")
+                yield Input(placeholder="Ask devenv anything…", id="composer")
+            with Container(id="palette"):
+                with Vertical(id="palette-panel"):
+                    yield Static("Command Palette", id="palette-title")
+                    yield Input(placeholder="Search commands, permissions, backends, models…", id="palette-query")
+                    yield OptionList(id="palette-options")
+            yield Footer()
+
+        def on_mount(self) -> None:
+            self.title = "DEVENV CORE TUI"
+            self.sub_title = self.controller.config.workspace_path
+            self._write_shell_line(f"[bold cyan]Workspace[/] {self.controller.config.workspace_path}")
+            self._write_shell_line("[dim]Use / to search commands, toggle permissions, switch backends, and set models.[/]")
+            self.query_one("#composer", Input).focus()
+
+        def action_open_palette(self) -> None:
+            palette = self.query_one("#palette", Container)
+            palette.add_class("visible")
+            query = self.query_one("#palette-query", Input)
+            query.value = ""
+            self._refresh_palette()
+            query.focus()
+
+        def action_close_palette(self) -> None:
+            palette = self.query_one("#palette", Container)
+            palette.remove_class("visible")
+            self.query_one("#composer", Input).focus()
+
+        def on_input_changed(self, event: Input.Changed) -> None:
+            if event.input.id == "palette-query":
+                self._refresh_palette(event.value)
+
+        def on_input_submitted(self, event: Input.Submitted) -> None:
+            if event.input.id == "composer":
+                value = event.value.strip()
+                event.input.value = ""
+                if not value:
+                    return
+                if value.startswith("/"):
+                    self.action_open_palette()
+                    query = self.query_one("#palette-query", Input)
+                    query.value = value[1:].strip()
+                    self._refresh_palette(query.value)
+                    return
+                self._write_shell_line(f"[bold cyan]You[/] {value}")
+                self._write_shell_line("[dim]Retrieving memory context…[/]")
+                self._write_shell_line("[dim]Reasoning…[/]")
+                self._run_prompt(value)
+                return
+            if event.input.id == "palette-query":
+                self._activate_highlighted_palette_entry()
+
+        def on_key(self, event) -> None:
+            palette = self.query_one("#palette", Container)
+            if not palette.has_class("visible"):
+                return
+            options = self.query_one("#palette-options", OptionList)
+            if event.key == "down":
+                options.action_cursor_down()
+                event.prevent_default()
+            elif event.key == "up":
+                options.action_cursor_up()
+                event.prevent_default()
+
+        def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+            if event.option_list.id != "palette-options":
+                return
+            self._execute_palette_selection(event.option.id or "")
+
+        def _refresh_palette(self, query: str = "") -> None:
+            options = self.query_one("#palette-options", OptionList)
+            self._palette_entries = self.controller.palette_entries(query)
+            options.clear_options()
+            rendered = [
+                Option(f"{entry.label}\n[dim]{entry.command}[/]", id=entry.entry_id)
+                for entry in self._palette_entries
+            ]
+            options.add_options(rendered)
+            if rendered:
+                options.highlighted = 0
+
+        def _activate_highlighted_palette_entry(self) -> None:
+            options = self.query_one("#palette-options", OptionList)
+            if options.option_count <= 0:
+                return
+            options.action_select()
+
+        def _execute_palette_selection(self, entry_id: str) -> None:
+            selected = next((entry for entry in self._palette_entries if entry.entry_id == entry_id), None)
+            if selected is None:
+                return
+            result = self.controller.handle_command(selected.command)
+            self.action_close_palette()
+            self._write_shell_line(f"[bold magenta]Command[/] {selected.label}")
+            self._write_shell_line(result.message)
+            if result.should_exit:
+                self.exit()
+
+        def _write_shell_line(self, message: str) -> None:
+            self.query_one("#log", RichLog).write(message)
+
+        @work(thread=True)
+        def _run_prompt(self, prompt: str) -> None:
+            result = self.controller.run_prompt(prompt)
+            self.call_from_thread(self._render_prompt_result, result)
+
+        def _render_prompt_result(self, result: RuntimeTurnResult) -> None:
+            for trace in result.stage_traces:
+                checkpoint_label = f" checkpoint={trace.checkpoint_id}" if trace.checkpoint_id is not None else ""
+                state = "ok" if trace.success else "failed"
+                color = "green" if trace.success else "red"
+                self._write_shell_line(f"[dim]stage[/] {trace.stage}{checkpoint_label} -> [{color}]{state}[/]. {trace.summary}")
+            for step in result.steps:
+                if step.is_sandboxed_violation:
+                    self._write_shell_line(f"[yellow]sandbox[/] {step.output}")
+                else:
+                    state = "success" if step.success else "failure"
+                    color = "green" if step.success else "red"
+                    self._write_shell_line(f"[dim]tool[/] {step.tool_name} -> [{color}]{state}[/]")
+            if result.final_response:
+                self._write_shell_line(f"[bold cyan]Assistant[/] {result.final_response}")
+            self.query_one("#composer", Input).focus()
+
+
 def run_tui(config: RunConfig) -> int:
     controller = DevenvTUIController(config)
+    if TEXTUAL_AVAILABLE:
+        try:
+            app = DevenvTextualApp(controller)
+            app.run()
+            controller.close()
+            return 0
+        except KeyboardInterrupt:
+            controller.close()
+            return 0
     render_banner(config)
 
     while True:
