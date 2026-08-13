@@ -52,6 +52,9 @@ def _exact_logged_query_variants(user_prompt: str) -> tuple[str, ...]:
         "what were the bugs we found" in lowered
         or "which bugs did we find" in lowered
         or "what bugs did we find" in lowered
+        or "what were the bugs we fixed" in lowered
+        or "which bugs did we fix" in lowered
+        or "what bugs did we fix" in lowered
     ):
         add(f"what exact bugs did we fix in {subject}")
         add(f"what bugs did we fix in {subject}")

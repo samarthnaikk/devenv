@@ -602,6 +602,8 @@ def _is_bug_list_question(user_prompt: str) -> bool:
             "what were the bugs we found",
             "which bugs did we find",
             "what bugs did we find",
+            "what were the bugs we fixed",
+            "which bugs did we fix",
             "what bugs did we fix",
             "give get-drip bug list",
             "give the bug list",
