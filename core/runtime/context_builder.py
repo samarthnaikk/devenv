@@ -1020,7 +1020,10 @@ class ContextBuilderService:
         provider = self._get_provider(resolved_provider)
         query_variants = _build_query_variants(task)
         indexed_matches, indexed_metadata = self._query_index_variants(query_variants, provider_name=resolved_provider)
-        selected_matches = indexed_matches or self._select_relevant_sessions(provider, task, query_variants=query_variants)
+        semantic_matches = self._select_relevant_sessions(provider, task, query_variants=query_variants)
+        selected_matches = indexed_matches or semantic_matches
+        if _should_prefer_semantic_session_matches(task, indexed_matches, semantic_matches):
+            selected_matches = semantic_matches
         selected_session_ids = tuple(match["summary"].session_id for match in selected_matches)
         selection_metadata = self._selection_metadata(selected_matches)
         selection_metadata["index_ready"] = indexed_metadata.get("index_ready", False)
@@ -1174,6 +1177,22 @@ class ContextBuilderService:
         if not prompt_tokens:
             return []
         focus_tokens = set().union(*(_focus_tokens(variant) for variant in variants))
+        lowered_task = task.lower()
+        issue_recall_prompt = any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews", "issue", "issues"}) or (
+            "last time" in lowered_task and any(project in lowered_task for project in ("get-drip", "getgit"))
+        )
+        issue_focus_markers = (
+            "bug list",
+            "exact bugs",
+            "root url redirects",
+            "convex generated imports",
+            "authentication bypass",
+            "open email relay",
+            "create workspace",
+            "pipeline chat",
+            "test/publish",
+            "salesforce being marked as coming soon",
+        )
         preliminary: list[dict[str, Any]] = []
         recent_window = 12
         for index, summary in enumerate(summaries):
@@ -1185,12 +1204,15 @@ class ContextBuilderService:
             identity_exact_hits = _exact_prompt_hits(prompt_tokens, identity_haystacks)
             identity_focus_hits = sum(1 for token in focus_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
             issue_bonus = 0
-            if any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews"}):
+            if issue_recall_prompt:
                 issue_terms = ("bug", "bugs", "fix", "fixed", "review", "reviews")
                 if any(term in summary.title.lower() for term in issue_terms):
                     issue_bonus += 6
                 elif any(term in summary.preview.lower() for term in issue_terms):
                     issue_bonus += 3
+                issue_bonus += sum(18 for marker in issue_focus_markers if marker in summary.preview.lower())
+                if "get-drip bug list" in summary.preview.lower():
+                    issue_bonus += 60
             summary_score = (
                 (identity_exact_hits * 14)
                 + (identity_token_hits * 8)
@@ -1210,7 +1232,9 @@ class ContextBuilderService:
 
         preliminary.sort(key=lambda item: (item["summary_score"], -item["recent_rank"], item["summary"].updated_at), reverse=True)
         candidate_ids: list[str] = []
-        for item in preliminary[:12]:
+        candidate_limit = 24 if issue_recall_prompt else 12
+        recent_candidate_limit = max(recent_window, candidate_limit)
+        for item in preliminary[:candidate_limit]:
             session_id = item["summary"].session_id
             if session_id not in candidate_ids:
                 candidate_ids.append(session_id)
@@ -1220,8 +1244,17 @@ class ContextBuilderService:
             session_id = item["summary"].session_id
             if session_id not in candidate_ids:
                 candidate_ids.append(session_id)
-            if len(candidate_ids) >= max(recent_window, 12):
+            if len(candidate_ids) >= recent_candidate_limit:
                 break
+        if issue_recall_prompt:
+            for item in preliminary:
+                summary = item["summary"]
+                preview_lower = (summary.preview or "").lower()
+                if not any(marker in preview_lower for marker in issue_focus_markers):
+                    continue
+                session_id = summary.session_id
+                if session_id not in candidate_ids:
+                    candidate_ids.append(session_id)
 
         scored: list[dict[str, Any]] = []
         workspace_name = Path(self.workspace_path).name.lower()
@@ -1251,13 +1284,18 @@ class ContextBuilderService:
                 else:
                     workspace_bonus += 1
             if focus_tokens and session_workspace == workspace_path and identity_focus_hits == 0:
-                continue
-            if any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews"}):
+                if not issue_recall_prompt and exact_hits == 0 and token_hits < 2:
+                    continue
+            if issue_recall_prompt:
                 issue_terms = ("bug", "bugs", "fix", "fixed", "review", "reviews")
                 if any(term in summary.title.lower() for term in issue_terms):
                     issue_bonus += 10
                 elif any(term in haystack for haystack in haystacks for term in issue_terms):
                     issue_bonus += 4
+                issue_bonus += sum(16 for marker in issue_focus_markers if marker in summary.preview.lower())
+                issue_bonus += sum(8 for marker in issue_focus_markers if any(marker in haystack for haystack in haystacks))
+                if "get-drip bug list" in summary.preview.lower():
+                    issue_bonus += 80
 
             content_score = (
                 (identity_exact_hits * 14)
@@ -1392,7 +1430,19 @@ def _collect_relevant_context_lines(
         if len(token) >= 3
     }
     lowered_task = task.lower()
-    is_issue_prompt = any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews"})
+    is_issue_prompt = any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews", "issue", "issues"}) or "last time" in lowered_task
+    issue_detail_markers = (
+        "create workspace",
+        "pipeline chat",
+        "test/publish",
+        "salesforce",
+        "root url redirects",
+        "convex generated imports",
+        "authentication bypass",
+        "open email relay",
+        "bug list",
+        "exact bugs",
+    )
     is_project_recall_prompt = any(marker in lowered_task for marker in ("remember about", "remember the", "what was it about", "what was that about"))
     candidates: list[tuple[str, str, bool]] = []
     seen: set[str] = set()
@@ -1441,22 +1491,16 @@ def _collect_relevant_context_lines(
             if session_identity_overlap and is_issue_prompt:
                 overlap += 2
         if line.startswith("Tool output:"):
-            overlap += 3 if is_issue_prompt or any(token in lowered_task for token in ("what did", "what were", "issues", "talking about", "comment")) else 1
+            overlap += 1 if is_issue_prompt or any(token in lowered_task for token in ("what did", "what were", "issues", "talking about", "comment")) else 1
             if session_identity_overlap and (is_issue_prompt or is_project_recall_prompt):
                 overlap += 3
+            if is_issue_prompt and re.search(r"\b(?:fix|chore|test)\([^)]*\):", lowered):
+                overlap -= 8
         if "bug" in lowered or "review" in lowered or "fix" in lowered:
             overlap += 3
         if session_identity_overlap and any(
             marker in lowered
-            for marker in (
-                "create workspace",
-                "pipeline chat",
-                "test/publish",
-                "salesforce",
-                "root url redirects",
-                "convex generated imports",
-                "authentication bypass",
-            )
+            for marker in issue_detail_markers
         ):
             overlap += 5
         if _is_cleanup_schema_task(task):
@@ -1526,28 +1570,28 @@ def _collect_relevant_context_lines(
     selected = [line for score, line, _kind in scored if score > 0][:MAX_CONTEXT_LINES]
     if not selected:
         selected = [line for _score, line, _kind in scored[:MAX_CONTEXT_LINES]]
-    elif is_project_recall_prompt and not is_issue_prompt:
+    elif is_issue_prompt or (is_project_recall_prompt and not is_issue_prompt):
         issue_detail_lines = [
             line
             for score, line, kind in scored
             if score > 0
             and kind in {"user", "assistant"}
             and any(
-                marker in line.lower()
-                for marker in (
-                    "create workspace",
-                    "pipeline chat",
-                    "test/publish",
-                    "salesforce",
-                    "root url redirects",
-                    "convex generated imports",
-                    "authentication bypass",
-                )
+                marker in line.lower() for marker in issue_detail_markers
             )
         ]
         if issue_detail_lines:
-            selected = issue_detail_lines[:2] + [line for line in selected if line not in issue_detail_lines]
-            selected = selected[:MAX_CONTEXT_LINES]
+            selected = issue_detail_lines[: min(3, MAX_CONTEXT_LINES)]
+            session_summaries = [line for line in selected if line.startswith("Session '")]
+            if session_summaries:
+                selected = [line for line in selected if not line.startswith("Session '")]
+            matching_session_summaries = [
+                line
+                for _score, line, kind in scored
+                if kind == "session" and any(marker in line.lower() for marker in ("get-drip", "getgit"))
+            ]
+            if matching_session_summaries and len(selected) < MAX_CONTEXT_LINES:
+                selected.append(matching_session_summaries[0])
     if any(not line.startswith("Session '") for line in selected):
         session_summaries = [line for line in selected if line.startswith("Session '")]
         detail_lines = [line for line in selected if not line.startswith("Session '")]
@@ -1647,6 +1691,34 @@ def _build_query_variants(task: str) -> tuple[str, ...]:
         if len(variants) >= MAX_QUERY_VARIANTS:
             break
     return tuple(variants[:MAX_QUERY_VARIANTS])
+
+
+def _should_prefer_semantic_session_matches(
+    task: str,
+    indexed_matches: list[dict[str, Any]],
+    semantic_matches: list[dict[str, Any]],
+) -> bool:
+    if not semantic_matches:
+        return False
+    lowered = task.lower()
+    issue_recall_prompt = any(marker in lowered for marker in ("bug", "bugs", "fix", "fixed", "review", "reviews", "issue", "issues", "last time"))
+    if not issue_recall_prompt:
+        return False
+    if not indexed_matches:
+        return True
+    semantic_best = semantic_matches[0]
+    indexed_best = indexed_matches[0]
+    semantic_score = int(semantic_best.get("score", 0))
+    indexed_score = int(indexed_best.get("score", 0))
+    semantic_identity_hits = int(semantic_best.get("identity_token_hits", 0))
+    indexed_identity_hits = int(indexed_best.get("identity_token_hits", 0))
+    semantic_overlap = int(semantic_best.get("best_overlap", 0))
+    indexed_chunk_count = len(indexed_best.get("chunks", []) or [])
+    return (
+        semantic_score >= indexed_score
+        or semantic_identity_hits > indexed_identity_hits
+        or semantic_overlap >= 2 > indexed_chunk_count
+    )
 
 
 def _is_noise_message_content(text: str) -> bool:

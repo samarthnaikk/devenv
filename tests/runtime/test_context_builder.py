@@ -1160,6 +1160,63 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertIn("root URL redirects", context)
         self.assertNotIn("validators", context.lower())
 
+    def test_runtime_memory_context_prefers_bug_preview_session_for_last_time_get_drip_issue_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "07" / "03"
+            sessions_dir.mkdir(parents=True)
+            recent_commit_id = "session-commit"
+            bug_preview_id = "session-bug-preview"
+            (codex_root / "session_index.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"id": recent_commit_id, "thread_name": "Archive rollout", "updated_at": "2026-07-03T20:05:00Z"}),
+                        json.dumps({"id": bug_preview_id, "thread_name": "Get-drip bug list", "updated_at": "2026-07-03T20:01:00Z"}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-03T20-05-00-{recent_commit_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-03T20:05:00Z", "type": "session_meta", "payload": {"id": recent_commit_id, "cwd": "/Users/samarthnaik/Desktop/LoopedIn/get-drip"}}),
+                        json.dumps({"timestamp": "2026-07-03T20:05:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "[bug-fixes-sendinvite 8a0a7f8] fix(settings): use saved timezone and locale dropdowns"}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-07-03T20-01-00-{bug_preview_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-07-03T20:01:00Z", "type": "session_meta", "payload": {"id": bug_preview_id, "cwd": str(workspace)}}),
+                        json.dumps({"timestamp": "2026-07-03T20:01:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Based on memory from prior sessions, the get-drip bug list is root URL redirects, Convex generated imports, and DRIP pipeline chat flow not working."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            context, session_ids, metadata = service.build_runtime_memory_context(
+                "hey, do you remember what issue did we get while working with get-drip last time?",
+                provider_name="codex",
+            )
+
+        self.assertIn(bug_preview_id, session_ids)
+        self.assertIn("root URL redirects", context)
+        self.assertNotIn("timezone and locale dropdowns", context.lower())
+        self.assertEqual(metadata["context_match_state"], "reused_prior_context")
+
     def test_runtime_memory_context_can_match_compound_prompt_via_query_variants(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir) / "workspace"

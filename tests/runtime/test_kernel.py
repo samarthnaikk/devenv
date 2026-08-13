@@ -141,6 +141,30 @@ class ProjectMemoryWithBugLog(ProjectMemory):
         self.store = FakeStore()
 
 
+class UnrelatedLexicalMemory(FakeMemory):
+    def __init__(self) -> None:
+        super().__init__()
+
+        class FakeStore:
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return [
+                    EpisodicLog(
+                        log_id="unrelated-1",
+                        timestamp=1.0,
+                        associated_node_id=None,
+                        raw_interaction=json.dumps(
+                            {
+                                "user": "Trace how this app decides between memory, planning, tools, and web search.",
+                                "agent": "`README.md` says Devenv Memory Engine is `core.memory` is the local-first memory package for Devenv. It also references LanceDB and RAG.",
+                                "metadata": {},
+                            }
+                        ),
+                    )
+                ]
+
+        self.store = FakeStore()
+
+
 class FakeAI:
     def __init__(self, responses: list[AIResponse] | None = None) -> None:
         self.responses = list(responses or [])
@@ -4689,6 +4713,40 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertIn("Relevant paths I found", result.final_response or "")
         self.assertIn("OpenCode server request failed with status 400.", result.error_message or "")
+
+    def test_retrieve_memory_context_prefers_external_session_for_last_time_issue_prompt_over_unrelated_lexical_hit(self) -> None:
+        memory = UnrelatedLexicalMemory()
+        ai = ExplodingAI([])
+
+        class FakeBuilder:
+            def build_runtime_memory_context(self, task: str):
+                self.task = task
+                return (
+                    "\n".join(
+                        [
+                            "## External Session Context",
+                            "- Assistant reported: The get-drip cleanup was mainly about root URL redirects, Convex generated imports, and authentication bypass.",
+                        ]
+                    ),
+                    ("session-get-drip",),
+                    {
+                        "context_match_state": "reused_prior_context",
+                        "context_match_reason": "Matched prior get-drip bug session.",
+                    },
+                )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ai)
+            builder = FakeBuilder()
+            kernel.context_builder = builder
+            memory_context, metadata = kernel._retrieve_memory_context(
+                "hey, do you remember what issue did we get while working with get-drip last time?"
+            )
+
+        self.assertIn("root URL redirects", memory_context)
+        self.assertNotIn("Devenv Memory Engine", memory_context)
+        self.assertEqual(metadata["external_context_state"], "reused_prior_context")
+        self.assertIn("what exact bugs did we fix in get-drip", builder.task)
 
     def test_runtime_error_fallback_reuses_existing_memory_context_before_retrying_lookup(self) -> None:
         memory = FailingMemory()
