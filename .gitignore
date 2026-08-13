@@ -24,6 +24,8 @@ lib/
 !interface/website/src/lib/**
 lib64/
 parts/
+!core/runtime/kernels/parts/
+!core/runtime/kernels/parts/*.py
 sdist/
 var/
 wheels/

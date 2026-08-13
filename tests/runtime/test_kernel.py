@@ -4229,6 +4229,40 @@ class DevenvKernelTest(unittest.TestCase):
         )
         self.assertEqual(memory.working_memory_calls, [])
 
+    def test_execute_turn_uses_pre_retrieval_fast_path_for_generic_latest_code_edit_question(self) -> None:
+        class RecallOnlyMemory(FakeMemory):
+            def __init__(self) -> None:
+                super().__init__()
+                self.store = type(
+                    "Store",
+                    (),
+                    {
+                        "search_agent_responses_for_external_query": lambda self, query, limit=8: [
+                            "The latest code edit we did was tightening runtime memory recall selection."
+                        ]
+                        if query in {
+                            "what was the latest code edit we did",
+                            "latest code edit we did",
+                        }
+                        else [],
+                        "search_logs": lambda self, terms, limit=20: [],
+                    },
+                )()
+
+            def retrieve_context(self, current_prompt: str, top_k: int = 5) -> FakeRetrievalResult:
+                raise AssertionError("generic latest-edit exact recall should skip retrieval")
+
+        memory = RecallOnlyMemory()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            result = kernel.execute_turn("what was the latest code edit we did")
+
+        self.assertEqual(
+            result.final_response,
+            "The latest code edit we did was tightening runtime memory recall selection.",
+        )
+        self.assertEqual(memory.working_memory_calls, [])
+
     def test_retrieve_lexical_memory_context_compacts_cleanup_prompt_once_answer_is_supported(self) -> None:
         class FakeStore:
             def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
@@ -4852,6 +4886,85 @@ class DevenvKernelTest(unittest.TestCase):
         )
 
         self.assertIsNone(answer)
+
+    def test_try_fast_direct_memory_answer_rejects_unrelated_getgit_architecture_noise(self) -> None:
+        memory = UnrelatedLexicalMemory()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            answer = kernel._try_fast_direct_memory_answer("what architecture was getgit")
+
+        self.assertIsNone(answer)
+
+    def test_try_fast_direct_memory_answer_rejects_unrelated_latest_code_edit_noise(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                return ["The latest official documentation is at https://opencode.ai/docs/. The fetched pages cover Tools and Agents."]
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return []
+
+        memory = EmptyMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            answer = kernel._try_fast_direct_memory_answer("what was the latest code edit we did")
+
+        self.assertIsNone(answer)
+
+    def test_try_fast_direct_memory_answer_rejects_code_edit_note_for_cleanup_prompt(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                return [
+                    "`tsc` passes. `bun run check` is failing only on formatting for `reviews.md`.\n\n"
+                    "Implemented all `reviews.md` items in code.\n\n"
+                    "### What I changed\n1. Reverted OAuth behavior exactly"
+                ]
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return []
+
+        memory = EmptyMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            answer = kernel._try_fast_direct_memory_answer("what do you know about clean up schrema og get-drip")
+
+        self.assertIsNone(answer)
+
+    def test_try_fast_direct_memory_answer_rejects_code_edit_note_for_generic_getdrip_recall(self) -> None:
+        class FakeStore:
+            def search_agent_responses_for_external_query(self, query: str, limit: int = 8) -> list[str]:
+                return [
+                    "`tsc` passes. `bun run check` is failing only on formatting for `reviews.md`.\n\n"
+                    "Implemented all `reviews.md` items in code.\n\n"
+                    "### What I changed\n1. Reverted OAuth behavior exactly"
+                ]
+
+            def search_logs(self, terms: list[str], limit: int = 20) -> list[EpisodicLog]:
+                return []
+
+        memory = EmptyMemory()
+        memory.store = FakeStore()
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=memory, ai=ExplodingAI([]))
+            answer = kernel._try_fast_direct_memory_answer("hey, do you remember about get-drip project?")
+
+        self.assertIsNone(answer)
+
+    def test_answer_from_retrieved_memory_shapes_latest_code_edit_recall(self) -> None:
+        answer = _answer_from_retrieved_memory(
+            "what was the latest code edit we did",
+            "\n".join(
+                [
+                    "## External Session Context",
+                    "- Assistant reported: `tsc` passes. `bun run check` is failing only on formatting for `reviews.md`.",
+                    "- Assistant reported: Implemented all `reviews.md` items in code.",
+                    "- Assistant reported: Reverted OAuth behavior exactly.",
+                ]
+            ),
+        )
+
+        self.assertEqual(answer, "The latest code edit we did was: Assistant reported: Implemented all `reviews.md` items in code.")
 
     def test_execute_turn_returns_partial_success_when_follow_up_ai_call_fails(self) -> None:
         memory = FakeMemory()
