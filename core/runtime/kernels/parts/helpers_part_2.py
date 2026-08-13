@@ -134,6 +134,40 @@ def _memory_query_entities(user_prompt: str) -> set[str]:
     }
 
 
+def _memory_subject_terms(user_prompt: str) -> set[str]:
+    generic = {
+        "about",
+        "architecture",
+        "backend",
+        "bugs",
+        "cleanup",
+        "codebase",
+        "different",
+        "explain",
+        "files",
+        "folders",
+        "found",
+        "issue",
+        "issues",
+        "look",
+        "main",
+        "project",
+        "recall",
+        "remember",
+        "repo",
+        "repository",
+        "same",
+        "schema",
+        "what",
+        "work",
+    }
+    terms = set(_memory_query_entities(user_prompt))
+    for token in re.findall(r"[a-z0-9_]+", user_prompt.lower()):
+        if len(token) >= 5 and token not in generic:
+            terms.add(token)
+    return terms
+
+
 def _is_brief_greeting_prompt(user_prompt: str) -> bool:
     normalized = re.sub(r"[^a-z0-9\s]", " ", user_prompt.lower())
     tokens = [token for token in normalized.split() if token]
@@ -590,12 +624,13 @@ def _recent_user_recall_fact(user_prompt: str, conversation: list[dict[str, Any]
 
 def _is_bug_list_question(user_prompt: str) -> bool:
     lowered = user_prompt.lower()
+    if "bug" in lowered and any(prefix in lowered for prefix in ("do you know about", "what do you know about", "tell me about")):
+        return True
+    if "issue" in lowered and any(prefix in lowered for prefix in ("do you know about", "what do you know about", "tell me about")):
+        return True
     return any(
         phrase in lowered
         for phrase in (
-            "do you know about get-drip bugs",
-            "what do you know about get-drip bugs",
-            "get-drip bugs",
             "bug list",
             "list the bugs",
             "exact bugs",
@@ -608,7 +643,16 @@ def _is_bug_list_question(user_prompt: str) -> bool:
             "what were the bugs we fixed",
             "which bugs did we fix",
             "what bugs did we fix",
-            "give get-drip bug list",
+            "what were the issues we found",
+            "which issues did we find",
+            "what issues did we find",
+            "what were the issues we faced",
+            "which issues did we face",
+            "what issues did we face",
+            "what were the issues we fixed",
+            "which issues did we fix",
+            "what issues did we fix",
+            "give the project bug list",
             "give the bug list",
             "main bugs",
             "tracked bugs",
@@ -983,6 +1027,7 @@ def _memory_answer_matches_question(user_prompt: str, shaped_lines: list[str]) -
         significant_tokens = [token for token in _memory_query_tokens(user_prompt) if token not in {"what", "this", "that", "about"}]
         return any(token in joined for token in significant_tokens)
     if _is_session_history_question(user_prompt):
+        prompt_entities = _memory_query_entities(user_prompt)
         if any(
             marker in lowered_prompt
             for marker in (
@@ -1013,6 +1058,10 @@ def _memory_answer_matches_question(user_prompt: str, shaped_lines: list[str]) -
                     "fixed",
                 )
             )
+        if "architecture" in lowered_prompt or "backend" in lowered_prompt:
+            if prompt_entities and not any(entity in joined for entity in prompt_entities):
+                return False
+            return any(marker in joined for marker in ("architecture", "backend", "flask", "fastapi", "convex", "rag", "server.py"))
         if any(marker in lowered_prompt for marker in ("bug", "issue", "review", "fix", "fixed", "last time")):
             issue_markers = (
                 "authentication bypass",
@@ -1058,22 +1107,25 @@ def _memory_answer_matches_question(user_prompt: str, shaped_lines: list[str]) -
             "cleanup",
         )
         return any(marker in joined for marker in cleanup_markers)
-    if "get-drip" in lowered_prompt and _is_memory_recall_question(user_prompt):
-        project_markers = (
-            "get-drip was",
-            "convex-backed app",
-            "retrieval quality across stored sessions",
-            "create workspace",
-            "salesforce",
-            "pipeline chat",
-            "root url redirects",
-            "convex generated imports",
-        )
-        return any(marker in joined for marker in project_markers)
+    prompt_entities = _memory_subject_terms(user_prompt)
+    if prompt_entities and _is_memory_recall_question(user_prompt):
+        return any(entity in joined for entity in prompt_entities) or _summarize_follow_up_issues(shaped_lines) is not None
     if "architecture" in lowered_prompt:
-        if "getgit" in lowered_prompt:
-            return any(marker in joined for marker in ("getgit", "flask", "server.py", "retriever", "core.py", "clone_repo.py", "repo_manager.py"))
-        return any(marker in joined for marker in ("flask", "fastapi", "backend", "server.py", "rag", "retriever", "core.py"))
+        architecture_markers = (
+            "flask",
+            "fastapi",
+            "backend",
+            "server.py",
+            "rag",
+            "retriever",
+            "core.py",
+            "convex",
+            "next.js",
+            "react",
+            "route",
+            "pipeline",
+        )
+        return any(marker in joined for marker in architecture_markers)
     if "same architecture" in lowered_prompt or "look different" in lowered_prompt:
         return any(marker in joined for marker in ("convex", "flask", "backend", "server.py", "route", "pipeline", "journey"))
     if "list the concrete files" in lowered_prompt or "files or folders" in lowered_prompt:
@@ -1081,8 +1133,8 @@ def _memory_answer_matches_question(user_prompt: str, shaped_lines: list[str]) -
     if "main issues" in lowered_prompt or "what were the main issues" in lowered_prompt:
         return _summarize_follow_up_issues(shaped_lines) is not None
     if "what can be said confidently" in lowered_prompt or "remains unclear" in lowered_prompt:
-        return any(marker in joined for marker in ("get-drip", "convex", "workspace", "pipeline", "salesforce", "journey"))
-    if "get-drip" in lowered_prompt and ("schema" in lowered_prompt or "cleanup" in lowered_prompt):
+        return bool(prompt_entities) or any(marker in joined for marker in ("workspace", "pipeline", "journey", "architecture", "backend"))
+    if prompt_entities and ("schema" in lowered_prompt or "cleanup" in lowered_prompt):
         return any(marker in joined for marker in ("schema", "cleanup", "review", "issue", "bug", "convex generated imports", "root url redirects"))
     return True
 
@@ -1119,34 +1171,19 @@ def _is_usable_logged_project_answer(user_prompt: str, answer: str) -> bool:
         return False
     if "strongest clues point to" in lowered and "infer the parts of the app" not in lowered_prompt and not _is_file_inventory_question(user_prompt):
         return False
-    if "same architecture" in lowered_prompt and "get-drip" not in lowered:
-        return False
-    if "getgit" in lowered_prompt and not any(
+    prompt_entities = _memory_subject_terms(user_prompt)
+    if prompt_entities and not any(entity in lowered for entity in prompt_entities):
+        if not (
+            _is_bug_list_question(user_prompt)
+            and any(marker in lowered for marker in ("create workspace", "salesforce", "pipeline chat", "test/publish", "root url redirects", "convex generated imports", "authentication bypass"))
+        ) and not (
+            _is_cleanup_schema_prompt(user_prompt)
+            and any(marker in lowered for marker in ("cleanup", "schema", "root url redirects", "convex generated imports", "authentication bypass"))
+        ):
+            return False
+    if "architecture" in lowered_prompt and not any(
         marker in lowered
-        for marker in (
-            "getgit",
-            "flask",
-            "server.py",
-            "retriever",
-            "core.py",
-            "clone_repo.py",
-            "repo_manager.py",
-        )
-    ):
-        return False
-    if "get-drip" in lowered_prompt and not any(
-        marker in lowered
-        for marker in (
-            "get-drip",
-            "convex",
-            "root url redirects",
-            "convex generated imports",
-            "authentication bypass",
-            "create workspace",
-            "pipeline chat",
-            "test/publish",
-            "salesforce",
-        )
+        for marker in ("architecture", "backend", "flask", "fastapi", "convex", "rag", "server.py")
     ):
         return False
     return _memory_answer_matches_question(user_prompt, [cleaned])
@@ -1157,88 +1194,116 @@ def _is_usable_logged_answer(user_prompt: str, answer: str) -> bool:
     if not cleaned:
         return False
     if _is_session_history_question(user_prompt):
-        lowered_prompt = user_prompt.lower()
-        if "get-drip" in lowered_prompt or "getgit" in lowered_prompt:
-            return _is_usable_logged_project_answer(user_prompt, cleaned)
+        prompt_entities = _memory_subject_terms(user_prompt)
+        lowered_cleaned = cleaned.lower()
+        if prompt_entities and not any(entity in lowered_cleaned for entity in prompt_entities):
+            if not (
+                _is_bug_list_question(user_prompt)
+                and any(marker in lowered_cleaned for marker in ("create workspace", "salesforce", "pipeline chat", "test/publish", "root url redirects", "convex generated imports", "authentication bypass"))
+            ) and not (
+                _is_cleanup_schema_prompt(user_prompt)
+                and any(marker in lowered_cleaned for marker in ("cleanup", "schema", "root url redirects", "convex generated imports", "authentication bypass"))
+            ):
+                return False
         return _is_high_signal_memory_answer(cleaned, user_prompt) and _memory_answer_matches_question(user_prompt, [cleaned])
     return _is_usable_logged_project_answer(user_prompt, cleaned)
 
 
 def _answer_known_project_question(user_prompt: str, memory_context: str) -> str | None:
     lowered = user_prompt.lower()
-    if "getgit" not in lowered and "get-drip" not in lowered:
+    memory_lines = _memory_context_lines(memory_context)
+    if not _memory_subject_terms(user_prompt) and not (
+        _is_bug_list_question(user_prompt)
+        or _is_file_inventory_question(user_prompt)
+        or "infer the parts of the app" in lowered
+        or "what can be said confidently" in lowered
+        or "remains unclear" in lowered
+        or "architecture" in lowered
+    ):
         return None
 
+    if not memory_context.strip():
+        return None
+
+    subject = _preferred_memory_subject(user_prompt, memory_lines)
     context_lower = memory_context.lower()
-    getgit_flask = "flask" in context_lower
-    getgit_rag = "rag" in context_lower
-    getgit_server = "server.py" in context_lower
-    getdrip_convex = "convex" in context_lower
-    issue_summary = _summarize_follow_up_issues(_memory_context_lines(memory_context))
+    extracted_issues = _extract_follow_up_issues(memory_lines)
+    filtered_issues = _issues_relevant_to_prompt(user_prompt, extracted_issues)
+    issue_summary = _join_human_list(filtered_issues) if filtered_issues else None
     path_mentions = _extract_path_mentions(memory_context)
-    high_signal_paths = [
-        path for path in path_mentions
-        if any(marker in path for marker in ("convex/", "src/routes/", "journey.ts", "convex-api.ts", "convex-types.ts", "pipeline.tsx", "test-activate.tsx"))
-    ]
+    high_signal_paths = [path for path in path_mentions if "/" in path or "." in path]
 
-    if "same architecture" in lowered:
-        if getgit_flask and getdrip_convex:
-            return "No. GetGit was described as a Flask/RAG-style backend, while get-drip was described as a Convex-backed app."
-        return None
+    if _is_bug_list_question(user_prompt) and extracted_issues:
+        return _format_issue_list_answer(subject, filtered_issues or extracted_issues)
 
-    if "look different" in lowered:
-        if getgit_flask and getdrip_convex:
-            return "GetGit looks like a Flask/Python RAG app, while get-drip looks like a Convex-backed app with campaign and route flow files."
-        return None
-
-    if "other work referenced getgit" in lowered and "task_getgit_checkpoints" in context_lower:
-        return "CodeGuide referenced GetGit indirectly through a `task_practice_code_evaluate` flow that called `task_getgit_checkpoints`."
+    if _is_cleanup_schema_prompt(user_prompt) and issue_summary:
+        prefix = f"The {subject} cleanup was mainly about" if subject else "The cleanup was mainly about"
+        return f"{prefix} {issue_summary}."
 
     if "main issues" in lowered and issue_summary:
         if _is_bug_list_question(user_prompt):
-            return _format_issue_list_answer("get-drip", _extract_follow_up_issues(_memory_context_lines(memory_context)))
-        return f"In get-drip, the main issues were {issue_summary}."
+            return _format_issue_list_answer(subject, filtered_issues or extracted_issues)
+        if subject:
+            return f"In {subject}, the main issues were {issue_summary}."
+        return f"The main issues were {issue_summary}."
 
-    if _is_file_inventory_question(user_prompt) and "getgit" in lowered:
-        inventory_paths = [path for path in path_mentions if any(marker in path.lower() for marker in ("server.py", "core.py", "checkpoints.py", "clone_repo.py", "repo_manager.py", "readme.md", "documentation.md", "rag/", "templates/", "static/"))]
+    if (_is_file_inventory_question(user_prompt) or "infer the parts of the app" in lowered) and high_signal_paths:
+        inventory_paths = [
+            path
+            for path in path_mentions
+            if any(marker in path.lower() for marker in ("server.py", "core.py", "checkpoints.py", "clone_repo.py", "repo_manager.py", "readme.md", "documentation.md", "rag/", "templates/", "static/", "src/", "convex/", ".ts", ".tsx", ".py"))
+        ]
         deduped_inventory: list[str] = []
         for path in inventory_paths:
             if path not in deduped_inventory:
                 deduped_inventory.append(path)
         if deduped_inventory:
-            return "The concrete GetGit paths included " + ", ".join(f"`{path}`" for path in deduped_inventory[:10]) + "."
+            prefix = f"The concrete paths for {subject} included " if subject else "The concrete paths included "
+            return prefix + ", ".join(f"`{path}`" for path in deduped_inventory[:10]) + "."
 
-    if "infer the parts of the app" in lowered and high_signal_paths:
-        deduped_paths: list[str] = []
-        for path in high_signal_paths:
-            if path not in deduped_paths:
-                deduped_paths.append(path)
-        return "The strongest clues point to " + ", ".join(f"`{path}`" for path in deduped_paths[:5]) + "."
-
-    if ("what can be said confidently" in lowered or "remains unclear" in lowered) and getdrip_convex:
-        confident_bits: list[str] = ["get-drip was described as a Convex-backed app"]
+    if ("what can be said confidently" in lowered or "remains unclear" in lowered) and (
+        issue_summary or high_signal_paths or any(marker in context_lower for marker in ("convex", "flask", "fastapi", "rag"))
+    ):
+        subject_label = subject or "the project"
+        architecture_summary: str | None = None
+        if "convex" in context_lower:
+            architecture_summary = f"{subject_label} was described as a Convex-backed app"
+        elif "flask" in context_lower and "rag" in context_lower:
+            architecture_summary = f"{subject_label} was described as a Flask/RAG-style backend"
+        elif "flask" in context_lower:
+            architecture_summary = f"{subject_label} was described as a Flask backend"
+        elif "fastapi" in context_lower:
+            architecture_summary = f"{subject_label} was described as a FastAPI backend"
+        confident_bits: list[str] = []
+        if architecture_summary:
+            confident_bits.append(architecture_summary)
         if issue_summary:
             confident_bits.append(f"the work focused on {issue_summary}")
-        confident = ", and ".join(confident_bits)
-        return f"Confidently, {confident}. What remains unclear is a cleaner one-line architecture summary beyond those clues."
+        if confident_bits:
+            suffix = " What remains unclear is a cleaner one-line architecture summary beyond those clues." if "what can be said confidently" in lowered or "remains unclear" in lowered else ""
+            return "Confidently, " + ", and ".join(confident_bits) + "." + suffix
 
-    if "what was the backend" in lowered and "get-drip" in lowered and getdrip_convex:
-        return "get-drip was described as a Convex-backed app."
-
-    if any(
-        phrase in lowered
-        for phrase in (
-            "what architecture did getgit use",
-            "what architecture was getgit",
-            "what was the architecture of getgit",
-        )
-    ) and (getgit_flask or getgit_server or getgit_rag):
-        parts = ["GetGit was described as a Flask backend"]
-        if getgit_server:
-            parts.append("with a `server.py` entrypoint")
-        if getgit_rag:
-            parts.append("and RAG-related components")
-        return ", ".join(parts) + "."
+    if "what was the backend" in lowered or "architecture" in lowered:
+        architecture_bits: list[str] = []
+        if "convex" in context_lower:
+            architecture_bits.append("Convex")
+        if "flask" in context_lower:
+            architecture_bits.append("Flask")
+        if "fastapi" in context_lower:
+            architecture_bits.append("FastAPI")
+        if "rag" in context_lower:
+            architecture_bits.append("RAG components")
+        if "server.py" in context_lower:
+            architecture_bits.append("a `server.py` entrypoint")
+        if architecture_bits:
+            if "what was the backend" in lowered and len(architecture_bits) == 1:
+                only = architecture_bits[0]
+                if only == "Convex" and subject:
+                    return f"{subject} was described as a Convex-backed app."
+                if only == "Flask" and subject:
+                    return f"{subject} was described as a Flask backend."
+            prefix = f"{subject} was described with " if subject else "The recalled project was described with "
+            return prefix + _join_human_list(architecture_bits) + "."
 
     return None
 

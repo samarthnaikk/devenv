@@ -577,6 +577,10 @@ def _shape_logged_answer_for_prompt(user_prompt: str, answer: str) -> str:
     cleaned = str(answer or "").strip()
     if not cleaned:
         return ""
+    if _is_bug_list_question(user_prompt) or _is_cleanup_schema_prompt(user_prompt):
+        shaped_project = _shape_logged_project_answer(user_prompt, cleaned)
+        if shaped_project:
+            return shaped_project
     if _is_session_history_question(user_prompt):
         latest_edit_summary = _summarize_latest_code_edit_recall(user_prompt, _memory_context_lines(cleaned))
         if latest_edit_summary:

@@ -5,6 +5,7 @@ class KernelLocalRuntimeMixin:
             return None
         if lowered in self._exact_logged_answer_cache:
             return self._exact_logged_answer_cache[lowered]
+        prompt_entities = _memory_subject_terms(user_prompt)
 
         store = getattr(self.memory, "store", None)
         if store is None or not hasattr(store, "search_logs"):
@@ -82,6 +83,8 @@ class KernelLocalRuntimeMixin:
                 self._exact_logged_answer_cache[lowered] = exact_answer
                 return exact_answer
             if allow_fallback_candidates:
+                if prompt_entities and not any(entity in cleaned_agent_text.lower() or entity in logged_user for entity in prompt_entities):
+                    continue
                 fallback_candidates.append((_lexical_line_score(cleaned_agent_text, user_prompt, terms), cleaned_agent_text))
         fallback_candidates.sort(key=lambda item: item[0], reverse=True)
         selected = _shape_logged_answer_for_prompt(user_prompt, fallback_candidates[0][1]) if fallback_candidates and fallback_candidates[0][0] >= 1 else None

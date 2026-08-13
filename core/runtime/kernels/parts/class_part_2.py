@@ -1152,43 +1152,17 @@ class KernelCheckpointMixin:
         return preferred_paths[:3]
 
     def _answer_known_project_question_local(self, user_prompt: str, memory_context: str) -> str | None:
-        lowered = user_prompt.lower()
         if not _should_skip_exact_logged_fast_path(user_prompt):
             logged_answer = self._lookup_exact_logged_answer(user_prompt)
             if logged_answer is not None:
                 return logged_answer
-        if "infer the parts of the app" in lowered and "get-drip" in lowered:
-            store = getattr(self.memory, "store", None)
-            if store is not None and hasattr(store, "search_logs"):
-                try:
-                    logs = store.search_logs(
-                        ["get-drip", "convex-api.ts", "convex-types.ts", "journey.ts", "pipeline.tsx", "test-activate.tsx"],
-                        limit=12,
-                    )
-                except Exception:
-                    logs = []
-                paths: list[str] = []
-                for log in logs:
-                    for path in _extract_path_mentions(log.raw_interaction):
-                        lowered_path = path.lower()
-                        if "guidelines.md" in lowered_path or "email_g..." in lowered_path:
-                            continue
-                        if any(marker in lowered_path for marker in ("convex-api.ts", "convex-types.ts", "journey.ts", "pipeline.tsx", "test-activate.tsx", "workspace.$workspaceid")):
-                            if path not in paths:
-                                paths.append(path)
-                if paths:
-                    return "The strongest clues point to " + ", ".join(f"`{path}`" for path in paths[:5]) + "."
-
         return _answer_known_project_question(user_prompt, memory_context)
 
     def _try_fast_direct_memory_answer(self, user_prompt: str) -> str | None:
-        lowered = user_prompt.lower()
         if not _should_skip_exact_logged_fast_path(user_prompt):
             answer = self._lookup_exact_logged_answer(user_prompt)
             if answer is not None:
                 return answer
-        if "infer the parts of the app" in lowered and "get-drip" in lowered:
-            return self._answer_known_project_question_local(user_prompt, "")
         return None
 
     def _try_fast_local_only_direct_answer(self, user_prompt: str) -> str | None:

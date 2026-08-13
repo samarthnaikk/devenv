@@ -325,20 +325,25 @@ def _has_explicit_project_subject(user_prompt: str) -> bool:
 def _compose_external_memory_query(user_prompt: str, conversation: list[dict[str, Any]]) -> str:
     query_lines = [user_prompt]
     lowered = user_prompt.lower()
-    if "get-drip" in lowered and (
+    subject = _preferred_memory_subject(user_prompt, [])
+    if subject and (
         "last time" in lowered
         or "what issue did we get" in lowered
         or "what issues did we get" in lowered
         or "what were the bugs we faced" in lowered
         or "which bugs did we face" in lowered
         or "what bugs did we face" in lowered
-        or "while working with get-drip" in lowered
+        or "what were the bugs we found" in lowered
+        or "which bugs did we find" in lowered
+        or "what bugs did we find" in lowered
+        or "while working with" in lowered
+        or _is_bug_list_question(user_prompt)
     ):
         for variant in (
-            "what exact bugs did we fix in get-drip",
-            "what bugs did we fix in get-drip",
-            "get-drip bug list",
-            "get-drip last issue",
+            f"what exact bugs did we fix in {subject}",
+            f"what bugs did we fix in {subject}",
+            f"{subject} bug list",
+            f"{subject} last issue",
         ):
             if variant not in query_lines:
                 query_lines.append(variant)
