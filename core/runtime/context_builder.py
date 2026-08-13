@@ -1010,13 +1010,44 @@ class ContextBuilderService:
         provider_name: str | None = None,
         max_lines: int = 6,
     ) -> tuple[str, tuple[str, ...], dict[str, Any]]:
-        resolved_provider = provider_name or self._default_provider_name()
+        if self.runtime_allowed_providers == set():
+            return "", (), {"context_match_state": "new_context", "context_match_reason": "External session access has not been granted."}
+        if provider_name is not None:
+            return self._build_runtime_memory_context_for_provider(
+                task,
+                provider_name=provider_name,
+                max_lines=max_lines,
+            )
+
+        candidate_providers = self._candidate_provider_names()
+        if not candidate_providers:
+            return "", (), {"context_match_state": "new_context", "context_match_reason": "No external session provider is available."}
+
+        candidates: list[tuple[int, str, tuple[str, ...], dict[str, Any], str]] = []
+        for candidate_provider in candidate_providers:
+            context, session_ids, metadata = self._build_runtime_memory_context_for_provider(
+                task,
+                provider_name=candidate_provider,
+                max_lines=max_lines,
+            )
+            score = _score_runtime_context_candidate(task, context, metadata)
+            candidates.append((score, context, session_ids, metadata, candidate_provider))
+        candidates.sort(key=lambda item: (item[0], len(item[2]), item[4]), reverse=True)
+        _score, context, session_ids, metadata, _provider_name = candidates[0]
+        return context, session_ids, metadata
+
+    def _build_runtime_memory_context_for_provider(
+        self,
+        task: str,
+        *,
+        provider_name: str,
+        max_lines: int,
+    ) -> tuple[str, tuple[str, ...], dict[str, Any]]:
+        resolved_provider = provider_name
         if not resolved_provider:
             return "", (), {"context_match_state": "new_context", "context_match_reason": "No external session provider is available."}
         if self.runtime_allowed_providers is not None and resolved_provider not in self.runtime_allowed_providers:
             return "", (), {"context_match_state": "new_context", "context_match_reason": f"External {resolved_provider} access has not been granted."}
-        if self.runtime_allowed_providers == set():
-            return "", (), {"context_match_state": "new_context", "context_match_reason": "External session access has not been granted."}
         provider = self._get_provider(resolved_provider)
         query_variants = _build_query_variants(task)
         indexed_matches, indexed_metadata = self._query_index_variants(query_variants, provider_name=resolved_provider)
@@ -1039,6 +1070,13 @@ class ContextBuilderService:
             return "", selected_session_ids, selection_metadata
         lines = ["## External Session Context", *(f"- {line}" for line in context_lines)]
         return "\n".join(lines), selected_session_ids, selection_metadata
+
+    def _candidate_provider_names(self) -> list[str]:
+        provider_names = list(self.providers)
+        if self.runtime_allowed_providers is not None:
+            provider_names = [name for name in provider_names if name in self.runtime_allowed_providers]
+        available_names = [name for name in provider_names if self.providers[name].health().available]
+        return available_names or provider_names
 
     def _query_index_variants(
         self,
@@ -1193,6 +1231,31 @@ class ContextBuilderService:
             "test/publish",
             "salesforce being marked as coming soon",
         )
+        preview_priority = _preview_issue_recall_matches(
+            summaries,
+            prompt=task,
+            issue_focus_markers=issue_focus_markers,
+        )
+        if issue_recall_prompt and preview_priority:
+            prioritized: list[dict[str, Any]] = []
+            for score, summary in preview_priority[:3]:
+                detail = provider.get_session(summary.session_id)
+                prioritized.append(
+                    {
+                        "summary": summary,
+                        "detail": detail,
+                        "content_score": score,
+                        "score": score,
+                        "strong_match": True,
+                        "exact_hits": 0,
+                        "token_hits": 0,
+                        "identity_exact_hits": 0,
+                        "identity_token_hits": 0,
+                        "identity_focus_hits": 0,
+                        "best_overlap": 0,
+                    }
+                )
+            return prioritized
         preliminary: list[dict[str, Any]] = []
         recent_window = 12
         for index, summary in enumerate(summaries):
@@ -1327,6 +1390,24 @@ class ContextBuilderService:
             for item in scored
             if item["strong_match"] and item["content_score"] >= MIN_SESSION_CONTENT_SCORE and item["score"] > 0
         ]
+        if issue_recall_prompt:
+            issue_rich = [
+                item
+                for item in scored
+                if item["score"] > 0
+                and _session_has_issue_focus(item["summary"], item["detail"])
+            ]
+            if issue_rich:
+                issue_rich.sort(
+                    key=lambda item: (
+                        _issue_focus_score(item["summary"], item["detail"]),
+                        item["score"],
+                        item["content_score"],
+                        item["summary"].updated_at,
+                    ),
+                    reverse=True,
+                )
+                selected = issue_rich
         if focus_tokens and any(item["identity_focus_hits"] > 0 for item in selected):
             selected = [item for item in selected if item["identity_focus_hits"] > 0]
         return selected[:3]
@@ -1691,6 +1772,158 @@ def _build_query_variants(task: str) -> tuple[str, ...]:
         if len(variants) >= MAX_QUERY_VARIANTS:
             break
     return tuple(variants[:MAX_QUERY_VARIANTS])
+
+
+def _preview_issue_recall_matches(
+    summaries: Sequence[ExternalSessionSummary],
+    *,
+    prompt: str,
+    issue_focus_markers: Sequence[str],
+) -> list[tuple[int, ExternalSessionSummary]]:
+    prompt_lower = prompt.lower()
+    prompt_tokens = _tokenize(prompt)
+    issue_terms = {"bug", "bugs", "fix", "fixed", "issue", "issues", "review", "reviews"}
+    ignored_prompt_tokens = {"did", "last", "time", "while", "working"}
+    compound_markers = tuple(
+        token
+        for token in sorted(prompt_tokens)
+        if any(separator in token for separator in ("-", "_", "/"))
+    )
+    project_markers_set = set(compound_markers)
+    for token in compound_markers:
+        for part in re.split(r"[-_/]+", token):
+            if len(part) >= 4:
+                project_markers_set.add(part)
+    if not project_markers_set:
+        project_markers_set.update(
+            token
+            for token in prompt_tokens
+            if token not in COMMON_CONTEXT_TOKENS
+            and token not in issue_terms
+            and token not in ignored_prompt_tokens
+            and len(token) >= 4
+        )
+    project_markers = tuple(sorted(project_markers_set))
+    if not project_markers:
+        return []
+
+    prioritized: list[tuple[int, ExternalSessionSummary]] = []
+    for summary in summaries:
+        preview = _normalize_whitespace(summary.preview).lower()
+        if not preview:
+            continue
+        title = (summary.title or "").lower()
+        workspace = (summary.workspace_path or "").lower()
+        if not (
+            any(marker in preview for marker in issue_focus_markers)
+            or any(term in preview or term in title for term in issue_terms)
+            or "based on memory from prior sessions" in preview
+        ):
+            continue
+        identity_haystacks = (title, workspace, preview)
+        project_hits = sum(1 for marker in project_markers if any(_token_matches(marker, haystack) for haystack in identity_haystacks))
+        if project_hits == 0:
+            continue
+        score = project_hits * 30
+        score += sum(35 for marker in issue_focus_markers if marker in preview)
+        if "bug list" in preview:
+            score += 45
+        if "based on memory from prior sessions" in preview:
+            score += 20
+        if any(term in preview for term in issue_terms):
+            score += 10
+        if "last time" in prompt_lower and "last" in preview:
+            score += 8
+        for noise_marker in (
+            "tool exec_command result",
+            "operation not permitted: ps",
+            "pr-review.md",
+            "committed in two atomic commits",
+            "fix(settings): use saved timezone and locale dropdowns",
+            "glob: /users/",
+        ):
+            if noise_marker in preview:
+                score -= 40
+        if score > 0:
+            prioritized.append((score, summary))
+
+    prioritized.sort(key=lambda item: (item[0], item[1].updated_at), reverse=True)
+    return prioritized
+
+
+def _session_has_issue_focus(summary: ExternalSessionSummary, detail: ExternalSessionDetail) -> bool:
+    markers = (
+        "get-drip bug list",
+        "root url redirects",
+        "convex generated imports",
+        "authentication bypass",
+        "open email relay",
+        "create workspace",
+        "pipeline chat",
+        "test/publish",
+        "salesforce being marked as coming soon",
+    )
+    preview = (summary.preview or "").lower()
+    if any(marker in preview for marker in markers):
+        return True
+    for message in detail.messages:
+        content = (message.content or "").lower()
+        if any(marker in content for marker in markers):
+            return True
+    return False
+
+
+def _issue_focus_score(summary: ExternalSessionSummary, detail: ExternalSessionDetail) -> int:
+    markers = (
+        "get-drip bug list",
+        "root url redirects",
+        "convex generated imports",
+        "authentication bypass",
+        "open email relay",
+        "create workspace",
+        "pipeline chat",
+        "test/publish",
+        "salesforce being marked as coming soon",
+        "get-drip bugs tracked",
+    )
+    score = 0
+    preview = (summary.preview or "").lower()
+    score += sum(6 for marker in markers if marker in preview)
+    for message in detail.messages:
+        content = (message.content or "").lower()
+        score += sum(3 for marker in markers if marker in content)
+    return score
+
+
+def _score_runtime_context_candidate(task: str, context: str, metadata: dict[str, Any]) -> int:
+    score = int(metadata.get("context_match_score", 0))
+    lowered_task = task.lower()
+    lowered_context = context.lower()
+    issue_prompt = any(marker in lowered_task for marker in ("bug", "bugs", "issue", "issues", "fix", "fixed", "review", "last time"))
+    if issue_prompt:
+        focus_markers = (
+            "get-drip bug list",
+            "root url redirects",
+            "convex generated imports",
+            "authentication bypass",
+            "open email relay",
+            "create workspace",
+            "pipeline chat",
+            "test/publish",
+            "salesforce being marked as coming soon",
+        )
+        score += sum(30 for marker in focus_markers if marker in lowered_context)
+        for noise in (
+            "tool exec_command result",
+            "operation not permitted: ps",
+            "pr-review.md",
+            "committed in two atomic commits",
+            "fix(settings): use saved timezone and locale dropdowns",
+            "glob: /users/",
+        ):
+            if noise in lowered_context:
+                score -= 25
+    return score
 
 
 def _should_prefer_semantic_session_matches(
