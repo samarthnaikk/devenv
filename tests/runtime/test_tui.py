@@ -248,6 +248,30 @@ class DevenvTUITest(unittest.TestCase):
         self.assertIn("gpt-5-codex", models)
         self.assertIn("gpt-5-codex-high", models)
 
+    def test_tui_state_persists_across_controller_instances(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            first = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            first.handle_command("/permission backend opencode on")
+            first.handle_command("/permission provider codex on")
+            first.handle_command("/backend codex")
+            first.handle_command("/model codex gpt-5-codex-high")
+            first.close()
+
+            second_kernel = FakeKernel()
+            second = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=second_kernel,
+            )
+
+            self.assertTrue(second.access_policy.can_use_backend("opencode"))
+            self.assertTrue(second.access_policy.can_access_provider("codex"))
+            self.assertEqual(second.preferred_backend, "codex")
+            self.assertEqual(second.kernel.ai.backend_models["codex"], "gpt-5-codex-high")
+            self.assertEqual(second.context_builder.runtime_allowed_providers, {"codex"})
+
     def test_format_turn_result_lines_includes_thinking_and_system_logs(self) -> None:
         result = RuntimeTurnResult(
             final_response="stub response",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -136,10 +137,70 @@ class DevenvTUIController:
             self.kernel.register_tool(tool)
         self.access_policy = AccessPolicy()
         self.preferred_backend = getattr(self.kernel.ai, "preferred_backend", "opencode") or "opencode"
+        self._load_persisted_state()
         self._apply_runtime_preferences()
 
     def close(self) -> None:
         self.kernel.close()
+
+    def _state_file_path(self) -> Path:
+        return Path(self.config.workspace_path) / ".devenv" / "tui_state.json"
+
+    def _persisted_backend_models(self) -> dict[str, str]:
+        backend_models = getattr(self.kernel.ai, "backend_models", {})
+        if not isinstance(backend_models, dict):
+            return {}
+        persisted: dict[str, str] = {}
+        for backend in BACKENDS:
+            model_name = str(backend_models.get(backend, "") or "").strip()
+            if model_name:
+                persisted[backend] = model_name
+        return persisted
+
+    def _persist_state(self) -> None:
+        payload = {
+            "preferred_backend": self.preferred_backend,
+            "backend_access": dict(self.access_policy.backend_access),
+            "session_access": dict(self.access_policy.session_access),
+            "backend_models": self._persisted_backend_models(),
+        }
+        state_path = self._state_file_path()
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    def _load_persisted_state(self) -> None:
+        state_path = self._state_file_path()
+        if not state_path.exists():
+            return
+        try:
+            payload = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, dict):
+            return
+        preferred_backend = str(payload.get("preferred_backend", "") or "").strip().lower()
+        if preferred_backend in BACKENDS:
+            self.preferred_backend = preferred_backend
+        backend_access = payload.get("backend_access")
+        if isinstance(backend_access, dict):
+            for backend in BACKENDS:
+                if backend in backend_access:
+                    self.access_policy.set_backend_access(backend, bool(backend_access.get(backend)))
+        session_access = payload.get("session_access")
+        if isinstance(session_access, dict):
+            for provider in SESSION_PROVIDERS:
+                if provider in session_access:
+                    self.access_policy.set_session_access(provider, bool(session_access.get(provider)))
+        backend_models = payload.get("backend_models")
+        if isinstance(backend_models, dict):
+            for backend in BACKENDS:
+                model_name = str(backend_models.get(backend, "") or "").strip()
+                if not model_name:
+                    continue
+                if hasattr(self.kernel.ai, "set_backend_model"):
+                    self.kernel.ai.set_backend_model(backend, model_name)
+                elif backend == self.preferred_backend and hasattr(self.kernel.ai, "set_model"):
+                    self.kernel.ai.set_model(model_name)
 
     def _apply_runtime_preferences(self) -> None:
         allowed_providers = {
@@ -280,12 +341,14 @@ class DevenvTUIController:
                 return "Backends must be one of: opencode, ollama, llama_cpp, codex."
             self.access_policy.set_backend_access(name, allowed)
             self._apply_runtime_preferences()
+            self._persist_state()
             return f"Backend `{name}` permission is now {value}."
         if target_type == "provider":
             if name not in SESSION_PROVIDERS:
                 return "Providers must be one of: codex, opencode."
             self.access_policy.set_session_access(name, allowed)
             self._apply_runtime_preferences()
+            self._persist_state()
             return f"Provider `{name}` permission is now {value}."
         return "Permission target must be `backend` or `provider`."
 
@@ -299,6 +362,7 @@ class DevenvTUIController:
             return "Backends must be one of: opencode, ollama, llama_cpp, codex."
         self.preferred_backend = backend
         self._apply_runtime_preferences()
+        self._persist_state()
         if not self.access_policy.can_use_backend(backend):
             return (
                 f"Preferred backend set to `{backend}`, but it is still blocked. "
@@ -333,6 +397,7 @@ class DevenvTUIController:
                 self.kernel.ai.set_model(cleaned_model)
             else:
                 self.kernel.ai.model = cleaned_model
+        self._persist_state()
         return f"Model for `{backend}` set to `{cleaned_model}`."
 
     def _prompt_choice(self, title: str, options: list[str], *, allow_cancel: bool = True) -> int | None:
