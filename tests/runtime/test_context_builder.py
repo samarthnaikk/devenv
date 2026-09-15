@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
+from core.memory.storage import SQLiteMemoryStore
 from core.runtime.context_builder import ContextBuilderService
 from core.runtime.models import ExternalSessionProviderConfig, PreparedPromptRequest
 
@@ -191,6 +192,73 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertEqual(embeddings[0].unified_session_id, f"codex:{session_id}")
         self.assertEqual(embeddings[0].session_id, session_id)
         self.assertEqual(tuple(sessions[0].embedding), embeddings[0].embedding)
+
+    def test_select_relevant_sessions_fuses_semantic_only_match(self) -> None:
+        class _FakeEmbedder:
+            dimension = 2
+
+            def embed(self, text: str) -> list[float]:
+                lowered = text.lower()
+                if any(marker in lowered for marker in ("database", "schema", "migration", "deployment", "incident")):
+                    return [1.0, 0.0]
+                if any(marker in lowered for marker in ("css", "button", "styling")):
+                    return [0.0, 1.0]
+                return [0.0, 0.0]
+
+        class _FakeMemory:
+            def __init__(self, store: object, embedder: object) -> None:
+                self.store = store
+                self.embedder = embedder
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "08" / "20"
+            sessions_dir.mkdir(parents=True)
+            (codex_root / "session_index.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"id": "session-db", "thread_name": "Database project", "updated_at": "2026-08-20T10:00:00Z"}),
+                        json.dumps({"id": "session-css", "thread_name": "Button styling", "updated_at": "2026-08-19T10:00:00Z"}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / "rollout-2026-08-20T09-00-00-session-db.jsonl").write_text(
+                json.dumps({"timestamp": "2026-08-20T09:00:00Z", "type": "session_meta", "payload": {"id": "session-db", "cwd": str(workspace)}})
+                + "\n"
+                + json.dumps({"timestamp": "2026-08-20T09:00:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Applied the database schema migration for the release."}})
+                + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / "rollout-2026-08-19T09-00-00-session-css.jsonl").write_text(
+                json.dumps({"timestamp": "2026-08-19T09:00:00Z", "type": "session_meta", "payload": {"id": "session-css", "cwd": str(workspace)}})
+                + "\n"
+                + json.dumps({"timestamp": "2026-08-19T09:00:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Tweaked the button styling tokens in the stylesheet."}})
+                + "\n",
+                encoding="utf-8",
+            )
+
+            store = SQLiteMemoryStore(str(workspace / "memory.db"))
+            service = ContextBuilderService(
+                str(workspace),
+                memory=_FakeMemory(store=store, embedder=_FakeEmbedder()),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            service.list_sessions("codex")
+
+            provider = service._get_provider("codex")
+            matches = service._select_relevant_sessions(provider, "deployment incident")
+
+        matched_ids = {match["summary"].session_id for match in matches}
+        self.assertIn("session-db", matched_ids)
+        self.assertNotIn("session-css", matched_ids)
+        db_match = next(match for match in matches if match["summary"].session_id == "session-db")
+        self.assertGreaterEqual(db_match["semantic_score"], 0.35)
 
     def test_codex_provider_ignores_developer_rows_and_reads_user_event_messages(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

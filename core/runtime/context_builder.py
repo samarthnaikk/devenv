@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import sqlite3
@@ -36,6 +37,8 @@ MAX_CONTEXT_LINES = 8
 MAX_WORKSPACE_FACTS = 8
 MAX_README_CHARS = 500
 MIN_SESSION_CONTENT_SCORE = 6
+RRF_K = 60
+SEMANTIC_STRONG_THRESHOLD = 0.35
 MAX_INDEX_CHUNK_CHARS = 720
 MAX_INDEX_CONTEXT_LINES = 12
 MAX_QUERY_VARIANTS = 4
@@ -936,7 +939,8 @@ class ContextBuilderService:
             for config in self.provider_configs
         }
         self.index = ExternalSessionIndex(self.providers, performance_mode=self.performance_mode)
-        self._session_embedding_store = self._resolve_session_embedding_store()
+        self._session_embedding_store: SQLiteMemoryStore | None = None
+        self._session_embedding_store_resolved = False
         self._session_embedder = self._resolve_session_embedder()
 
     def set_runtime_allowed_providers(self, providers: set[str] | list[str] | tuple[str, ...] | None) -> None:
@@ -970,9 +974,10 @@ class ContextBuilderService:
         return ExternalSessionDetail(summary=summary, messages=detail.messages, metadata=metadata)
 
     def list_session_embeddings(self, provider_name: str | None = None) -> list[ExternalSessionEmbedding]:
-        if self._session_embedding_store is None:
+        store = self._get_session_embedding_store()
+        if store is None:
             return []
-        return self._session_embedding_store.list_external_session_embeddings(provider=provider_name)
+        return store.list_external_session_embeddings(provider=provider_name)
 
     def prepare_prompt(self, request: PreparedPromptRequest) -> PreparedPromptResult:
         provider_name = request.provider or self._default_provider_name()
@@ -1225,6 +1230,12 @@ class ContextBuilderService:
             raise FileNotFoundError(f"Unknown context provider: {provider_name}")
         return provider
 
+    def _get_session_embedding_store(self) -> SQLiteMemoryStore | None:
+        if not self._session_embedding_store_resolved:
+            self._session_embedding_store = self._resolve_session_embedding_store()
+            self._session_embedding_store_resolved = True
+        return self._session_embedding_store
+
     def _resolve_session_embedding_store(self) -> SQLiteMemoryStore | None:
         store = getattr(self.memory, "store", None)
         if isinstance(store, SQLiteMemoryStore):
@@ -1246,12 +1257,13 @@ class ContextBuilderService:
         summary: ExternalSessionSummary,
     ) -> ExternalSessionSummary:
         unified_session_id = _unified_session_id(summary.provider, summary.session_id)
-        if self._session_embedding_store is None or self._session_embedder is None:
+        store = self._get_session_embedding_store()
+        if store is None or self._session_embedder is None:
             return replace(summary, unified_session_id=unified_session_id)
 
         document = self._session_embedding_document(provider, summary)
         content_hash = hashlib.sha256(document.encode("utf-8")).hexdigest()
-        existing = self._session_embedding_store.get_external_session_embedding(unified_session_id)
+        existing = store.get_external_session_embedding(unified_session_id)
         if existing is None or existing.content_hash != content_hash:
             embedding = tuple(float(value) for value in self._session_embedder.embed(document))
             existing = ExternalSessionEmbedding(
@@ -1267,7 +1279,7 @@ class ContextBuilderService:
                 embedding=embedding,
                 indexed_at=time.time(),
             )
-            self._session_embedding_store.upsert_external_session_embedding(existing)
+            store.upsert_external_session_embedding(existing)
 
         return replace(summary, unified_session_id=unified_session_id, embedding=existing.embedding)
 
@@ -1286,6 +1298,43 @@ class ContextBuilderService:
                 parts.append(text)
         document = "\n".join(part for part in parts if part).strip()
         return document or summary.preview.strip() or summary.title.strip() or summary.session_id
+
+    def _session_embedding_vectors(self, provider_name: str) -> dict[str, tuple[float, ...]]:
+        store = self._get_session_embedding_store()
+        if store is None:
+            return {}
+        vectors: dict[str, tuple[float, ...]] = {}
+        for record in store.list_external_session_embeddings(provider=provider_name):
+            if record.embedding:
+                vectors[record.session_id] = record.embedding
+        return vectors
+
+    def _semantic_session_scores(
+        self,
+        provider: ExternalSessionProvider,
+        summaries: list[ExternalSessionSummary],
+        query_variants: tuple[str, ...],
+    ) -> dict[str, float]:
+        vectors = self._session_embedding_vectors(provider.name)
+        if not vectors or self._session_embedder is None:
+            return {}
+        query_vectors: list[tuple[float, ...]] = []
+        for variant in query_variants:
+            try:
+                query_vectors.append(tuple(float(value) for value in self._session_embedder.embed(variant)))
+            except Exception as exc:
+                logger.debug("Failed to embed recall query variant: error=%s", exc)
+        if not query_vectors:
+            return {}
+        scores: dict[str, float] = {}
+        for summary in summaries:
+            vector = vectors.get(summary.session_id)
+            if not vector:
+                continue
+            best = max((_cosine_similarity(query, vector) for query in query_vectors), default=0.0)
+            if best > 0.0:
+                scores[summary.session_id] = best
+        return scores
 
     def _default_provider_name(self) -> str | None:
         for provider_name, provider in self.providers.items():
@@ -1312,6 +1361,9 @@ class ContextBuilderService:
         if not prompt_tokens:
             return []
         focus_tokens = set().union(*(_focus_tokens(variant) for variant in variants))
+        semantic_scores = self._semantic_session_scores(provider, summaries, variants)
+        semantic_ranking = sorted(semantic_scores, key=lambda session_id: semantic_scores[session_id], reverse=True)
+        semantic_rank = {session_id: rank for rank, session_id in enumerate(semantic_ranking, start=1)}
         lowered_task = task.lower()
         issue_recall_prompt = any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews", "issue", "issues"}) or "last time" in lowered_task
         issue_focus_markers = (
@@ -1387,6 +1439,22 @@ class ContextBuilderService:
             )
 
         preliminary.sort(key=lambda item: (item["summary_score"], -item["recent_rank"], item["summary"].updated_at), reverse=True)
+        lexical_rank = {item["summary"].session_id: rank for rank, item in enumerate(preliminary, start=1)}
+        for item in preliminary:
+            session_id = item["summary"].session_id
+            item["semantic_score"] = semantic_scores.get(session_id, 0.0)
+            item["semantic_rank"] = semantic_rank.get(session_id)
+            item["fused_score"] = _rrf_score(lexical_rank.get(session_id), semantic_rank.get(session_id))
+        if semantic_scores:
+            preliminary.sort(
+                key=lambda item: (
+                    item["fused_score"],
+                    item["summary_score"],
+                    -item["recent_rank"],
+                    item["summary"].updated_at,
+                ),
+                reverse=True,
+            )
         candidate_ids: list[str] = []
         candidate_limit = 24 if issue_recall_prompt else 12
         recent_candidate_limit = max(recent_window, candidate_limit)
@@ -1411,7 +1479,11 @@ class ContextBuilderService:
                 session_id = summary.session_id
                 if session_id not in candidate_ids:
                     candidate_ids.append(session_id)
+        for session_id in semantic_ranking[:candidate_limit]:
+            if session_id not in candidate_ids:
+                candidate_ids.append(session_id)
 
+        preliminary_index = {item["summary"].session_id: item for item in preliminary}
         scored: list[dict[str, Any]] = []
         workspace_name = Path(self.workspace_path).name.lower()
         workspace_path = self.workspace_path.lower()
@@ -1429,6 +1501,8 @@ class ContextBuilderService:
             identity_exact_hits = _exact_prompt_hits(prompt_tokens, identity_haystacks)
             identity_focus_hits = sum(1 for token in focus_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
             best_overlap = max(_best_message_overlap(_tokenize(variant), detail) for variant in variants)
+            semantic_score = semantic_scores.get(summary.session_id, 0.0)
+            semantic_strong = semantic_score >= SEMANTIC_STRONG_THRESHOLD
             workspace_bonus = 0
             issue_bonus = 0
             session_workspace = (summary.workspace_path or "").lower()
@@ -1439,7 +1513,9 @@ class ContextBuilderService:
                     workspace_bonus += 3 if identity_focus_hits > 0 or identity_exact_hits > 0 else -6
                 else:
                     workspace_bonus += 1
-            if focus_tokens and session_workspace == workspace_path and identity_focus_hits == 0:
+            if semantic_strong:
+                workspace_bonus = max(workspace_bonus, 0)
+            if focus_tokens and session_workspace == workspace_path and identity_focus_hits == 0 and not semantic_strong:
                 if not issue_recall_prompt and exact_hits == 0 and token_hits < 2:
                     continue
             if issue_recall_prompt:
@@ -1456,8 +1532,16 @@ class ContextBuilderService:
                 + (exact_hits * 3)
                 + (token_hits * 2)
                 + min(best_overlap * 2, 8)
+                + int(round(semantic_score * 10))
             )
-            strong_match = identity_exact_hits >= 1 or identity_token_hits >= 1 or exact_hits >= 1 or best_overlap >= 2 or token_hits >= 2
+            strong_match = (
+                identity_exact_hits >= 1
+                or identity_token_hits >= 1
+                or exact_hits >= 1
+                or best_overlap >= 2
+                or token_hits >= 2
+                or semantic_strong
+            )
             scored.append(
                 {
                     "summary": summary,
@@ -1471,6 +1555,9 @@ class ContextBuilderService:
                     "identity_token_hits": identity_token_hits,
                     "identity_focus_hits": identity_focus_hits,
                     "best_overlap": best_overlap,
+                    "semantic_score": semantic_score,
+                    "semantic_rank": semantic_rank.get(summary.session_id),
+                    "fused_score": preliminary_index.get(summary.session_id, {}).get("fused_score", 0.0),
                 }
             )
 
@@ -1478,7 +1565,9 @@ class ContextBuilderService:
         selected = [
             item
             for item in scored
-            if item["strong_match"] and item["content_score"] >= MIN_SESSION_CONTENT_SCORE and item["score"] > 0
+            if item["strong_match"]
+            and (item["content_score"] >= MIN_SESSION_CONTENT_SCORE or item["semantic_score"] >= SEMANTIC_STRONG_THRESHOLD)
+            and item["score"] > 0
         ]
         if issue_recall_prompt:
             issue_rich = [
@@ -1517,6 +1606,8 @@ class ContextBuilderService:
                 f"({best['identity_token_hits']} identity hits, {best['token_hits']} token hits)."
             ),
             "context_match_score": best["score"],
+            "semantic_score": best.get("semantic_score", 0.0),
+            "fused_score": best.get("fused_score", 0.0),
         }
 
 
@@ -2354,6 +2445,33 @@ def _looks_like_noisy_tool_output(lowered: str) -> bool:
         if structured_chars >= max(18, len(lowered) // 12):
             return True
     return False
+
+
+def _cosine_similarity(left: tuple[float, ...], right: tuple[float, ...]) -> float:
+    if not left or not right:
+        return 0.0
+    length = min(len(left), len(right))
+    dot = 0.0
+    left_norm = 0.0
+    right_norm = 0.0
+    for index in range(length):
+        left_value = left[index]
+        right_value = right[index]
+        dot += left_value * right_value
+        left_norm += left_value * left_value
+        right_norm += right_value * right_value
+    if left_norm <= 0.0 or right_norm <= 0.0:
+        return 0.0
+    return dot / (math.sqrt(left_norm) * math.sqrt(right_norm))
+
+
+def _rrf_score(lexical_rank: int | None, semantic_rank: int | None) -> float:
+    score = 0.0
+    if lexical_rank is not None:
+        score += 1.0 / (RRF_K + lexical_rank)
+    if semantic_rank is not None:
+        score += 1.0 / (RRF_K + semantic_rank)
+    return score
 
 
 def _unified_session_id(provider: str, session_id: str) -> str:
