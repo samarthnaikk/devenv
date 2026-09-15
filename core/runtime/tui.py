@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
+import queue
 import re
+import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -14,6 +18,17 @@ from .context_builder import ContextBuilderService
 from .kernel import DevenvKernel
 from .models import DEFAULT_MAX_CONSECUTIVE_TOOLS, RunConfig, RuntimeTurnResult
 from .tooling import build_runtime_tools
+from .tui_theme import (
+    BLUE,
+    ERROR as ERROR_COLOR,
+    ON_TEAL,
+    ROLE_COLORS,
+    TEAL,
+    TEXT,
+    TEXT_MUTED,
+    WARN,
+    CSS as TUI_CSS,
+)
 from .web import AccessPolicy, DEFAULT_LLAMACPP_MODELS, DEFAULT_OLLAMA_MODELS, DEFAULT_WEB_MODELS
 
 try:
@@ -25,21 +40,52 @@ except Exception:  # pragma: no cover - rich ships with textual, but stay defens
 try:
     from textual import work
     from textual.app import App, ComposeResult
-    from textual.widgets import Footer, Input, RichLog, Static
+    from textual.containers import Horizontal, Vertical, VerticalScroll
+    from textual.widgets import (
+        Footer,
+        Input,
+        LoadingIndicator,
+        ProgressBar,
+        RichLog,
+        Static,
+    )
 
     TEXTUAL_AVAILABLE = True
 except Exception:  # pragma: no cover - fallback path for environments without textual
     work = None
     App = object
     ComposeResult = object
+    Horizontal = object
+    Vertical = object
+    VerticalScroll = object
     Footer = object
     Input = object
+    LoadingIndicator = object
+    ProgressBar = object
     RichLog = object
     Static = object
     TEXTUAL_AVAILABLE = False
 
 BACKENDS = ("opencode", "ollama", "llama_cpp", "codex")
 SESSION_PROVIDERS = ("codex", "opencode")
+LOG_LEVEL_COLORS = {
+    logging.DEBUG: TEXT_MUTED,
+    logging.INFO: TEAL,
+    logging.WARNING: WARN,
+    logging.ERROR: ERROR_COLOR,
+    logging.CRITICAL: ERROR_COLOR,
+}
+# Third-party loggers are noisy and not part of devenv's activity story.
+QUIET_LOGGERS = (
+    "sentence_transformers",
+    "transformers",
+    "lancedb",
+    "urllib3",
+    "httpx",
+    "httpcore",
+    "PIL",
+    "filelock",
+)
 
 
 class Ansi:
@@ -87,6 +133,23 @@ class RetrievalOutcome:
     context: str = ""
     session_ids: tuple[str, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
+    elapsed_ms: int = 0
+
+
+class TUILogBridge(logging.Handler):
+    """Forward Python log records into a thread-safe queue for the TUI to drain."""
+
+    def __init__(self, log_queue: "queue.Queue[tuple[float, int, str, str]]") -> None:
+        super().__init__()
+        self._queue = log_queue
+
+    def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - trivial
+        try:
+            message = record.getMessage()
+        except Exception:
+            self.handleError(record)
+            return
+        self._queue.put((record.created, record.levelno, record.name, message))
 
 
 def _format_turn_result_lines(result: RuntimeTurnResult) -> list[str]:
@@ -132,9 +195,9 @@ def _collapse_text(text: str, *, limit: int = 500) -> str:
 
 
 _CONTEXT_LINE_STYLES: dict[str, tuple[str, str]] = {
-    "user asked": ("User asked", "magenta"),
-    "assistant reported": ("Assistant", "cyan"),
-    "tool output": ("Tool output", "yellow"),
+    "user asked": ("User asked", ROLE_COLORS["user"]),
+    "assistant reported": ("Assistant", ROLE_COLORS["assistant"]),
+    "tool output": ("Tool output", ROLE_COLORS["tool"]),
 }
 
 
@@ -145,7 +208,7 @@ def _split_context_line(text: str) -> tuple[str, str, str]:
         label, color = _CONTEXT_LINE_STYLES[key]
         return label, color, rest.strip()
     if key.startswith("session "):
-        return "Session", "green", text
+        return "Session", ROLE_COLORS["session"], text
     return "", "", text
 
 
@@ -159,33 +222,62 @@ def _context_body_lines(context: str) -> list[str]:
     return lines
 
 
+def _retrieval_metrics(outcome: RetrievalOutcome) -> str:
+    providers = ", ".join(outcome.metadata.get("context_match_providers", []) or []) or "—"
+    parts = [
+        f"{len(outcome.session_ids)} session(s)",
+        f"providers: {providers}",
+    ]
+    if outcome.elapsed_ms:
+        parts.append(f"{outcome.elapsed_ms} ms")
+    parts.append(f"index: {'ready' if outcome.metadata.get('index_ready') else 'building'}")
+    return "  ·  ".join(parts)
+
+
 def _format_retrieval_result_lines(outcome: RetrievalOutcome) -> list[str]:
     query = _rich_escape(outcome.query or "")
-    lines = [f"[bold cyan]Retrieval[/] [bold]{query}[/]"]
+    lines = [f"[b {TEAL}]Query[/]  [b {TEXT}]{query}[/]"]
+    lines.append(f"[{TEXT_MUTED}]{_rich_escape(_retrieval_metrics(outcome))}[/]")
     body_lines = _context_body_lines(outcome.context)
     if not body_lines:
         reason = _rich_escape(
             str(outcome.metadata.get("context_match_reason") or "No prior sessions matched.")
         )
-        lines.append("[yellow]no matches[/]")
-        lines.append(f"[dim]{reason}[/]")
+        lines.append("")
+        lines.append(f"[{WARN}]no matches[/]  [{TEXT_MUTED}]{reason}[/]")
+        if outcome.session_ids:
+            lines.append("")
+            lines.append(f"[b {BLUE}]Sessions[/]")
+            for session_id in outcome.session_ids:
+                lines.append(f"  [{TEAL}]◆[/] [{TEXT}]{_rich_escape(session_id)}[/]")
         return lines
-    providers = ", ".join(outcome.metadata.get("context_match_providers", []) or []) or "—"
-    lines.append(
-        f"[dim]{len(outcome.session_ids)} session(s) matched · providers: {_rich_escape(providers)} · "
-        f"index ready: {bool(outcome.metadata.get('index_ready'))}[/]"
-    )
-    for session_id in outcome.session_ids:
-        lines.append(f"[dim]   session {_rich_escape(session_id)}[/]")
+    if outcome.session_ids:
+        lines.append("")
+        lines.append(f"[b {BLUE}]Sessions[/]")
+        for session_id in outcome.session_ids:
+            lines.append(f"  [{TEAL}]◆[/] [{TEXT}]{_rich_escape(session_id)}[/]")
     lines.append("")
     for text in body_lines:
         label, color, body = _split_context_line(text)
         body = _rich_escape(_collapse_text(body))
-        if label:
-            lines.append(f"[green]·[/] [{color}]{label}[/] {body}")
+        if label == "Session":
+            lines.append(f"[{TEXT_MUTED}]·[/] [{TEXT_MUTED}]{body}[/]")
+        elif label:
+            lines.append(f"[{TEXT_MUTED}]{label:>16}[/] [{TEXT_MUTED}]│[/] [{color}]{body}[/]")
         else:
-            lines.append(f"[green]·[/] {body}")
+            lines.append(f"[{TEXT_MUTED}]·[/] [{TEXT}]{body}[/]")
     return lines
+
+
+def _format_log_line(created: float, levelno: int, name: str, message: str) -> str:
+    timestamp = datetime.fromtimestamp(created).strftime("%H:%M:%S")
+    color = LOG_LEVEL_COLORS.get(levelno, TEXT_MUTED)
+    level = logging.getLevelName(levelno)
+    source = name if len(name) <= 24 else name[-23:]
+    return (
+        f"[{TEXT_MUTED}]{timestamp}[/] [{color}]{level:<7}[/] "
+        f"[{BLUE}]{_rich_escape(source)}[/] [{TEXT}]{_rich_escape(message)}[/]"
+    )
 
 
 def _retrieval_plain_text(outcome: RetrievalOutcome) -> str:
@@ -784,15 +876,18 @@ class DevenvTUIController:
 
     def run_retrieval(self, query: str, *, max_lines: int = 12) -> RetrievalOutcome:
         self._apply_runtime_preferences()
+        started = time.perf_counter()
         context, session_ids, metadata = self.context_builder.build_runtime_memory_context(
             query,
             max_lines=max_lines,
         )
+        elapsed_ms = int(round((time.perf_counter() - started) * 1000))
         return RetrievalOutcome(
             query=query,
             context=context,
             session_ids=tuple(session_ids),
             metadata=dict(metadata),
+            elapsed_ms=elapsed_ms,
         )
 
     def run_prompt(self, prompt: str) -> RuntimeTurnResult:
@@ -844,45 +939,18 @@ def render_turn_result(result: RuntimeTurnResult) -> None:
 
 if TEXTUAL_AVAILABLE:
     class DevenvTextualApp(App[None]):
-        CSS = """
-        Screen {
-            layout: vertical;
-            background: #0b1220;
-            color: #e8eef7;
-        }
-
-        #modebar {
-            height: 1;
-            background: #14203a;
-            color: #9fb6d8;
-            padding: 0 1;
-        }
-
-        #log {
-            height: 1fr;
-            border: round #2f6fed;
-            background: #0f1727;
-            padding: 0 1;
-        }
-
-        #hint {
-            height: 1;
-            color: #8ca3c7;
-            padding: 0 1;
-        }
-
-        #composer {
-            border: round #f08a24;
-            background: #0f1727;
-        }
-        """
+        CSS = TUI_CSS
+        MAX_RESULT_CARDS = 12
 
         BINDINGS = [
             ("f1", "mode_retrieve", "Retrieve"),
             ("f2", "mode_solve", "Solve (WIP)"),
             ("f3", "toggle_codex", "Codex"),
             ("f4", "toggle_opencode", "OpenCode"),
-            ("ctrl+l", "clear_log", "Clear"),
+            ("f5", "toggle_logs", "Logs"),
+            ("ctrl+y", "copy_result", "Copy"),
+            ("ctrl+e", "export_result", "Export"),
+            ("ctrl+l", "clear_results", "Clear"),
             ("ctrl+q", "quit_app", "Quit"),
         ]
 
@@ -890,41 +958,98 @@ if TEXTUAL_AVAILABLE:
             super().__init__()
             self.controller = controller
             self._busy = False
+            self._last_outcome: RetrievalOutcome | None = None
+            self._result_cards: list[Static] = []
+            self._log_queue: "queue.Queue[tuple[float, int, str, str]]" = queue.Queue()
+            self._bridge = TUILogBridge(self._log_queue)
+            self._saved_handlers: list[logging.Handler] = []
 
         def compose(self) -> ComposeResult:
-            yield Static("", id="modebar")
-            yield RichLog(id="log", markup=True, wrap=True)
-            yield Static(
-                "Enter: retrieve · F1: retrieve · F2: solve (WIP) · F3/F4: toggle sources · /enable: all sources · Ctrl+Q: quit",
-                id="hint",
-            )
+            yield Static("", id="header")
+            with Horizontal(id="body"):
+                with Vertical(id="sidebar"):
+                    yield Static("", id="mode-pills")
+                    yield Static("SOURCES", classes="section-title")
+                    yield Static("", id="sources-list")
+                    yield Static("INDEX", classes="section-title")
+                    yield ProgressBar(total=100, show_percentage=True, show_eta=False, id="index-bar")
+                    yield Static("", id="index-info")
+                with Vertical(id="results-pane"):
+                    with Horizontal(id="result-bar"):
+                        yield Static("Results", id="result-title")
+                        yield LoadingIndicator(id="spinner")
+                    yield VerticalScroll(id="results-list")
+            with Vertical(id="log-panel"):
+                yield Static("Activity  ·  F5 to hide", id="log-title")
+                yield RichLog(id="log", markup=True, wrap=True)
             yield Input(placeholder="Ask a retrieval question and press Enter…", id="composer")
             yield Footer()
 
         def on_mount(self) -> None:
             self.title = "DEVENV"
             self.sub_title = self.controller.config.workspace_path
-            workspace = _rich_escape(self.controller.config.workspace_path)
-            self._write(f"[bold cyan]Devenv retrieval[/] · workspace [dim]{workspace}[/]")
-            self._write("[dim]Mode 1 retrieves prior session chunks only. Mode 2 (solve) is still in progress.[/]")
+            self._install_logging()
+            self.query_one("#spinner", LoadingIndicator).display = False
+            self._activity(f"TUI ready · workspace {self.controller.config.workspace_path}")
             if not self.controller.enabled_sources():
-                self._write(
-                    "[yellow]No session sources are enabled.[/] "
-                    "Run [bold]/enable[/] to enable all sources (or use F3/F4 to toggle one)."
+                self._activity(
+                    "No session sources enabled. Run /enable or press F3/F4.", logging.WARNING
                 )
-            self._refresh_modebar()
+            self._refresh_header()
+            self._refresh_sidebar()
+            self._refresh_sources()
+            self._refresh_index()
             self.query_one("#composer", Input).focus()
-            self.set_interval(1.0, self._refresh_modebar)
+            self.set_interval(0.25, self._drain_logs)
+            self.set_interval(0.75, self._refresh_index)
 
+        def on_unmount(self) -> None:
+            self._restore_logging()
+
+        # ------------------------------------------------------------------ logging
+        def _install_logging(self) -> None:
+            root = logging.getLogger()
+            self._saved_handlers = [
+                handler for handler in list(root.handlers) if not isinstance(handler, TUILogBridge)
+            ]
+            for handler in self._saved_handlers:
+                root.removeHandler(handler)
+            self._bridge.setLevel(logging.NOTSET)
+            root.addHandler(self._bridge)
+            for name in QUIET_LOGGERS:
+                logging.getLogger(name).setLevel(logging.WARNING)
+
+        def _restore_logging(self) -> None:
+            root = logging.getLogger()
+            if self._bridge in root.handlers:
+                root.removeHandler(self._bridge)
+            for handler in self._saved_handlers:
+                root.addHandler(handler)
+            self._saved_handlers = []
+
+        def _activity(self, message: str, levelno: int = logging.INFO, name: str = "devenv") -> None:
+            self._log_queue.put((time.time(), levelno, name, message))
+
+        def _drain_logs(self) -> None:
+            try:
+                log = self.query_one("#log", RichLog)
+            except Exception:  # pragma: no cover - widget may be gone during shutdown
+                return
+            written = 0
+            while written < 300:
+                try:
+                    created, levelno, name, message = self._log_queue.get_nowait()
+                except queue.Empty:
+                    break
+                log.write(_format_log_line(created, levelno, name, message))
+                written += 1
+
+        # ------------------------------------------------------------------ actions
         def action_mode_retrieve(self) -> None:
-            message = self.controller.set_mode("retrieve")
-            self._write(f"[magenta]mode[/] {_rich_escape(message)}")
-            self._refresh_modebar()
+            self._set_mode("retrieve")
 
         def action_mode_solve(self) -> None:
-            message = self.controller.set_mode("solve")
-            self._write(f"[magenta]mode[/] {_rich_escape(message)}")
-            self._refresh_modebar()
+            self._set_mode("solve")
 
         def action_toggle_codex(self) -> None:
             self._toggle_source("codex")
@@ -932,18 +1057,75 @@ if TEXTUAL_AVAILABLE:
         def action_toggle_opencode(self) -> None:
             self._toggle_source("opencode")
 
-        def action_clear_log(self) -> None:
-            self.query_one("#log", RichLog).clear()
+        def action_toggle_logs(self) -> None:
+            self.query_one("#log-panel", Vertical).toggle_class("hidden")
+
+        def action_clear_results(self) -> None:
+            for card in self._result_cards:
+                card.remove()
+            self._result_cards.clear()
+            self._activity("Cleared results.")
+
+        def action_copy_result(self) -> None:
+            self._copy_last()
+
+        def action_export_result(self) -> None:
+            self._export_last()
 
         def action_quit_app(self) -> None:
             self.exit()
 
+        def _set_mode(self, mode: str) -> None:
+            message = self.controller.set_mode(mode)
+            self._activity(f"mode: {message}")
+            self._refresh_header()
+            self._refresh_sidebar()
+
         def _toggle_source(self, provider: str) -> None:
             enabled = not self.controller.access_policy.can_access_provider(provider)
             message = self.controller.set_source_enabled(provider, enabled)
-            self._write(f"[magenta]source[/] {_rich_escape(message)}")
-            self._refresh_modebar()
+            self._activity(f"source: {message}", logging.INFO if enabled else logging.WARNING)
+            self.notify(
+                message,
+                title="Source enabled" if enabled else "Source disabled",
+                severity="information" if enabled else "warning",
+            )
+            self._refresh_sources()
+            self._refresh_index()
 
+        def _copy_last(self) -> None:
+            if self._last_outcome is None:
+                self.notify("Nothing to copy yet.", severity="warning")
+                return
+            self.copy_to_clipboard(_retrieval_plain_text(self._last_outcome))
+            self.notify("Copied last retrieval result to the clipboard.")
+            self._activity("Copied last result to clipboard.")
+
+        def _export_path(self) -> Path:
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            return (
+                Path(self.controller.config.workspace_path)
+                / ".devenv"
+                / "retrieval_exports"
+                / f"retrieval-{stamp}.md"
+            )
+
+        def _export_last(self) -> None:
+            if self._last_outcome is None:
+                self.notify("Nothing to export yet.", severity="warning")
+                return
+            path = self._export_path()
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(_retrieval_plain_text(self._last_outcome) + "\n", encoding="utf-8")
+            except OSError as exc:
+                self.notify(f"Export failed: {exc}", severity="error")
+                self._activity(f"export failed: {exc}", logging.ERROR)
+                return
+            self.notify(f"Exported to {path}")
+            self._activity(f"Exported last result to {path}")
+
+        # ------------------------------------------------------------------ input
         def on_input_submitted(self, event: Input.Submitted) -> None:
             if event.input.id != "composer":
                 return
@@ -952,70 +1134,175 @@ if TEXTUAL_AVAILABLE:
             if not value:
                 return
             if value.startswith("/"):
+                command_name = value.split()[0].lower()
                 result = self.controller.handle_command(value)
-                self._write(result.message)
-                self._refresh_modebar()
+                self._activity(f"command: {value}")
+                if result.message:
+                    self._mount_command_card(value, result.message)
+                if command_name in {"/enable", "/permission", "/permissions"}:
+                    self._refresh_sources()
+                    self._refresh_index()
+                if command_name == "/mode":
+                    self._refresh_header()
+                    self._refresh_sidebar()
                 if result.should_exit:
                     self.exit()
                 return
             if self._busy:
-                self._write("[yellow]Busy[/] wait for the current retrieval to finish.")
+                self.notify("A retrieval is already running.", severity="warning")
                 return
             if self.controller.mode == "solve":
-                self._write(
-                    "[yellow]Solve mode is still in progress.[/] "
-                    "Press [bold]F1[/] to switch back to retrieval mode."
-                )
+                self._activity("Solve mode is still in progress.", logging.WARNING)
+                self.notify("Solve mode is still in progress. Press F1 for retrieval.", severity="warning")
                 return
-            self._write(f"[bold cyan]Query[/] {_rich_escape(value)}")
-            self._write("[dim]Retrieving prior sessions…[/]")
-            self._busy = True
-            self._refresh_modebar()
+            self._set_busy(True)
+            self._activity(f"retrieving: {value}")
             self._run_retrieval(value)
 
         @work(thread=True)
         def _run_retrieval(self, query: str) -> None:
             try:
-                result = self.controller.run_retrieval(query)
+                outcome = self.controller.run_retrieval(query, max_lines=20)
             except Exception as exc:  # pragma: no cover - defensive UI path
-                self.call_from_thread(self._render_retrieval_failure, str(exc))
+                self.call_from_thread(self._render_failure, str(exc))
                 return
-            self.call_from_thread(self._render_retrieval_result, result)
+            self.call_from_thread(self._render_result, outcome)
 
-        def _render_retrieval_result(self, result: RetrievalOutcome) -> None:
-            for line in _format_retrieval_result_lines(result):
-                self._write(line)
-            self._busy = False
-            self._refresh_modebar()
-            self.query_one("#composer", Input).focus()
-
-        def _render_retrieval_failure(self, error_message: str) -> None:
-            self._write(f"[red]error[/] {_rich_escape(error_message)}")
-            self._busy = False
-            self._refresh_modebar()
-            self.query_one("#composer", Input).focus()
-
-        def _write(self, message: str) -> None:
-            self.query_one("#log", RichLog).write(_strip_ansi(message))
-
-        def _refresh_modebar(self) -> None:
-            retrieve = "[reverse] RETRIEVE [/]" if self.controller.mode == "retrieve" else "retrieve"
-            solve = "[reverse] SOLVE (WIP) [/]" if self.controller.mode == "solve" else "solve (WIP)"
-            source_bits = []
-            for provider in SESSION_PROVIDERS:
-                allowed = self.controller.access_policy.can_access_provider(provider)
-                mark = "[green]on[/]" if allowed else "[dim]off[/]"
-                source_bits.append(f"{provider}:{mark}")
-            busy = "  [yellow]retrieving…[/]" if self._busy else ""
-            text = (
-                f"[bold]MODE[/] {retrieve}  {solve}   "
-                f"[bold]SOURCES[/] {'  '.join(source_bits)}   "
-                f"[bold]INDEX[/] {_rich_escape(self.controller.index_status_text())}{busy}"
+        def _render_result(self, outcome: RetrievalOutcome) -> None:
+            self._last_outcome = outcome
+            self._mount_card(_format_retrieval_result_lines(outcome))
+            self._set_busy(False)
+            providers = ", ".join(outcome.metadata.get("context_match_providers", []) or []) or "—"
+            self._activity(
+                f"retrieval: {len(outcome.session_ids)} session(s) in {outcome.elapsed_ms} ms "
+                f"(providers: {providers})",
+                logging.INFO if outcome.session_ids else logging.WARNING,
             )
+            self._refresh_header()
+            self.query_one("#composer", Input).focus()
+
+        def _render_failure(self, error_message: str) -> None:
+            self._set_busy(False)
+            self._mount_card(
+                [
+                    f"[b {ERROR_COLOR}]Retrieval failed[/]",
+                    f"[{TEXT_MUTED}]{_rich_escape(error_message)}[/]",
+                ]
+            )
+            self._activity(f"retrieval failed: {error_message}", logging.ERROR)
+            self.notify(f"Retrieval failed: {error_message}", severity="error")
+            self.query_one("#composer", Input).focus()
+
+        # ------------------------------------------------------------------ rendering
+        def _mount_card(self, lines: list[str]) -> None:
+            if not lines:
+                lines = [f"[{TEXT_MUTED}](empty)[/]"]
+            container = self.query_one("#results-list", VerticalScroll)
+            card = Static("\n".join(lines), markup=True, classes="result-card")
+            container.mount(card, before=0)
+            self._result_cards.insert(0, card)
+            while len(self._result_cards) > self.MAX_RESULT_CARDS:
+                oldest = self._result_cards.pop()
+                oldest.remove()
+
+        def _mount_command_card(self, command: str, message: str) -> None:
+            lines = [f"[b {TEAL}]Command[/]  [{TEXT}]{_rich_escape(command)}[/]"]
+            for raw in _strip_ansi(message).splitlines():
+                lines.append(f"[{TEXT}]{_rich_escape(raw)}[/]")
+            if not message.strip():
+                lines.append(f"[{TEXT_MUTED}](no output)[/]")
+            self._mount_card(lines)
+
+        def _set_busy(self, busy: bool) -> None:
+            self._busy = busy
             try:
-                self.query_one("#modebar", Static).update(text)
+                self.query_one("#spinner", LoadingIndicator).display = busy
+                self.query_one("#composer", Input).disabled = busy
+                self.query_one("#result-title", Static).update("Retrieving…" if busy else "Results")
             except Exception:  # pragma: no cover - widget may be gone during shutdown
                 pass
+
+        def _refresh_header(self) -> None:
+            if self.controller.mode == "retrieve":
+                pill = f"[{ON_TEAL} on {TEAL}] RETRIEVE [/]"
+            else:
+                pill = f"[#2e3036 on {WARN}] SOLVE (WIP) [/]"
+            summary = ""
+            if self._last_outcome is not None:
+                summary = (
+                    f"   [{TEXT_MUTED}]last:[/] [{TEXT}]"
+                    f"{len(self._last_outcome.session_ids)} sessions · "
+                    f"{self._last_outcome.elapsed_ms} ms[/]"
+                )
+            workspace = _rich_escape(self.controller.config.workspace_path)
+            text = f"[b {TEAL}]DEVENV[/]  [{TEXT_MUTED}]{workspace}[/]   {pill}{summary}"
+            try:
+                self.query_one("#header", Static).update(text)
+            except Exception:  # pragma: no cover
+                pass
+
+        def _refresh_sidebar(self) -> None:
+            if self.controller.mode == "retrieve":
+                pills = f"[{ON_TEAL} on {TEAL}] RETRIEVE [/]  [{TEXT_MUTED}] SOLVE (WIP) [/]"
+            else:
+                pills = f"[{TEXT_MUTED}] RETRIEVE [/]  [#2e3036 on {WARN}] SOLVE (WIP) [/]"
+            try:
+                self.query_one("#mode-pills", Static).update(f"[b {TEXT_MUTED}]MODE[/]\n{pills}")
+            except Exception:  # pragma: no cover
+                pass
+
+        def _refresh_sources(self) -> None:
+            try:
+                sources = self.controller.context_builder.list_sources()
+            except Exception:  # pragma: no cover - defensive
+                sources = []
+            health = {source.provider: source for source in sources}
+            lines: list[str] = []
+            for provider in SESSION_PROVIDERS:
+                allowed = self.controller.access_policy.can_access_provider(provider)
+                color = TEAL if allowed else TEXT_MUTED
+                pip = "●" if allowed else "○"
+                if allowed:
+                    count = getattr(health.get(provider), "session_count", 0) or 0
+                    suffix = f"[{TEXT_MUTED}]{count}[/]"
+                else:
+                    suffix = f"[{TEXT_MUTED}]off[/]"
+                lines.append(f"[{color}]{pip}[/] [{TEXT}]{provider}[/]  {suffix}")
+            try:
+                self.query_one("#sources-list", Static).update("\n".join(lines))
+            except Exception:  # pragma: no cover
+                pass
+
+        def _refresh_index(self) -> None:
+            try:
+                bar = self.query_one("#index-bar", ProgressBar)
+                info = self.query_one("#index-info", Static)
+            except Exception:  # pragma: no cover - widget may be gone during shutdown
+                return
+            if not self.controller.enabled_sources():
+                bar.update(total=100, progress=0)
+                info.update(f"[{TEXT_MUTED}]enable a source (/enable)[/]")
+                return
+            try:
+                status = self.controller.context_builder.indexing_status()
+            except Exception:
+                info.update(f"[{TEXT_MUTED}]unknown[/]")
+                return
+            if status.get("active"):
+                total = float(status.get("total_sessions") or 0)
+                done = float(status.get("processed_sessions") or 0)
+                bar.update(total=max(total, 1.0), progress=done)
+                eta = status.get("eta_seconds")
+                eta_text = f"  ·  eta {eta}s" if eta is not None else ""
+                info.update(f"[{TEAL}]{int(done)}/{int(total)}[/][{TEXT_MUTED}]{eta_text}[/]")
+            elif status.get("completed"):
+                total = int(status.get("total_sessions") or 0)
+                bar.update(total=1, progress=1)
+                info.update(f"[{TEAL}]ready[/]  [{TEXT_MUTED}]· {total} sessions[/]")
+            else:
+                bar.update(total=100, progress=0)
+                message = _rich_escape(str(status.get("message") or "idle"))
+                info.update(f"[{TEXT_MUTED}]{message}[/]")
 
 
 def run_tui(config: RunConfig) -> int:

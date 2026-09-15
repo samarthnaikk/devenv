@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import queue
 import tempfile
 import unittest
 
@@ -7,6 +9,8 @@ from core.runtime.models import RunConfig, RuntimeTurnResult, StageTrace, ToolEx
 from core.runtime.tui import (
     DevenvTUIController,
     RetrievalOutcome,
+    TUILogBridge,
+    _format_log_line,
     _format_retrieval_result_lines,
     _format_turn_result_lines,
     _retrieval_plain_text,
@@ -130,6 +134,7 @@ def _sample_outcome() -> RetrievalOutcome:
         context=context,
         session_ids=("session-1",),
         metadata={"context_match_providers": ["codex"], "index_ready": True},
+        elapsed_ms=42,
     )
 
 
@@ -421,11 +426,56 @@ class DevenvTUITest(unittest.TestCase):
         self.assertIn("\\[red]", joined)
         self.assertIn("\\[bold]", joined)
 
+    def test_format_retrieval_result_lines_includes_metrics(self) -> None:
+        lines = _format_retrieval_result_lines(_sample_outcome())
+        joined = "\n".join(lines)
+
+        self.assertIn("providers: codex", joined)
+        self.assertIn("42 ms", joined)
+        self.assertIn("index: ready", joined)
+
     def test_retrieval_plain_text_lists_sessions(self) -> None:
         text = _retrieval_plain_text(_sample_outcome())
 
         self.assertIn("Retrieved context", text)
         self.assertIn("session-1", text)
+
+    def test_run_retrieval_records_elapsed_ms(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            controller.context_builder = FakeContextBuilder(outcome=_sample_outcome())
+
+            result = controller.run_retrieval("anything")
+
+        self.assertGreaterEqual(result.elapsed_ms, 0)
+
+    def test_format_log_line_includes_level_and_source(self) -> None:
+        line = _format_log_line(0.0, logging.WARNING, "core.runtime.tui", "boom [x]")
+
+        self.assertIn("WARNING", line)
+        self.assertIn("core.runtime.tui", line)
+        self.assertIn("boom", line)
+        self.assertIn("\\[x]", line)
+
+    def test_tui_log_bridge_forwards_records_to_queue(self) -> None:
+        captured: "queue.Queue[tuple[float, int, str, str]]" = queue.Queue()
+        bridge = TUILogBridge(captured)
+        logger = logging.getLogger("tests.tui.log_bridge")
+        logger.addHandler(bridge)
+        logger.setLevel(logging.INFO)
+        try:
+            logger.info("hello %s", "world")
+        finally:
+            logger.removeHandler(bridge)
+
+        created, levelno, name, message = captured.get_nowait()
+        self.assertIsInstance(created, float)
+        self.assertEqual(levelno, logging.INFO)
+        self.assertEqual(name, "tests.tui.log_bridge")
+        self.assertEqual(message, "hello world")
 
     def test_format_turn_result_lines_includes_thinking_and_system_logs(self) -> None:
         result = RuntimeTurnResult(
