@@ -4,11 +4,14 @@ Devenv AI is a local-first coding agent foundation for running project-aware wor
 
 The project currently ships as an installable Python package and includes:
 
-- an interactive terminal runtime
+- a three-pane terminal runtime (TUI) with a retrieval workspace, mode pills, pickers, and an activity log
 - a local web runtime
 - a one-shot smoke runner for single prompts
 - an MCP server for exposing local tools
+- a setup/readiness inspector
 - a memory engine with working, episodic, and associative memory layers
+- a cross-provider retrieval engine that fuses Codex and OpenCode session history with local memory
+- a retrieval evaluation harness for scoring recall against a known question set
 
 ## Installation
 
@@ -112,6 +115,69 @@ Start the local MCP tool server:
 devenv-mcp --workspace .
 ```
 
+Inspect setup and readiness (optionally applying idempotent fixes and warming the local model cache):
+
+```bash
+devenv-setup . --include-optional
+devenv-setup . --apply --warm-model-cache
+```
+
+## Terminal Runtime (TUI)
+
+`devenv-run` launches a Textual-based three-pane workspace instead of a plain prompt loop:
+
+- left sidebar: mode pills, session-source status (Codex / OpenCode), and a live indexing progress bar
+- center results pane: retrieved sessions and chunks rendered as result cards
+- bottom activity log: color-coded runtime logging with third-party noise suppressed
+
+The TUI currently exposes two modes:
+
+- `retrieve`: ask a question and inspect exactly which prior sessions and chunks are recalled
+- `solve`: reserved for the full agent loop and still marked work-in-progress
+
+Useful commands (also available from the command palette via `Ctrl+P` or the footer keys):
+
+- `/retrieve <query>` — retrieve prior sessions and chunks for a query
+- `/mode retrieve|solve` — switch modes
+- `/enable` — enable all session sources (Codex + OpenCode)
+- `/sources` — show session-source status and counts
+- `/backend` — open the backend picker or switch with `/backend <name>`
+- `/model` — open the model picker or set with `/model [backend] <name>`
+- `/permissions` — open the permission picker
+- `/status`, `/providers`, `/clear`, `/exit`
+
+Backend and model selections are persisted per workspace. If no session source is enabled, the sidebar prompts `/enable` (or `F3`/`F4`) before indexing begins.
+
+## Retrieval Engine
+
+Devenv builds runtime context from local memory and from prior agent session history, rather than dumping raw transcripts into the model.
+
+- **Fused session recall:** Codex and OpenCode sessions are recalled together and merged, instead of picking a single provider.
+- **Chunk-level embeddings:** each session is embedded both whole and as individual chunks (`external_session_embeddings` and `external_session_chunk_embeddings` in `memory.db`), and semantic scoring takes the best chunk match per session, falling back to the whole-session vector.
+- **Default embedder:** `sentence-transformers` with `all-MiniLM-L6-v2` (384-dim), cached and probed once, with a deterministic hashing embedder as an offline fallback. Embedding content hashes include the embedder identifier, so switching embedders invalidates and re-embeds stale vectors.
+- **Deterministic recall:** provider sessions are deduped so repeat queries return a stable result set, and agent-created/derived sessions are excluded from retrieval by default.
+- **Budgeted context selection:** retrieved context lines are scored per session, bounded by a line/char budget, and assembled so the strongest evidence is pinned: the highest-scoring line, the best line from each of the top sessions, and near-top lines are kept even over budget. Giant lines are windowed around the query-matched region rather than dropped. Bounded elimination is on by default and can be toggled with `DEVENV_CONTEXT_ELIMINATION=0`; set `DEVENV_CONTEXT_SHADOW=1` to log what would be dropped without changing behavior.
+
+Re-index prior sessions after large archive changes:
+
+```bash
+python scripts/backfill_session_embeddings.py
+```
+
+## Retrieval Evaluation
+
+`scripts/retrieval_eval.py` drives the real retrieval engine (index build + `build_runtime_memory_context`) over a 16-question set in `retrieval_eval_questions.md` and scores the output against a ground-truth answer key. The engine only ever sees the question text; the answer key is used purely for scoring, and benchmark-generated meta sessions are excluded so the answers are not pre-leaked.
+
+- Part A (Q1–Q7): niche questions, each hinging on an exact identifier, value, or decision from a single session
+- Part B (Q8–Q16): follow-up style "we hit this error, how did we fix it?" questions, each with one primary source session
+
+```bash
+python scripts/retrieval_eval.py
+python scripts/retrieval_eval.py --elimination on   # compare bounded context selection on/off
+```
+
+Results are written to `.devenv/retrieval_eval/results.json` and `.devenv/retrieval_eval/report.md`.
+
 ## Screenshots
 
 ### Startup chunking
@@ -134,8 +200,23 @@ After installation, the package exposes these commands:
 - `devenv-web`
 - `devenv-smoke`
 - `devenv-mcp`
+- `devenv-setup`
 
 ## Version History
+
+### v0.1.6
+
+This release rebuilt the retrieval engine and turned the terminal runtime into a full workspace, while simplifying the web shell.
+
+- Redesigned the terminal runtime into a three-pane Textual TUI: a session-source sidebar with a live indexing bar, a retrieval results pane, and a color-coded activity log.
+- Added two-mode TUI flow (`retrieve` now, `solve` in progress), command palette, pickers, per-workspace backend/model persistence, and `/enable` to turn on session sources.
+- Fused Codex and OpenCode session recall into one ranked result set instead of picking a single provider.
+- Added whole-session and chunk-level session embeddings, with best-chunk similarity scoring for finer semantic recall.
+- Defaulted embeddings to `sentence-transformers` (`all-MiniLM-L6-v2`, 384-dim) with a hashing fallback, and made content hashes embedder-aware so switching embedders re-embeds stale vectors.
+- Made recall deterministic by deduping provider sessions and excluding agent-created (derived) sessions by default.
+- Added budgeted context selection with pinned evidence lines and bounded context elimination (on by default), which shrinks retrieved context without dropping the strongest proof lines.
+- Added a 16-question retrieval evaluation harness (`scripts/retrieval_eval.py`) that drives the real engine and scores it against a ground-truth key.
+- Simplified the web interface into a chat-first shell and added local visual regression tooling.
 
 ### v0.1.5
 
@@ -182,7 +263,7 @@ This was the first release-shaped version of the web/runtime product and package
 
 ## What It Does Today
 
-The current implementation is centered on the Cognitive Memory Engine and a small runtime/tooling foundation.
+The current implementation is centered on the Cognitive Memory Engine, a cross-provider retrieval engine, and a small runtime/tooling foundation.
 
 Implemented today:
 
@@ -195,6 +276,9 @@ Implemented today:
 - manual memory correction through `forget_node()`
 - consolidation flows that can create and update memory nodes from episodic logs
 - an injectable architecture for storage, embeddings, vector indexes, and extraction logic
+- fused recall across Codex and OpenCode session archives, with whole-session and chunk-level embeddings
+- budgeted, evidence-pinned context selection that keeps the strongest lines within a bounded budget
+- a 16-question retrieval evaluation harness with a ground-truth answer key
 
 ## Memory Engine Example
 
@@ -463,10 +547,14 @@ python -m pip install -U pip
 python -m pip install -e .
 ```
 
-The production memory stack expects local availability of:
+The runtime stack expects local availability of:
 
 - `lancedb`
 - `sentence-transformers`
+- `textual`
+- `mcp[cli]`
+
+The default embedder model (`all-MiniLM-L6-v2`) is cached locally and loaded offline once present. Run `devenv-setup . --warm-model-cache` to download it up front.
 
 ## Testing
 
@@ -476,19 +564,25 @@ Run the current test suite with:
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-The current suite covers memory imports, persistence, retrieval behavior, vector ranking, manual correction, and consolidation flows.
+The current suite covers memory imports, persistence, retrieval behavior, vector ranking, manual correction, and consolidation flows, plus runtime coverage for the kernel, context builder, web runtime, MCP server, and TUI.
 
 ## Current Scope
 
 This repository is still an early foundation, not a full end-user coding product.
 
+Working today:
+
+- the terminal TUI `retrieve` mode and the web runtime
+- cross-provider session retrieval and the evaluation harness
+
 Not implemented yet:
 
-- no always-on inactivity scheduler for consolidation
-- no cross-device sync
-- no multi-repo memory sharing
-- no full agent orchestration loop
-- no secure remote execution layer
+- the TUI `solve` mode (full agent loop in the terminal)
+- an always-on inactivity scheduler for consolidation
+- cross-device sync
+- multi-repo memory sharing
+- a fully verified end-to-end agent orchestration loop
+- a secure remote execution layer
 
 ## License
 
