@@ -1654,6 +1654,35 @@ class ContextBuilderServiceTest(unittest.TestCase):
 
         self.assertIn("auth cache was not invalidated", "\n".join(lines))
 
+    def test_opencode_provider_excludes_derived_sessions_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            db_path = Path(tempdir) / "opencode.db"
+            connection = sqlite3.connect(db_path)
+            connection.executescript(
+                """
+                create table session (id text, title text, directory text, time_updated integer, time_archived integer, parent_id text);
+                create table message (id text, session_id text, data text, time_created integer);
+                create table part (id text, message_id text, session_id text, data text, time_created integer);
+                """
+            )
+            connection.execute("insert into session values (?,?,?,?,?,?)", ("ses_human", "Human session", "/tmp/proj", 1000, None, None))
+            connection.execute("insert into session values (?,?,?,?,?,?)", ("ses_derived", "Explore (@explore subagent)", "/tmp/proj", 2000, None, "ses_human"))
+            connection.commit()
+            connection.close()
+
+            config = (ExternalSessionProviderConfig(provider="opencode", root_path=str(db_path)),)
+            service = ContextBuilderService(tempdir, provider_configs=config)
+            ids = [summary.session_id for summary in service.providers["opencode"].list_sessions()]
+            service_with_derived = ContextBuilderService(
+                tempdir, provider_configs=config, exclude_derived_sessions=False
+            )
+            ids_with_derived = [
+                summary.session_id for summary in service_with_derived.providers["opencode"].list_sessions()
+            ]
+
+        self.assertEqual(ids, ["ses_human"])
+        self.assertIn("ses_derived", ids_with_derived)
+
 
 if __name__ == "__main__":
     unittest.main()

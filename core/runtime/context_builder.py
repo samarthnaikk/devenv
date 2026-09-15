@@ -769,8 +769,9 @@ class CodexSessionProvider(ExternalSessionProvider):
 
 
 class OpenCodeSessionProvider(ExternalSessionProvider):
-    def __init__(self, config: ExternalSessionProviderConfig) -> None:
+    def __init__(self, config: ExternalSessionProviderConfig, *, include_derived: bool = False) -> None:
         super().__init__(config)
+        self.include_derived = include_derived
         self._detail_cache: dict[str, ExternalSessionDetail] = {}
         self._summary_cache: dict[str, ExternalSessionSummary] = {}
 
@@ -797,11 +798,12 @@ class OpenCodeSessionProvider(ExternalSessionProvider):
     def list_sessions(self) -> list[ExternalSessionSummary]:
         if not self.config.enabled or not self.root.exists():
             return []
+        derived_filter = "" if self.include_derived else " and parent_id is null"
         rows = self._query_all(
-            """
+            f"""
             select id, title, directory, time_updated
             from session
-            where time_archived is null
+            where time_archived is null{derived_filter}
             order by time_updated desc
             """
         )
@@ -929,6 +931,7 @@ class ContextBuilderService:
         memory: Any | None = None,
         provider_configs: tuple[ExternalSessionProviderConfig, ...] = (),
         performance_mode: str = "medium",
+        exclude_derived_sessions: bool = True,
     ) -> None:
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
         self.workspace = WorkspaceBrowser(self.workspace_path)
@@ -936,8 +939,9 @@ class ContextBuilderService:
         self.performance_mode = performance_mode if performance_mode in {"low", "medium", "high"} else "medium"
         self.provider_configs = provider_configs or _default_provider_configs()
         self.runtime_allowed_providers: set[str] | None = None
+        include_derived = not exclude_derived_sessions or os.getenv("DEVENV_INCLUDE_DERIVED_SESSIONS") == "1"
         self.providers = {
-            config.provider: _provider_from_config(config)
+            config.provider: _provider_from_config(config, include_derived=include_derived)
             for config in self.provider_configs
         }
         self.index = ExternalSessionIndex(self.providers, performance_mode=self.performance_mode)
@@ -1782,12 +1786,16 @@ class ContextBuilderService:
         }
 
 
-def _provider_from_config(config: ExternalSessionProviderConfig) -> ExternalSessionProvider:
+def _provider_from_config(
+    config: ExternalSessionProviderConfig,
+    *,
+    include_derived: bool = False,
+) -> ExternalSessionProvider:
     if config.provider == "codex":
         return CodexSessionProvider(config)
     if config.provider == "opencode":
-        return OpenCodeSessionProvider(config)
-    return OpenCodeSessionProvider(config)
+        return OpenCodeSessionProvider(config, include_derived=include_derived)
+    return OpenCodeSessionProvider(config, include_derived=include_derived)
 
 
 def _default_provider_configs() -> tuple[ExternalSessionProviderConfig, ...]:
