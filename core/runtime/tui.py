@@ -348,6 +348,8 @@ class DevenvTUIController:
             if not args:
                 return TUICommandResult("Usage: /retrieve <query>")
             return TUICommandResult(_retrieval_plain_text(self.run_retrieval(" ".join(args))))
+        if command == "/enable":
+            return TUICommandResult(self.enable_all_sources())
         if command == "/sources":
             return TUICommandResult(self.sources_text())
         if command == "/mode":
@@ -370,6 +372,7 @@ class DevenvTUIController:
                 "/status                 Show active backend, model, and permissions",
                 "/mode retrieve|solve    Switch TUI mode (solve is still in progress)",
                 "/retrieve <query>       Retrieve prior sessions and chunks for a query",
+                "/enable                 Enable all session sources (codex + opencode)",
                 "/sources                Show session source status",
                 "/permissions            Open the permission picker or show command help",
                 "/permission backend <name> <on|off>",
@@ -463,6 +466,14 @@ class DevenvTUIController:
         if normalized == "solve":
             return "Solve mode selected, but it is still in progress."
         return "Retrieval mode selected."
+
+    def enable_all_sources(self) -> str:
+        enabled = list(SESSION_PROVIDERS)
+        for provider in enabled:
+            self.access_policy.set_session_access(provider, True)
+        self._apply_runtime_preferences()
+        self._persist_state()
+        return f"Enabled all session sources: {', '.join(enabled)}. Building indexes in the background."
 
     def set_source_enabled(self, provider: str, enabled: bool) -> str:
         if provider not in SESSION_PROVIDERS:
@@ -884,7 +895,7 @@ if TEXTUAL_AVAILABLE:
             yield Static("", id="modebar")
             yield RichLog(id="log", markup=True, wrap=True)
             yield Static(
-                "Enter: retrieve · F1: retrieve · F2: solve (WIP) · F3/F4: toggle sources · Ctrl+Q: quit",
+                "Enter: retrieve · F1: retrieve · F2: solve (WIP) · F3/F4: toggle sources · /enable: all sources · Ctrl+Q: quit",
                 id="hint",
             )
             yield Input(placeholder="Ask a retrieval question and press Enter…", id="composer")
@@ -899,7 +910,7 @@ if TEXTUAL_AVAILABLE:
             if not self.controller.enabled_sources():
                 self._write(
                     "[yellow]No session sources are enabled.[/] "
-                    "Press [bold]F3[/] to enable Codex or [bold]F4[/] to enable OpenCode."
+                    "Run [bold]/enable[/] to enable all sources (or use F3/F4 to toggle one)."
                 )
             self._refresh_modebar()
             self.query_one("#composer", Input).focus()
