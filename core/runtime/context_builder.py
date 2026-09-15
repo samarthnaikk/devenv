@@ -48,6 +48,7 @@ MAX_SESSION_EMBEDDING_CACHE = 512
 MAX_SESSION_CHUNK_EMBEDDINGS = 96
 MAX_SESSION_CHUNK_HITS = 3
 CONTEXT_LINES_FIRST_PASS = 2
+CONTEXT_LINE_MAX_CHARS = 0
 MAX_QUERY_VARIANTS = 4
 COMMON_CONTEXT_TOKENS = {
     "about",
@@ -2623,12 +2624,16 @@ def _truncate_tool_output(text: str, max_chars: int = 900) -> str:
     return f"{cleaned[: max_chars - 3].rstrip()}..."
 
 
-def _compact_context_content(role: str, text: str) -> str:
+def _compact_context_content(
+    role: str,
+    text: str,
+    *,
+    max_chars: int = CONTEXT_LINE_MAX_CHARS,
+) -> str:
     cleaned = _normalize_whitespace(text)
     if not cleaned:
         return ""
-    max_chars = 220 if role == "tool" else 260
-    if len(cleaned) <= max_chars:
+    if max_chars <= 0 or len(cleaned) <= max_chars:
         return cleaned
     return f"{cleaned[: max_chars - 3].rstrip()}..."
 
