@@ -1,4 +1,4 @@
-# Retrieval Evaluation — 15 Questions
+# Retrieval Evaluation — 16 Questions
 
 Generated from the local Codex (`~/.codex/sessions/**/*.jsonl`, `session_index.jsonl`) and
 OpenCode (`~/.local/share/opencode/opencode.db`) archives.
@@ -14,8 +14,10 @@ Projects covered: `devenv`, `facepred`, `get-drip`, `hirex-frontend`, `DigiX`, `
   key appears in the recalled set *and* the agent's answer contains the expected fact.
 - Part A (Q1–Q7) is deliberately **niche**: each answer hinges on an exact identifier,
   value, or decision that exists in only one session. These are the retrieval stress tests.
-- Part B (Q8–Q15) is **follow-up style**: "we hit this error on this project, how did we fix
+- Part B (Q8–Q16) is **follow-up style**: "we hit this error on this project, how did we fix
   it?" Each has one primary source session.
+- Q16 was added from a real runtime miss: the correct session was retrieved but its answer
+  never reached the model's context, so evaluate both session recall and answer coverage.
 - Before evaluating, re-run `scripts/backfill_session_embeddings.py` so the vectors cover the
   latest archives. Note: recent meta sessions (including review/exploration sessions) can
   themselves mention some of these facts, so score against the ground-truth session id, not
@@ -47,7 +49,7 @@ first paper, and what were the regex fixes?
 
 ---
 
-## Part B — Follow-up questions (8)
+## Part B — Follow-up questions (9)
 
 **Q8.** On `devenv`, the web runtime crashed with a `SyntaxError` in `context_builder.py` —
 what was the malformed line and how did we fix it?
@@ -72,6 +74,9 @@ frames, and how did we fix it?
 
 **Q15.** On the `cd1` semaphore programs, why did they compile but print wrong values on
 macOS, and what did we switch to?
+
+**Q16.** On `hirex-frontend`, why did the recruiter dashboard go blank right after saving
+details, and where exactly was the bug?
 
 ---
 ---
@@ -142,7 +147,8 @@ Do not feed this section to the agent under test.
 ## Q6 — DigiX Celery queues
 
 - **Project:** DigiX
-- **Source:** OpenCode `ses_1432bc0e7ffei3DPt06hIns6we` — "Explore DigiX architecture (@explore subagent)"
+- **Source:** OpenCode `ses_1432beb90ffe00PaDLl4gh5zvj` — "New session - 2026-06-12T17:14:36.015Z"
+  (parent of the `@explore subagent` session; subagent sessions are excluded as derived)
 - **Expected answer:** Three Celery queues: `api_calls`, `web_scraping`, `heavy_compute`.
   Backend: FastAPI + Uvicorn + async SQLAlchemy + Alembic + Celery + Redis on PostgreSQL 15.
   Frontend: React 19 + Vite 8 + Tailwind v4.
@@ -239,6 +245,20 @@ Do not feed this section to the agent under test.
   `ModuleNotFoundError: No module named 'requests'`, fixed by adding `requests==2.32.3` to
   `requirements.txt`.
 - **Proof:** `ModuleNotFoundError: No module named 'requests'` and `Latex Warning: File 'watermarklogo.jpg' not found`
+
+## Q16 — hirex-frontend blank dashboard after saving
+
+- **Project:** hirex-frontend
+- **Source:** OpenCode `ses_14d2cb8e4ffeObVH00TuYhgs3w` — "Blank dashboard after saving details debugging"
+  (parent of `ses_14d2c04eeffeBTFi0G16ZVC4lA` "Review blank screen (@explore subagent)")
+- **Expected answer:** A React hooks-order bug in
+  `frontend/src/pages/RecruiterDashboard/RecruiterDashboard.tsx`: `useMemo` was declared after the
+  early returns for `showSettings`/`initialLoading`, so the first render returned early and the next
+  render executed the hook, throwing "React has detected a change in the order of Hooks" /
+  "Rendered more hooks than during the previous render". Fixed by moving the derived dashboard logic
+  (including `useMemo`) above the conditional returns.
+- **Proof:** `useMemo was declared after early returns for showSettings and initialLoading`
+
 
 ## Q15 — cd1 sem_init on macOS
 
