@@ -333,6 +333,8 @@ class ExternalSessionSummary:
     source_path: str | None = None
     message_count: int = 0
     preview: str = ""
+    unified_session_id: str = ""
+    embedding: tuple[float, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -344,6 +346,8 @@ class ExternalSessionSummary:
             "source_path": self.source_path,
             "message_count": self.message_count,
             "preview": self.preview,
+            "unified_session_id": self.unified_session_id or f"{self.provider}:{self.session_id}",
+            "embedding": list(self.embedding),
         }
 
 

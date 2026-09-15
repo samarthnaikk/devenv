@@ -440,6 +440,31 @@ class DevenvWebApp:
         detail = self.context_builder.get_session(provider_name, session_id)
         return detail.to_dict()
 
+    def build_session_embeddings_payload(self) -> dict[str, object]:
+        providers = [
+            provider_name
+            for provider_name in sorted(self.access_policy.session_access)
+            if self.access_policy.can_access_provider(provider_name)
+        ]
+        records = []
+        for provider_name in providers:
+            records.extend(self.context_builder.list_session_embeddings(provider_name))
+        return {
+            "embeddings": [
+                {
+                    "provider": record.provider,
+                    "session_id": record.session_id,
+                    "unified_session_id": record.unified_session_id,
+                    "embedding": list(record.embedding),
+                    "title": record.title,
+                    "workspace_path": record.workspace_path,
+                    "updated_at": record.updated_at,
+                    "indexed_at": record.indexed_at,
+                }
+                for record in records
+            ]
+        }
+
     def build_prepared_prompt_payload(
         self, payload: dict[str, object]
     ) -> dict[str, object]:
@@ -1062,6 +1087,11 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/context-sources":
                 self._write_json(
                     HTTPStatus.OK, self.app.build_context_sources_payload()
+                )
+                return
+            if parsed.path == "/api/session-embeddings":
+                self._write_json(
+                    HTTPStatus.OK, self.app.build_session_embeddings_payload()
                 )
                 return
             if parsed.path.startswith("/api/context-sources/"):

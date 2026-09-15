@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-from .models import EpisodicLog, MemoryNode, NodeEdge
+from .models import EpisodicLog, ExternalSessionEmbedding, MemoryNode, NodeEdge
 
 
 SCHEMA_STATEMENTS = (
@@ -50,9 +50,26 @@ SCHEMA_STATEMENTS = (
         value TEXT NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS external_session_embeddings (
+        unified_session_id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        workspace_path TEXT,
+        source_path TEXT,
+        updated_at TEXT NOT NULL DEFAULT '',
+        content_hash TEXT NOT NULL,
+        content_text TEXT NOT NULL DEFAULT '',
+        embedding_json TEXT NOT NULL,
+        indexed_at REAL NOT NULL
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_memory_nodes_parent_id ON memory_nodes(parent_id)",
     "CREATE INDEX IF NOT EXISTS idx_episodic_logs_timestamp ON episodic_logs(timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_node_edges_target_id ON node_edges(target_node_id)",
+    "CREATE INDEX IF NOT EXISTS idx_external_session_embeddings_provider ON external_session_embeddings(provider)",
+    "CREATE INDEX IF NOT EXISTS idx_external_session_embeddings_session_id ON external_session_embeddings(session_id)",
 )
 
 FTS_SCHEMA_STATEMENTS = (
@@ -113,6 +130,99 @@ class SQLiteMemoryStore:
             )
             if self._fts_enabled:
                 self._rebuild_fts(connection)
+
+    def upsert_external_session_embedding(self, record: ExternalSessionEmbedding) -> None:
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO external_session_embeddings (
+                    unified_session_id,
+                    provider,
+                    session_id,
+                    title,
+                    workspace_path,
+                    source_path,
+                    updated_at,
+                    content_hash,
+                    content_text,
+                    embedding_json,
+                    indexed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(unified_session_id) DO UPDATE SET
+                    provider = excluded.provider,
+                    session_id = excluded.session_id,
+                    title = excluded.title,
+                    workspace_path = excluded.workspace_path,
+                    source_path = excluded.source_path,
+                    updated_at = excluded.updated_at,
+                    content_hash = excluded.content_hash,
+                    content_text = excluded.content_text,
+                    embedding_json = excluded.embedding_json,
+                    indexed_at = excluded.indexed_at
+                """,
+                (
+                    record.unified_session_id,
+                    record.provider,
+                    record.session_id,
+                    record.title,
+                    record.workspace_path,
+                    record.source_path,
+                    record.updated_at,
+                    record.content_hash,
+                    record.content_text,
+                    json.dumps(list(record.embedding)),
+                    record.indexed_at,
+                ),
+            )
+
+    def get_external_session_embedding(self, unified_session_id: str) -> ExternalSessionEmbedding | None:
+        with self.transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    unified_session_id,
+                    provider,
+                    session_id,
+                    title,
+                    workspace_path,
+                    source_path,
+                    updated_at,
+                    content_hash,
+                    content_text,
+                    embedding_json,
+                    indexed_at
+                FROM external_session_embeddings
+                WHERE unified_session_id = ?
+                """,
+                (unified_session_id,),
+            ).fetchone()
+        return _row_to_external_session_embedding(row) if row else None
+
+    def list_external_session_embeddings(self, provider: str | None = None) -> list[ExternalSessionEmbedding]:
+        query = """
+            SELECT
+                unified_session_id,
+                provider,
+                session_id,
+                title,
+                workspace_path,
+                source_path,
+                updated_at,
+                content_hash,
+                content_text,
+                embedding_json,
+                indexed_at
+            FROM external_session_embeddings
+        """
+        params: tuple[str, ...] = ()
+        if provider:
+            query += " WHERE provider = ?"
+            params = (provider,)
+        query += " ORDER BY provider, session_id"
+        with self.transaction() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [_row_to_external_session_embedding(row) for row in rows]
 
     def upsert_node(self, node: MemoryNode) -> None:
         with self.transaction() as connection:
@@ -590,6 +700,28 @@ def _row_to_node(row: sqlite3.Row) -> MemoryNode:
         created_at=float(row["created_at"]),
         last_accessed=float(row["last_accessed"]),
         access_count=int(row["access_count"]),
+    )
+
+
+def _row_to_external_session_embedding(row: sqlite3.Row) -> ExternalSessionEmbedding:
+    raw_embedding = row["embedding_json"]
+    try:
+        parsed = json.loads(str(raw_embedding))
+    except (TypeError, json.JSONDecodeError):
+        parsed = []
+    embedding = tuple(float(value) for value in parsed if isinstance(value, (int, float)))
+    return ExternalSessionEmbedding(
+        unified_session_id=str(row["unified_session_id"]),
+        provider=str(row["provider"]),
+        session_id=str(row["session_id"]),
+        title=str(row["title"] or ""),
+        workspace_path=str(row["workspace_path"]) if row["workspace_path"] is not None else None,
+        source_path=str(row["source_path"]) if row["source_path"] is not None else None,
+        updated_at=str(row["updated_at"] or ""),
+        content_hash=str(row["content_hash"]),
+        content_text=str(row["content_text"] or ""),
+        embedding=embedding,
+        indexed_at=float(row["indexed_at"]),
     )
 
 

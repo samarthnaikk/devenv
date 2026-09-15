@@ -9,9 +9,14 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import hashlib
 from pathlib import Path
 from typing import Any
+
+from core.memory.embeddings import HashingEmbedder
+from core.memory.models import ExternalSessionEmbedding
+from core.memory.storage import SQLiteMemoryStore
 
 from .models import (
     ExternalSessionDetail,
@@ -494,37 +499,42 @@ class CodexSessionProvider(ExternalSessionProvider):
     def get_session(self, session_id: str) -> ExternalSessionDetail:
         cached = self._detail_cache.get(session_id)
         if cached is not None:
-            return cached
+            return self._apply_index_record(cached)
 
         session_file = self._find_session_file(session_id)
         if session_file is None:
             raise FileNotFoundError(f"Unknown Codex session: {session_id}")
 
-        detail = self._parse_session_file(session_file)
-        index_record = self._load_index_records().get(session_id)
-        if index_record is not None:
-            summary = ExternalSessionSummary(
-                provider=detail.summary.provider,
-                session_id=detail.summary.session_id,
-                title=str(index_record.get("thread_name") or detail.summary.title),
-                updated_at=str(index_record.get("updated_at") or detail.summary.updated_at),
-                workspace_path=detail.summary.workspace_path,
-                source_path=detail.summary.source_path,
-                message_count=detail.summary.message_count,
-                preview=detail.summary.preview,
-            )
-            detail = ExternalSessionDetail(summary=summary, messages=detail.messages, metadata=detail.metadata)
-
+        detail = self._apply_index_record(self._parse_session_file(session_file))
         self._detail_cache[session_id] = detail
         return detail
+
+    def _apply_index_record(self, detail: ExternalSessionDetail) -> ExternalSessionDetail:
+        session_id = detail.summary.session_id
+        index_record = self._load_index_records().get(session_id)
+        if index_record is None:
+            return detail
+        if detail.summary.title == str(index_record.get("thread_name") or detail.summary.title):
+            return detail
+        summary = ExternalSessionSummary(
+            provider=detail.summary.provider,
+            session_id=detail.summary.session_id,
+            title=str(index_record.get("thread_name") or detail.summary.title),
+            updated_at=str(index_record.get("updated_at") or detail.summary.updated_at),
+            workspace_path=detail.summary.workspace_path,
+            source_path=detail.summary.source_path,
+            message_count=detail.summary.message_count,
+            preview=detail.summary.preview,
+        )
+        return ExternalSessionDetail(summary=summary, messages=detail.messages, metadata=detail.metadata)
 
     def build_index_chunks(self, session_id: str) -> list[ExternalSessionChunk]:
         session_file = self._find_session_file(session_id)
         if session_file is None:
             return []
-        detail = self._parse_session_file(session_file)
+        summary = self._summary_from_session_file(session_file)
         all_messages = self._parse_full_session_messages(session_file, session_id)
-        return _build_chunks_from_messages(detail.summary, all_messages, source="codex")
+        return _build_chunks_from_messages(summary, all_messages, source="codex")
 
     def _load_index_records(self) -> dict[str, dict[str, Any]]:
         index_path = self.root / (self.config.index_path or "session_index.jsonl")
@@ -926,6 +936,8 @@ class ContextBuilderService:
             for config in self.provider_configs
         }
         self.index = ExternalSessionIndex(self.providers, performance_mode=self.performance_mode)
+        self._session_embedding_store = self._resolve_session_embedding_store()
+        self._session_embedder = self._resolve_session_embedder()
 
     def set_runtime_allowed_providers(self, providers: set[str] | list[str] | tuple[str, ...] | None) -> None:
         if providers is None:
@@ -946,11 +958,21 @@ class ContextBuilderService:
 
     def list_sessions(self, provider_name: str) -> list[ExternalSessionSummary]:
         provider = self._get_provider(provider_name)
-        return provider.list_sessions()
+        return [self._with_session_embedding(provider, summary) for summary in provider.list_sessions()]
 
     def get_session(self, provider_name: str, session_id: str) -> ExternalSessionDetail:
         provider = self._get_provider(provider_name)
-        return provider.get_session(session_id)
+        detail = provider.get_session(session_id)
+        summary = self._with_session_embedding(provider, detail.summary)
+        metadata = dict(detail.metadata)
+        metadata["unified_session_id"] = summary.unified_session_id
+        metadata["embedding"] = list(summary.embedding)
+        return ExternalSessionDetail(summary=summary, messages=detail.messages, metadata=metadata)
+
+    def list_session_embeddings(self, provider_name: str | None = None) -> list[ExternalSessionEmbedding]:
+        if self._session_embedding_store is None:
+            return []
+        return self._session_embedding_store.list_external_session_embeddings(provider=provider_name)
 
     def prepare_prompt(self, request: PreparedPromptRequest) -> PreparedPromptResult:
         provider_name = request.provider or self._default_provider_name()
@@ -1202,6 +1224,68 @@ class ContextBuilderService:
         if provider is None:
             raise FileNotFoundError(f"Unknown context provider: {provider_name}")
         return provider
+
+    def _resolve_session_embedding_store(self) -> SQLiteMemoryStore | None:
+        store = getattr(self.memory, "store", None)
+        if isinstance(store, SQLiteMemoryStore):
+            return store
+        try:
+            return SQLiteMemoryStore(str(Path(self.workspace_path) / "memory.db"))
+        except Exception:
+            return None
+
+    def _resolve_session_embedder(self) -> Any | None:
+        embedder = getattr(self.memory, "embedder", None)
+        if embedder is not None and hasattr(embedder, "embed"):
+            return embedder
+        return HashingEmbedder(dimension=384)
+
+    def _with_session_embedding(
+        self,
+        provider: ExternalSessionProvider,
+        summary: ExternalSessionSummary,
+    ) -> ExternalSessionSummary:
+        unified_session_id = _unified_session_id(summary.provider, summary.session_id)
+        if self._session_embedding_store is None or self._session_embedder is None:
+            return replace(summary, unified_session_id=unified_session_id)
+
+        document = self._session_embedding_document(provider, summary)
+        content_hash = hashlib.sha256(document.encode("utf-8")).hexdigest()
+        existing = self._session_embedding_store.get_external_session_embedding(unified_session_id)
+        if existing is None or existing.content_hash != content_hash:
+            embedding = tuple(float(value) for value in self._session_embedder.embed(document))
+            existing = ExternalSessionEmbedding(
+                unified_session_id=unified_session_id,
+                provider=summary.provider,
+                session_id=summary.session_id,
+                title=summary.title,
+                workspace_path=summary.workspace_path,
+                source_path=summary.source_path,
+                updated_at=summary.updated_at,
+                content_hash=content_hash,
+                content_text=document,
+                embedding=embedding,
+                indexed_at=time.time(),
+            )
+            self._session_embedding_store.upsert_external_session_embedding(existing)
+
+        return replace(summary, unified_session_id=unified_session_id, embedding=existing.embedding)
+
+    def _session_embedding_document(
+        self,
+        provider: ExternalSessionProvider,
+        summary: ExternalSessionSummary,
+    ) -> str:
+        chunks = provider.build_index_chunks(summary.session_id)
+        parts = [summary.title.strip()]
+        if summary.workspace_path:
+            parts.append(str(summary.workspace_path).strip())
+        for chunk in chunks:
+            text = _normalize_whitespace(chunk.text)
+            if text:
+                parts.append(text)
+        document = "\n".join(part for part in parts if part).strip()
+        return document or summary.preview.strip() or summary.title.strip() or summary.session_id
 
     def _default_provider_name(self) -> str | None:
         for provider_name, provider in self.providers.items():
@@ -2270,6 +2354,10 @@ def _looks_like_noisy_tool_output(lowered: str) -> bool:
         if structured_chars >= max(18, len(lowered) // 12):
             return True
     return False
+
+
+def _unified_session_id(provider: str, session_id: str) -> str:
+    return f"{provider}:{session_id}"
 
 
 def _is_tool_output_query(task: str) -> bool:

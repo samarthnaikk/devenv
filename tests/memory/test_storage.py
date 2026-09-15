@@ -3,7 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 
-from core.memory.models import EpisodicLog, MemoryNode, NodeEdge
+from core.memory.models import EpisodicLog, ExternalSessionEmbedding, MemoryNode, NodeEdge
 from core.memory.storage import SQLiteMemoryStore
 
 
@@ -74,6 +74,29 @@ class SQLiteMemoryStoreTest(unittest.TestCase):
 
         self.assertEqual(self.store.list_logs_since(0.0), [log])
         self.assertEqual(self.store.get_state("last_consolidated_at"), "10.0")
+
+    def test_external_session_embeddings_round_trip(self) -> None:
+        record = ExternalSessionEmbedding(
+            unified_session_id="codex:session-123",
+            provider="codex",
+            session_id="session-123",
+            title="Session 123",
+            workspace_path="/tmp/workspace",
+            source_path="/tmp/.codex",
+            updated_at="2026-08-20T10:00:00Z",
+            content_hash="abc123",
+            content_text="entire session text",
+            embedding=(0.1, 0.2, 0.3),
+            indexed_at=123.0,
+        )
+
+        self.store.upsert_external_session_embedding(record)
+
+        self.assertEqual(
+            self.store.get_external_session_embedding("codex:session-123"),
+            record,
+        )
+        self.assertEqual(self.store.list_external_session_embeddings("codex"), [record])
 
     def test_fts_search_helpers_return_indexed_nodes_and_logs(self) -> None:
         if not getattr(self.store, "_fts_enabled", False):

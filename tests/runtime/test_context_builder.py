@@ -143,10 +143,54 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertEqual(len(sessions), 1)
         self.assertEqual(sessions[0].title, "Integrate prompt builder")
         self.assertEqual(sessions[0].updated_at, "2026-06-28T10:10:10Z")
+        self.assertEqual(sessions[0].unified_session_id, f"codex:{session_id}")
+        self.assertTrue(len(sessions[0].embedding) > 0)
         self.assertEqual(detail.summary.workspace_path, str(workspace))
         self.assertEqual(sessions[0].workspace_path, str(workspace))
+        self.assertEqual(detail.metadata["unified_session_id"], f"codex:{session_id}")
+        self.assertEqual(detail.metadata["embedding"], list(sessions[0].embedding))
         self.assertTrue(any(message.role == "user" for message in detail.messages))
         self.assertTrue(any("prompt preview ui" in message.content.lower() for message in detail.messages))
+
+    def test_context_builder_persists_unified_session_embeddings(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "08" / "20"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-store-1"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Store embeddings", "updated_at": "2026-08-20T10:10:10Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-08-20T10-09-00-{session_id}.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps({"timestamp": "2026-08-20T10:09:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": str(workspace)}}),
+                        json.dumps({"timestamp": "2026-08-20T10:09:02Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Persist the whole-session embedding for later reuse."}}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+
+            sessions = service.list_sessions("codex")
+            embeddings = service.list_session_embeddings("codex")
+
+        self.assertEqual(len(sessions), 1)
+        self.assertEqual(len(embeddings), 1)
+        self.assertEqual(embeddings[0].unified_session_id, f"codex:{session_id}")
+        self.assertEqual(embeddings[0].session_id, session_id)
+        self.assertEqual(tuple(sessions[0].embedding), embeddings[0].embedding)
 
     def test_codex_provider_ignores_developer_rows_and_reads_user_event_messages(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
