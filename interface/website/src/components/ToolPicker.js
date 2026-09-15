@@ -120,11 +120,6 @@ export function ToolPicker() {
             "aria-label": selected.size ? `Choose tools, ${selected.size} selected` : "Choose tools",
           },
           React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "TOOLS"),
-          React.createElement(
-            MotionShimmerText,
-            { className: "tool-picker-trigger-copy", active: state.toolPickerOpen },
-            routeSummary.trigger
-          ),
           React.createElement("span", { className: "material-symbols-outlined text-[16px] text-on-surface-variant ml-auto" }, state.toolPickerOpen ? "expand_less" : "expand_more")
         )
       )

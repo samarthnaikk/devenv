@@ -48,7 +48,7 @@ const initialState = {
   planBlueprint: null,
   replyTarget: null,
   showSettings: false,
-  sidebarCollapsed: false,
+  sidebarCollapsed: true,
   setupComplete: loadSetupState(),
 };
 
