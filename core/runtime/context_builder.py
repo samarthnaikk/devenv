@@ -41,6 +41,7 @@ RRF_K = 60
 SEMANTIC_STRONG_THRESHOLD = 0.35
 MAX_INDEX_CHUNK_CHARS = 720
 MAX_INDEX_CONTEXT_LINES = 12
+MAX_SESSION_EMBEDDING_CACHE = 512
 MAX_QUERY_VARIANTS = 4
 COMMON_CONTEXT_TOKENS = {
     "about",
@@ -942,6 +943,7 @@ class ContextBuilderService:
         self._session_embedding_store: SQLiteMemoryStore | None = None
         self._session_embedding_store_resolved = False
         self._session_embedder = self._resolve_session_embedder()
+        self._session_embedding_document_cache: dict[str, tuple[tuple[Any, ...], str]] = {}
 
     def set_runtime_allowed_providers(self, providers: set[str] | list[str] | tuple[str, ...] | None) -> None:
         if providers is None:
@@ -1230,6 +1232,23 @@ class ContextBuilderService:
             raise FileNotFoundError(f"Unknown context provider: {provider_name}")
         return provider
 
+    def _session_embedding_fingerprint(self, summary: ExternalSessionSummary) -> tuple[Any, ...] | None:
+        source_path = summary.source_path
+        if not source_path:
+            return None
+        try:
+            stat = Path(source_path).stat()
+        except OSError:
+            return None
+        return (
+            summary.provider,
+            summary.session_id,
+            str(source_path),
+            int(stat.st_mtime_ns),
+            int(stat.st_size),
+            summary.updated_at,
+        )
+
     def _get_session_embedding_store(self) -> SQLiteMemoryStore | None:
         if not self._session_embedding_store_resolved:
             self._session_embedding_store = self._resolve_session_embedding_store()
@@ -1261,7 +1280,16 @@ class ContextBuilderService:
         if store is None or self._session_embedder is None:
             return replace(summary, unified_session_id=unified_session_id)
 
-        document = self._session_embedding_document(provider, summary)
+        fingerprint = self._session_embedding_fingerprint(summary)
+        cached = self._session_embedding_document_cache.get(unified_session_id)
+        if fingerprint is not None and cached is not None and cached[0] == fingerprint:
+            document = cached[1]
+        else:
+            document = self._session_embedding_document(provider, summary)
+            if fingerprint is not None:
+                self._session_embedding_document_cache[unified_session_id] = (fingerprint, document)
+                if len(self._session_embedding_document_cache) > MAX_SESSION_EMBEDDING_CACHE:
+                    self._session_embedding_document_cache.pop(next(iter(self._session_embedding_document_cache)))
         content_hash = hashlib.sha256(document.encode("utf-8")).hexdigest()
         existing = store.get_external_session_embedding(unified_session_id)
         if existing is None or existing.content_hash != content_hash:

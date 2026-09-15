@@ -260,6 +260,39 @@ class ContextBuilderServiceTest(unittest.TestCase):
         db_match = next(match for match in matches if match["summary"].session_id == "session-db")
         self.assertGreaterEqual(db_match["semantic_score"], 0.35)
 
+    def test_session_embedding_document_cache_avoids_reparsing(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "08" / "20"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-cache"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Cache session", "updated_at": "2026-08-20T10:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-08-20T09-00-00-{session_id}.jsonl").write_text(
+                json.dumps({"timestamp": "2026-08-20T09:00:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": str(workspace)}})
+                + "\n"
+                + json.dumps({"timestamp": "2026-08-20T09:00:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Cache this document."}})
+                + "\n",
+                encoding="utf-8",
+            )
+
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            provider = service._get_provider("codex")
+            with mock.patch.object(provider, "build_index_chunks", wraps=provider.build_index_chunks) as spy:
+                service.list_sessions("codex")
+                service.list_sessions("codex")
+
+        self.assertEqual(spy.call_count, 1)
+
     def test_codex_provider_ignores_developer_rows_and_reads_user_event_messages(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir) / "workspace"

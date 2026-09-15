@@ -440,7 +440,7 @@ class DevenvWebApp:
         detail = self.context_builder.get_session(provider_name, session_id)
         return detail.to_dict()
 
-    def build_session_embeddings_payload(self) -> dict[str, object]:
+    def build_session_embeddings_payload(self, *, include_vectors: bool = False) -> dict[str, object]:
         providers = [
             provider_name
             for provider_name in sorted(self.access_policy.session_access)
@@ -449,21 +449,22 @@ class DevenvWebApp:
         records = []
         for provider_name in providers:
             records.extend(self.context_builder.list_session_embeddings(provider_name))
-        return {
-            "embeddings": [
-                {
-                    "provider": record.provider,
-                    "session_id": record.session_id,
-                    "unified_session_id": record.unified_session_id,
-                    "embedding": list(record.embedding),
-                    "title": record.title,
-                    "workspace_path": record.workspace_path,
-                    "updated_at": record.updated_at,
-                    "indexed_at": record.indexed_at,
-                }
-                for record in records
-            ]
-        }
+        embeddings: list[dict[str, object]] = []
+        for record in records:
+            entry: dict[str, object] = {
+                "provider": record.provider,
+                "session_id": record.session_id,
+                "unified_session_id": record.unified_session_id,
+                "embedding_dimension": len(record.embedding),
+                "title": record.title,
+                "workspace_path": record.workspace_path,
+                "updated_at": record.updated_at,
+                "indexed_at": record.indexed_at,
+            }
+            if include_vectors:
+                entry["embedding"] = list(record.embedding)
+            embeddings.append(entry)
+        return {"embeddings": embeddings}
 
     def build_prepared_prompt_payload(
         self, payload: dict[str, object]
@@ -1090,8 +1091,11 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
                 )
                 return
             if parsed.path == "/api/session-embeddings":
+                query = parse_qs(parsed.query)
+                include_vectors = query.get("include_vectors", ["0"])[0].lower() in {"1", "true", "yes", "on"}
                 self._write_json(
-                    HTTPStatus.OK, self.app.build_session_embeddings_payload()
+                    HTTPStatus.OK,
+                    self.app.build_session_embeddings_payload(include_vectors=include_vectors),
                 )
                 return
             if parsed.path.startswith("/api/context-sources/"):

@@ -540,6 +540,46 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(detail["summary"]["session_id"], session_id)
         self.assertIn("Task:", prepared["prompt"])
 
+    def test_session_embeddings_payload_omits_vectors_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "08" / "20"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-embed"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Embedding session", "updated_at": "2026-08-20T10:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-08-20T09-00-00-{session_id}.jsonl").write_text(
+                json.dumps({"timestamp": "2026-08-20T09:00:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": tempdir}})
+                + "\n"
+                + json.dumps({"timestamp": "2026-08-20T09:00:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Store this embedding."}})
+                + "\n",
+                encoding="utf-8",
+            )
+            app = DevenvWebApp(
+                RunConfig(
+                    workspace_path=tempdir,
+                    external_session_configs=(
+                        ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                    ),
+                ),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.update_session_access("codex", True)
+            app.build_context_sessions_payload("codex")
+            trimmed = app.build_session_embeddings_payload()
+            full = app.build_session_embeddings_payload(include_vectors=True)
+
+        self.assertEqual(len(trimmed["embeddings"]), 1)
+        self.assertNotIn("embedding", trimmed["embeddings"][0])
+        self.assertGreater(trimmed["embeddings"][0]["embedding_dimension"], 0)
+        self.assertEqual(
+            len(full["embeddings"][0]["embedding"]),
+            trimmed["embeddings"][0]["embedding_dimension"],
+        )
+
     def test_access_endpoints_update_server_side_consent_state(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             app = DevenvWebApp(
