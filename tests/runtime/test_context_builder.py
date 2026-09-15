@@ -1602,6 +1602,58 @@ class ContextBuilderServiceTest(unittest.TestCase):
 
         self.assertEqual(ids.count(shared_id), 1)
 
+    def test_context_lines_surface_semantic_chunk_from_lower_ranked_session(self) -> None:
+        from core.memory.models import ExternalSessionChunkEmbedding
+        from core.runtime.context_builder import (
+            ExternalSessionSummary,
+            _collect_per_session_context_lines,
+        )
+
+        def make_match(session_id: str, title: str, text: str, score: float) -> dict:
+            chunk = ExternalSessionChunkEmbedding(
+                unified_session_id=f"opencode:{session_id}",
+                provider="opencode",
+                session_id=session_id,
+                chunk_index=0,
+                content_hash="hash",
+                embedding=(1.0, 0.0),
+                role="assistant",
+                source="opencode",
+                text=text,
+            )
+            return {
+                "summary": ExternalSessionSummary(
+                    provider="opencode", session_id=session_id, title=title, updated_at=""
+                ),
+                "chunks": [],
+                "semantic_chunk": chunk,
+                "semantic_score": score,
+            }
+
+        matches = [
+            make_match(
+                "s1",
+                "Noisy session",
+                "the bug and the session and the fix and the dashboard and the bug list " * 3,
+                0.9,
+            ),
+            make_match(
+                "s2",
+                "Real answer",
+                "the recruiter dashboard went blank because the auth cache was not invalidated after saving details",
+                0.8,
+            ),
+        ]
+
+        lines = _collect_per_session_context_lines(
+            "why did the recruiter dashboard go blank after saving details?",
+            matches,
+            {},
+            4,
+        )
+
+        self.assertIn("auth cache was not invalidated", "\n".join(lines))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -43,6 +43,7 @@ MAX_RUNTIME_SESSION_MATCHES = 12
 MAX_PROVIDER_SESSION_MATCHES = 6
 MAX_INDEX_CHUNK_CHARS = 720
 MAX_INDEX_CONTEXT_LINES = 12
+MAX_CONTEXT_LINES_PER_SESSION = 4
 MAX_SESSION_EMBEDDING_CACHE = 512
 MAX_SESSION_CHUNK_EMBEDDINGS = 96
 MAX_QUERY_VARIANTS = 4
@@ -944,7 +945,7 @@ class ContextBuilderService:
         self._session_embedding_store_resolved = False
         self._session_embedder = self._resolve_session_embedder()
         self._session_embedding_document_cache: dict[str, tuple[tuple[Any, ...], str, list[Any]]] = {}
-        self._session_chunk_vector_cache: dict[str, dict[str, list[tuple[float, ...]]]] = {}
+        self._session_chunk_record_cache: dict[str, dict[str, list[ExternalSessionChunkEmbedding]]] = {}
 
     def set_runtime_allowed_providers(self, providers: set[str] | list[str] | tuple[str, ...] | None) -> None:
         if providers is None:
@@ -1176,11 +1177,17 @@ class ContextBuilderService:
         *,
         max_lines: int,
     ) -> tuple[str, ...]:
-        indexed_context_lines: tuple[str, ...] = ()
-        if any(match.get("chunks") for match in selected_matches):
-            indexed_context_lines = _collect_indexed_context_lines(task, selected_matches)
-        context_lines = indexed_context_lines or _collect_relevant_context_lines(task, details, "detailed")
-        return context_lines[:max_lines]
+        has_chunk_text = any(
+            match.get("chunks") or isinstance(match.get("semantic_chunk"), ExternalSessionChunkEmbedding)
+            for match in selected_matches
+        )
+        if not has_chunk_text:
+            return _collect_relevant_context_lines(task, details, "detailed")[:max_lines]
+        details_by_id = {detail.summary.session_id: detail for detail in details}
+        lines = _collect_per_session_context_lines(task, selected_matches, details_by_id, max_lines)
+        if lines:
+            return lines
+        return _collect_relevant_context_lines(task, details, "detailed")[:max_lines]
 
     def _candidate_provider_names(self) -> list[str]:
         provider_names = list(self.providers)
@@ -1416,7 +1423,7 @@ class ContextBuilderService:
                 )
             )
         store.replace_external_session_chunk_embeddings(unified_session_id, records)
-        self._session_chunk_vector_cache.pop(summary.provider, None)
+        self._session_chunk_record_cache.pop(summary.provider, None)
 
     def _session_embedding_document(
         self,
@@ -1435,19 +1442,19 @@ class ContextBuilderService:
                 vectors[record.session_id] = record.embedding
         return vectors
 
-    def _session_chunk_vectors(self, provider_name: str) -> dict[str, list[tuple[float, ...]]]:
-        cached = self._session_chunk_vector_cache.get(provider_name)
+    def _session_chunk_records(self, provider_name: str) -> dict[str, list[ExternalSessionChunkEmbedding]]:
+        cached = self._session_chunk_record_cache.get(provider_name)
         if cached is not None:
             return cached
         store = self._get_session_embedding_store()
         if store is None:
             return {}
-        vectors: dict[str, list[tuple[float, ...]]] = {}
+        records: dict[str, list[ExternalSessionChunkEmbedding]] = {}
         for record in store.list_external_session_chunk_embeddings(provider=provider_name):
             if record.embedding:
-                vectors.setdefault(record.session_id, []).append(record.embedding)
-        self._session_chunk_vector_cache[provider_name] = vectors
-        return vectors
+                records.setdefault(record.session_id, []).append(record)
+        self._session_chunk_record_cache[provider_name] = records
+        return records
 
     def _semantic_session_scores(
         self,
@@ -1455,9 +1462,20 @@ class ContextBuilderService:
         summaries: list[ExternalSessionSummary],
         query_variants: tuple[str, ...],
     ) -> dict[str, float]:
+        return {
+            session_id: hit["score"]
+            for session_id, hit in self._semantic_session_hits(provider, summaries, query_variants).items()
+        }
+
+    def _semantic_session_hits(
+        self,
+        provider: ExternalSessionProvider,
+        summaries: list[ExternalSessionSummary],
+        query_variants: tuple[str, ...],
+    ) -> dict[str, dict[str, Any]]:
         vectors = self._session_embedding_vectors(provider.name)
-        chunk_vectors = self._session_chunk_vectors(provider.name)
-        if (not vectors and not chunk_vectors) or self._session_embedder is None:
+        chunk_records = self._session_chunk_records(provider.name)
+        if (not vectors and not chunk_records) or self._session_embedder is None:
             return {}
         query_vectors: list[tuple[float, ...]] = []
         for variant in query_variants:
@@ -1467,23 +1485,25 @@ class ContextBuilderService:
                 logger.debug("Failed to embed recall query variant: error=%s", exc)
         if not query_vectors:
             return {}
-        scores: dict[str, float] = {}
+        hits: dict[str, dict[str, Any]] = {}
         for summary in summaries:
-            session_chunks = chunk_vectors.get(summary.session_id)
+            session_chunks = chunk_records.get(summary.session_id)
             best = 0.0
+            best_chunk: ExternalSessionChunkEmbedding | None = None
             if session_chunks:
-                for chunk_vector in session_chunks:
+                for chunk in session_chunks:
                     for query_vector in query_vectors:
-                        similarity = _cosine_similarity(query_vector, chunk_vector)
+                        similarity = _cosine_similarity(query_vector, chunk.embedding)
                         if similarity > best:
                             best = similarity
+                            best_chunk = chunk
             else:
                 vector = vectors.get(summary.session_id)
                 if vector:
                     best = max((_cosine_similarity(query, vector) for query in query_vectors), default=0.0)
             if best > 0.0:
-                scores[summary.session_id] = best
-        return scores
+                hits[summary.session_id] = {"score": best, "chunk": best_chunk}
+        return hits
 
     def _default_provider_name(self) -> str | None:
         for provider_name, provider in self.providers.items():
@@ -1510,7 +1530,8 @@ class ContextBuilderService:
         if not prompt_tokens:
             return []
         focus_tokens = set().union(*(_focus_tokens(variant) for variant in variants))
-        semantic_scores = self._semantic_session_scores(provider, summaries, variants)
+        semantic_hits = self._semantic_session_hits(provider, summaries, variants)
+        semantic_scores = {session_id: hit["score"] for session_id, hit in semantic_hits.items()}
         semantic_ranking = sorted(semantic_scores, key=lambda session_id: semantic_scores[session_id], reverse=True)
         semantic_rank = {session_id: rank for rank, session_id in enumerate(semantic_ranking, start=1)}
         lowered_task = task.lower()
@@ -1707,6 +1728,7 @@ class ContextBuilderService:
                     "semantic_score": semantic_score,
                     "semantic_rank": semantic_rank.get(summary.session_id),
                     "fused_score": preliminary_index.get(summary.session_id, {}).get("fused_score", 0.0),
+                    "semantic_chunk": semantic_hits.get(summary.session_id, {}).get("chunk"),
                 }
             )
 
@@ -2246,6 +2268,10 @@ def _combine_indexed_and_semantic_matches(
         fused_score[session_id] = fused_score.get(session_id, 0.0) + 1.0 / (RRF_K + rank)
         if session_id not in entries:
             entries[session_id] = match
+        else:
+            if entries[session_id].get("semantic_chunk") is None and match.get("semantic_chunk") is not None:
+                entries[session_id]["semantic_chunk"] = match["semantic_chunk"]
+            entries[session_id].setdefault("semantic_score", match.get("semantic_score", 0.0))
     ordered = sorted(entries, key=lambda session_id: (-fused_score[session_id], session_id))
     return [entries[session_id] for session_id in ordered][:MAX_PROVIDER_SESSION_MATCHES]
 
@@ -2267,6 +2293,85 @@ def _token_matches(token: str, haystack: str) -> bool:
 
 def _contains_whole_token(token: str, haystack: str) -> bool:
     return bool(re.search(rf"\b{re.escape(token)}\b", haystack))
+
+
+def _collect_per_session_context_lines(
+    task: str,
+    selected_matches: list[dict[str, Any]],
+    details_by_id: dict[str, ExternalSessionDetail],
+    max_lines: int,
+) -> tuple[str, ...]:
+    tokens = _tokenize(task)
+    prefer_tool_output = _is_tool_output_query(task)
+
+    def score_line(line: str, role: str, source: str) -> int:
+        lowered = line.lower()
+        value = sum(2 for token in tokens if _token_matches(token, lowered))
+        if source == "reasoning":
+            value += 1
+        if role in {"user", "assistant"}:
+            value += 1
+        if role == "tool":
+            value += 3 if prefer_tool_output else -3
+        return value
+
+    def chunk_line(role: str, text: str, source: str) -> tuple[int, str] | None:
+        content = _compact_context_content(role, text)
+        if not content:
+            return None
+        prefix = "User asked" if role == "user" else "Assistant reported" if role == "assistant" else "Tool output"
+        line = f"{prefix}: {content}"
+        return score_line(line, role, source), line
+
+    per_session: list[list[str]] = []
+    for match in selected_matches:
+        summary = match.get("summary")
+        session_id = getattr(summary, "session_id", "")
+        candidates: list[tuple[int, str]] = []
+        for chunk in match.get("chunks", []) or ():
+            if not isinstance(chunk, ExternalSessionChunk):
+                continue
+            entry = chunk_line(chunk.role, chunk.text, chunk.source)
+            if entry is not None:
+                candidates.append(entry)
+        semantic_chunk = match.get("semantic_chunk")
+        if isinstance(semantic_chunk, ExternalSessionChunkEmbedding):
+            entry = chunk_line(semantic_chunk.role, semantic_chunk.text, semantic_chunk.source)
+            if entry is not None:
+                candidates.append(entry)
+        if not candidates:
+            detail = details_by_id.get(session_id)
+            if detail is not None:
+                for line in _collect_relevant_context_lines(task, [detail], "detailed"):
+                    candidates.append((1, line))
+        candidates.sort(key=lambda item: (-item[0], item[1]))
+        ranked: list[str] = []
+        for _score, line in candidates:
+            if line and line not in ranked:
+                ranked.append(line)
+        per_session.append(ranked)
+
+    lines: list[str] = []
+    seen: set[str] = set()
+
+    def emit(line: str) -> bool:
+        if not line or line in seen:
+            return False
+        seen.add(line)
+        lines.append(line)
+        return len(lines) >= max_lines
+
+    for ranked in per_session:
+        for line in ranked:
+            if emit(line):
+                return tuple(lines)
+            break
+    for depth in range(1, MAX_CONTEXT_LINES_PER_SESSION):
+        for ranked in per_session:
+            if depth < len(ranked):
+                if emit(ranked[depth]):
+                    return tuple(lines)
+    return tuple(lines)
 
 
 def _collect_indexed_context_lines(task: str, selected_matches: list[dict[str, Any]]) -> tuple[str, ...]:
