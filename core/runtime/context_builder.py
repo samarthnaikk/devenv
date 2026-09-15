@@ -2336,7 +2336,7 @@ class ContextSelection:
 def _context_elimination_enabled(override: bool | None = None) -> bool:
     if override is not None:
         return override
-    return os.getenv("DEVENV_CONTEXT_ELIMINATION", "0") == "1"
+    return os.getenv("DEVENV_CONTEXT_ELIMINATION", "1") == "1"
 
 
 def _context_shadow_enabled() -> bool:

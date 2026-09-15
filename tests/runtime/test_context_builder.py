@@ -1742,6 +1742,37 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertEqual(ids, ["ses_human"])
         self.assertIn("ses_derived", ids_with_derived)
 
+    def test_select_context_lines_keeps_lower_ranked_answer_when_over_budget(self) -> None:
+        from core.runtime.context_builder import select_context_lines
+
+        huge = "Assistant reported: " + ("noise " * 2000) + " alpha"
+        answer = "Assistant reported: the real answer beta"
+        per_session = [[(100, huge)], [(90, answer)]]
+
+        selection = select_context_lines("tell me the real answer", per_session, max_lines=6, max_chars=500, eliminate=True)
+        joined = "\n".join(selection.kept)
+
+        self.assertIn("the real answer beta", joined)
+        self.assertTrue(any(entry["reason"] for entry in selection.eliminated) or len(selection.kept) >= 2)
+
+    def test_select_context_lines_unchanged_when_within_budget(self) -> None:
+        from core.runtime.context_builder import select_context_lines
+
+        per_session = [[(5, "Assistant reported: alpha")], [(4, "Assistant reported: beta")]]
+        selection = select_context_lines("alpha beta", per_session, max_lines=6, max_chars=8000, eliminate=True)
+
+        self.assertEqual(selection.kept, ("Assistant reported: alpha", "Assistant reported: beta"))
+        self.assertEqual(selection.eliminated, ())
+
+    def test_window_context_line_keeps_matched_region(self) -> None:
+        from core.runtime.context_builder import _window_context_line
+
+        line = ("x" * 5000) + " NEEDLE_TOKEN " + ("y" * 5000)
+        windowed = _window_context_line(line, {"needle_token"}, max_chars=2000)
+
+        self.assertIn("NEEDLE_TOKEN", windowed)
+        self.assertLessEqual(len(windowed), 2010)
+
 
 if __name__ == "__main__":
     unittest.main()
