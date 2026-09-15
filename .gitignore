@@ -62,6 +62,7 @@ pip-log.txt
 pip-delete-this-directory.txt
 package-lock.json
 .devenv-runtime-state.json
+.devenv/
 
 # IDE/editor
 .vscode/
