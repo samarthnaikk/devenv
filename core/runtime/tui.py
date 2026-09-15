@@ -3,7 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
@@ -16,26 +17,25 @@ from .tooling import build_runtime_tools
 from .web import AccessPolicy, DEFAULT_LLAMACPP_MODELS, DEFAULT_OLLAMA_MODELS, DEFAULT_WEB_MODELS
 
 try:
+    from rich.markup import escape as _rich_escape
+except Exception:  # pragma: no cover - rich ships with textual, but stay defensive
+    def _rich_escape(text: str) -> str:  # type: ignore[misc]
+        return text
+
+try:
     from textual import work
     from textual.app import App, ComposeResult
-    from textual.containers import Container, Vertical
-    from textual.widgets import Footer, Header, Input, OptionList, RichLog, Static
-    from textual.widgets.option_list import Option
+    from textual.widgets import Footer, Input, RichLog, Static
 
     TEXTUAL_AVAILABLE = True
 except Exception:  # pragma: no cover - fallback path for environments without textual
     work = None
     App = object
     ComposeResult = object
-    Container = object
-    Vertical = object
     Footer = object
-    Header = object
     Input = object
-    OptionList = object
     RichLog = object
     Static = object
-    Option = object
     TEXTUAL_AVAILABLE = False
 
 BACKENDS = ("opencode", "ollama", "llama_cpp", "codex")
@@ -54,8 +54,15 @@ class Ansi:
     MAGENTA = "\033[35m"
 
 
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
 def _style(text: str, *codes: str) -> str:
     return "".join(codes) + text + Ansi.RESET
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_ESCAPE_RE.sub("", str(text or ""))
 
 
 @dataclass
@@ -70,6 +77,16 @@ class PaletteEntry:
     label: str
     command: str
     keywords: str
+
+
+@dataclass(frozen=True)
+class RetrievalOutcome:
+    """The retrieval engine's output, reshaped for presentation in the TUI."""
+
+    query: str
+    context: str = ""
+    session_ids: tuple[str, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def _format_turn_result_lines(result: RuntimeTurnResult) -> list[str]:
@@ -107,6 +124,84 @@ def _format_turn_result_lines(result: RuntimeTurnResult) -> list[str]:
     return lines
 
 
+def _collapse_text(text: str, *, limit: int = 500) -> str:
+    collapsed = " ".join(str(text or "").split())
+    if len(collapsed) > limit:
+        return collapsed[: limit - 1].rstrip() + "…"
+    return collapsed
+
+
+_CONTEXT_LINE_STYLES: dict[str, tuple[str, str]] = {
+    "user asked": ("User asked", "magenta"),
+    "assistant reported": ("Assistant", "cyan"),
+    "tool output": ("Tool output", "yellow"),
+}
+
+
+def _split_context_line(text: str) -> tuple[str, str, str]:
+    prefix, separator, rest = text.partition(":")
+    key = prefix.strip().lower()
+    if separator and key in _CONTEXT_LINE_STYLES:
+        label, color = _CONTEXT_LINE_STYLES[key]
+        return label, color, rest.strip()
+    if key.startswith("session "):
+        return "Session", "green", text
+    return "", "", text
+
+
+def _context_body_lines(context: str) -> list[str]:
+    lines: list[str] = []
+    for raw_line in context.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("##"):
+            continue
+        lines.append(stripped[2:].strip() if stripped.startswith("- ") else stripped)
+    return lines
+
+
+def _format_retrieval_result_lines(outcome: RetrievalOutcome) -> list[str]:
+    query = _rich_escape(outcome.query or "")
+    lines = [f"[bold cyan]Retrieval[/] [bold]{query}[/]"]
+    body_lines = _context_body_lines(outcome.context)
+    if not body_lines:
+        reason = _rich_escape(
+            str(outcome.metadata.get("context_match_reason") or "No prior sessions matched.")
+        )
+        lines.append("[yellow]no matches[/]")
+        lines.append(f"[dim]{reason}[/]")
+        return lines
+    providers = ", ".join(outcome.metadata.get("context_match_providers", []) or []) or "—"
+    lines.append(
+        f"[dim]{len(outcome.session_ids)} session(s) matched · providers: {_rich_escape(providers)} · "
+        f"index ready: {bool(outcome.metadata.get('index_ready'))}[/]"
+    )
+    for session_id in outcome.session_ids:
+        lines.append(f"[dim]   session {_rich_escape(session_id)}[/]")
+    lines.append("")
+    for text in body_lines:
+        label, color, body = _split_context_line(text)
+        body = _rich_escape(_collapse_text(body))
+        if label:
+            lines.append(f"[green]·[/] [{color}]{label}[/] {body}")
+        else:
+            lines.append(f"[green]·[/] {body}")
+    return lines
+
+
+def _retrieval_plain_text(outcome: RetrievalOutcome) -> str:
+    body_lines = _context_body_lines(outcome.context)
+    if not body_lines:
+        reason = str(outcome.metadata.get("context_match_reason") or "No prior sessions matched.")
+        return f'No matches for "{outcome.query}".\n{reason}'
+    lines = [f'Retrieved context for "{outcome.query}":']
+    if outcome.session_ids:
+        lines.append(f"Sessions: {', '.join(outcome.session_ids)}")
+    lines.append("")
+    for text in body_lines:
+        lines.append(f"- {_collapse_text(text)}")
+    return "\n".join(lines)
+
+
 class DevenvTUIController:
     def __init__(
         self,
@@ -136,6 +231,7 @@ class DevenvTUIController:
         ):
             self.kernel.register_tool(tool)
         self.access_policy = AccessPolicy()
+        self.mode = "retrieve"
         self.preferred_backend = getattr(self.kernel.ai, "preferred_backend", "opencode") or "opencode"
         self._load_persisted_state()
         self._apply_runtime_preferences()
@@ -160,6 +256,7 @@ class DevenvTUIController:
     def _persist_state(self) -> None:
         payload = {
             "preferred_backend": self.preferred_backend,
+            "mode": self.mode,
             "backend_access": dict(self.access_policy.backend_access),
             "session_access": dict(self.access_policy.session_access),
             "backend_models": self._persisted_backend_models(),
@@ -181,6 +278,9 @@ class DevenvTUIController:
         preferred_backend = str(payload.get("preferred_backend", "") or "").strip().lower()
         if preferred_backend in BACKENDS:
             self.preferred_backend = preferred_backend
+        persisted_mode = str(payload.get("mode", "") or "").strip().lower()
+        if persisted_mode in {"retrieve", "solve"}:
+            self.mode = persisted_mode
         backend_access = payload.get("backend_access")
         if isinstance(backend_access, dict):
             for backend in BACKENDS:
@@ -244,6 +344,16 @@ class DevenvTUIController:
             return TUICommandResult(self._handle_model_command(args))
         if command == "/providers":
             return TUICommandResult(self.providers_text())
+        if command in {"/retrieve", "/recall"}:
+            if not args:
+                return TUICommandResult("Usage: /retrieve <query>")
+            return TUICommandResult(_retrieval_plain_text(self.run_retrieval(" ".join(args))))
+        if command == "/sources":
+            return TUICommandResult(self.sources_text())
+        if command == "/mode":
+            if not args:
+                return TUICommandResult(f"Current mode: `{self.mode}`.")
+            return TUICommandResult(self.set_mode(args[0]))
         if command == "/clear":
             session_id = self.kernel.reset_conversation()
             return TUICommandResult(f"Started a fresh thread. Session id: {session_id}")
@@ -256,8 +366,11 @@ class DevenvTUIController:
     def help_text(self) -> str:
         return "\n".join(
             [
-                _style("Command Palette", Ansi.BOLD, Ansi.CYAN),
+                _style("Commands", Ansi.BOLD, Ansi.CYAN),
                 "/status                 Show active backend, model, and permissions",
+                "/mode retrieve|solve    Switch TUI mode (solve is still in progress)",
+                "/retrieve <query>       Retrieve prior sessions and chunks for a query",
+                "/sources                Show session source status",
                 "/permissions            Open the permission picker or show command help",
                 "/permission backend <name> <on|off>",
                 "/permission provider <codex|opencode> <on|off>",
@@ -313,6 +426,54 @@ class DevenvTUIController:
                 f"- {source.provider}: {state}, {allowed}, sessions={source.session_count}, root={source.root_path}"
             )
         return "\n".join(lines)
+
+    def enabled_sources(self) -> list[str]:
+        return [provider for provider in SESSION_PROVIDERS if self.access_policy.can_access_provider(provider)]
+
+    def sources_text(self) -> str:
+        lines = [_style("Session Sources", Ansi.BOLD, Ansi.CYAN)]
+        for provider in SESSION_PROVIDERS:
+            allowed = self.access_policy.can_access_provider(provider)
+            label = "on" if allowed else "off"
+            color = Ansi.GREEN if allowed else Ansi.DIM
+            lines.append(f"- {provider}: {_style(label, color)}")
+        lines.append("")
+        lines.append(_style(f"Index: {self.index_status_text()}", Ansi.DIM))
+        return "\n".join(lines)
+
+    def index_status_text(self) -> str:
+        if not self.enabled_sources():
+            return "no sources enabled"
+        try:
+            status = self.context_builder.indexing_status()
+        except Exception:
+            return "unknown"
+        if status.get("active"):
+            return f"{status.get('message', 'indexing')} ({status.get('percent', 0)}%)"
+        if status.get("completed"):
+            return "ready"
+        return str(status.get("message") or "idle")
+
+    def set_mode(self, mode: str) -> str:
+        normalized = str(mode or "").strip().lower()
+        if normalized not in {"retrieve", "solve"}:
+            return "Mode must be `retrieve` or `solve`."
+        self.mode = normalized
+        self._persist_state()
+        if normalized == "solve":
+            return "Solve mode selected, but it is still in progress."
+        return "Retrieval mode selected."
+
+    def set_source_enabled(self, provider: str, enabled: bool) -> str:
+        if provider not in SESSION_PROVIDERS:
+            return f"Unknown session source `{provider}`."
+        self.access_policy.set_session_access(provider, enabled)
+        self._apply_runtime_preferences()
+        self._persist_state()
+        state = "enabled" if enabled else "disabled"
+        if enabled:
+            return f"Session source `{provider}` {state}. Building the index in the background."
+        return f"Session source `{provider}` {state}."
 
     def _handle_permission_command(self, args: list[str]) -> str:
         if not args:
@@ -610,6 +771,19 @@ class DevenvTUIController:
                 filtered.append(entry)
         return filtered or entries
 
+    def run_retrieval(self, query: str, *, max_lines: int = 12) -> RetrievalOutcome:
+        self._apply_runtime_preferences()
+        context, session_ids, metadata = self.context_builder.build_runtime_memory_context(
+            query,
+            max_lines=max_lines,
+        )
+        return RetrievalOutcome(
+            query=query,
+            context=context,
+            session_ids=tuple(session_ids),
+            metadata=dict(metadata),
+        )
+
     def run_prompt(self, prompt: str) -> RuntimeTurnResult:
         self._apply_runtime_preferences()
         return self.kernel.execute_turn(
@@ -633,9 +807,9 @@ def render_banner(config: RunConfig) -> None:
         + f"  {_style('workspace', Ansi.DIM)} {config.workspace_path}"
     )
     print(
-        f"{_style('memory', Ansi.GREEN)} online   "
-        f"{_style('performance', Ansi.BLUE)} {config.performance_mode}   "
-        f"{_style('commands', Ansi.MAGENTA)} /help /status /permissions"
+        f"{_style('mode', Ansi.GREEN)} retrieve   "
+        f"{_style('sources', Ansi.BLUE)} /sources   "
+        f"{_style('commands', Ansi.MAGENTA)} /retrieve /mode /help"
     )
     print(line)
 
@@ -663,220 +837,174 @@ if TEXTUAL_AVAILABLE:
         Screen {
             layout: vertical;
             background: #0b1220;
-            color: #f7f4ea;
+            color: #e8eef7;
         }
 
-        #shell {
-            height: 1fr;
+        #modebar {
+            height: 1;
+            background: #14203a;
+            color: #9fb6d8;
+            padding: 0 1;
         }
 
         #log {
             height: 1fr;
             border: round #2f6fed;
-            background: #11192b;
+            background: #0f1727;
+            padding: 0 1;
+        }
+
+        #hint {
+            height: 1;
+            color: #8ca3c7;
             padding: 0 1;
         }
 
         #composer {
-            margin: 1 0 0 0;
             border: round #f08a24;
             background: #0f1727;
-        }
-
-        #hint {
-            color: #8ca3c7;
-            margin: 1 0 0 0;
-        }
-
-        #status {
-            color: #7fb7ff;
-        }
-
-        #palette {
-            layer: overlay;
-            align: center middle;
-            width: 84;
-            height: 28;
-            display: none;
-        }
-
-        #palette.visible {
-            display: block;
-        }
-
-        #palette-panel {
-            border: round #f08a24;
-            background: #101826;
-            padding: 1 2;
-        }
-
-        #palette-title {
-            color: #f7f4ea;
-            text-style: bold;
-            margin: 0 0 1 0;
-        }
-
-        #palette-query {
-            margin: 0 0 1 0;
-            border: round #2f6fed;
-            background: #0f1727;
-        }
-
-        #palette-options {
-            height: 1fr;
-            border: round #24324c;
-            background: #0c1320;
         }
         """
 
         BINDINGS = [
-            ("/", "open_palette", "Command Palette"),
-            ("escape", "close_palette", "Close Palette"),
+            ("f1", "mode_retrieve", "Retrieve"),
+            ("f2", "mode_solve", "Solve (WIP)"),
+            ("f3", "toggle_codex", "Codex"),
+            ("f4", "toggle_opencode", "OpenCode"),
+            ("ctrl+l", "clear_log", "Clear"),
+            ("ctrl+q", "quit_app", "Quit"),
         ]
 
         def __init__(self, controller: DevenvTUIController) -> None:
             super().__init__()
             self.controller = controller
-            self._palette_entries: list[PaletteEntry] = []
-            self._turn_in_flight = False
+            self._busy = False
 
         def compose(self) -> ComposeResult:
-            yield Header(show_clock=False)
-            with Container(id="shell"):
-                yield RichLog(id="log", markup=True, wrap=True)
-                yield Static("Type a prompt to chat. Type `/` for the command palette.", id="hint")
-                yield Static("Idle.", id="status")
-                yield Input(placeholder="Ask devenv anything…", id="composer")
-            with Container(id="palette"):
-                with Vertical(id="palette-panel"):
-                    yield Static("Command Palette", id="palette-title")
-                    yield Input(placeholder="Search commands, permissions, backends, models…", id="palette-query")
-                    yield OptionList(id="palette-options")
+            yield Static("", id="modebar")
+            yield RichLog(id="log", markup=True, wrap=True)
+            yield Static(
+                "Enter: retrieve · F1: retrieve · F2: solve (WIP) · F3/F4: toggle sources · Ctrl+Q: quit",
+                id="hint",
+            )
+            yield Input(placeholder="Ask a retrieval question and press Enter…", id="composer")
             yield Footer()
 
         def on_mount(self) -> None:
-            self.title = "DEVENV CORE TUI"
+            self.title = "DEVENV"
             self.sub_title = self.controller.config.workspace_path
-            self._write_shell_line(f"[bold cyan]Workspace[/] {self.controller.config.workspace_path}")
-            self._write_shell_line("[dim]Use / to search commands, toggle permissions, switch backends, and set models.[/]")
-            self._set_status("Idle.")
+            workspace = _rich_escape(self.controller.config.workspace_path)
+            self._write(f"[bold cyan]Devenv retrieval[/] · workspace [dim]{workspace}[/]")
+            self._write("[dim]Mode 1 retrieves prior session chunks only. Mode 2 (solve) is still in progress.[/]")
+            if not self.controller.enabled_sources():
+                self._write(
+                    "[yellow]No session sources are enabled.[/] "
+                    "Press [bold]F3[/] to enable Codex or [bold]F4[/] to enable OpenCode."
+                )
+            self._refresh_modebar()
             self.query_one("#composer", Input).focus()
+            self.set_interval(1.0, self._refresh_modebar)
 
-        def action_open_palette(self) -> None:
-            palette = self.query_one("#palette", Container)
-            palette.add_class("visible")
-            query = self.query_one("#palette-query", Input)
-            query.value = ""
-            self._refresh_palette()
-            query.focus()
+        def action_mode_retrieve(self) -> None:
+            message = self.controller.set_mode("retrieve")
+            self._write(f"[magenta]mode[/] {_rich_escape(message)}")
+            self._refresh_modebar()
 
-        def action_close_palette(self) -> None:
-            palette = self.query_one("#palette", Container)
-            palette.remove_class("visible")
-            self.query_one("#composer", Input).focus()
+        def action_mode_solve(self) -> None:
+            message = self.controller.set_mode("solve")
+            self._write(f"[magenta]mode[/] {_rich_escape(message)}")
+            self._refresh_modebar()
 
-        def on_input_changed(self, event: Input.Changed) -> None:
-            if event.input.id == "palette-query":
-                self._refresh_palette(event.value)
+        def action_toggle_codex(self) -> None:
+            self._toggle_source("codex")
+
+        def action_toggle_opencode(self) -> None:
+            self._toggle_source("opencode")
+
+        def action_clear_log(self) -> None:
+            self.query_one("#log", RichLog).clear()
+
+        def action_quit_app(self) -> None:
+            self.exit()
+
+        def _toggle_source(self, provider: str) -> None:
+            enabled = not self.controller.access_policy.can_access_provider(provider)
+            message = self.controller.set_source_enabled(provider, enabled)
+            self._write(f"[magenta]source[/] {_rich_escape(message)}")
+            self._refresh_modebar()
 
         def on_input_submitted(self, event: Input.Submitted) -> None:
-            if event.input.id == "composer":
-                value = event.value.strip()
-                event.input.value = ""
-                if not value:
-                    return
-                if self._turn_in_flight:
-                    self._write_shell_line("[yellow]Turn already running.[/] Wait for the current response to finish before sending another prompt.")
-                    return
-                if value.startswith("/"):
-                    self.action_open_palette()
-                    query = self.query_one("#palette-query", Input)
-                    query.value = value[1:].strip()
-                    self._refresh_palette(query.value)
-                    return
-                self._write_shell_line(f"[bold cyan]You[/] {value}")
-                self._write_shell_line("[dim]Retrieving memory context…[/]")
-                self._write_shell_line("[dim]Reasoning…[/]")
-                self._turn_in_flight = True
-                self._set_status("Running turn...")
-                self._run_prompt(value)
+            if event.input.id != "composer":
                 return
-            if event.input.id == "palette-query":
-                self._activate_highlighted_palette_entry()
-
-        def on_key(self, event) -> None:
-            palette = self.query_one("#palette", Container)
-            if not palette.has_class("visible"):
+            value = event.value.strip()
+            event.input.value = ""
+            if not value:
                 return
-            options = self.query_one("#palette-options", OptionList)
-            if event.key == "down":
-                options.action_cursor_down()
-                event.prevent_default()
-            elif event.key == "up":
-                options.action_cursor_up()
-                event.prevent_default()
-
-        def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-            if event.option_list.id != "palette-options":
+            if value.startswith("/"):
+                result = self.controller.handle_command(value)
+                self._write(result.message)
+                self._refresh_modebar()
+                if result.should_exit:
+                    self.exit()
                 return
-            self._execute_palette_selection(event.option.id or "")
-
-        def _refresh_palette(self, query: str = "") -> None:
-            options = self.query_one("#palette-options", OptionList)
-            self._palette_entries = self.controller.palette_entries(query)
-            options.clear_options()
-            rendered = [
-                Option(f"{entry.label}\n[dim]{entry.command}[/]", id=entry.entry_id)
-                for entry in self._palette_entries
-            ]
-            options.add_options(rendered)
-            if rendered:
-                options.highlighted = 0
-
-        def _activate_highlighted_palette_entry(self) -> None:
-            options = self.query_one("#palette-options", OptionList)
-            if options.option_count <= 0:
+            if self._busy:
+                self._write("[yellow]Busy[/] wait for the current retrieval to finish.")
                 return
-            options.action_select()
-
-        def _execute_palette_selection(self, entry_id: str) -> None:
-            selected = next((entry for entry in self._palette_entries if entry.entry_id == entry_id), None)
-            if selected is None:
+            if self.controller.mode == "solve":
+                self._write(
+                    "[yellow]Solve mode is still in progress.[/] "
+                    "Press [bold]F1[/] to switch back to retrieval mode."
+                )
                 return
-            result = self.controller.handle_command(selected.command)
-            self.action_close_palette()
-            self._write_shell_line(f"[bold magenta]Command[/] {selected.label}")
-            self._write_shell_line(result.message)
-            if result.should_exit:
-                self.exit()
-
-        def _write_shell_line(self, message: str) -> None:
-            self.query_one("#log", RichLog).write(message)
-
-        def _set_status(self, message: str) -> None:
-            self.query_one("#status", Static).update(message)
+            self._write(f"[bold cyan]Query[/] {_rich_escape(value)}")
+            self._write("[dim]Retrieving prior sessions…[/]")
+            self._busy = True
+            self._refresh_modebar()
+            self._run_retrieval(value)
 
         @work(thread=True)
-        def _run_prompt(self, prompt: str) -> None:
+        def _run_retrieval(self, query: str) -> None:
             try:
-                result = self.controller.run_prompt(prompt)
+                result = self.controller.run_retrieval(query)
             except Exception as exc:  # pragma: no cover - defensive UI path
-                self.call_from_thread(self._render_prompt_failure, str(exc))
+                self.call_from_thread(self._render_retrieval_failure, str(exc))
                 return
-            self.call_from_thread(self._render_prompt_result, result)
+            self.call_from_thread(self._render_retrieval_result, result)
 
-        def _render_prompt_result(self, result: RuntimeTurnResult) -> None:
-            for line in _format_turn_result_lines(result):
-                self._write_shell_line(line)
-            self._turn_in_flight = False
-            self._set_status("Idle.")
+        def _render_retrieval_result(self, result: RetrievalOutcome) -> None:
+            for line in _format_retrieval_result_lines(result):
+                self._write(line)
+            self._busy = False
+            self._refresh_modebar()
             self.query_one("#composer", Input).focus()
 
-        def _render_prompt_failure(self, error_message: str) -> None:
-            self._write_shell_line(f"[red]error[/] {error_message}")
-            self._turn_in_flight = False
-            self._set_status("Idle.")
+        def _render_retrieval_failure(self, error_message: str) -> None:
+            self._write(f"[red]error[/] {_rich_escape(error_message)}")
+            self._busy = False
+            self._refresh_modebar()
             self.query_one("#composer", Input).focus()
+
+        def _write(self, message: str) -> None:
+            self.query_one("#log", RichLog).write(_strip_ansi(message))
+
+        def _refresh_modebar(self) -> None:
+            retrieve = "[reverse] RETRIEVE [/]" if self.controller.mode == "retrieve" else "retrieve"
+            solve = "[reverse] SOLVE (WIP) [/]" if self.controller.mode == "solve" else "solve (WIP)"
+            source_bits = []
+            for provider in SESSION_PROVIDERS:
+                allowed = self.controller.access_policy.can_access_provider(provider)
+                mark = "[green]on[/]" if allowed else "[dim]off[/]"
+                source_bits.append(f"{provider}:{mark}")
+            busy = "  [yellow]retrieving…[/]" if self._busy else ""
+            text = (
+                f"[bold]MODE[/] {retrieve}  {solve}   "
+                f"[bold]SOURCES[/] {'  '.join(source_bits)}   "
+                f"[bold]INDEX[/] {_rich_escape(self.controller.index_status_text())}{busy}"
+            )
+            try:
+                self.query_one("#modebar", Static).update(text)
+            except Exception:  # pragma: no cover - widget may be gone during shutdown
+                pass
 
 
 def run_tui(config: RunConfig) -> int:
@@ -913,10 +1041,15 @@ def run_tui(config: RunConfig) -> int:
                 return 0
             continue
 
-        print(_style("retrieving memory context…", Ansi.DIM))
-        print(_style("reasoning…", Ansi.DIM))
-        result = controller.run_prompt(prompt)
-        render_turn_result(result)
+        if controller.mode == "retrieve":
+            print(_style("retrieving prior sessions…", Ansi.DIM))
+            result = controller.run_retrieval(prompt)
+            print(_retrieval_plain_text(result))
+            print()
+            continue
+
+        print(_style("solve mode is still in progress.", Ansi.YELLOW))
+        print(_style("Use /mode retrieve to return to retrieval mode.", Ansi.DIM))
         print()
 
 

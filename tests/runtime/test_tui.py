@@ -4,7 +4,13 @@ import tempfile
 import unittest
 
 from core.runtime.models import RunConfig, RuntimeTurnResult, StageTrace, ToolExecutionStep
-from core.runtime.tui import DevenvTUIController, _format_turn_result_lines
+from core.runtime.tui import (
+    DevenvTUIController,
+    RetrievalOutcome,
+    _format_retrieval_result_lines,
+    _format_turn_result_lines,
+    _retrieval_plain_text,
+)
 
 
 class FakeMemory:
@@ -90,6 +96,41 @@ class FakeKernel:
 
     def close(self) -> None:
         return None
+
+
+class FakeContextBuilder:
+    def __init__(self, outcome: RetrievalOutcome | None = None) -> None:
+        self.runtime_allowed_providers: set[str] | None = None
+        self.requests: list[tuple[str, int]] = []
+        self.outcome = outcome or RetrievalOutcome(query="stub")
+        self.index_ready = True
+
+    def set_runtime_allowed_providers(self, providers) -> None:
+        self.runtime_allowed_providers = set(providers or set())
+
+    def build_runtime_memory_context(self, query: str, *, provider_name=None, max_lines: int = 6):
+        self.requests.append((query, max_lines))
+        return self.outcome.context, self.outcome.session_ids, dict(self.outcome.metadata)
+
+    def indexing_status(self) -> dict[str, object]:
+        return {"active": False, "completed": self.index_ready, "message": "ready", "percent": 100}
+
+
+def _sample_outcome() -> RetrievalOutcome:
+    context = "\n".join(
+        [
+            "## External Session Context",
+            "- Session 'Retrieval engine work' targeted workspace /repo/devenv.",
+            "- Assistant reported: The retrieval engine fuses lexical and semantic recall before selecting chunks.",
+            "- User asked: How does the retrieval engine work?",
+        ]
+    )
+    return RetrievalOutcome(
+        query="retrieval engine",
+        context=context,
+        session_ids=("session-1",),
+        metadata={"context_match_providers": ["codex"], "index_ready": True},
+    )
 
 
 class PromptFeeder:
@@ -271,6 +312,120 @@ class DevenvTUITest(unittest.TestCase):
             self.assertEqual(second.preferred_backend, "codex")
             self.assertEqual(second.kernel.ai.backend_models["codex"], "gpt-5-codex-high")
             self.assertEqual(second.context_builder.runtime_allowed_providers, {"codex"})
+
+    def test_run_retrieval_delegates_to_context_builder(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            fake = FakeContextBuilder(outcome=_sample_outcome())
+            controller.context_builder = fake
+            controller.handle_command("/permission provider codex on")
+
+            result = controller.run_retrieval("how does retrieval work?")
+
+        self.assertEqual(fake.requests, [("how does retrieval work?", 12)])
+        self.assertEqual(result.session_ids, ("session-1",))
+        self.assertIn("fuses lexical and semantic recall", result.context)
+        self.assertEqual(fake.runtime_allowed_providers, {"codex"})
+
+    def test_retrieve_command_returns_plain_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            controller.context_builder = FakeContextBuilder(outcome=_sample_outcome())
+
+            command_result = controller.handle_command("/retrieve retrieval engine")
+
+        self.assertIn("Retrieval engine work", command_result.message)
+        self.assertIn("fuses lexical and semantic recall", command_result.message)
+
+    def test_mode_command_switches_and_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            first = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            result = first.handle_command("/mode solve")
+            first.close()
+
+            second = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+        self.assertIn("in progress", result.message)
+        self.assertEqual(second.mode, "solve")
+
+    def test_set_source_enabled_updates_runtime_and_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            controller.context_builder = FakeContextBuilder()
+
+            message = controller.set_source_enabled("opencode", True)
+            first_close = controller.enabled_sources()
+            controller.close()
+
+            second = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+        self.assertIn("enabled", message)
+        self.assertEqual(first_close, ["opencode"])
+        self.assertTrue(second.access_policy.can_access_provider("opencode"))
+
+    def test_format_retrieval_result_lines_renders_context(self) -> None:
+        lines = _format_retrieval_result_lines(_sample_outcome())
+        joined = "\n".join(lines)
+
+        self.assertIn("Retrieval engine work", joined)
+        self.assertIn("fuses lexical and semantic recall", joined)
+        self.assertIn("retrieval engine", joined)
+        self.assertIn("session-1", joined)
+
+    def test_format_retrieval_result_lines_handles_empty(self) -> None:
+        outcome = RetrievalOutcome(
+            query="unknown topic",
+            metadata={"context_match_reason": "No strong prior-session match was found."},
+        )
+
+        lines = _format_retrieval_result_lines(outcome)
+        joined = "\n".join(lines)
+
+        self.assertIn("no matches", joined)
+        self.assertIn("No strong prior-session match was found.", joined)
+
+    def test_format_retrieval_result_lines_escapes_markup(self) -> None:
+        outcome = RetrievalOutcome(
+            query="q",
+            context="\n".join(
+                [
+                    "## External Session Context",
+                    "- Session 'weird [red] title' targeted workspace /repo.",
+                    "- Assistant reported: use [bold]carefully[/]",
+                ]
+            ),
+            session_ids=("session-1",),
+            metadata={},
+        )
+
+        joined = "\n".join(_format_retrieval_result_lines(outcome))
+
+        self.assertIn("\\[red]", joined)
+        self.assertIn("\\[bold]", joined)
+
+    def test_retrieval_plain_text_lists_sessions(self) -> None:
+        text = _retrieval_plain_text(_sample_outcome())
+
+        self.assertIn("Retrieved context", text)
+        self.assertIn("session-1", text)
 
     def test_format_turn_result_lines_includes_thinking_and_system_logs(self) -> None:
         result = RuntimeTurnResult(
