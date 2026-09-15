@@ -1455,6 +1455,45 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertIn("root URL redirects", context)
         self.assertEqual(metadata["context_match_state"], "reused_prior_context")
 
+    def test_runtime_memory_context_fuses_sessions_across_providers(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+            service = ContextBuilderService(str(workspace), provider_configs=())
+            service.providers = {"alpha": mock.Mock(), "beta": mock.Mock()}
+            service.set_runtime_allowed_providers({"alpha", "beta"})
+
+            def fake_build(task: str, *, provider_name: str, max_lines: int):
+                if provider_name == "alpha":
+                    return (
+                        "## External Session Context\n- Assistant reported: root URL redirects bug list",
+                        ("session-alpha",),
+                        {
+                            "context_match_state": "reused_prior_context",
+                            "context_match_reason": "alpha match",
+                            "context_match_score": 999,
+                        },
+                    )
+                return (
+                    "## External Session Context\n- Assistant reported: the actual fix",
+                    ("session-beta",),
+                    {
+                        "context_match_state": "reused_prior_context",
+                        "context_match_reason": "beta match",
+                        "context_match_score": 5,
+                    },
+                )
+
+            service._build_runtime_memory_context_for_provider = fake_build  # type: ignore[method-assign]
+            context, session_ids, metadata = service.build_runtime_memory_context(
+                "hey, what was the bug we faced last time?"
+            )
+
+        self.assertIn("session-alpha", session_ids)
+        self.assertIn("session-beta", session_ids)
+        self.assertIn("the actual fix", context)
+        self.assertEqual(metadata["context_match_providers"], ["alpha", "beta"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -39,6 +39,7 @@ MAX_README_CHARS = 500
 MIN_SESSION_CONTENT_SCORE = 6
 RRF_K = 60
 SEMANTIC_STRONG_THRESHOLD = 0.35
+MAX_RUNTIME_SESSION_MATCHES = 6
 MAX_INDEX_CHUNK_CHARS = 720
 MAX_INDEX_CONTEXT_LINES = 12
 MAX_SESSION_EMBEDDING_CACHE = 512
@@ -1056,7 +1057,7 @@ class ContextBuilderService:
         if not candidate_providers:
             return "", (), {"context_match_state": "new_context", "context_match_reason": "No external session provider is available."}
 
-        candidates: list[tuple[int, str, tuple[str, ...], dict[str, Any], str]] = []
+        provider_results: list[tuple[str, str, tuple[str, ...], dict[str, Any]]] = []
         for candidate_provider in candidate_providers:
             try:
                 context, session_ids, metadata = self._build_runtime_memory_context_for_provider(
@@ -1071,13 +1072,50 @@ class ContextBuilderService:
                     exc,
                 )
                 continue
-            score = _score_runtime_context_candidate(task, context, metadata)
-            candidates.append((score, context, session_ids, metadata, candidate_provider))
-        if not candidates:
+            if not session_ids:
+                continue
+            provider_results.append((candidate_provider, context, tuple(session_ids), metadata))
+        if not provider_results:
             return "", (), {"context_match_state": "new_context", "context_match_reason": "No external session provider yielded usable context."}
-        candidates.sort(key=lambda item: (item[0], len(item[2]), item[4]), reverse=True)
-        _score, context, session_ids, metadata, _provider_name = candidates[0]
-        return context, session_ids, metadata
+
+        fused_score: dict[str, float] = {}
+        for _provider_name, _context, session_ids, _metadata in provider_results:
+            for rank, session_id in enumerate(session_ids, start=1):
+                fused_score[session_id] = fused_score.get(session_id, 0.0) + 1.0 / (RRF_K + rank)
+        ordered_session_ids = sorted(fused_score, key=lambda session_id: (-fused_score[session_id], session_id))[:MAX_RUNTIME_SESSION_MATCHES]
+        selected_ids = tuple(ordered_session_ids)
+
+        top_session_id = selected_ids[0]
+        best_result = provider_results[0]
+        best_rank: int | None = None
+        for result in provider_results:
+            if top_session_id not in result[2]:
+                continue
+            rank = result[2].index(top_session_id)
+            if best_rank is None or rank < best_rank:
+                best_rank = rank
+                best_result = result
+        metadata = dict(best_result[3])
+        metadata["index_ready"] = any(bool(result[3].get("index_ready", False)) for result in provider_results)
+        metadata["context_match_providers"] = [result[0] for result in provider_results]
+
+        seen_lines: set[str] = set()
+        merged_lines: list[str] = []
+        for _provider_name, context, _session_ids, _metadata in provider_results:
+            for line in context.splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("## ") or stripped in seen_lines:
+                    continue
+                seen_lines.add(stripped)
+                merged_lines.append(stripped[2:].strip() if stripped.startswith("- ") else stripped)
+                if len(merged_lines) >= max_lines:
+                    break
+            if len(merged_lines) >= max_lines:
+                break
+        if not merged_lines:
+            return "", selected_ids, metadata
+        lines = ["## External Session Context", *(f"- {line}" for line in merged_lines)]
+        return "\n".join(lines), selected_ids, metadata
 
     def _build_runtime_memory_context_for_provider(
         self,
@@ -1086,33 +1124,63 @@ class ContextBuilderService:
         provider_name: str,
         max_lines: int,
     ) -> tuple[str, tuple[str, ...], dict[str, Any]]:
-        resolved_provider = provider_name
-        if not resolved_provider:
-            return "", (), {"context_match_state": "new_context", "context_match_reason": "No external session provider is available."}
-        if self.runtime_allowed_providers is not None and resolved_provider not in self.runtime_allowed_providers:
-            return "", (), {"context_match_state": "new_context", "context_match_reason": f"External {resolved_provider} access has not been granted."}
-        provider = self._get_provider(resolved_provider)
-        query_variants = _build_query_variants(task)
-        indexed_matches, indexed_metadata = self._query_index_variants(query_variants, provider_name=resolved_provider)
-        semantic_matches = self._select_relevant_sessions(provider, task, query_variants=query_variants)
-        selected_matches = indexed_matches or semantic_matches
-        if _should_prefer_semantic_session_matches(task, indexed_matches, semantic_matches):
-            selected_matches = semantic_matches
-        selected_session_ids = tuple(match["summary"].session_id for match in selected_matches)
-        selection_metadata = self._selection_metadata(selected_matches)
-        selection_metadata["index_ready"] = indexed_metadata.get("index_ready", False)
-        if not selected_session_ids:
+        selected_matches, provider, selection_metadata = self._select_runtime_matches_for_provider(
+            task,
+            provider_name=provider_name,
+        )
+        if provider is None or not selected_matches:
             return "", (), selection_metadata
-        details = [provider.get_session(session_id) for session_id in selected_session_ids]
-        indexed_context_lines: tuple[str, ...] = ()
-        if any(match.get("chunks") for match in selected_matches):
-            indexed_context_lines = _collect_indexed_context_lines(task, selected_matches)
-        context_lines = indexed_context_lines or _collect_relevant_context_lines(task, details, "detailed")
-        context_lines = context_lines[:max_lines]
+        selected_session_ids = tuple(match["summary"].session_id for match in selected_matches)
+        context_lines = self._context_lines_for_selected_matches(task, selected_matches, provider, max_lines=max_lines)
         if not context_lines:
             return "", selected_session_ids, selection_metadata
         lines = ["## External Session Context", *(f"- {line}" for line in context_lines)]
         return "\n".join(lines), selected_session_ids, selection_metadata
+
+    def _select_runtime_matches_for_provider(
+        self,
+        task: str,
+        *,
+        provider_name: str,
+    ) -> tuple[list[dict[str, Any]], ExternalSessionProvider | None, dict[str, Any]]:
+        resolved_provider = provider_name
+        if not resolved_provider:
+            return [], None, {"context_match_state": "new_context", "context_match_reason": "No external session provider is available."}
+        if self.runtime_allowed_providers is not None and resolved_provider not in self.runtime_allowed_providers:
+            return [], None, {"context_match_state": "new_context", "context_match_reason": f"External {resolved_provider} access has not been granted."}
+        provider = self._get_provider(resolved_provider)
+        query_variants = _build_query_variants(task)
+        indexed_matches, indexed_metadata = self._query_index_variants(query_variants, provider_name=resolved_provider)
+        semantic_matches = self._select_relevant_sessions(provider, task, query_variants=query_variants)
+        selected_matches = _combine_indexed_and_semantic_matches(task, indexed_matches, semantic_matches)
+        selection_metadata = self._selection_metadata(selected_matches)
+        selection_metadata["index_ready"] = indexed_metadata.get("index_ready", False)
+        return selected_matches, provider, selection_metadata
+
+    def _context_lines_for_selected_matches(
+        self,
+        task: str,
+        selected_matches: list[dict[str, Any]],
+        provider: ExternalSessionProvider,
+        *,
+        max_lines: int,
+    ) -> tuple[str, ...]:
+        details = [provider.get_session(match["summary"].session_id) for match in selected_matches]
+        return self._context_lines_for_matches(task, selected_matches, details, max_lines=max_lines)
+
+    def _context_lines_for_matches(
+        self,
+        task: str,
+        selected_matches: list[dict[str, Any]],
+        details: list[ExternalSessionDetail],
+        *,
+        max_lines: int,
+    ) -> tuple[str, ...]:
+        indexed_context_lines: tuple[str, ...] = ()
+        if any(match.get("chunks") for match in selected_matches):
+            indexed_context_lines = _collect_indexed_context_lines(task, selected_matches)
+        context_lines = indexed_context_lines or _collect_relevant_context_lines(task, details, "detailed")
+        return context_lines[:max_lines]
 
     def _candidate_provider_names(self) -> list[str]:
         provider_names = list(self.providers)
@@ -2102,6 +2170,17 @@ def _issue_focus_score(summary: ExternalSessionSummary, detail: ExternalSessionD
         content = (message.content or "").lower()
         score += sum(3 for marker in markers if marker in content)
     return score
+
+
+def _combine_indexed_and_semantic_matches(
+    task: str,
+    indexed_matches: list[dict[str, Any]],
+    semantic_matches: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    selected = indexed_matches or semantic_matches
+    if _should_prefer_semantic_session_matches(task, indexed_matches, semantic_matches):
+        selected = semantic_matches
+    return selected
 
 
 def _score_runtime_context_candidate(task: str, context: str, metadata: dict[str, Any]) -> int:
