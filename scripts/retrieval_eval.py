@@ -431,6 +431,7 @@ def main() -> int:
         help="treat sessions updated after this as benchmark meta",
     )
     parser.add_argument("--questions-limit", type=int, default=0)
+    parser.add_argument("--repeat", type=int, default=1, help="run the question set N times to check determinism")
     args = parser.parse_args()
 
     questions_path = Path(args.questions)
@@ -486,30 +487,49 @@ def main() -> int:
             f"index build: {index_seconds:.1f}s ({service.indexing_status().get('message')})"
         )
 
-    records: dict[str, dict[str, Any]] = {}
+    runs: list[dict[str, dict[str, Any]]] = []
     scores: list[dict[str, Any]] = []
     started = time.time()
-    for index, question in enumerate(questions, start=1):
-        record = run_question(
-            service,
-            question["id"],
-            question["question"],
-            providers,
-            diagnostics=not args.no_diagnostics,
-        )
-        records[question["id"]] = record
-        truth = answer_key.get(question["id"])
-        if truth:
-            scores.append(score_question(record, truth, providers, meta_ids))
-        print(
-            f"  {question['id']} runtime_rank={scores[-1]['runtime_rank'] if truth else '?'} "
-            f"candidate_rank={scores[-1]['candidate_rank'] if truth else '?'} "
-            f"({record.get('runtime_seconds', 0)}s)"
-        )
-    per_question_seconds = (time.time() - started) / max(len(questions), 1)
+    for repeat in range(max(args.repeat, 1)):
+        run_records: dict[str, dict[str, Any]] = {}
+        run_scores: list[dict[str, Any]] = []
+        for question in questions:
+            record = run_question(
+                service,
+                question["id"],
+                question["question"],
+                providers,
+                diagnostics=not args.no_diagnostics,
+            )
+            run_records[question["id"]] = record
+            truth = answer_key.get(question["id"])
+            if truth:
+                run_scores.append(score_question(record, truth, providers, meta_ids))
+            if repeat == 0:
+                print(
+                    f"  {question['id']} runtime_rank={run_scores[-1]['runtime_rank'] if truth else '?'} "
+                    f"candidate_rank={run_scores[-1]['candidate_rank'] if truth else '?'} "
+                    f"({record.get('runtime_seconds', 0)}s)"
+                )
+        runs.append(run_records)
+        if not scores:
+            scores = run_scores
+    per_question_seconds = (time.time() - started) / max(len(questions) * max(args.repeat, 1), 1)
+
+    records = runs[-1]
+    stability: dict[str, bool] = {}
+    if len(runs) > 1:
+        for question in questions:
+            qid = question["id"]
+            variants = {
+                tuple(run.get(qid, {}).get("runtime", {}).get("session_ids", []))
+                for run in runs
+            }
+            stability[qid] = len(variants) == 1
 
     (output_dir / "results.json").write_text(
-        json.dumps({"records": records, "scores": scores}, indent=2), encoding="utf-8"
+        json.dumps({"records": records, "scores": scores, "stability": stability}, indent=2),
+        encoding="utf-8",
     )
     write_report(
         output_dir / "report.md",
@@ -523,6 +543,14 @@ def main() -> int:
 
     runtime_hits = sum(1 for score in scores if score["runtime_rank"])
     candidate_hits = sum(1 for score in scores if score["candidate_rank"])
+    if stability:
+        stable_count = sum(1 for value in stability.values() if value)
+        print(
+            f"Determinism: {stable_count}/{len(stability)} questions identical across {len(runs)} runs"
+        )
+        for qid, value in stability.items():
+            if not value:
+                print(f"  unstable: {qid}")
     print(
         f"\nRuntime-result recall: {runtime_hits}/{len(scores)} · "
         f"Candidate recall: {candidate_hits}/{len(scores)} · "

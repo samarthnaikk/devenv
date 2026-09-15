@@ -477,30 +477,30 @@ class CodexSessionProvider(ExternalSessionProvider):
         session_files = self._session_files_by_id()
         discovered_ids: set[str] = set()
         if by_id:
+            seen_ids: set[str] = set()
             for session_id, record in by_id.items():
                 source_path = session_files.get(session_id)
-                detail = self._detail_cache.get(session_id)
-                summary = detail.summary if detail is not None else self._summary_from_index_record(session_id, record, source_path)
+                summary = self._summary_from_index_record(session_id, record, source_path)
                 summaries.append(summary)
+                seen_ids.add(session_id)
                 discovered_ids.add(session_id)
-            for session_id, session_file in sorted(session_files.items(), key=lambda item: str(item[1]), reverse=True):
-                if session_id in discovered_ids:
+            for _file_id, session_file in sorted(session_files.items(), key=lambda item: str(item[1]), reverse=True):
+                summary = self._summary_from_session_file(session_file)
+                if summary.session_id in seen_ids:
                     continue
-                summary = self._detail_cache.get(session_id)
-                if summary is not None:
-                    summaries.append(summary.summary)
-                    continue
-                summaries.append(self._summary_from_session_file(session_file))
-            summaries.sort(key=lambda item: item.updated_at, reverse=True)
+                summaries.append(summary)
+                seen_ids.add(summary.session_id)
+            summaries.sort(key=lambda item: (item.updated_at, item.session_id), reverse=True)
             return summaries
 
+        seen_ids = set()
         for _session_id, session_file in sorted(session_files.items(), key=lambda item: str(item[1]), reverse=True):
-            session_id = _session_id_from_file(session_file)
-            detail = self._detail_cache.get(session_id)
-            if detail is not None:
-                summaries.append(detail.summary)
+            summary = self._summary_from_session_file(session_file)
+            if summary.session_id in seen_ids:
                 continue
-            summaries.append(self._summary_from_session_file(session_file))
+            summaries.append(summary)
+            seen_ids.add(summary.session_id)
+        summaries.sort(key=lambda item: (item.updated_at, item.session_id), reverse=True)
         return summaries
 
     def get_session(self, session_id: str) -> ExternalSessionDetail:
@@ -598,9 +598,6 @@ class CodexSessionProvider(ExternalSessionProvider):
         return ""
 
     def _summary_from_index_record(self, session_id: str, record: dict[str, Any], source_path: Path | None) -> ExternalSessionSummary:
-        cached = self._summary_cache.get(session_id)
-        if cached is not None:
-            return cached
         source_summary = self._summary_from_session_file(source_path) if source_path is not None else None
         summary = ExternalSessionSummary(
             provider=self.name,

@@ -1572,6 +1572,36 @@ class ContextBuilderServiceTest(unittest.TestCase):
 
         self.assertGreater(scores.get("s1", 0.0), 0.9)
 
+    def test_codex_provider_dedupes_sessions_sharing_meta_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "08" / "20"
+            sessions_dir.mkdir(parents=True)
+            shared_id = "019f9f43-9c40-75b3-8b7f-64e83415b469"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": shared_id, "thread_name": "Shared session", "updated_at": "2026-08-20T10:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            for filename_id in ("019f9f52-13c7-7e42-8c9f-3086ab0c819c", "019f9f43-9c40-75b3-8b7f-64e83415b469"):
+                (sessions_dir / f"rollout-2026-08-20T09-00-00-{filename_id}.jsonl").write_text(
+                    json.dumps({"timestamp": "2026-08-20T09:00:00Z", "type": "session_meta", "payload": {"id": shared_id, "cwd": str(workspace)}})
+                    + "\n"
+                    + json.dumps({"timestamp": "2026-08-20T09:00:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "hello"}})
+                    + "\n",
+                    encoding="utf-8",
+                )
+            service = ContextBuilderService(
+                str(workspace),
+                provider_configs=(
+                    ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                ),
+            )
+            ids = [summary.session_id for summary in service._get_provider("codex").list_sessions()]
+
+        self.assertEqual(ids.count(shared_id), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
