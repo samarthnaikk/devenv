@@ -289,6 +289,11 @@ def position(ground_truth: set[str], sequence: list[str]) -> int | None:
     return None
 
 
+def _normalize_for_match(text: str) -> str:
+    cleaned = re.sub(r"[`*_#]+", "", text.lower())
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 def score_question(
     record: dict[str, Any],
     truth: dict[str, Any],
@@ -316,6 +321,8 @@ def score_question(
     keywords = truth.get("keywords", [])
     covered = [keyword for keyword in keywords if keyword in context_text]
     context_coverage = round(len(covered) / len(keywords), 2) if keywords else 0.0
+    proof = _normalize_for_match(str(truth.get("proof", "")))
+    proof_present = bool(proof) and proof in _normalize_for_match(context_text)
 
     return {
         "id": record["id"],
@@ -330,6 +337,7 @@ def score_question(
         "keywords": keywords,
         "keywords_covered": covered,
         "context_coverage": context_coverage,
+        "proof_present": proof_present,
     }
 
 
@@ -356,21 +364,22 @@ def write_report(
         "`rank` = position of the ground-truth session in that ranked list (blank = not present).\n"
     )
     lines.append(
-        "| Q | Runtime rank | Per-provider rank | Candidate rank | Context fact coverage | Notes |"
+        "| Q | Runtime rank | Per-provider rank | Candidate rank | Context fact coverage | Proof present | Notes |"
     )
-    lines.append("|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|---|---|")
     for score in scores:
         notes = []
         if score["runtime_used_meta"]:
             notes.append("meta/leakage in runtime result")
         notes.append(", ".join(score["keywords_covered"][:3]))
         lines.append(
-            "| {id} | {rr} | {pr} | {cr} | {cov} | {notes} |".format(
+            "| {id} | {rr} | {pr} | {cr} | {cov} | {proof} | {notes} |".format(
                 id=score["id"],
                 rr=score["runtime_rank"] or "—",
                 pr=score["provider_rank"] or "—",
                 cr=score["candidate_rank"] or "—",
                 cov=score["context_coverage"],
+                proof="yes" if score.get("proof_present") else "no",
                 notes="; ".join(notes),
             )
         )
@@ -432,6 +441,12 @@ def main() -> int:
     )
     parser.add_argument("--questions-limit", type=int, default=0)
     parser.add_argument("--repeat", type=int, default=1, help="run the question set N times to check determinism")
+    parser.add_argument(
+        "--elimination",
+        choices=("default", "on", "off"),
+        default="default",
+        help="enable/disable bounded context elimination for this run",
+    )
     args = parser.parse_args()
 
     questions_path = Path(args.questions)
@@ -444,6 +459,11 @@ def main() -> int:
     providers = [name.strip() for name in args.providers.split(",") if name.strip()]
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.elimination == "on":
+        os.environ["DEVENV_CONTEXT_ELIMINATION"] = "1"
+    elif args.elimination == "off":
+        os.environ["DEVENV_CONTEXT_ELIMINATION"] = "0"
 
     meta_ids = load_meta_session_ids(args.exclude_after)
     print(

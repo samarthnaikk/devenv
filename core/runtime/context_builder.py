@@ -49,6 +49,9 @@ MAX_SESSION_CHUNK_EMBEDDINGS = 96
 MAX_SESSION_CHUNK_HITS = 3
 CONTEXT_LINES_FIRST_PASS = 2
 CONTEXT_LINE_MAX_CHARS = 0
+MAX_CONTEXT_CHARS = 8000
+PINNED_TOP_K_SESSIONS = 3
+CONTEXT_LINE_WINDOW_CHARS = 2000
 MAX_QUERY_VARIANTS = 4
 COMMON_CONTEXT_TOKENS = {
     "about",
@@ -2324,12 +2327,47 @@ def _contains_whole_token(token: str, haystack: str) -> bool:
     return bool(re.search(rf"\b{re.escape(token)}\b", haystack))
 
 
-def _collect_per_session_context_lines(
+@dataclass
+class ContextSelection:
+    kept: tuple[str, ...]
+    eliminated: tuple[dict[str, Any], ...] = ()
+
+
+def _context_elimination_enabled(override: bool | None = None) -> bool:
+    if override is not None:
+        return override
+    return os.getenv("DEVENV_CONTEXT_ELIMINATION", "0") == "1"
+
+
+def _context_shadow_enabled() -> bool:
+    return os.getenv("DEVENV_CONTEXT_SHADOW", "0") == "1"
+
+
+def _window_context_line(line: str, tokens: set[str], max_chars: int = CONTEXT_LINE_WINDOW_CHARS) -> str:
+    if max_chars <= 0 or len(line) <= max_chars:
+        return line
+    lowered = line.lower()
+    span = len(line) - max_chars
+    step = max(1, max_chars // 4)
+    best_index = 0
+    best_hits = -1
+    for start_index in range(0, max(1, span + 1), step):
+        window = lowered[start_index : start_index + max_chars]
+        hits = sum(1 for token in tokens if token in window)
+        if hits > best_hits:
+            best_hits = hits
+            best_index = start_index
+    excerpt = line[best_index : best_index + max_chars]
+    prefix = "..." if best_index > 0 else ""
+    suffix = "..." if best_index + max_chars < len(line) else ""
+    return f"{prefix}{excerpt}{suffix}"
+
+
+def _build_session_context_candidates(
     task: str,
     selected_matches: list[dict[str, Any]],
     details_by_id: dict[str, ExternalSessionDetail],
-    max_lines: int,
-) -> tuple[str, ...]:
+) -> list[list[tuple[int, str]]]:
     tokens = _tokenize(task)
     prefer_tool_output = _is_tool_output_query(task)
 
@@ -2352,7 +2390,7 @@ def _collect_per_session_context_lines(
         line = f"{prefix}: {content}"
         return score_line(line, role, source), line
 
-    per_session: list[list[str]] = []
+    per_session: list[list[tuple[int, str]]] = []
     for match in selected_matches:
         summary = match.get("summary")
         session_id = getattr(summary, "session_id", "")
@@ -2383,12 +2421,17 @@ def _collect_per_session_context_lines(
                 for line in _collect_relevant_context_lines(task, [detail], "detailed"):
                     candidates.append((1, line))
         candidates.sort(key=lambda item: (-item[0], item[1]))
-        ranked: list[str] = []
-        for _score, line in candidates:
-            if line and line not in ranked:
-                ranked.append(line)
+        ranked: list[tuple[int, str]] = []
+        seen_lines: set[str] = set()
+        for score, line in candidates:
+            if line and line not in seen_lines:
+                seen_lines.add(line)
+                ranked.append((score, line))
         per_session.append(ranked)
+    return per_session
 
+
+def _assemble_context_lines(per_session: list[list[tuple[int, str]]], max_lines: int) -> tuple[str, ...]:
     lines: list[str] = []
     seen: set[str] = set()
 
@@ -2400,15 +2443,116 @@ def _collect_per_session_context_lines(
         return len(lines) >= max_lines
 
     for ranked in per_session:
-        for line in ranked[:CONTEXT_LINES_FIRST_PASS]:
+        for _score, line in ranked[:CONTEXT_LINES_FIRST_PASS]:
             if emit(line):
                 return tuple(lines)
     for depth in range(CONTEXT_LINES_FIRST_PASS, MAX_CONTEXT_LINES_PER_SESSION):
         for ranked in per_session:
             if depth < len(ranked):
-                if emit(ranked[depth]):
+                if emit(ranked[depth][1]):
                     return tuple(lines)
     return tuple(lines)
+
+
+def _compute_context_selection(
+    task: str,
+    per_session: list[list[tuple[int, str]]],
+    max_lines: int,
+    max_chars: int,
+) -> ContextSelection:
+    tokens = _tokenize(task)
+    entries: list[dict[str, Any]] = []
+    eliminated: list[dict[str, Any]] = []
+    seen_lines: set[str] = set()
+    for session_rank, ranked in enumerate(per_session):
+        for score, line in ranked:
+            if not line:
+                continue
+            if line in seen_lines:
+                eliminated.append({"line": line, "score": score, "session_rank": session_rank, "reason": "duplicate"})
+                continue
+            seen_lines.add(line)
+            entries.append({"line": line, "score": score, "session_rank": session_rank})
+    if not entries:
+        return ContextSelection(kept=())
+
+    top_score = max(entry["score"] for entry in entries)
+    epsilon = max(1, int(top_score * 0.1))
+    pinned: list[int] = []
+    best_overall = max(range(len(entries)), key=lambda index: (entries[index]["score"], -entries[index]["session_rank"], entries[index]["line"]))
+    pinned.append(best_overall)
+    for session_rank in range(min(PINNED_TOP_K_SESSIONS, len(per_session))):
+        session_indices = [index for index, entry in enumerate(entries) if entry["session_rank"] == session_rank]
+        if not session_indices:
+            continue
+        best = max(session_indices, key=lambda index: (entries[index]["score"], entries[index]["line"]))
+        if best not in pinned:
+            pinned.append(best)
+    for index, entry in enumerate(entries):
+        if len(pinned) >= max_lines:
+            break
+        if entry["score"] >= top_score - epsilon and index not in pinned:
+            pinned.append(index)
+
+    pinned_set = set(pinned)
+    ordered = sorted(
+        range(len(entries)),
+        key=lambda index: (
+            0 if index in pinned_set else 1,
+            -entries[index]["score"],
+            entries[index]["session_rank"],
+            entries[index]["line"],
+        ),
+    )
+    kept: list[str] = []
+    used_chars = 0
+    for index in ordered:
+        entry = entries[index]
+        if len(kept) >= max_lines:
+            eliminated.append({"line": entry["line"], "score": entry["score"], "session_rank": entry["session_rank"], "reason": "over_budget"})
+            continue
+        line = _window_context_line(entry["line"], tokens)
+        if index not in pinned_set and used_chars + len(line) > max_chars:
+            eliminated.append({"line": entry["line"], "score": entry["score"], "session_rank": entry["session_rank"], "reason": "over_budget"})
+            continue
+        kept.append(line)
+        used_chars += len(line)
+    return ContextSelection(kept=tuple(kept), eliminated=tuple(eliminated))
+
+
+def select_context_lines(
+    task: str,
+    per_session: list[list[tuple[int, str]]],
+    *,
+    max_lines: int,
+    max_chars: int = MAX_CONTEXT_CHARS,
+    eliminate: bool | None = None,
+) -> ContextSelection:
+    current = _assemble_context_lines(per_session, max_lines)
+    if not _context_elimination_enabled(eliminate):
+        if _context_shadow_enabled():
+            shadow = _compute_context_selection(task, per_session, max_lines, max_chars)
+            if shadow.eliminated:
+                logger.info(
+                    "Context selection shadow: current_lines=%d would_drop=%d",
+                    len(current),
+                    len(shadow.eliminated),
+                )
+        return ContextSelection(kept=current)
+    within_budget = len(current) <= max_lines and sum(len(line) for line in current) <= max_chars
+    if within_budget:
+        return ContextSelection(kept=current)
+    return _compute_context_selection(task, per_session, max_lines, max_chars)
+
+
+def _collect_per_session_context_lines(
+    task: str,
+    selected_matches: list[dict[str, Any]],
+    details_by_id: dict[str, ExternalSessionDetail],
+    max_lines: int,
+) -> tuple[str, ...]:
+    per_session = _build_session_context_candidates(task, selected_matches, details_by_id)
+    return select_context_lines(task, per_session, max_lines=max_lines).kept
 
 
 def _collect_indexed_context_lines(task: str, selected_matches: list[dict[str, Any]]) -> tuple[str, ...]:
