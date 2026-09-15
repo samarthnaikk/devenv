@@ -39,7 +39,8 @@ MAX_README_CHARS = 500
 MIN_SESSION_CONTENT_SCORE = 6
 RRF_K = 60
 SEMANTIC_STRONG_THRESHOLD = 0.35
-MAX_RUNTIME_SESSION_MATCHES = 6
+MAX_RUNTIME_SESSION_MATCHES = 12
+MAX_PROVIDER_SESSION_MATCHES = 6
 MAX_INDEX_CHUNK_CHARS = 720
 MAX_INDEX_CONTEXT_LINES = 12
 MAX_SESSION_EMBEDDING_CACHE = 512
@@ -2177,69 +2178,24 @@ def _combine_indexed_and_semantic_matches(
     indexed_matches: list[dict[str, Any]],
     semantic_matches: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    selected = indexed_matches or semantic_matches
-    if _should_prefer_semantic_session_matches(task, indexed_matches, semantic_matches):
-        selected = semantic_matches
-    return selected
-
-
-def _score_runtime_context_candidate(task: str, context: str, metadata: dict[str, Any]) -> int:
-    score = int(metadata.get("context_match_score", 0))
-    lowered_task = task.lower()
-    lowered_context = context.lower()
-    issue_prompt = any(marker in lowered_task for marker in ("bug", "bugs", "issue", "issues", "fix", "fixed", "review", "last time"))
-    if issue_prompt:
-        focus_markers = (
-            "bug list",
-            "root url redirects",
-            "convex generated imports",
-            "authentication bypass",
-            "open email relay",
-            "create workspace",
-            "pipeline chat",
-            "test/publish",
-            "salesforce being marked as coming soon",
-        )
-        score += sum(30 for marker in focus_markers if marker in lowered_context)
-        for noise in (
-            "tool exec_command result",
-            "operation not permitted: ps",
-            "pr-review.md",
-            "committed in two atomic commits",
-            "fix(settings): use saved timezone and locale dropdowns",
-            "glob: /users/",
-        ):
-            if noise in lowered_context:
-                score -= 25
-    return score
-
-
-def _should_prefer_semantic_session_matches(
-    task: str,
-    indexed_matches: list[dict[str, Any]],
-    semantic_matches: list[dict[str, Any]],
-) -> bool:
-    if not semantic_matches:
-        return False
-    lowered = task.lower()
-    issue_recall_prompt = any(marker in lowered for marker in ("bug", "bugs", "fix", "fixed", "review", "reviews", "issue", "issues", "last time"))
-    if not issue_recall_prompt:
-        return False
     if not indexed_matches:
-        return True
-    semantic_best = semantic_matches[0]
-    indexed_best = indexed_matches[0]
-    semantic_score = int(semantic_best.get("score", 0))
-    indexed_score = int(indexed_best.get("score", 0))
-    semantic_identity_hits = int(semantic_best.get("identity_token_hits", 0))
-    indexed_identity_hits = int(indexed_best.get("identity_token_hits", 0))
-    semantic_overlap = int(semantic_best.get("best_overlap", 0))
-    indexed_chunk_count = len(indexed_best.get("chunks", []) or [])
-    return (
-        semantic_score >= indexed_score
-        or semantic_identity_hits > indexed_identity_hits
-        or semantic_overlap >= 2 > indexed_chunk_count
-    )
+        return list(semantic_matches)[:MAX_PROVIDER_SESSION_MATCHES]
+    if not semantic_matches:
+        return list(indexed_matches)[:MAX_PROVIDER_SESSION_MATCHES]
+
+    fused_score: dict[str, float] = {}
+    entries: dict[str, dict[str, Any]] = {}
+    for rank, match in enumerate(indexed_matches, start=1):
+        session_id = match["summary"].session_id
+        fused_score[session_id] = fused_score.get(session_id, 0.0) + 1.0 / (RRF_K + rank)
+        entries.setdefault(session_id, match)
+    for rank, match in enumerate(semantic_matches, start=1):
+        session_id = match["summary"].session_id
+        fused_score[session_id] = fused_score.get(session_id, 0.0) + 1.0 / (RRF_K + rank)
+        if session_id not in entries:
+            entries[session_id] = match
+    ordered = sorted(entries, key=lambda session_id: (-fused_score[session_id], session_id))
+    return [entries[session_id] for session_id in ordered][:MAX_PROVIDER_SESSION_MATCHES]
 
 
 def _is_noise_message_content(text: str) -> bool:

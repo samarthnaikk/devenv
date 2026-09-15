@@ -1494,6 +1494,30 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertIn("the actual fix", context)
         self.assertEqual(metadata["context_match_providers"], ["alpha", "beta"])
 
+    def test_combine_indexed_and_semantic_matches_keeps_index_rank_one(self) -> None:
+        from core.runtime.context_builder import _combine_indexed_and_semantic_matches
+        from core.runtime.context_builder import ExternalSessionSummary
+
+        def make_match(session_id: str) -> dict:
+            return {
+                "summary": ExternalSessionSummary(
+                    provider="codex", session_id=session_id, title=session_id, updated_at=""
+                ),
+                "chunks": [],
+                "identity_token_hits": 1,
+                "token_hits": 1,
+            }
+
+        indexed = [make_match("session-a"), make_match("session-b")]
+        semantic = [make_match("session-b"), make_match("session-c")]
+        combined = _combine_indexed_and_semantic_matches("what were the regex fixes?", indexed, semantic)
+        ids = [match["summary"].session_id for match in combined]
+
+        self.assertIn("session-a", ids)
+        self.assertIn("session-b", ids)
+        self.assertIn("session-c", ids)
+        self.assertEqual(ids[0], "session-b")
+
 
 if __name__ == "__main__":
     unittest.main()
