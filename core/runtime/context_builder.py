@@ -15,7 +15,7 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from core.memory.embeddings import HashingEmbedder
+from core.memory.embeddings import HashingEmbedder, build_default_embedder
 from core.memory.models import ExternalSessionEmbedding
 from core.memory.storage import SQLiteMemoryStore
 
@@ -1337,7 +1337,7 @@ class ContextBuilderService:
         embedder = getattr(self.memory, "embedder", None)
         if embedder is not None and hasattr(embedder, "embed"):
             return embedder
-        return HashingEmbedder(dimension=384)
+        return build_default_embedder()
 
     def _with_session_embedding(
         self,
@@ -1359,7 +1359,9 @@ class ContextBuilderService:
                 self._session_embedding_document_cache[unified_session_id] = (fingerprint, document)
                 if len(self._session_embedding_document_cache) > MAX_SESSION_EMBEDDING_CACHE:
                     self._session_embedding_document_cache.pop(next(iter(self._session_embedding_document_cache)))
-        content_hash = hashlib.sha256(document.encode("utf-8")).hexdigest()
+        content_hash = hashlib.sha256(
+            f"{_embedder_identifier(self._session_embedder)}\n{document}".encode("utf-8")
+        ).hexdigest()
         existing = store.get_external_session_embedding(unified_session_id)
         if existing is None or existing.content_hash != content_hash:
             embedding = tuple(float(value) for value in self._session_embedder.embed(document))
@@ -2535,6 +2537,12 @@ def _rrf_score(lexical_rank: int | None, semantic_rank: int | None) -> float:
     if semantic_rank is not None:
         score += 1.0 / (RRF_K + semantic_rank)
     return score
+
+
+def _embedder_identifier(embedder: Any) -> str:
+    model_name = getattr(embedder, "model_name", "") or ""
+    dimension = getattr(embedder, "dimension", 0)
+    return f"{type(embedder).__name__}:{model_name}:{dimension}"
 
 
 def _unified_session_id(provider: str, session_id: str) -> str:

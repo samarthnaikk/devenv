@@ -59,3 +59,21 @@ class HashingEmbedder:
             return values
 
         return [value / magnitude for value in values]
+
+
+_DEFAULT_EMBEDDER: Embedder | None = None
+
+
+def build_default_embedder() -> Embedder:
+    """Return the production embedder, falling back to hashing if unavailable."""
+    global _DEFAULT_EMBEDDER
+    if _DEFAULT_EMBEDDER is not None:
+        return _DEFAULT_EMBEDDER
+    try:
+        embedder: Embedder = SentenceTransformerEmbedder()
+        embedder.embed("warmup")
+    except Exception:
+        _DEFAULT_EMBEDDER = HashingEmbedder(dimension=384)
+    else:
+        _DEFAULT_EMBEDDER = embedder
+    return _DEFAULT_EMBEDDER

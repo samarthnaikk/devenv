@@ -15,7 +15,7 @@ from core.ai import OpenCodeAICore, RoutingAICore
 from core.ai.models import AIExecutedToolStep, AIResponse, ToolCallRequest
 from core.env import load_dotenv
 from core.memory import MemoryEngine
-from core.memory.embeddings import HashingEmbedder
+from core.memory.embeddings import HashingEmbedder, build_default_embedder
 from core.memory.models import RetrievalTrace
 from core.tools.base import BaseTool
 from core.tools._common import NOISE_DIRECTORIES

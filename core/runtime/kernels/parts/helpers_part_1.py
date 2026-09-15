@@ -294,14 +294,12 @@ def _compact_conversation(messages: list[dict[str, Any]], max_turns: int) -> lis
 
 
 def _build_memory_engine(db_path: str, vector_dir: str) -> MemoryEngine:
-    if os.getenv("DEVENV_USE_SENTENCE_EMBEDDER") != "1":
-        return MemoryEngine(
-            db_path=db_path,
-            vector_dir=vector_dir,
-            embedder=HashingEmbedder(dimension=384),
-        )
+    if os.getenv("DEVENV_USE_SENTENCE_EMBEDDER") == "0" or os.getenv("DEVENV_DISABLE_SENTENCE_EMBEDDER") == "1":
+        embedder: Any = HashingEmbedder(dimension=384)
+    else:
+        embedder = build_default_embedder()
     try:
-        return MemoryEngine(db_path=db_path, vector_dir=vector_dir)
+        return MemoryEngine(db_path=db_path, vector_dir=vector_dir, embedder=embedder)
     except Exception as exc:
         logger.warning("Falling back to hashing memory embedder: error=%s", exc)
         return MemoryEngine(
