@@ -8,9 +8,14 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
+from core.memory.models import ExternalSessionChunkEmbedding
 from core.memory.storage import SQLiteMemoryStore
 from core.runtime.context_builder import ContextBuilderService
-from core.runtime.models import ExternalSessionProviderConfig, PreparedPromptRequest
+from core.runtime.models import (
+    ExternalSessionProviderConfig,
+    ExternalSessionSummary,
+    PreparedPromptRequest,
+)
 
 
 class ContextBuilderServiceTest(unittest.TestCase):
@@ -1422,22 +1427,46 @@ class ContextBuilderServiceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir) / "workspace"
             workspace.mkdir()
-
             service = ContextBuilderService(str(workspace), provider_configs=())
             service.providers = {"broken": mock.Mock(), "good": mock.Mock()}
             service.set_runtime_allowed_providers({"broken", "good"})
+            good_provider = service.providers["good"]
+            chunk = ExternalSessionChunkEmbedding(
+                unified_session_id="good:session-good",
+                provider="good",
+                session_id="session-good",
+                chunk_index=0,
+                content_hash="hash",
+                embedding=(1.0, 0.0),
+                role="assistant",
+                source="good",
+                text="Based on memory from prior sessions, the get-drip bug list is root URL redirects and Convex generated imports.",
+            )
+            match = {
+                "summary": ExternalSessionSummary(
+                    provider="good",
+                    session_id="session-good",
+                    title="get-drip bug session",
+                    workspace_path="/tmp/get-drip",
+                    updated_at="",
+                ),
+                "chunks": [],
+                "semantic_chunks": [(0.9, chunk)],
+                "semantic_chunk": chunk,
+                "semantic_score": 0.9,
+                "identity_token_hits": 1,
+                "token_hits": 2,
+                "strong_match": True,
+                "score": 99,
+                "content_score": 99,
+            }
 
-            def fake_build(task: str, *, provider_name: str, max_lines: int):
+            def fake_select(task: str, *, provider_name: str):
                 if provider_name == "broken":
                     raise sqlite3.OperationalError("unable to open database file")
                 return (
-                    "\n".join(
-                        [
-                            "## External Session Context",
-                            "- Assistant reported: Based on memory from prior sessions, the get-drip bug list is root URL redirects and Convex generated imports.",
-                        ]
-                    ),
-                    ("session-good",),
+                    [match],
+                    good_provider,
                     {
                         "context_match_state": "reused_prior_context",
                         "context_match_reason": "Matched prior get-drip bug session.",
@@ -1445,8 +1474,7 @@ class ContextBuilderServiceTest(unittest.TestCase):
                     },
                 )
 
-            service._build_runtime_memory_context_for_provider = fake_build  # type: ignore[method-assign]
-
+            service._select_runtime_matches_for_provider = fake_select  # type: ignore[method-assign]
             context, session_ids, metadata = service.build_runtime_memory_context(
                 "hey, do you remember what issue did we get while working with get-drip last time?"
             )
@@ -1463,11 +1491,43 @@ class ContextBuilderServiceTest(unittest.TestCase):
             service.providers = {"alpha": mock.Mock(), "beta": mock.Mock()}
             service.set_runtime_allowed_providers({"alpha", "beta"})
 
-            def fake_build(task: str, *, provider_name: str, max_lines: int):
+            def make_match(provider_name: str, text: str, score: float) -> dict:
+                session_id = f"session-{provider_name}"
+                chunk = ExternalSessionChunkEmbedding(
+                    unified_session_id=f"{provider_name}:{session_id}",
+                    provider=provider_name,
+                    session_id=session_id,
+                    chunk_index=0,
+                    content_hash="hash",
+                    embedding=(1.0, 0.0),
+                    role="assistant",
+                    source=provider_name,
+                    text=text,
+                )
+                return {
+                    "summary": ExternalSessionSummary(
+                        provider=provider_name,
+                        session_id=session_id,
+                        title=f"{provider_name} session",
+                        workspace_path="/tmp/proj",
+                        updated_at="",
+                    ),
+                    "chunks": [],
+                    "semantic_chunks": [(score, chunk)],
+                    "semantic_chunk": chunk,
+                    "semantic_score": score,
+                    "identity_token_hits": 1,
+                    "token_hits": 1,
+                    "strong_match": True,
+                    "score": int(score * 100),
+                    "content_score": int(score * 100),
+                }
+
+            def fake_select(task: str, *, provider_name: str):
                 if provider_name == "alpha":
                     return (
-                        "## External Session Context\n- Assistant reported: root URL redirects bug list",
-                        ("session-alpha",),
+                        [make_match("alpha", "root URL redirects bug list", 0.99)],
+                        service.providers["alpha"],
                         {
                             "context_match_state": "reused_prior_context",
                             "context_match_reason": "alpha match",
@@ -1475,8 +1535,8 @@ class ContextBuilderServiceTest(unittest.TestCase):
                         },
                     )
                 return (
-                    "## External Session Context\n- Assistant reported: the actual fix",
-                    ("session-beta",),
+                    [make_match("beta", "the actual fix", 0.5)],
+                    service.providers["beta"],
                     {
                         "context_match_state": "reused_prior_context",
                         "context_match_reason": "beta match",
@@ -1484,7 +1544,7 @@ class ContextBuilderServiceTest(unittest.TestCase):
                     },
                 )
 
-            service._build_runtime_memory_context_for_provider = fake_build  # type: ignore[method-assign]
+            service._select_runtime_matches_for_provider = fake_select  # type: ignore[method-assign]
             context, session_ids, metadata = service.build_runtime_memory_context(
                 "hey, what was the bug we faced last time?"
             )
@@ -1493,7 +1553,6 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertIn("session-beta", session_ids)
         self.assertIn("the actual fix", context)
         self.assertEqual(metadata["context_match_providers"], ["alpha", "beta"])
-
     def test_combine_indexed_and_semantic_matches_keeps_index_rank_one(self) -> None:
         from core.runtime.context_builder import _combine_indexed_and_semantic_matches
         from core.runtime.context_builder import ExternalSessionSummary
