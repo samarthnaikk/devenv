@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from core.memory.embeddings import HashingEmbedder, build_default_embedder
-from core.memory.models import ExternalSessionEmbedding
+from core.memory.models import ExternalSessionChunkEmbedding, ExternalSessionEmbedding
 from core.memory.storage import SQLiteMemoryStore
 
 from .models import (
@@ -44,6 +44,7 @@ MAX_PROVIDER_SESSION_MATCHES = 6
 MAX_INDEX_CHUNK_CHARS = 720
 MAX_INDEX_CONTEXT_LINES = 12
 MAX_SESSION_EMBEDDING_CACHE = 512
+MAX_SESSION_CHUNK_EMBEDDINGS = 96
 MAX_QUERY_VARIANTS = 4
 COMMON_CONTEXT_TOKENS = {
     "about",
@@ -945,7 +946,8 @@ class ContextBuilderService:
         self._session_embedding_store: SQLiteMemoryStore | None = None
         self._session_embedding_store_resolved = False
         self._session_embedder = self._resolve_session_embedder()
-        self._session_embedding_document_cache: dict[str, tuple[tuple[Any, ...], str]] = {}
+        self._session_embedding_document_cache: dict[str, tuple[tuple[Any, ...], str, list[Any]]] = {}
+        self._session_chunk_vector_cache: dict[str, dict[str, list[tuple[float, ...]]]] = {}
 
     def set_runtime_allowed_providers(self, providers: set[str] | list[str] | tuple[str, ...] | None) -> None:
         if providers is None:
@@ -1353,10 +1355,12 @@ class ContextBuilderService:
         cached = self._session_embedding_document_cache.get(unified_session_id)
         if fingerprint is not None and cached is not None and cached[0] == fingerprint:
             document = cached[1]
+            chunks = cached[2]
         else:
-            document = self._session_embedding_document(provider, summary)
+            chunks = provider.build_index_chunks(summary.session_id)
+            document = _session_embedding_document_from_chunks(summary, chunks)
             if fingerprint is not None:
-                self._session_embedding_document_cache[unified_session_id] = (fingerprint, document)
+                self._session_embedding_document_cache[unified_session_id] = (fingerprint, document, chunks)
                 if len(self._session_embedding_document_cache) > MAX_SESSION_EMBEDDING_CACHE:
                     self._session_embedding_document_cache.pop(next(iter(self._session_embedding_document_cache)))
         content_hash = hashlib.sha256(
@@ -1379,24 +1383,50 @@ class ContextBuilderService:
                 indexed_at=time.time(),
             )
             store.upsert_external_session_embedding(existing)
+            self._index_session_chunk_embeddings(store, summary, unified_session_id, chunks)
 
         return replace(summary, unified_session_id=unified_session_id, embedding=existing.embedding)
+    def _index_session_chunk_embeddings(
+        self,
+        store: SQLiteMemoryStore,
+        summary: ExternalSessionSummary,
+        unified_session_id: str,
+        chunks: list[Any],
+    ) -> None:
+        if self._session_embedder is None or not chunks:
+            return
+        embedder_id = _embedder_identifier(self._session_embedder)
+        records: list[ExternalSessionChunkEmbedding] = []
+        now = time.time()
+        for index, chunk in enumerate(chunks[:MAX_SESSION_CHUNK_EMBEDDINGS]):
+            text = _normalize_whitespace(getattr(chunk, "text", "") or "")
+            if not text:
+                continue
+            chunk_hash = hashlib.sha256(f"{embedder_id}\n{text}".encode("utf-8")).hexdigest()
+            embedding = tuple(float(value) for value in self._session_embedder.embed(text))
+            records.append(
+                ExternalSessionChunkEmbedding(
+                    unified_session_id=unified_session_id,
+                    provider=summary.provider,
+                    session_id=summary.session_id,
+                    chunk_index=index,
+                    content_hash=chunk_hash,
+                    embedding=embedding,
+                    role=str(getattr(chunk, "role", "") or ""),
+                    source=str(getattr(chunk, "source", "") or ""),
+                    text=text,
+                    indexed_at=now,
+                )
+            )
+        store.replace_external_session_chunk_embeddings(unified_session_id, records)
+        self._session_chunk_vector_cache.pop(summary.provider, None)
 
     def _session_embedding_document(
         self,
         provider: ExternalSessionProvider,
         summary: ExternalSessionSummary,
     ) -> str:
-        chunks = provider.build_index_chunks(summary.session_id)
-        parts = [summary.title.strip()]
-        if summary.workspace_path:
-            parts.append(str(summary.workspace_path).strip())
-        for chunk in chunks:
-            text = _normalize_whitespace(chunk.text)
-            if text:
-                parts.append(text)
-        document = "\n".join(part for part in parts if part).strip()
-        return document or summary.preview.strip() or summary.title.strip() or summary.session_id
+        return _session_embedding_document_from_chunks(summary, provider.build_index_chunks(summary.session_id))
 
     def _session_embedding_vectors(self, provider_name: str) -> dict[str, tuple[float, ...]]:
         store = self._get_session_embedding_store()
@@ -1408,6 +1438,20 @@ class ContextBuilderService:
                 vectors[record.session_id] = record.embedding
         return vectors
 
+    def _session_chunk_vectors(self, provider_name: str) -> dict[str, list[tuple[float, ...]]]:
+        cached = self._session_chunk_vector_cache.get(provider_name)
+        if cached is not None:
+            return cached
+        store = self._get_session_embedding_store()
+        if store is None:
+            return {}
+        vectors: dict[str, list[tuple[float, ...]]] = {}
+        for record in store.list_external_session_chunk_embeddings(provider=provider_name):
+            if record.embedding:
+                vectors.setdefault(record.session_id, []).append(record.embedding)
+        self._session_chunk_vector_cache[provider_name] = vectors
+        return vectors
+
     def _semantic_session_scores(
         self,
         provider: ExternalSessionProvider,
@@ -1415,7 +1459,8 @@ class ContextBuilderService:
         query_variants: tuple[str, ...],
     ) -> dict[str, float]:
         vectors = self._session_embedding_vectors(provider.name)
-        if not vectors or self._session_embedder is None:
+        chunk_vectors = self._session_chunk_vectors(provider.name)
+        if (not vectors and not chunk_vectors) or self._session_embedder is None:
             return {}
         query_vectors: list[tuple[float, ...]] = []
         for variant in query_variants:
@@ -1427,10 +1472,18 @@ class ContextBuilderService:
             return {}
         scores: dict[str, float] = {}
         for summary in summaries:
-            vector = vectors.get(summary.session_id)
-            if not vector:
-                continue
-            best = max((_cosine_similarity(query, vector) for query in query_vectors), default=0.0)
+            session_chunks = chunk_vectors.get(summary.session_id)
+            best = 0.0
+            if session_chunks:
+                for chunk_vector in session_chunks:
+                    for query_vector in query_vectors:
+                        similarity = _cosine_similarity(query_vector, chunk_vector)
+                        if similarity > best:
+                            best = similarity
+            else:
+                vector = vectors.get(summary.session_id)
+                if vector:
+                    best = max((_cosine_similarity(query, vector) for query in query_vectors), default=0.0)
             if best > 0.0:
                 scores[summary.session_id] = best
         return scores
@@ -2537,6 +2590,18 @@ def _rrf_score(lexical_rank: int | None, semantic_rank: int | None) -> float:
     if semantic_rank is not None:
         score += 1.0 / (RRF_K + semantic_rank)
     return score
+
+
+def _session_embedding_document_from_chunks(summary: ExternalSessionSummary, chunks: list[Any]) -> str:
+    parts = [summary.title.strip()]
+    if summary.workspace_path:
+        parts.append(str(summary.workspace_path).strip())
+    for chunk in chunks:
+        text = _normalize_whitespace(getattr(chunk, "text", "") or "")
+        if text:
+            parts.append(text)
+    document = "\n".join(part for part in parts if part).strip()
+    return document or summary.preview.strip() or summary.title.strip() or summary.session_id
 
 
 def _embedder_identifier(embedder: Any) -> str:

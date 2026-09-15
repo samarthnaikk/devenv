@@ -6,7 +6,13 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-from .models import EpisodicLog, ExternalSessionEmbedding, MemoryNode, NodeEdge
+from .models import (
+    EpisodicLog,
+    ExternalSessionChunkEmbedding,
+    ExternalSessionEmbedding,
+    MemoryNode,
+    NodeEdge,
+)
 
 
 SCHEMA_STATEMENTS = (
@@ -69,6 +75,22 @@ SCHEMA_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS idx_episodic_logs_timestamp ON episodic_logs(timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_node_edges_target_id ON node_edges(target_node_id)",
     "CREATE INDEX IF NOT EXISTS idx_external_session_embeddings_provider ON external_session_embeddings(provider)",
+    """
+    CREATE TABLE IF NOT EXISTS external_session_chunk_embeddings (
+        unified_session_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        chunk_index INTEGER NOT NULL,
+        role TEXT NOT NULL DEFAULT '',
+        source TEXT NOT NULL DEFAULT '',
+        text TEXT NOT NULL DEFAULT '',
+        content_hash TEXT NOT NULL,
+        embedding_json TEXT NOT NULL,
+        indexed_at REAL NOT NULL,
+        PRIMARY KEY (unified_session_id, chunk_index)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_external_session_chunk_embeddings_provider ON external_session_chunk_embeddings(provider)",
     "CREATE INDEX IF NOT EXISTS idx_external_session_embeddings_session_id ON external_session_embeddings(session_id)",
 )
 
@@ -223,6 +245,75 @@ class SQLiteMemoryStore:
         with self.transaction() as connection:
             rows = connection.execute(query, params).fetchall()
         return [_row_to_external_session_embedding(row) for row in rows]
+
+    def replace_external_session_chunk_embeddings(
+        self,
+        unified_session_id: str,
+        records: list[ExternalSessionChunkEmbedding],
+    ) -> None:
+        with self.transaction() as connection:
+            connection.execute(
+                "DELETE FROM external_session_chunk_embeddings WHERE unified_session_id = ?",
+                (unified_session_id,),
+            )
+            connection.executemany(
+                """
+                INSERT INTO external_session_chunk_embeddings (
+                    unified_session_id,
+                    provider,
+                    session_id,
+                    chunk_index,
+                    role,
+                    source,
+                    text,
+                    content_hash,
+                    embedding_json,
+                    indexed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        record.unified_session_id,
+                        record.provider,
+                        record.session_id,
+                        record.chunk_index,
+                        record.role,
+                        record.source,
+                        record.text,
+                        record.content_hash,
+                        json.dumps(list(record.embedding)),
+                        record.indexed_at,
+                    )
+                    for record in records
+                ],
+            )
+
+    def list_external_session_chunk_embeddings(
+        self, provider: str | None = None
+    ) -> list[ExternalSessionChunkEmbedding]:
+        query = """
+            SELECT
+                unified_session_id,
+                provider,
+                session_id,
+                chunk_index,
+                role,
+                source,
+                text,
+                content_hash,
+                embedding_json,
+                indexed_at
+            FROM external_session_chunk_embeddings
+        """
+        params: tuple[str, ...] = ()
+        if provider:
+            query += " WHERE provider = ?"
+            params = (provider,)
+        query += " ORDER BY provider, session_id, chunk_index"
+        with self.transaction() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [_row_to_external_session_chunk_embedding(row) for row in rows]
 
     def upsert_node(self, node: MemoryNode) -> None:
         with self.transaction() as connection:
@@ -721,6 +812,27 @@ def _row_to_external_session_embedding(row: sqlite3.Row) -> ExternalSessionEmbed
         content_hash=str(row["content_hash"]),
         content_text=str(row["content_text"] or ""),
         embedding=embedding,
+        indexed_at=float(row["indexed_at"]),
+    )
+
+
+def _row_to_external_session_chunk_embedding(row: sqlite3.Row) -> ExternalSessionChunkEmbedding:
+    raw_embedding = row["embedding_json"]
+    try:
+        parsed = json.loads(str(raw_embedding))
+    except (TypeError, json.JSONDecodeError):
+        parsed = []
+    embedding = tuple(float(value) for value in parsed if isinstance(value, (int, float)))
+    return ExternalSessionChunkEmbedding(
+        unified_session_id=str(row["unified_session_id"]),
+        provider=str(row["provider"]),
+        session_id=str(row["session_id"]),
+        chunk_index=int(row["chunk_index"]),
+        content_hash=str(row["content_hash"]),
+        embedding=embedding,
+        role=str(row["role"] or ""),
+        source=str(row["source"] or ""),
+        text=str(row["text"] or ""),
         indexed_at=float(row["indexed_at"]),
     )
 

@@ -57,6 +57,20 @@ class ExternalSessionEmbedding:
 
 
 @dataclass(frozen=True)
+class ExternalSessionChunkEmbedding:
+    unified_session_id: str
+    provider: str
+    session_id: str
+    chunk_index: int
+    content_hash: str
+    embedding: tuple[float, ...]
+    role: str = ""
+    source: str = ""
+    text: str = ""
+    indexed_at: float = 0.0
+
+
+@dataclass(frozen=True)
 class WorkingMemoryMessage:
     role: str
     content: str
