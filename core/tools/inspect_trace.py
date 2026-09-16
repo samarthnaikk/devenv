@@ -71,7 +71,7 @@ class InspectTraceTool(BaseTool):
             if node is None:
                 raise ValueError(f"Memory node not found: {node_id}")
             edges = [asdict(edge) for edge in store.list_edges_for_node(node_id)]
-            vector_present = getattr(getattr(self.memory, "vector_index", None), "records", {}).get(node_id) is not None
+            vector_present = _vector_record_present(getattr(self.memory, "vector_index", None), node_id)
             logger.info("Inspected node history: node_id=%s", node_id)
             return ToolResult(
                 success=True,
@@ -99,3 +99,21 @@ def _memory_sync_state(memory: Any) -> dict[str, Any]:
         "last_vector_sync_at": store.get_state("last_vector_sync_at"),
         "fts_enabled": bool(getattr(store, "_fts_enabled", False)),
     }
+
+
+def _vector_record_present(vector_index: Any, node_id: str) -> bool:
+    records = getattr(vector_index, "records", None)
+    if isinstance(records, dict):
+        return node_id in records
+
+    table_instance = getattr(vector_index, "_table_instance", None)
+    if callable(table_instance):
+        try:
+            table = table_instance()
+            count_rows = getattr(table, "count_rows", None)
+            if callable(count_rows):
+                return bool(count_rows(f"node_id = '{node_id}'"))
+        except Exception:
+            return False
+
+    return False

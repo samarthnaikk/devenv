@@ -10,10 +10,14 @@ from typing import Any
 from unittest import mock
 
 from core.ai.models import AIExecutedToolStep, AIResponse, ToolCallRequest
-from core.runtime.models import CheckpointTask, ExecutionBlueprint
+from core.runtime.models import (
+    DEFAULT_MAX_CONSECUTIVE_TOOLS,
+    CheckpointTask,
+    ExecutionBlueprint,
+)
 from core.runtime.models import ExternalSessionProviderConfig, PlanningMode, RunConfig
 from core.runtime.setup import inspect_setup
-from core.runtime.web import DevenvWebApp
+from core.runtime.web import DevenvWebApp, _build_repo_grounded_fallback_plan
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,12 @@ class FakeMemory:
 class FakeAI:
     def __init__(self) -> None:
         self.model = "fake-opencode-model"
+        self.backend_models = {
+            "opencode": "fake-opencode-model",
+            "ollama": "qwen2.5:3b",
+            "llama_cpp": "qwen2.5-coder.gguf",
+            "codex": "gpt-5-codex",
+        }
         self.provider_label = "OpenCode CLI"
         self.preferred_backend = "opencode"
         self.last_backend_used = "opencode"
@@ -61,7 +71,7 @@ class FakeAI:
                 name="opencode",
                 available=True,
                 enabled=True,
-                model=self.model,
+                model=self.backend_models["opencode"],
                 detail="Server reachable",
                 metadata={
                     "server": {
@@ -78,18 +88,31 @@ class FakeAI:
                 name="ollama",
                 available=True,
                 enabled=True,
-                model="qwen2.5:3b",
+                model=self.backend_models["ollama"],
                 detail="Ollama reachable",
                 metadata={
                     "models": ["qwen2.5:3b", "codellama:7b"],
-                    "base_url": "http://127.0.0.1:11434",
+                    "runtime": "ollama",
+                    "transport": "http_api",
+                },
+            ),
+            "llama_cpp": AIBackendStatus(
+                name="llama_cpp",
+                available=True,
+                enabled=True,
+                model=self.backend_models["llama_cpp"],
+                detail="llama.cpp reachable",
+                metadata={
+                    "models": ["qwen2.5-coder.gguf", "deepseek-r1.gguf"],
+                    "runtime": "llama.cpp",
+                    "transport": "openai_compatible_http",
                 },
             ),
             "codex": AIBackendStatus(
                 name="codex",
                 available=True,
                 enabled=True,
-                model="gpt-5-codex",
+                model=self.backend_models["codex"],
                 detail="Configured",
                 metadata={
                     "transport": "responses_mcp",
@@ -114,7 +137,9 @@ class FakeAI:
         self.reset_session_calls += 1
 
     def set_backend_model(self, backend: str, model: str) -> None:
-        self.model = model
+        self.backend_models[backend] = model
+        if backend == "opencode":
+            self.model = model
 
 
 class CapturingFakeAI(FakeAI):
@@ -146,6 +171,41 @@ class CapturingFakeAI(FakeAI):
 
 
 class DevenvWebAppTest(unittest.TestCase):
+    def test_health_payload_does_not_copy_active_model_into_empty_preferred_backend_slot(self) -> None:
+        class PreferredOllamaWithoutSelectedModelAI(FakeAI):
+            def __init__(self) -> None:
+                super().__init__()
+                self.preferred_backend = "ollama"
+
+            def status(self) -> dict[str, object]:
+                statuses = super().status()
+                statuses["ollama"] = type(statuses["ollama"])(
+                    name="ollama",
+                    available=True,
+                    enabled=True,
+                    model="",
+                    detail="Ollama reachable",
+                    metadata={
+                        "models": ["qwen2.5-coder:3b"],
+                        "runtime": "ollama",
+                        "transport": "http_api",
+                    },
+                )
+                return statuses
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=PreferredOllamaWithoutSelectedModelAI(),
+            )
+
+            health = app.build_health_payload()
+
+        self.assertEqual(health["selected_models_by_backend"]["opencode"], "fake-opencode-model")
+        self.assertEqual(health["selected_models_by_backend"]["ollama"], "")
+        self.assertIn("qwen2.5-coder:3b", health["available_models_by_backend"]["ollama"])
+
     def test_health_payload_reuses_cached_setup_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             app = DevenvWebApp(
@@ -187,8 +247,12 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertFalse(health["privacy"]["incognito"])
         self.assertIn("setup", health)
         self.assertIn("tool_readiness", health)
+        self.assertIn("read_file", health["tool_readiness"])
+        self.assertIn("knowledge_search", health["tool_readiness"])
         self.assertIn("web_search", health["tool_readiness"])
         self.assertTrue(health["tool_readiness"]["web_search"]["ready"])
+        self.assertTrue(health["tool_readiness"]["read_file"]["ready"])
+        self.assertTrue(health["tool_readiness"]["knowledge_search"]["ready"])
         self.assertIn("mcp_server", health)
         self.assertIn("codex_backend", health)
         self.assertEqual(health["codex_backend"]["transport"], "responses_mcp")
@@ -216,6 +280,7 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertTrue(health["privacy"]["incognito"])
         self.assertFalse(health["setup"]["ready"] is None)
         self.assertEqual(health["tool_readiness"]["generate_prompt"]["ready"], True)
+        self.assertEqual(health["tool_readiness"]["track_symbol"]["ready"], True)
 
     def test_setup_inspection_exposes_shared_readiness_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -319,6 +384,39 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(captured["planning_mode"], PlanningMode.FORCE_PLAN)
         self.assertTrue(captured["continue_plan"])
         self.assertTrue(captured["local_only"])
+
+    def test_run_turn_uses_shared_default_max_consecutive_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            captured: dict[str, object] = {}
+
+            def fake_execute_turn(
+                prompt,
+                max_consecutive_tools=5,
+                planning_mode=PlanningMode.AUTO,
+                continue_plan=False,
+                local_only=False,
+            ):
+                captured.update(
+                    {
+                        "prompt": prompt,
+                        "max_consecutive_tools": max_consecutive_tools,
+                    }
+                )
+                return type("Result", (), {"to_dict": lambda self: {"final_response": "ok"}})()
+
+            app.kernel.execute_turn = fake_execute_turn
+            result = app.run_turn("hello")
+
+        self.assertEqual(result["final_response"], "ok")
+        self.assertEqual(captured["prompt"], "hello")
+        self.assertEqual(
+            captured["max_consecutive_tools"], DEFAULT_MAX_CONSECUTIVE_TOOLS
+        )
 
     def test_run_turn_forwards_selected_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -442,6 +540,46 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(detail["summary"]["session_id"], session_id)
         self.assertIn("Task:", prepared["prompt"])
 
+    def test_session_embeddings_payload_omits_vectors_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            codex_root = Path(tempdir) / ".codex"
+            sessions_dir = codex_root / "sessions" / "2026" / "08" / "20"
+            sessions_dir.mkdir(parents=True)
+            session_id = "session-embed"
+            (codex_root / "session_index.jsonl").write_text(
+                json.dumps({"id": session_id, "thread_name": "Embedding session", "updated_at": "2026-08-20T10:00:00Z"}) + "\n",
+                encoding="utf-8",
+            )
+            (sessions_dir / f"rollout-2026-08-20T09-00-00-{session_id}.jsonl").write_text(
+                json.dumps({"timestamp": "2026-08-20T09:00:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": tempdir}})
+                + "\n"
+                + json.dumps({"timestamp": "2026-08-20T09:00:01Z", "type": "event_msg", "payload": {"type": "agent_message", "message": "Store this embedding."}})
+                + "\n",
+                encoding="utf-8",
+            )
+            app = DevenvWebApp(
+                RunConfig(
+                    workspace_path=tempdir,
+                    external_session_configs=(
+                        ExternalSessionProviderConfig(provider="codex", root_path=str(codex_root), index_path="session_index.jsonl"),
+                    ),
+                ),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.update_session_access("codex", True)
+            app.build_context_sessions_payload("codex")
+            trimmed = app.build_session_embeddings_payload()
+            full = app.build_session_embeddings_payload(include_vectors=True)
+
+        self.assertEqual(len(trimmed["embeddings"]), 1)
+        self.assertNotIn("embedding", trimmed["embeddings"][0])
+        self.assertGreater(trimmed["embeddings"][0]["embedding_dimension"], 0)
+        self.assertEqual(
+            len(full["embeddings"][0]["embedding"]),
+            trimmed["embeddings"][0]["embedding_dimension"],
+        )
+
     def test_access_endpoints_update_server_side_consent_state(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             app = DevenvWebApp(
@@ -453,16 +591,19 @@ class DevenvWebAppTest(unittest.TestCase):
             session_payload = app.update_session_access("codex", True)
             backend_payload = app.update_backend_access("opencode", True)
             ollama_backend_payload = app.update_backend_access("ollama", True)
+            llama_cpp_backend_payload = app.update_backend_access("llama_cpp", True)
             codex_backend_payload = app.update_backend_access("codex", True)
             health = app.build_health_payload()
 
         self.assertTrue(session_payload["session_access"]["codex"])
         self.assertTrue(backend_payload["backend_access"]["opencode"])
         self.assertTrue(ollama_backend_payload["backend_access"]["ollama"])
+        self.assertTrue(llama_cpp_backend_payload["backend_access"]["llama_cpp"])
         self.assertTrue(codex_backend_payload["backend_access"]["codex"])
         self.assertTrue(health["access_policy"]["session_access"]["codex"])
         self.assertTrue(health["access_policy"]["backend_access"]["opencode"])
         self.assertTrue(health["access_policy"]["backend_access"]["ollama"])
+        self.assertTrue(health["access_policy"]["backend_access"]["llama_cpp"])
         self.assertTrue(health["access_policy"]["backend_access"]["codex"])
 
     def test_health_payload_exposes_model_catalog_by_backend(self) -> None:
@@ -476,8 +617,11 @@ class DevenvWebAppTest(unittest.TestCase):
 
         self.assertIn("available_models_by_backend", health)
         self.assertIn("ollama", health["available_models_by_backend"])
+        self.assertIn("llama_cpp", health["available_models_by_backend"])
         self.assertIn("qwen2.5:3b", health["available_models_by_backend"]["ollama"])
+        self.assertIn("qwen2.5-coder.gguf", health["available_models_by_backend"]["llama_cpp"])
         self.assertEqual(health["selected_models_by_backend"]["ollama"], "qwen2.5:3b")
+        self.assertEqual(health["selected_models_by_backend"]["llama_cpp"], "qwen2.5-coder.gguf")
 
     def test_set_model_can_target_specific_backend(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -492,6 +636,20 @@ class DevenvWebAppTest(unittest.TestCase):
 
         self.assertEqual(payload["ai_model"], "qwen2.5:3b")
         self.assertEqual(payload["selected_models_by_backend"]["ollama"], "qwen2.5:3b")
+
+    def test_set_model_can_target_llama_cpp_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            ai = FakeAI()
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=ai,
+            )
+
+            payload = app.set_model("deepseek-r1.gguf", "llama_cpp")
+
+        self.assertEqual(payload["ai_model"], "deepseek-r1.gguf")
+        self.assertEqual(payload["selected_models_by_backend"]["llama_cpp"], "deepseek-r1.gguf")
 
     def test_run_turn_forwards_codex_backend_access_and_preference(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -572,6 +730,48 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(captured["backend_preference"], "ollama")
         self.assertFalse(captured["opencode_enabled"])
         self.assertTrue(captured["ollama_enabled"])
+        self.assertFalse(captured["codex_enabled"])
+
+    def test_run_turn_forwards_llama_cpp_backend_access_and_preference(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            app.update_backend_access("llama_cpp", True)
+            captured: dict[str, object] = {}
+
+            def fake_execute_turn(
+                prompt,
+                max_consecutive_tools=5,
+                planning_mode=PlanningMode.AUTO,
+                continue_plan=False,
+                local_only=False,
+                selected_tools=None,
+                backend_preference="opencode",
+                opencode_enabled=False,
+                llama_cpp_enabled=False,
+                codex_enabled=False,
+            ):
+                captured.update(
+                    {
+                        "prompt": prompt,
+                        "backend_preference": backend_preference,
+                        "opencode_enabled": opencode_enabled,
+                        "llama_cpp_enabled": llama_cpp_enabled,
+                        "codex_enabled": codex_enabled,
+                    }
+                )
+                return type("Result", (), {"to_dict": lambda self: {"final_response": "ok"}})()
+
+            app.kernel.execute_turn = fake_execute_turn
+            result = app.run_turn("hello", backend_preference="llama_cpp")
+
+        self.assertEqual(result["final_response"], "ok")
+        self.assertEqual(captured["backend_preference"], "llama_cpp")
+        self.assertFalse(captured["opencode_enabled"])
+        self.assertTrue(captured["llama_cpp_enabled"])
         self.assertFalse(captured["codex_enabled"])
 
     def test_reset_thread_clears_kernel_conversation_and_ai_session(self) -> None:
@@ -780,6 +980,47 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertIsNone(result["error_message"])
         self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "inspect-web")
         self.assertEqual(result["usage_sample"]["total_tokens"], 10)
+
+    def test_run_plan_uses_shared_default_max_consecutive_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            chat_calls: list[dict[str, object]] = []
+
+            def fake_chat(
+                messages: list[dict[str, Any]],
+                memory_context: str | None = None,
+                temperature: float = 0.2,
+                tool_names=None,
+            ) -> AIResponse:
+                chat_calls.append({"messages": messages, "tool_names": tool_names})
+                return AIResponse(
+                    content=json.dumps(
+                        {
+                            "tasks": [
+                                {
+                                    "task_id": "inspect-chatapp",
+                                    "description": "Inspect chatapp backend files",
+                                    "level": 0,
+                                }
+                            ],
+                            "edges": [],
+                        }
+                    ),
+                    finish_reason="stop",
+                    usage={"total_tokens": 1},
+                    backend="ollama",
+                )
+
+            app.kernel.ai.chat = fake_chat
+            result = app.run_plan("plan chat app integration")
+
+        self.assertIsNone(result["error_message"])
+        self.assertEqual(app.config.max_consecutive_tools, DEFAULT_MAX_CONSECUTIVE_TOOLS)
+        self.assertEqual(len(chat_calls), 1)
 
     def test_run_plan_blocks_mutation_tools_and_recovers_with_valid_json(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -1186,6 +1427,25 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertIsNone(result["error_message"])
         self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "inspect-web")
         self.assertEqual(len(ai.chat_calls), 2)
+
+    def test_repo_grounded_fallback_plan_prefers_ui_shell_paths_for_animation_work(self) -> None:
+        blueprint = _build_repo_grounded_fallback_plan(
+            "Improve the UI shell animations and chat surface polish",
+            repo_grounding=(
+                "Inspect `core/runtime/web.py`, `interface/website/src/App.js`, "
+                "`interface/website/src/components/Composer.js`, "
+                "`interface/website/src/components/Transcript.js`, "
+                "`interface/website/styles.css`, and `tests/runtime/test_web.py`."
+            ),
+        )
+
+        tasks = blueprint["tasks"]
+        self.assertEqual(tasks[0]["task_id"], "inspect-ui-shell")
+        self.assertIn("`interface/website/src/App.js`", tasks[0]["description"])
+        self.assertIn("`interface/website/src/components/Composer.js`", tasks[0]["description"])
+        self.assertIn("`interface/website/src/components/Transcript.js`", tasks[2]["description"])
+        self.assertIn("`tests/runtime/test_web.py`", tasks[3]["description"])
+        self.assertEqual(blueprint["edges"][0], {"from": "inspect-ui-shell", "to": "upgrade-primary-surface"})
 
     def test_run_turn_sanitizes_replay_json_error_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

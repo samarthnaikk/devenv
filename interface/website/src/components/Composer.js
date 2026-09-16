@@ -1,9 +1,10 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 import { useApp } from "../context/AppContext.js";
-import { formatDuration } from "../utils/format.js";
+import { formatBackendLabel, formatDuration } from "../utils/format.js";
 import { ToolPicker } from "./ToolPicker.js?v=popup3";
 import { validatePlanBlueprint } from "../utils/validation.js";
-import { extractPlanBlueprint, READ_ONLY_PLAN_TOOLS, shouldDisplayPlanResult } from "../utils/plans.js";
+import { buildPlanModePrompt, extractPlanBlueprint, READ_ONLY_PLAN_TOOLS, shouldDisplayPlanResult } from "../utils/plans.js";
+import { BeamFrame, MetalSurface, MotionReveal, MotionShimmerText, MotionStack, MotionSwap } from "./MotionPrimitives.js";
 
 export function Composer() {
   const { state, dispatch } = useApp();
@@ -13,6 +14,13 @@ export function Composer() {
   const isDisabled = isCoolingDown || isBudgetBlocked;
   const pendingThinking = [...state.transcript].reverse().find((entry) => entry.role === "thinking" && entry.pending);
   const replyTarget = state.replyTarget;
+  const pendingRunMode = state.isRunning
+    ? state.pendingRunMode
+    : inferPendingRunMode({
+        prompt: state.prompt,
+        selectedTools: state.selectedTools,
+        planMode: state.planMode,
+      });
 
   const placeholder = isCoolingDown
     ? `Cooldown active. Input unlocks in ${formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))}.`
@@ -46,19 +54,31 @@ export function Composer() {
 
     dispatch({ type: "SET_IS_RUNNING", payload: true });
     dispatch({ type: "SET_RUN_STARTED_AT", payload: Date.now() });
-    dispatch({ type: "SET_PENDING_RUN_MODE", payload: inferPendingRunMode(originalPrompt) });
+    dispatch({
+      type: "SET_PENDING_RUN_MODE",
+      payload: inferPendingRunMode({
+        prompt: originalPrompt,
+        selectedTools: state.selectedTools,
+        planMode: state.planMode,
+      }),
+    });
     dispatch({ type: "SET_TOOL_PICKER_OPEN", payload: false });
     dispatch({ type: "SET_PROMPT", payload: "" });
     dispatch({ type: "SET_REPLY_TARGET", payload: null });
 
     const thinkingId = `thinking-${Date.now()}`;
-    const pendingLogs = state.pendingRunMode === "web"
+    const pendingRunMode = inferPendingRunMode({
+      prompt: originalPrompt,
+      selectedTools: state.selectedTools,
+      planMode: state.planMode,
+    });
+    const pendingLogs = pendingRunMode === "web"
       ? [
           { source: "tool_call", message: "tool: web_search" },
           { source: "web_search", message: `query: ${originalPrompt}` },
           { source: "ai", message: "Checking live sources for the latest answer" },
         ]
-      : state.pendingRunMode === "knowledge"
+      : pendingRunMode === "knowledge"
         ? [
             { source: "tool_call", message: "tool: knowledge_search" },
             { source: "knowledge_search", message: `query: ${originalPrompt}` },
@@ -88,7 +108,7 @@ export function Composer() {
         try {
           result = planOnlyMode
             ? await runPlan({
-                prompt: requestPrompt,
+                prompt: buildPlanModePrompt(requestPrompt),
                 selectedTools: READ_ONLY_PLAN_TOOLS,
                 backendPreference: state.preferredBackend || "opencode",
               })
@@ -175,6 +195,13 @@ export function Composer() {
             id: `plan-error-${Date.now()}`,
             role: "error",
             content: `Plan mode expected a valid multi-node flowchart JSON response, but the UI could not render it.\n\nLast error: ${planValidationError}`,
+            diagnostics: buildMessageDiagnostics({
+              result,
+              pendingRunMode,
+              planOnlyMode,
+              overrideSourceLabel: "Plan render issue",
+              overrideDetail: planValidationError,
+            }),
           },
         });
       }
@@ -190,6 +217,13 @@ export function Composer() {
             id: `assistant-${Date.now()}`,
             role: result?.error_message ? "error" : "assistant",
             content: visibleAssistantResponse,
+            diagnostics: buildMessageDiagnostics({
+              result,
+              pendingRunMode,
+              planOnlyMode,
+              overrideSourceLabel: result?.error_message ? "Runtime issue" : null,
+              overrideDetail: result?.error_message || null,
+            }),
           },
         });
       }
@@ -211,6 +245,13 @@ export function Composer() {
           id: `assistant-${Date.now()}`,
           role: parsedRateLimit ? "error" : "assistant",
           content: parsedRateLimit ? "Rate limit reached while checking Devenv memory." : `Request failed: ${error.message}`,
+          diagnostics: buildFailureDiagnostics({
+            error,
+            pendingRunMode,
+            planOnlyMode: Boolean(state.planMode),
+            preferredBackend: state.preferredBackend || state.activeBackend || "opencode",
+            parsedRateLimit,
+          }),
         },
       });
       if (parsedRateLimit) {
@@ -218,7 +259,7 @@ export function Composer() {
       }
     } finally {
       dispatch({ type: "SET_IS_RUNNING", payload: false });
-      dispatch({ type: "SET_PENDING_RUN_MODE", payload: "memory" });
+      dispatch({ type: "SET_PENDING_RUN_MODE", payload: "direct" });
     }
   };
 
@@ -228,67 +269,95 @@ export function Composer() {
     }
   }, [state.prompt]);
 
+  React.useEffect(() => {
+    const handler = () => {
+      if (!textareaRef.current) return;
+      textareaRef.current.focus();
+      const length = textareaRef.current.value.length;
+      textareaRef.current.setSelectionRange(length, length);
+    };
+    window.addEventListener("opencode-suggestion", handler);
+    return () => window.removeEventListener("opencode-suggestion", handler);
+  }, []);
+
   return React.createElement(
     "form",
     {
-      className: "p-margin-desktop bg-surface-container-low border-t border-outline-variant",
+      className: "composer-shell p-margin-desktop bg-surface-container-low border-t border-outline-variant",
       onSubmit: handleSubmit,
     },
     React.createElement(
       "div",
-      { className: "max-w-4xl mx-auto flex flex-col gap-3" },
+      { className: "composer-inner flex flex-col gap-3" },
       React.createElement(
-        "div",
-        { className: "relative inset-terminal rounded-xl border border-outline-variant p-4 focus-within:border-primary transition-all" },
+        BeamFrame,
+        {
+          active: state.isRunning,
+          tone: pendingThinking ? "ocean" : "mono",
+          className: "composer-frame relative inset-terminal rounded-[26px] border border-outline-variant p-4",
+        },
         replyTarget
           ? React.createElement(
-              "div",
-              { className: "mb-3 flex items-start gap-3 rounded-xl border border-primary/30 bg-surface-container px-3 py-2" },
-              React.createElement("span", { className: "material-symbols-outlined text-primary text-[16px] mt-0.5" }, "reply"),
+              MotionReveal,
+              { className: "mb-3" },
               React.createElement(
-                "div",
-                { className: "min-w-0 flex-1" },
-                React.createElement("div", { className: "font-label-caps text-label-caps text-primary" }, `Replying to ${replyTarget.author}`),
-                React.createElement("div", { className: "truncate text-[12px] text-on-surface-variant" }, replyTarget.excerpt)
-              ),
-              React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "rounded-full p-1 text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface",
-                  onClick: () => dispatch({ type: "SET_REPLY_TARGET", payload: null }),
-                  title: "Clear reply",
-                },
-                React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "close")
+                MetalSurface,
+                { className: "composer-reply flex items-start gap-3 rounded-2xl border border-primary/30 bg-surface-container px-3 py-2" },
+                React.createElement("span", { className: "material-symbols-outlined text-primary text-[16px] mt-0.5" }, "reply"),
+                React.createElement(
+                  "div",
+                  { className: "min-w-0 flex-1" },
+                  React.createElement("div", { className: "font-label-caps text-label-caps text-primary" }, `Replying to ${replyTarget.author}`),
+                  React.createElement("div", { className: "truncate text-[12px] text-on-surface-variant" }, replyTarget.excerpt)
+                ),
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "rounded-full p-1 text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface",
+                    onClick: () => dispatch({ type: "SET_REPLY_TARGET", payload: null }),
+                    title: "Clear reply",
+                  },
+                  React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "close")
+                )
               )
             )
           : null,
-        React.createElement("textarea", {
-          ref: textareaRef,
-          className: "w-full bg-transparent border-none focus:ring-0 font-body-md text-body-md text-on-surface resize-none h-20 placeholder:text-outline outline-none",
-          placeholder,
-          disabled: isDisabled,
-          value: state.prompt,
-          onChange: handleInput,
-          onKeyDown: handleKeyDown,
-        }),
         React.createElement(
           "div",
-          { className: "flex justify-between items-center mt-2 pt-2 border-t border-outline-variant/30" },
+          { className: "composer-input-shell" },
+          React.createElement("textarea", {
+            ref: textareaRef,
+            className: "composer-input w-full bg-transparent border-none focus:ring-0 font-body-md text-body-md text-on-surface resize-none h-20 placeholder:text-outline outline-none",
+            placeholder,
+            disabled: isDisabled,
+            value: state.prompt,
+            onChange: handleInput,
+            onKeyDown: handleKeyDown,
+          })
+        ),
+        React.createElement(
+          "div",
+          { className: "composer-toolbar flex justify-between items-center mt-2 pt-2 border-t border-outline-variant/30" },
           React.createElement(
             "div",
-            { className: "flex items-center gap-2" },
+            { className: "composer-toolbar-left flex items-center gap-2" },
             React.createElement(ToolPicker, null)
           ),
           React.createElement(
             "button",
             {
               type: "submit",
-              className: "px-6 py-2 bg-primary text-on-primary rounded-full font-label-caps text-label-caps font-bold hover:opacity-90 transition-opacity",
+              className: "composer-submit px-6 py-2 rounded-full font-label-caps text-label-caps font-bold",
               disabled: state.isRunning || isDisabled || !state.prompt.trim(),
             },
             state.isRunning
-              ? `Searching${".".repeat((Math.floor(Date.now() / 350) % 3) + 1)}`
+              ? React.createElement(
+                  MotionSwap,
+                  { className: "items-center gap-2" },
+                  React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, pendingRunMode === "knowledge" ? "hub" : pendingRunMode === "web" ? "public" : "bolt"),
+                  React.createElement(MotionShimmerText, { className: "composer-submit-copy" }, runningVerbForMode(pendingRunMode))
+                )
               : isCoolingDown
                 ? formatDuration(Math.max(state.rateLimitInfo.resetAt - state.clock, 0))
                 : isBudgetBlocked
@@ -297,7 +366,7 @@ export function Composer() {
           )
         ),
         state.isRunning && pendingThinking
-          ? React.createElement("div", { className: "mt-2" }, renderRunningTicker(dispatch, state, pendingThinking))
+          ? React.createElement(MotionReveal, { className: "mt-2" }, renderRunningTicker(dispatch, state, pendingThinking))
           : null
       )
     )
@@ -343,12 +412,18 @@ function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function inferPendingRunMode(prompt) {
+function inferPendingRunMode({ prompt, selectedTools = [], planMode = false }) {
+  if (planMode) return "plan";
+  const toolSet = new Set(Array.isArray(selectedTools) ? selectedTools : []);
+  if (toolSet.has("knowledge_search")) return "knowledge";
+  if (toolSet.has("web_search")) return "web";
+  if (toolSet.size) return "direct";
   const lowered = String(prompt || "").toLowerCase();
   const webMarkers = ["today", "latest", "current", "currently", "recent", "president", "prime minister", "ceo", "who is"];
   const knowledgeMarkers = ["github", "repo", "reference", "references", "youtube", "reddit", "stackoverflow", "quora", "similar project", "find examples"];
   if (knowledgeMarkers.some((marker) => lowered.includes(marker))) return "knowledge";
-  return webMarkers.some((marker) => lowered.includes(marker)) ? "web" : "memory";
+  if (webMarkers.some((marker) => lowered.includes(marker))) return "web";
+  return "direct";
 }
 
 function formatThinkingFromResult(result) {
@@ -360,10 +435,12 @@ function formatThinkingFromResult(result) {
   const toolSteps = Array.isArray(result.steps) ? result.steps : [];
   if (!toolSteps.length && Array.isArray(result.stage_traces) && result.stage_traces.length) {
     for (const trace of result.stage_traces.slice(0, 5)) {
-      if (trace.summary) lines.push({ source: "ai", message: trace.summary });
+      const summary = summarizeStageTrace(trace);
+      if (summary) lines.push(summary);
       const traceLogs = Array.isArray(trace.logs) ? trace.logs : [];
       for (const log of traceLogs.slice(0, 2)) {
-        if (typeof log === "string" && log.trim()) lines.push({ source: "trace", message: log.trim() });
+        const normalizedLog = summarizeTraceLog(trace.stage, log);
+        if (normalizedLog) lines.push(normalizedLog);
       }
     }
   }
@@ -403,9 +480,93 @@ function formatThinkingFromResult(result) {
     if (step.output) lines.push({ source: "trace", message: step.output.split("\n")[0] });
   }
   if (!lines.length) {
-    lines.push({ source: "ai", message: result.final_response ? "Prepared the final answer" : "Checked Devenv context" });
+    lines.push({ source: "ai", message: result.final_response ? "Finished shaping the response" : "Checked Devenv context" });
   }
   return formatThinkingBlock(lines);
+}
+
+function summarizeStageTrace(trace) {
+  if (!trace || typeof trace !== "object") return null;
+  const stage = String(trace.stage || "").trim().toLowerCase();
+  const payload = trace.payload && typeof trace.payload === "object" ? trace.payload : {};
+  if (stage === "checkpoint_creation") {
+    const checkpointCount = Number(payload.checkpoint_count || 0);
+    const continued = Boolean(payload.continued);
+    return {
+      source: "ai",
+      message: continued
+        ? checkpointCount > 0
+          ? `Reused the active ${checkpointCount}-step execution plan`
+          : "Reused the active execution plan"
+        : checkpointCount > 0
+          ? `Mapped the request into ${checkpointCount} execution step${checkpointCount === 1 ? "" : "s"}`
+          : "Mapped the request into an execution plan",
+    };
+  }
+  if (stage === "context_memory") {
+    const workspaceFacts = Number(payload.workspace_fact_count || 0);
+    return {
+      source: "ai",
+      message: workspaceFacts > 0 ? "Built a grounded context packet from memory and workspace facts" : "Built a distilled context packet",
+    };
+  }
+  if (stage === "metadata") {
+    const touched = Array.isArray(payload.files_touched) ? payload.files_touched : [];
+    const destination = String(payload.output_destination || "").trim();
+    return {
+      source: "ai",
+      message: touched.length
+        ? `Recorded runtime output for ${touched.length} touched file${touched.length === 1 ? "" : "s"}`
+        : destination
+          ? `Recorded runtime output for ${destination.replaceAll("_", " ")}`
+          : "Recorded runtime output details",
+    };
+  }
+  if (stage === "verification") {
+    return {
+      source: "ai",
+      message: trace.success === false ? "Verification flagged an issue" : "Verified the runtime result",
+    };
+  }
+  if (stage === "brain") {
+    return {
+      source: "ai",
+      message: "Executed the active checkpoint",
+    };
+  }
+  if (typeof trace.summary === "string" && trace.summary.trim()) {
+    return { source: "ai", message: trace.summary.trim() };
+  }
+  return null;
+}
+
+function summarizeTraceLog(stage, log) {
+  const text = String(log || "").trim();
+  if (!text) return null;
+  const normalizedStage = String(stage || "").trim().toLowerCase();
+  if (normalizedStage === "metadata") {
+    if (/^Output destination:/i.test(text)) {
+      return { source: "trace", message: text.replace(/^Output destination:\s*/i, "Answer destination: ") };
+    }
+    if (/^Touched files:/i.test(text)) {
+      return { source: "trace", message: text.replace(/^Touched files:\s*/i, "Touched files recorded: ") };
+    }
+  }
+  if (normalizedStage === "context_memory") {
+    if (/^Checkpoint objective:/i.test(text)) {
+      return { source: "trace", message: text.replace(/^Checkpoint objective:\s*/i, "Focused on: ") };
+    }
+    if (/workspace scan/i.test(text)) {
+      return { source: "trace", message: "Scanned the workspace to ground the current step" };
+    }
+  }
+  if (normalizedStage === "checkpoint_creation" && /^Checkpoint count:/i.test(text)) {
+    return { source: "trace", message: text.replace(/^Checkpoint count:\s*/i, "Planned checkpoints: ") };
+  }
+  if (normalizedStage === "verification" && /non-empty answer returned/i.test(text)) {
+    return { source: "trace", message: "Verification confirmed the response was non-empty" };
+  }
+  return { source: "trace", message: text };
 }
 
 function extractKnowledgeResources(output) {
@@ -460,6 +621,124 @@ function buildRetrievalStatus(metadata) {
   };
 }
 
+function buildMessageDiagnostics({
+  result,
+  pendingRunMode,
+  planOnlyMode,
+  overrideSourceLabel = null,
+  overrideDetail = null,
+}) {
+  const metadata = result?.metadata || {};
+  const retrieval = buildRetrievalStatus(metadata);
+  const steps = Array.isArray(result?.steps) ? result.steps : [];
+  const backendRaw = result?.backend_used || metadata.backend_used || result?.backend || "local";
+  const backendLabel = backendRaw === "local" ? "Local runtime" : formatBackendLabel(backendRaw);
+  const hasWeb = pendingRunMode === "web" || steps.some((step) => step?.tool_name === "web_search");
+  const hasKnowledge = pendingRunMode === "knowledge" || steps.some((step) => step?.tool_name === "knowledge_search");
+  const toolCount = steps.filter((step) => step?.tool_name).length;
+  const localRuntime = String(metadata.backend_used || backendRaw) === "local";
+  const evidenceItems = extractEvidenceItems(steps);
+
+  let routeLabel = planOnlyMode ? "Plan mode" : "Direct route";
+  let sourceLabel = "Direct answer";
+  let detail = overrideDetail || retrieval.detail || "";
+
+  if (planOnlyMode) {
+    routeLabel = "Plan mode";
+    sourceLabel = "Execution plan";
+    detail = overrideDetail || "This turn stayed in plan mode and returned a renderable execution flow.";
+  } else if (hasWeb) {
+    routeLabel = "Web route";
+    sourceLabel = "Live web";
+    detail = overrideDetail || "This answer used fetched live-source results instead of relying on stale memory.";
+  } else if (hasKnowledge) {
+    routeLabel = "Knowledge route";
+    sourceLabel = "Reference search";
+    detail = overrideDetail || "This answer pulled external references such as repos, docs, or discussion threads.";
+  } else if (metadata.external_context_state === "reused_prior_context") {
+    routeLabel = "Memory route";
+    sourceLabel = "Prior context";
+    detail = overrideDetail || retrieval.detail || "A prior Devenv session was reused to answer this turn.";
+  } else if (metadata.external_context_state === "privacy_blocked") {
+    routeLabel = "Privacy route";
+    sourceLabel = "Memory blocked";
+    detail = overrideDetail || retrieval.detail || "Prior session memory was intentionally blocked for this turn.";
+  } else if (localRuntime && toolCount > 0) {
+    routeLabel = "Tool route";
+    sourceLabel = "Workspace tools";
+    detail = overrideDetail || "The runtime stayed local and answered from bounded workspace inspection.";
+  } else if (localRuntime) {
+    routeLabel = "Local route";
+    sourceLabel = "Local runtime";
+    detail = overrideDetail || "The runtime answered locally without handing the turn to a remote backend.";
+  }
+
+  return {
+    badgeLabel: planOnlyMode ? "Plan" : overrideSourceLabel ? "Issue" : "Answer",
+    kicker: overrideSourceLabel ? "runtime trace" : sourceLabel.toLowerCase(),
+    routeLabel,
+    backendLabel,
+    sourceLabel: overrideSourceLabel || sourceLabel,
+    toolLabel: toolCount ? `${toolCount} tool step${toolCount === 1 ? "" : "s"}` : "",
+    retrievalLabel: retrieval.label || "",
+    detail,
+    evidenceItems,
+  };
+}
+
+function buildFailureDiagnostics({
+  error,
+  pendingRunMode,
+  planOnlyMode,
+  preferredBackend,
+  parsedRateLimit,
+}) {
+  const routeLabel = planOnlyMode ? "Plan mode" : pendingRunMode === "web" ? "Web route" : pendingRunMode === "knowledge" ? "Knowledge route" : "Direct route";
+  const backendLabel = preferredBackend === "local" ? "Local runtime" : formatBackendLabel(preferredBackend || "opencode");
+  return {
+    badgeLabel: "Issue",
+    kicker: "runtime trace",
+    routeLabel,
+    backendLabel,
+    sourceLabel: parsedRateLimit ? "Rate limited" : "Runtime failure",
+    toolLabel: "",
+    retrievalLabel: "",
+    detail: parsedRateLimit ? "The backend hit a rate limit before the turn could finish." : String(error?.message || "The request failed before a normal answer was produced."),
+    evidenceItems: [],
+  };
+}
+
+function extractEvidenceItems(steps) {
+  const items = [];
+  for (const step of Array.isArray(steps) ? steps : []) {
+    if (!step || typeof step !== "object") continue;
+    if (step.tool_name === "web_search") {
+      const results = Array.isArray(step.data?.results) ? step.data.results : [];
+      for (const result of results.slice(0, 3)) {
+        const title = String(result?.title || result?.url || "Web result").trim();
+        const url = String(result?.url || "").trim();
+        if (!title || !url) continue;
+        items.push({ kind: "web", label: "Web", title, url, meta: "" });
+      }
+    }
+    if (step.tool_name === "knowledge_search") {
+      const resources = Array.isArray(step.data?.resources) ? step.data.resources : [];
+      for (const group of resources.slice(0, 3)) {
+        const source = String(group?.source || "Reference").trim();
+        const results = Array.isArray(group?.results) ? group.results : [];
+        for (const result of results.slice(0, 2)) {
+          const title = String(result?.title || result?.url || "Reference").trim();
+          const url = String(result?.url || "").trim();
+          if (!title || !url) continue;
+          items.push({ kind: "knowledge", label: source, title, url, meta: "" });
+        }
+      }
+    }
+    if (items.length >= 4) break;
+  }
+  return items.slice(0, 4);
+}
+
 const RUNNING_STATUS_FRAMES = [
   "Scanning stored sessions",
   "Matching prior projects",
@@ -482,6 +761,7 @@ const KNOWLEDGE_RUNNING_STATUS_FRAMES = [
 ];
 
 function renderRunningTicker(dispatch, state, pendingThinking) {
+  void dispatch;
   const clock = Date.now();
   const content = String(pendingThinking.content || "");
   const useKnowledge = state.pendingRunMode === "knowledge" || /knowledge_search|source:/i.test(content);
@@ -497,16 +777,16 @@ function renderRunningTicker(dispatch, state, pendingThinking) {
     frame = frames[Math.floor(clock / 1200) % frames.length];
   }
   return React.createElement(
-    "span",
-    { className: "inline-flex items-center gap-2 px-4 py-2 bg-surface-container rounded-full border border-outline-variant" },
+    MetalSurface,
+    { className: "composer-running inline-flex items-center gap-2 px-4 py-2 rounded-full border border-outline-variant" },
     React.createElement("span", { className: `material-symbols-outlined text-primary text-[16px] animate-pulse` }, useKnowledge ? "hub" : useGlobe ? "public" : "bolt"),
     React.createElement("span", { className: "font-body-md text-body-md text-on-surface" }, frame),
     React.createElement(
       "span",
       { className: "inline-flex gap-1" },
-      React.createElement("span", { className: "w-1 h-1 rounded-full bg-on-surface/25 animate-bounce", style: { animationDelay: "0s" } }),
-      React.createElement("span", { className: "w-1 h-1 rounded-full bg-on-surface/25 animate-bounce", style: { animationDelay: "0.18s" } }),
-      React.createElement("span", { className: "w-1 h-1 rounded-full bg-on-surface/25 animate-bounce", style: { animationDelay: "0.36s" } })
+      React.createElement("span", { className: "composer-running-dot animate-bounce", style: { animationDelay: "0s" } }),
+      React.createElement("span", { className: "composer-running-dot animate-bounce", style: { animationDelay: "0.18s" } }),
+      React.createElement("span", { className: "composer-running-dot animate-bounce", style: { animationDelay: "0.36s" } })
     )
   );
 }
@@ -535,4 +815,47 @@ function buildRuntimePrompt(prompt, replyTarget) {
 function autosizeComposer(textarea) {
   textarea.style.height = "0px";
   textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 72), 220)}px`;
+}
+
+function runningVerbForMode(mode) {
+  if (mode === "knowledge") return "Researching";
+  if (mode === "web") return "Searching";
+  return "Thinking";
+}
+
+function describeComposerState(state, { isCoolingDown, isBudgetBlocked }) {
+  if (isCoolingDown) return "Cooling down after a rate limit";
+  if (isBudgetBlocked) return "Session budget reached";
+  if (state.isRunning) return "Executing the current turn";
+  if (state.planMode) return "Will inspect the repo and return a flowchart before execution";
+  if (state.selectedTools.includes("track_symbol")) return "Biased toward tracing how a symbol moves through the codebase";
+  if (state.selectedTools.includes("inspect_symbols")) return "Biased toward definitions, exports, and structural code inspection";
+  if (state.selectedTools.includes("search_text")) return "Biased toward repo-wide string and usage search";
+  if (state.selectedTools.includes("read_file")) return "Biased toward opening exact files before answering";
+  if (state.selectedTools.includes("locate_files")) return "Biased toward finding the right files before deeper inspection";
+  if (state.selectedTools.includes("list_directory")) return "Biased toward mapping folders and workspace structure";
+  if (state.selectedTools.includes("knowledge_search")) return "Biased toward repos, docs, videos, and reference gathering";
+  if (state.selectedTools.includes("web_search")) return "Biased toward live web results and current facts";
+  if (state.selectedTools.includes("generate_pdf")) return "Biased toward producing a polished PDF artifact";
+  if (state.selectedTools.includes("generate_prompt")) return "Biased toward generating a stronger prompt output";
+  return "Auto-routes between memory, plan, tools, and live search";
+}
+
+function describeRouteChip(state) {
+  if (state.planMode) return "repo plan";
+  if (!state.selectedTools.length) return "auto route";
+  if (state.selectedTools.length === 1) {
+    const selected = state.selectedTools[0];
+    if (selected === "list_directory") return "files route";
+    if (selected === "locate_files") return "locate route";
+    if (selected === "read_file") return "read route";
+    if (selected === "search_text") return "search route";
+    if (selected === "inspect_symbols") return "symbols route";
+    if (selected === "track_symbol") return "trace route";
+    if (selected === "knowledge_search") return "knowledge route";
+    if (selected === "web_search") return "web route";
+    if (selected === "generate_pdf") return "pdf route";
+    if (selected === "generate_prompt") return "prompt route";
+  }
+  return `${state.selectedTools.length} routes`;
 }

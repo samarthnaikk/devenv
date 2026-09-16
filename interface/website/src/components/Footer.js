@@ -1,6 +1,8 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { formatBackendLabel } from "../utils/format.js";
+import { ThinkingOrb } from "./ThinkingOrb.js";
+import { BeamFrame, MotionDeck, MotionNumber, MotionShimmerText } from "./MotionPrimitives.js";
 
 export function Footer() {
   const { state } = useApp();
@@ -14,21 +16,70 @@ export function Footer() {
     ? `${formatBackendLabel(preferredBackend)} offline`
     : `${formatBackendLabel(state.activeBackend)} ready`;
   const modelLabel = state.healthMeta.selectedModelsByBackend?.[preferredBackend] || state.healthMeta.model || "";
+  const routeLabel = state.planMode ? "Plan" : !state.selectedTools.length ? "Auto" : `${state.selectedTools.length} route${state.selectedTools.length === 1 ? "" : "s"}`;
 
   return React.createElement(
     "footer",
-    { className: "p-4 bg-surface-container-highest border-t border-outline-variant flex justify-between items-center shrink-0" },
+    { className: "app-footer px-4 pb-4 pt-2 shrink-0" },
     React.createElement(
-      "div",
-      { className: "flex items-center gap-2" },
-      React.createElement("div", { className: `w-2 h-2 rounded-full ${state.isRunning ? "bg-primary glowing-pip animate-pulse" : "bg-primary glowing-pip"}` }),
+      BeamFrame,
+      { active: state.isRunning, tone: "mono", className: "app-footer-shell flex justify-between items-center rounded-[22px] px-4 py-3" },
+      React.createElement("span", { className: "app-footer-ribbon", "aria-hidden": "true" }),
+      React.createElement("span", { className: "app-footer-orbit", "aria-hidden": "true" }),
+      React.createElement("span", { className: "app-footer-gridline", "aria-hidden": "true" }),
       React.createElement(
         "div",
-        { className: "flex flex-col" },
-        React.createElement("span", { className: "font-label-caps text-[10px] text-on-surface" }, state.isRunning ? "Running" : backendReadyLabel),
-        React.createElement("span", { className: "font-code-sm text-[9px] text-on-surface-variant" }, modelLabel)
+        { className: "flex items-center gap-3" },
+        state.isRunning
+          ? React.createElement(ThinkingOrb, { state: state.pendingRunMode === "web" || state.pendingRunMode === "knowledge" ? "searching" : "working", size: 20, label: "Runtime process" })
+          : React.createElement("div", { className: "w-2 h-2 rounded-full bg-primary glowing-pip" }),
+        React.createElement(
+          "div",
+          { className: "flex flex-col" },
+          React.createElement("span", { className: "font-label-caps text-[10px] text-on-surface" }, state.isRunning ? "Running" : backendReadyLabel),
+          React.createElement(
+            MotionShimmerText,
+            { className: "font-code-sm text-[9px] text-on-surface-variant", active: state.isRunning },
+            modelLabel
+          )
+        )
+      ),
+      React.createElement(
+        "div",
+        { className: "app-footer-metrics" },
+        React.createElement(
+          MotionDeck,
+          { className: "app-footer-grid" },
+          footerMetric("Window", React.createElement(MotionNumber, { value: remainingLabel })),
+          footerMetric("Route", routeLabel),
+          footerMetric("Mode", state.isRunning ? "Live" : "Idle")
+        )
+      ),
+      React.createElement(
+        "div",
+        { className: "app-footer-lane" },
+        React.createElement(
+          "div",
+          { className: "app-footer-lane-runway" },
+          React.createElement("span", { className: "app-footer-lane-scan", "aria-hidden": "true" }),
+          React.createElement(
+            "div",
+            { className: "app-footer-lane-head" },
+            React.createElement("span", { className: `app-footer-lane-pip${state.isRunning ? " is-live" : ""}`, "aria-hidden": "true" }),
+            React.createElement("span", { className: "app-footer-lane-label" }, state.planMode ? "Plan lane" : "Run lane")
+          ),
+          React.createElement("span", { className: "app-footer-lane-copy" }, state.isRunning ? "Runtime is actively shaping this turn." : "Shell is ready for the next routed prompt.")
+        )
       )
-    ),
-    React.createElement("span", { className: "font-code-sm text-[10px] text-on-surface-variant" }, remainingLabel)
+    )
+  );
+}
+
+function footerMetric(label, value) {
+  return React.createElement(
+    "div",
+    { className: "app-footer-pill app-footer-metric" },
+    React.createElement("span", { className: "app-footer-metric-label" }, label),
+    React.createElement("strong", { className: "app-footer-metric-value" }, value)
   );
 }

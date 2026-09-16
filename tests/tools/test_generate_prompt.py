@@ -35,6 +35,14 @@ class GeneratePromptToolTest(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertEqual(result.data["status"], "unsupported")
 
+    def test_tool_rejects_invalid_output_format(self) -> None:
+        tool = GeneratePromptTool(context_builder=_FakeContextBuilder(), web_search_tool=_FakeWebSearchTool())
+
+        result = tool.execute(task="Build a feature", output_format="weird")
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.data["status"], "invalid_input")
+
     def test_tool_builds_prompt_from_context_and_web_hints(self) -> None:
         tool = GeneratePromptTool(context_builder=_FakeContextBuilder(), web_search_tool=_FakeWebSearchTool())
 
@@ -45,6 +53,16 @@ class GeneratePromptToolTest(unittest.TestCase):
         self.assertIn("Task: Build a feature", result.data["prompt"])
         self.assertIn("## Web Research Hints", result.data["prompt"])
         self.assertIn("## Output Contract", result.data["prompt"])
+
+    def test_tool_trims_provider_and_parses_session_ids(self) -> None:
+        tool = GeneratePromptTool(context_builder=_FakeContextBuilder(), web_search_tool=_FakeWebSearchTool())
+
+        result = tool.execute(task="Build a feature", provider=" codex ", session_ids="a, b ,,c", allow_memory="false")
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["provider"], "codex")
+        self.assertEqual(result.data["session_ids"], ["a", "b", "c"])
+        self.assertFalse(result.data["used_memory"])
 
 
 if __name__ == "__main__":

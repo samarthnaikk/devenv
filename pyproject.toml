@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "devenv-ai"
-version = "0.1.5"
+version = "0.1.6"
 description = "Local-first coding agent foundations."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -20,7 +20,11 @@ dependencies = [
     "lancedb>=0.16.0",
     "mcp[cli]>=1.28.0",
     "sentence-transformers>=3.0.0",
+    "textual>=8.2.8",
 ]
+
+[project.optional-dependencies]
+spacy = ["spacy>=3.7"]
 
 [project.scripts]
 devenv-run = "core.runtime.tui:main"

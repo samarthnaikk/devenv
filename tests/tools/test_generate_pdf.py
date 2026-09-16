@@ -73,6 +73,70 @@ class GeneratePDFToolTest(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.data["image_references"][0]["title"], "Chat UI mockup")
 
+    def test_execute_rejects_parent_traversal_output_path(self) -> None:
+        result = GeneratePDFTool().execute(
+            title="Demo PDF",
+            output_path="../escaped.pdf",
+            sections=[{"heading": "Summary", "body": "Professional output."}],
+        )
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.data["status"], "invalid_input")
+
+    def test_execute_rejects_absolute_output_path(self) -> None:
+        result = GeneratePDFTool().execute(
+            title="Demo PDF",
+            output_path="/tmp/escaped.pdf",
+            sections=[{"heading": "Summary", "body": "Professional output."}],
+        )
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.data["status"], "invalid_input")
+
+    @patch("shutil.which", side_effect=lambda name: "/usr/bin/pdflatex" if name == "pdflatex" else None)
+    @patch("subprocess.run")
+    def test_execute_resolves_relative_output_path_inside_workspace_root(self, mock_run, _mock_which) -> None:
+        def fake_run(command, cwd, capture_output, text, timeout, check):  # noqa: ARG001
+            pdf_path = Path(cwd) / "team-report.pdf"
+            pdf_path.write_bytes(b"%PDF-1.4\n")
+            return type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+        mock_run.side_effect = fake_run
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            result = GeneratePDFTool().execute(
+                title="Team Report",
+                output_path="output/pdf/team-report.pdf",
+                workspace_root=str(workspace),
+                sections=[{"heading": "Summary", "body": "Professional output."}],
+            )
+
+            self.assertTrue(result.success)
+            self.assertTrue((workspace / "output" / "pdf" / "team-report.pdf").is_file())
+
+    @patch("shutil.which", side_effect=lambda name: "/usr/bin/pdflatex" if name == "pdflatex" else None)
+    @patch("subprocess.run")
+    def test_execute_allows_absolute_output_path_within_workspace_root(self, mock_run, _mock_which) -> None:
+        def fake_run(command, cwd, capture_output, text, timeout, check):  # noqa: ARG001
+            pdf_path = Path(cwd) / "team-report.pdf"
+            pdf_path.write_bytes(b"%PDF-1.4\n")
+            return type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+        mock_run.side_effect = fake_run
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            result = GeneratePDFTool().execute(
+                title="Team Report",
+                output_path=str(workspace / "output" / "pdf" / "team-report.pdf"),
+                workspace_root=str(workspace),
+                sections=[{"heading": "Summary", "body": "Professional output."}],
+            )
+
+            self.assertTrue(result.success)
+            self.assertTrue((workspace / "output" / "pdf" / "team-report.pdf").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

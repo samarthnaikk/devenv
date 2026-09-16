@@ -1,6 +1,13 @@
-import React from "https://esm.sh/react@18.2.0";
-import ReactDOM from "https://esm.sh/react-dom@18.2.0/client";
+import React from "react";
+import ReactDOM from "react-dom/client";
 import { App } from "./App.js";
+
+try {
+  const storedTheme = window.localStorage.getItem("devenv-ui-theme");
+  document.body.dataset.theme = storedTheme === "light" ? "light" : "dark";
+} catch {
+  document.body.dataset.theme = "dark";
+}
 
 const rootElement = document.getElementById("root");
 const root = ReactDOM.createRoot(rootElement);

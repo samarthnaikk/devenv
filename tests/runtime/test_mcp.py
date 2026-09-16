@@ -1,18 +1,49 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import tempfile
 import unittest
 from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
+from typing import get_args
 from unittest.mock import patch
 
 from core.runtime.mcp_client import MCPToolClient
+from core.runtime.mcp_server import _annotation_for_property, _build_tool_wrapper
+from core.tools.generate_pdf import GeneratePDFTool
 
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "sample-test" / "tool-fixtures"
 SAMPLE_ROOT = Path(__file__).resolve().parents[2] / "sample-test"
+
+
+class MCPServerSchemaTest(unittest.TestCase):
+    def test_annotation_for_property_supports_boolean_and_array_fields(self) -> None:
+        keep_tex_annotation = _annotation_for_property(
+            "keep_tex",
+            {"type": "boolean", "description": "Keep the tex source."},
+            required=False,
+        )
+        sections_annotation = _annotation_for_property(
+            "sections",
+            {"type": "array", "items": {"type": "object"}},
+            required=True,
+        )
+
+        keep_tex_base = get_args(keep_tex_annotation)[0]
+        self.assertEqual(str(keep_tex_base), "bool | None")
+        self.assertEqual(str(sections_annotation), "list[dict[str, typing.Any]]")
+
+    def test_generate_pdf_wrapper_exposes_native_schema_types(self) -> None:
+        wrapper = _build_tool_wrapper(GeneratePDFTool())
+        signature = inspect.signature(wrapper)
+
+        sections_base = get_args(signature.parameters["sections"].annotation)[0]
+        keep_tex_base = get_args(signature.parameters["keep_tex"].annotation)[0]
+        self.assertEqual(str(sections_base), "list[dict[str, typing.Any]]")
+        self.assertEqual(str(keep_tex_base), "bool | None")
 
 
 @unittest.skipIf(importlib.util.find_spec("mcp") is None, "Optional mcp dependency is not installed")

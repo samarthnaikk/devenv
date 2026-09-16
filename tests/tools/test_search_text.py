@@ -25,6 +25,12 @@ class SearchTextToolTest(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.data["matches"][0]["relative_path"], "app/services/calendar_service.py")
 
+    def test_regex_mode_rejects_invalid_patterns_cleanly(self) -> None:
+        result = self.tool.execute(path=str(FIXTURE_ROOT), query="(", mode="regex")
+
+        self.assertFalse(result.success)
+        self.assertIn("Invalid regex pattern", result.output)
+
     def test_semantic_mode_returns_ranked_files(self) -> None:
         result = self.tool.execute(path=str(FIXTURE_ROOT), query="job scheduling backend", mode="semantic")
 

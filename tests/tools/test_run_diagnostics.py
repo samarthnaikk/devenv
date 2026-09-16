@@ -57,3 +57,18 @@ class RunDiagnosticsToolTest(unittest.TestCase):
 
         self.assertTrue(result.success)
         self.assertTrue(result.data["passed"])
+
+    def test_frontend_mode_accepts_non_calendar_bundle(self) -> None:
+        frontend_root = self.root / "frontend"
+        frontend_root.mkdir()
+        (frontend_root / "index.html").write_text(
+            '<link rel="stylesheet" href="styles.css" />\n<main><h1>Notes Studio</h1></main>\n<script src="script.js"></script>\n',
+            encoding="utf-8",
+        )
+        (frontend_root / "styles.css").write_text("body { color: #222; }\n", encoding="utf-8")
+        (frontend_root / "script.js").write_text("console.log('notes ready');\n", encoding="utf-8")
+
+        result = self.tool.execute(mode="frontend", target_path=str(frontend_root))
+
+        self.assertTrue(result.success)
+        self.assertTrue(result.data["passed"])

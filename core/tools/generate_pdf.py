@@ -65,6 +65,7 @@ class GeneratePDFTool(BaseTool):
         keep_tex = bool(kwargs.get("keep_tex"))
         output_path = str(kwargs.get("output_path") or "").strip()
         image_query = str(kwargs.get("image_query") or "").strip()
+        workspace_root = str(kwargs.get("workspace_root") or "").strip()
 
         latex_engine = shutil.which("pdflatex") or shutil.which("xelatex") or shutil.which("lualatex")
         if not latex_engine:
@@ -85,7 +86,13 @@ class GeneratePDFTool(BaseTool):
 
         file_stem = _slugify(Path(output_path).stem or title)
         relative_pdf_path = output_path or f"output/pdf/{file_stem}.pdf"
-        pdf_target = Path(relative_pdf_path)
+        pdf_target = _resolve_output_pdf_path(relative_pdf_path, workspace_root=workspace_root)
+        if pdf_target is None:
+            return ToolResult(
+                success=False,
+                output="output_path must stay within the workspace and use a relative .pdf path",
+                data={"status": "invalid_input"},
+            )
         tex_target = pdf_target.with_suffix(".tex")
         pdf_target.parent.mkdir(parents=True, exist_ok=True)
 
@@ -116,11 +123,18 @@ class GeneratePDFTool(BaseTool):
                     data={"status": "compile_failed", "log_excerpt": error_text[-3000:]},
                 )
 
-            pdf_target.write_bytes(compiled_pdf.read_bytes())
-            if keep_tex:
-                tex_target.write_text(latex_source, encoding="utf-8")
-            elif tex_target.exists():
-                tex_target.unlink()
+            try:
+                pdf_target.write_bytes(compiled_pdf.read_bytes())
+                if keep_tex:
+                    tex_target.write_text(latex_source, encoding="utf-8")
+                elif tex_target.exists():
+                    tex_target.unlink()
+            except OSError as exc:
+                return ToolResult(
+                    success=False,
+                    output=f"Failed to write PDF output: {exc}",
+                    data={"status": "write_failed"},
+                )
 
         output = f"Generated PDF at {pdf_target}"
         data = {
@@ -220,3 +234,18 @@ def _escape_latex(text: str) -> str:
 def _slugify(value: str) -> str:
     lowered = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
     return lowered or "document"
+
+
+def _resolve_output_pdf_path(output_path: str, *, workspace_root: str = "") -> Path | None:
+    workspace = Path(workspace_root).expanduser().resolve() if workspace_root else Path.cwd().resolve()
+    candidate = Path(output_path)
+    if candidate.is_absolute():
+        try:
+            candidate = candidate.expanduser().resolve().relative_to(workspace)
+        except ValueError:
+            return None
+    if any(part == ".." for part in candidate.parts):
+        return None
+    if candidate.suffix.lower() != ".pdf":
+        return None
+    return workspace / candidate

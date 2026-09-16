@@ -3,19 +3,20 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.error
+import urllib.request
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
-from urllib import error, request
 
 from core.ai.engine import DEFAULT_SYSTEM_INSTRUCTIONS
 from core.ai.models import AIBackendStatus, AIResponse, ToolCallRequest
 from core.tools.base import BaseTool
 
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
-DEFAULT_OLLAMA_MODEL = "qwen2.5:3b"
-DEFAULT_OLLAMA_KEEP_ALIVE = "2m"
+DEFAULT_OLLAMA_MODEL = ""
 DEFAULT_OLLAMA_NUM_CTX = 4096
+DEFAULT_OLLAMA_KEEP_ALIVE = "2m"
 PLAN_BLUEPRINT_JSON_SCHEMA = {
     "type": "object",
     "properties": {
@@ -46,6 +47,19 @@ PLAN_BLUEPRINT_JSON_SCHEMA = {
     },
     "required": ["tasks", "edges"],
 }
+TOOL_OR_FINAL_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "type": {
+            "type": "string",
+            "enum": ["tool_call", "final"],
+        },
+        "tool_name": {"type": "string"},
+        "arguments": {"type": "object"},
+        "content": {"type": "string"},
+    },
+    "required": ["type"],
+}
 
 
 class OllamaAICore:
@@ -62,10 +76,20 @@ class OllamaAICore:
         timeout_seconds: float = 60.0,
     ) -> None:
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
-        self.model = model or os.getenv("DEVENV_OLLAMA_MODEL") or DEFAULT_OLLAMA_MODEL
-        self.base_url = (base_url or os.getenv("DEVENV_OLLAMA_BASE_URL") or DEFAULT_OLLAMA_BASE_URL).rstrip("/")
+        self.base_url = (
+            base_url
+            or os.getenv("OLLAMA_HOST")
+            or os.getenv("DEVENV_OLLAMA_BASE_URL")
+            or DEFAULT_OLLAMA_BASE_URL
+        ).rstrip("/")
+        self.model = (
+            model
+            or os.getenv("DEVENV_OLLAMA_MODEL")
+            or DEFAULT_OLLAMA_MODEL
+        ).strip()
         self.system_instructions = system_instructions.strip()
         self.timeout_seconds = timeout_seconds
+        self.performance_mode = "medium"
         self.last_backend_used = "ollama"
         self.last_backend_reason = ""
         self.last_backend_fallback = ""
@@ -78,6 +102,11 @@ class OllamaAICore:
     def set_model(self, model: str) -> None:
         self.model = model.strip()
 
+    def set_performance_mode(self, performance_mode: str) -> None:
+        cleaned = str(performance_mode or "").strip().lower()
+        if cleaned in {"low", "medium", "high"}:
+            self.performance_mode = cleaned
+
     def reset_session(self) -> None:
         return None
 
@@ -85,16 +114,50 @@ class OllamaAICore:
         return False
 
     def status(self) -> AIBackendStatus:
+        profile = self._performance_profile()
         try:
             models = self.list_models()
-            detail = f"Ollama reachable at {self.base_url}."
-            self.last_error = ""
-            available = True
         except RuntimeError as exc:
-            models = []
-            detail = str(exc)
-            self.last_error = detail
+            detail = str(exc).strip() or f"Ollama is not running at {self.base_url}."
+            if self.last_error:
+                detail = self.last_error
+            return AIBackendStatus(
+                name="ollama",
+                available=False,
+                enabled=True,
+                model=self.model,
+                detail=detail,
+                supports_tool_calls=True,
+                metadata={
+                    "runtime": "ollama",
+                    "transport": "http_api",
+                    "base_url": self.base_url,
+                    "models": [],
+                    "keep_alive": profile["keep_alive"],
+                    "threads": profile["threads"],
+                    "ctx_size": profile["ctx_size"],
+                    "last_error": self.last_error or detail,
+                },
+            )
+
+        detail = f"Ollama reachable at {self.base_url}."
+        available = True
+        if self.model and self.model not in models:
+            detail = (
+                f"Selected Ollama model `{self.model}` is not installed. "
+                f"Available models: {', '.join(models[:6]) or 'none'}."
+            )
             available = False
+        elif self.model:
+            detail = f"Ollama reachable at {self.base_url} with model `{self.model}`."
+        elif models:
+            detail = f"Ollama reachable at {self.base_url} with models: {', '.join(models[:4])}."
+        else:
+            detail = f"Ollama reachable at {self.base_url}, but no models are installed."
+            available = False
+
+        if self.last_error and available:
+            self.last_error = ""
         return AIBackendStatus(
             name="ollama",
             available=available,
@@ -103,30 +166,27 @@ class OllamaAICore:
             detail=detail,
             supports_tool_calls=True,
             metadata={
+                "runtime": "ollama",
+                "transport": "http_api",
                 "base_url": self.base_url,
                 "models": models,
-                "keep_alive": DEFAULT_OLLAMA_KEEP_ALIVE,
-                "num_ctx": DEFAULT_OLLAMA_NUM_CTX,
-                "num_thread": _default_num_threads(),
+                "keep_alive": profile["keep_alive"],
+                "threads": profile["threads"],
+                "ctx_size": profile["ctx_size"],
                 "last_error": self.last_error,
             },
         )
 
     def list_models(self) -> list[str]:
-        payload = self._request_json("/api/tags", {"Content-Type": "application/json"})
-        models = payload.get("models")
-        if not isinstance(models, list):
-            return [self.model] if self.model else []
-        ordered: list[str] = []
-        for item in models:
-            if not isinstance(item, dict):
-                continue
-            name = str(item.get("name") or "").strip()
-            if name and name not in ordered:
-                ordered.append(name)
-        if self.model and self.model not in ordered:
-            ordered.insert(0, self.model)
-        return ordered
+        payload = self._request_json("GET", "/api/tags")
+        models: list[str] = []
+        for item in payload.get("models", []) or []:
+            name = str((item or {}).get("name") or "").strip()
+            if name and name not in models:
+                models.append(name)
+        if self.model and self.model not in models:
+            models.insert(0, self.model)
+        return models
 
     def chat(
         self,
@@ -136,36 +196,52 @@ class OllamaAICore:
         tool_names: Iterable[str] | None = None,
     ) -> AIResponse:
         resolved_tool_names = [name for name in (tool_names or ()) if name in self._tools]
+        selected_model = self.model.strip()
+        if not selected_model:
+            models = [name for name in self.list_models() if name]
+            if not models:
+                self.last_error = f"Ollama is reachable at {self.base_url}, but no local models are installed."
+                raise RuntimeError(self.last_error)
+            selected_model = models[0]
+            self.model = selected_model
+
+        prompt_messages = self._compile_messages(messages=messages, memory_context=memory_context, tool_names=resolved_tool_names)
+        schema: dict[str, Any] | None = None
         planner_json_mode = any(
             "PLANNER_OUTPUT_MODE: blueprint_json" in str(message.get("content") or "")
             for message in messages
         )
-        payload = {
-            "model": self.model,
-            "stream": True,
-            "keep_alive": os.getenv("DEVENV_OLLAMA_KEEP_ALIVE", DEFAULT_OLLAMA_KEEP_ALIVE),
-            "options": {
-                "temperature": temperature,
-                "num_ctx": _env_int("DEVENV_OLLAMA_NUM_CTX", DEFAULT_OLLAMA_NUM_CTX),
-                "num_thread": _env_int("DEVENV_OLLAMA_NUM_THREAD", _default_num_threads()),
-            },
-            "messages": self._compile_messages(
-                messages=messages,
-                memory_context=memory_context,
-                tool_names=resolved_tool_names,
-            ),
-        }
         if planner_json_mode:
-            payload["format"] = PLAN_BLUEPRINT_JSON_SCHEMA
+            schema = PLAN_BLUEPRINT_JSON_SCHEMA
         elif resolved_tool_names:
-            payload["format"] = "json"
-        streamed = self._stream_chat(payload)
+            schema = TOOL_OR_FINAL_JSON_SCHEMA
+
+        body = self._chat_request_body(
+            model=selected_model,
+            messages=prompt_messages,
+            temperature=temperature,
+            schema=schema,
+        )
+        try:
+            payload = self._request_json("POST", "/api/chat", body)
+        except RuntimeError as exc:
+            if schema is not None and _looks_like_schema_failure(str(exc)):
+                self.last_backend_fallback = "Ollama rejected structured format; retried with plain JSON mode."
+                body = self._chat_request_body(
+                    model=selected_model,
+                    messages=prompt_messages,
+                    temperature=temperature,
+                    schema="json",
+                )
+                payload = self._request_json("POST", "/api/chat", body)
+            else:
+                raise
+
+        content = str(((payload.get("message") or {}).get("content")) or "").strip()
+        usage = _extract_ollama_usage(payload)
         self.last_backend_used = "ollama"
-        self.last_backend_reason = f"Ollama model {self.model} handled the turn."
-        self.last_backend_fallback = ""
+        self.last_backend_reason = f"Ollama model {selected_model} handled the turn."
         self.last_error = ""
-        content = streamed["content"]
-        usage = streamed["usage"]
         if resolved_tool_names:
             parsed = _parse_structured_ollama_response(content, resolved_tool_names)
             if parsed is not None:
@@ -176,8 +252,11 @@ class OllamaAICore:
             usage=usage,
             backend="ollama",
             metadata={
-                "transport": "http_stream",
+                "runtime": "ollama",
+                "transport": "http_api",
                 "base_url": self.base_url,
+                "model": selected_model,
+                "performance_mode": self.performance_mode,
             },
         )
 
@@ -188,13 +267,13 @@ class OllamaAICore:
         memory_context: str | None,
         tool_names: list[str],
     ) -> list[dict[str, str]]:
-        compiled: list[dict[str, str]] = []
+        prepared: list[dict[str, str]] = []
         system_text = self.system_instructions or DEFAULT_SYSTEM_INSTRUCTIONS
+        planner_json_mode = any(
+            "PLANNER_OUTPUT_MODE: blueprint_json" in str(message.get("content") or "")
+            for message in messages
+        )
         if tool_names:
-            planner_json_mode = any(
-                "PLANNER_OUTPUT_MODE: blueprint_json" in str(message.get("content") or "")
-                for message in messages
-            )
             tool_payload = [
                 {
                     "name": tool.name,
@@ -219,96 +298,114 @@ class OllamaAICore:
                     f"Allowed tools: {', '.join(tool_names)}.",
                     "Use only one tool call at a time and only from the listed tools.",
                     "Do not say the tools are unavailable when the needed file inspection or file editing tools are listed above.",
-                    "For workspace code changes, inspect files with list_directory/read_file first, then use edit_file or write_file to make the change.",
                 ]
             )
-        compiled.append({"role": "system", "content": system_text})
         if memory_context and memory_context.strip():
-            compiled.append(
-                {
-                    "role": "system",
-                    "content": f"Retrieved memory context:\n{memory_context.strip()}",
-                }
-            )
+            system_text = "\n\n".join([system_text, "Memory context:", memory_context.strip()])
+        prepared.append({"role": "system", "content": system_text})
         for message in messages:
             role = str(message.get("role") or "user").strip().lower()
-            if role not in {"system", "user", "assistant"}:
+            if role not in {"system", "user", "assistant", "tool"}:
                 role = "user"
             content = str(message.get("content") or "").strip()
-            if not content:
-                continue
-            compiled.append({"role": role, "content": content})
-        return compiled
+            if content:
+                prepared.append({"role": role, "content": content})
+        return prepared
 
-    def _stream_chat(self, payload: dict[str, Any]) -> dict[str, Any]:
-        body = json.dumps(payload).encode("utf-8")
-        req = request.Request(
-            url=f"{self.base_url}/api/chat",
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/x-ndjson",
-                "User-Agent": "devenv/0.1",
+    def _chat_request_body(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        temperature: float,
+        schema: dict[str, Any] | str | None,
+    ) -> dict[str, Any]:
+        profile = self._performance_profile()
+        body: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "keep_alive": profile["keep_alive"],
+            "options": {
+                "temperature": max(float(temperature), 0.0),
+                "num_ctx": profile["ctx_size"],
+                "num_thread": profile["threads"],
+                "num_predict": profile["n_predict"],
             },
-            method="POST",
-        )
-        try:
-            with request.urlopen(req, timeout=self.timeout_seconds) as response:
-                chunks: list[str] = []
-                final_payload: dict[str, Any] | None = None
-                while True:
-                    raw_line = response.readline()
-                    if not raw_line:
-                        break
-                    line = raw_line.decode("utf-8", errors="replace").strip()
-                    if not line:
-                        continue
-                    event = json.loads(line)
-                    message = event.get("message")
-                    if isinstance(message, dict):
-                        content = message.get("content")
-                        if isinstance(content, str) and content:
-                            chunks.append(content)
-                    if event.get("done"):
-                        final_payload = event
-                        break
-                usage = _ollama_usage(final_payload or {})
-                return {"content": "".join(chunks).strip(), "usage": usage}
-        except error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            self.last_error = f"Ollama request failed with HTTP {exc.code}: {detail}"
-            raise RuntimeError(self.last_error) from exc
-        except error.URLError as exc:
-            reason = str(exc.reason)
-            self.last_error = (
-                f"Ollama is not running at {self.base_url}. Start Ollama and try again. ({reason})"
-            )
-            raise RuntimeError(self.last_error) from exc
+        }
+        if schema is not None:
+            body["format"] = schema
+        return body
 
-    def _request_json(self, path: str, headers: dict[str, str]) -> dict[str, Any]:
-        req = request.Request(
-            url=f"{self.base_url}{path}",
-            headers={
-                **headers,
-                "Accept": "application/json",
-                "User-Agent": "devenv/0.1",
-            },
-            method="GET",
-        )
+    def _request_json(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        url = f"{self.base_url}{path}"
+        data = None
+        headers = {"Accept": "application/json"}
+        if payload is not None:
+            data = json.dumps(payload).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        request = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            with request.urlopen(req, timeout=self.timeout_seconds) as response:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 raw = response.read().decode("utf-8")
-        except error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"Ollama request failed with HTTP {exc.code}: {detail}") from exc
-        except error.URLError as exc:
-            raise RuntimeError(
-                f"Ollama is not running at {self.base_url}. Start Ollama and try again. ({exc.reason})"
-            ) from exc
-        payload = json.loads(raw)
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace").strip()
+            self.last_error = f"Ollama request failed ({exc.code}): {detail or exc.reason}."
+            raise RuntimeError(self.last_error) from exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            self.last_error = f"Ollama is not running at {self.base_url}: {exc}."
+            raise RuntimeError(self.last_error) from exc
+        try:
+            payload = json.loads(raw or "{}")
+        except json.JSONDecodeError as exc:
+            self.last_error = "Ollama returned invalid JSON."
+            raise RuntimeError(self.last_error) from exc
         if not isinstance(payload, dict):
-            raise RuntimeError("Ollama returned a malformed response.")
+            self.last_error = "Ollama returned an unexpected response shape."
+            raise RuntimeError(self.last_error)
         return payload
+
+    def _performance_profile(self) -> dict[str, int | str]:
+        cpu_count = os.cpu_count() or 2
+        mode = self.performance_mode
+        if mode == "low":
+            return {
+                "threads": _env_int("DEVENV_OLLAMA_THREADS_LOW", 1),
+                "ctx_size": _env_int("DEVENV_OLLAMA_CTX_LOW", 2048),
+                "n_predict": _env_int("DEVENV_OLLAMA_N_PREDICT_LOW", 384),
+                "keep_alive": os.getenv("DEVENV_OLLAMA_KEEP_ALIVE_LOW", "90s").strip() or "90s",
+            }
+        if mode == "high":
+            return {
+                "threads": _env_int("DEVENV_OLLAMA_THREADS_HIGH", max(cpu_count // 2, 1)),
+                "ctx_size": _env_int("DEVENV_OLLAMA_CTX_HIGH", 8192),
+                "n_predict": _env_int("DEVENV_OLLAMA_N_PREDICT_HIGH", 1024),
+                "keep_alive": os.getenv("DEVENV_OLLAMA_KEEP_ALIVE_HIGH", "10m").strip() or "10m",
+            }
+        return {
+            "threads": _env_int("DEVENV_OLLAMA_THREADS_MEDIUM", max(cpu_count // 3, 1)),
+            "ctx_size": _env_int("DEVENV_OLLAMA_CTX_MEDIUM", DEFAULT_OLLAMA_NUM_CTX),
+            "n_predict": _env_int("DEVENV_OLLAMA_N_PREDICT_MEDIUM", 768),
+            "keep_alive": os.getenv("DEVENV_OLLAMA_KEEP_ALIVE_MEDIUM", DEFAULT_OLLAMA_KEEP_ALIVE).strip() or DEFAULT_OLLAMA_KEEP_ALIVE,
+        }
+
+
+def _extract_ollama_usage(payload: dict[str, Any]) -> dict[str, int]:
+    usage: dict[str, int] = {}
+    prompt_tokens = payload.get("prompt_eval_count")
+    completion_tokens = payload.get("eval_count")
+    if isinstance(prompt_tokens, int):
+        usage["prompt_tokens"] = prompt_tokens
+    if isinstance(completion_tokens, int):
+        usage["completion_tokens"] = completion_tokens
+    if usage:
+        usage["total_tokens"] = usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
+    return usage
 
 
 def _parse_structured_ollama_response(
@@ -330,7 +427,7 @@ def _parse_structured_ollama_response(
             finish_reason="tool_calls",
             usage={},
             backend="ollama",
-            metadata={"transport": "http_stream"},
+            metadata={"transport": "http_api", "runtime": "ollama"},
         )
     if "tasks" in payload or "nodes" in payload:
         return AIResponse(
@@ -338,7 +435,7 @@ def _parse_structured_ollama_response(
             finish_reason="stop",
             usage={},
             backend="ollama",
-            metadata={"transport": "http_stream"},
+            metadata={"transport": "http_api", "runtime": "ollama"},
         )
     final_content = str(payload.get("content") or "").strip()
     return AIResponse(
@@ -346,7 +443,7 @@ def _parse_structured_ollama_response(
         finish_reason="stop",
         usage={},
         backend="ollama",
-        metadata={"transport": "http_stream"},
+        metadata={"transport": "http_api", "runtime": "ollama"},
     )
 
 
@@ -376,24 +473,6 @@ def _normalize_relaxed_json_object(payload: Any) -> dict[str, Any] | None:
     return normalized
 
 
-def _ollama_usage(payload: dict[str, Any]) -> dict[str, int]:
-    usage: dict[str, int] = {}
-    prompt_eval_count = payload.get("prompt_eval_count")
-    eval_count = payload.get("eval_count")
-    if isinstance(prompt_eval_count, int):
-        usage["prompt_tokens"] = prompt_eval_count
-    if isinstance(eval_count, int):
-        usage["completion_tokens"] = eval_count
-    if isinstance(prompt_eval_count, int) and isinstance(eval_count, int):
-        usage["total_tokens"] = prompt_eval_count + eval_count
-    return usage
-
-
-def _default_num_threads() -> int:
-    cpu_count = os.cpu_count() or 2
-    return max(cpu_count // 2, 1)
-
-
 def _env_int(name: str, default: int) -> int:
     raw = os.getenv(name, "").strip()
     if not raw:
@@ -402,3 +481,10 @@ def _env_int(name: str, default: int) -> int:
         return max(int(raw), 1)
     except ValueError:
         return default
+
+
+def _looks_like_schema_failure(detail: str) -> bool:
+    lowered = str(detail or "").lower()
+    return "format" in lowered and any(
+        marker in lowered for marker in ("unsupported", "invalid", "schema", "json")
+    )

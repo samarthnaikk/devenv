@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
 from pathlib import Path
@@ -24,6 +25,8 @@ from .storage import SQLiteMemoryStore
 from .retrieval import RetrievalService
 from .vector_index import LanceDBVectorIndex, VectorIndex
 from .working_memory import WorkingMemoryManager
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryEngine(MemoryEngineInterface):
@@ -56,6 +59,7 @@ class MemoryEngine(MemoryEngineInterface):
             extractor=extractor,
         )
         self._last_trace = RetrievalTrace()
+        self.card_retriever = None
 
     def add_episodic_log(
         self,
@@ -74,8 +78,43 @@ class MemoryEngine(MemoryEngineInterface):
             raw_interaction=json.dumps(interaction.__dict__, sort_keys=True),
         )
         self.store.insert_log(log)
-        self._index_episodic_log(log=log, interaction=interaction)
+        try:
+            self._index_episodic_log(log=log, interaction=interaction)
+        except Exception as exc:
+            logger.warning("Failed to index episodic log in vector memory: log_id=%s error=%s", log_id, exc)
         return log_id
+
+    def retrieve_cards(self, query: str, *, lanes: list[str] | None = None, top_k: int = 8):
+        retriever = self._card_retriever()
+        if retriever is None:
+            return []
+        lane_queries = [lane for lane in (lanes or [query]) if lane and lane.strip()]
+        if not lane_queries:
+            lane_queries = [query]
+        try:
+            return retriever.retrieve(lane_queries, top_k=top_k)
+        except Exception:
+            return []
+
+    def _card_retriever(self):
+        if self.card_retriever is not None:
+            return self.card_retriever or None
+        try:
+            from .card_retrieval import CardRetriever
+            from .embeddings import build_card_embedder
+            from .vector_index import InMemoryVectorIndex, LanceDBVectorIndex
+
+            embedder = build_card_embedder()
+            if isinstance(self.vector_index, InMemoryVectorIndex):
+                index = InMemoryVectorIndex()
+            else:
+                index = LanceDBVectorIndex(
+                    vector_dir=self.vector_dir, table_name="interaction_cards", dimension=embedder.dimension
+                )
+            self.card_retriever = CardRetriever(self.store, index, embedder=embedder)
+        except Exception:
+            self.card_retriever = False
+        return self.card_retriever or None
 
     def retrieve_context(self, current_prompt: str, top_k: int = 5) -> RetrievalResult:
         result = self.retrieval_service.retrieve(current_prompt=current_prompt, top_k=top_k)

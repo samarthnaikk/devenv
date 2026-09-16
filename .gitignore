@@ -24,6 +24,8 @@ lib/
 !interface/website/src/lib/**
 lib64/
 parts/
+!core/runtime/kernels/parts/
+!core/runtime/kernels/parts/*.py
 sdist/
 var/
 wheels/
@@ -58,6 +60,9 @@ htmlcov/
 # Packaging and lock/local state
 pip-log.txt
 pip-delete-this-directory.txt
+package-lock.json
+.devenv-runtime-state.json
+.devenv/
 
 # IDE/editor
 .vscode/
@@ -96,5 +101,7 @@ memory.db
 *.sqlite
 *.sqlite3
 vectors/
+interface/website/node_modules/
 interface/website/dash.html
 stitch_devenv_*
+codereferences

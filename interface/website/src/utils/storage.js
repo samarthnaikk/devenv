@@ -5,12 +5,17 @@ const STORAGE_MODELS_KEY = "devenv-ui-models";
 const STORAGE_SETUP_KEY = "devenv-ui-setup";
 
 export function loadTheme() {
-  return "dark";
+  try {
+    const stored = window.localStorage.getItem(STORAGE_THEME_KEY);
+    return stored === "light" ? "light" : "dark";
+  } catch {
+    return "dark";
+  }
 }
 
 export function persistTheme(theme) {
   try {
-    window.localStorage.setItem(STORAGE_THEME_KEY, "dark");
+    window.localStorage.setItem(STORAGE_THEME_KEY, theme === "dark" ? "dark" : "light");
   } catch {}
 }
 

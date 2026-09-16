@@ -42,6 +42,50 @@ class EpisodicLog:
 
 
 @dataclass(frozen=True)
+class ExternalSessionEmbedding:
+    unified_session_id: str
+    provider: str
+    session_id: str
+    content_hash: str
+    embedding: tuple[float, ...]
+    title: str = ""
+    workspace_path: str | None = None
+    source_path: str | None = None
+    updated_at: str = ""
+    indexed_at: float = 0.0
+    content_text: str = ""
+
+
+@dataclass(frozen=True)
+class ExternalSessionChunkEmbedding:
+    unified_session_id: str
+    provider: str
+    session_id: str
+    chunk_index: int
+    content_hash: str
+    embedding: tuple[float, ...]
+    role: str = ""
+    source: str = ""
+    text: str = ""
+    indexed_at: float = 0.0
+
+
+@dataclass(frozen=True)
+class InteractionCard:
+    card_id: str
+    provider: str
+    session_id: str
+    project: str
+    workspace_path: str | None
+    turn_index: int
+    intent_text: str
+    answer_text: str
+    ts: str
+    content_hash: str
+    search_text: str = ""
+
+
+@dataclass(frozen=True)
 class WorkingMemoryMessage:
     role: str
     content: str
@@ -132,4 +176,3 @@ class LogInteraction:
     user: str
     agent: str
     metadata: dict[str, Any] = field(default_factory=dict)
-

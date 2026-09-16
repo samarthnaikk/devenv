@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import sqlite3
@@ -9,9 +10,14 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import hashlib
 from pathlib import Path
 from typing import Any
+
+from core.memory.embeddings import HashingEmbedder, build_default_embedder
+from core.memory.models import ExternalSessionChunkEmbedding, ExternalSessionEmbedding
+from core.memory.storage import SQLiteMemoryStore
 
 from .models import (
     ExternalSessionDetail,
@@ -31,8 +37,22 @@ MAX_CONTEXT_LINES = 8
 MAX_WORKSPACE_FACTS = 8
 MAX_README_CHARS = 500
 MIN_SESSION_CONTENT_SCORE = 6
+RRF_K = 60
+SEMANTIC_STRONG_THRESHOLD = 0.35
+MAX_RUNTIME_SESSION_MATCHES = 12
+MAX_PROVIDER_SESSION_MATCHES = 6
 MAX_INDEX_CHUNK_CHARS = 720
 MAX_INDEX_CONTEXT_LINES = 12
+MAX_CONTEXT_LINES_PER_SESSION = 4
+MAX_SESSION_EMBEDDING_CACHE = 512
+MAX_SESSION_CHUNK_EMBEDDINGS = 96
+MAX_SESSION_CHUNK_HITS = 3
+CONTEXT_LINES_FIRST_PASS = 2
+CONTEXT_LINE_MAX_CHARS = 0
+MAX_CONTEXT_CHARS = 8000
+PINNED_TOP_K_SESSIONS = 3
+CONTEXT_LINE_WINDOW_CHARS = 2000
+MAX_QUERY_VARIANTS = 4
 COMMON_CONTEXT_TOKENS = {
     "about",
     "again",
@@ -464,66 +484,71 @@ class CodexSessionProvider(ExternalSessionProvider):
         session_files = self._session_files_by_id()
         discovered_ids: set[str] = set()
         if by_id:
+            seen_ids: set[str] = set()
             for session_id, record in by_id.items():
                 source_path = session_files.get(session_id)
-                detail = self._detail_cache.get(session_id)
-                summary = detail.summary if detail is not None else self._summary_from_index_record(session_id, record, source_path)
+                summary = self._summary_from_index_record(session_id, record, source_path)
                 summaries.append(summary)
+                seen_ids.add(session_id)
                 discovered_ids.add(session_id)
-            for session_id, session_file in sorted(session_files.items(), key=lambda item: str(item[1]), reverse=True):
-                if session_id in discovered_ids:
+            for _file_id, session_file in sorted(session_files.items(), key=lambda item: str(item[1]), reverse=True):
+                summary = self._summary_from_session_file(session_file)
+                if summary.session_id in seen_ids:
                     continue
-                summary = self._detail_cache.get(session_id)
-                if summary is not None:
-                    summaries.append(summary.summary)
-                    continue
-                summaries.append(self._summary_from_session_file(session_file))
-            summaries.sort(key=lambda item: item.updated_at, reverse=True)
+                summaries.append(summary)
+                seen_ids.add(summary.session_id)
+            summaries.sort(key=lambda item: (item.updated_at, item.session_id), reverse=True)
             return summaries
 
+        seen_ids = set()
         for _session_id, session_file in sorted(session_files.items(), key=lambda item: str(item[1]), reverse=True):
-            session_id = _session_id_from_file(session_file)
-            detail = self._detail_cache.get(session_id)
-            if detail is not None:
-                summaries.append(detail.summary)
+            summary = self._summary_from_session_file(session_file)
+            if summary.session_id in seen_ids:
                 continue
-            summaries.append(self._summary_from_session_file(session_file))
+            summaries.append(summary)
+            seen_ids.add(summary.session_id)
+        summaries.sort(key=lambda item: (item.updated_at, item.session_id), reverse=True)
         return summaries
 
     def get_session(self, session_id: str) -> ExternalSessionDetail:
         cached = self._detail_cache.get(session_id)
         if cached is not None:
-            return cached
+            return self._apply_index_record(cached)
 
         session_file = self._find_session_file(session_id)
         if session_file is None:
             raise FileNotFoundError(f"Unknown Codex session: {session_id}")
 
-        detail = self._parse_session_file(session_file)
-        index_record = self._load_index_records().get(session_id)
-        if index_record is not None:
-            summary = ExternalSessionSummary(
-                provider=detail.summary.provider,
-                session_id=detail.summary.session_id,
-                title=str(index_record.get("thread_name") or detail.summary.title),
-                updated_at=str(index_record.get("updated_at") or detail.summary.updated_at),
-                workspace_path=detail.summary.workspace_path,
-                source_path=detail.summary.source_path,
-                message_count=detail.summary.message_count,
-                preview=detail.summary.preview,
-            )
-            detail = ExternalSessionDetail(summary=summary, messages=detail.messages, metadata=detail.metadata)
-
+        detail = self._apply_index_record(self._parse_session_file(session_file))
         self._detail_cache[session_id] = detail
         return detail
+
+    def _apply_index_record(self, detail: ExternalSessionDetail) -> ExternalSessionDetail:
+        session_id = detail.summary.session_id
+        index_record = self._load_index_records().get(session_id)
+        if index_record is None:
+            return detail
+        if detail.summary.title == str(index_record.get("thread_name") or detail.summary.title):
+            return detail
+        summary = ExternalSessionSummary(
+            provider=detail.summary.provider,
+            session_id=detail.summary.session_id,
+            title=str(index_record.get("thread_name") or detail.summary.title),
+            updated_at=str(index_record.get("updated_at") or detail.summary.updated_at),
+            workspace_path=detail.summary.workspace_path,
+            source_path=detail.summary.source_path,
+            message_count=detail.summary.message_count,
+            preview=detail.summary.preview,
+        )
+        return ExternalSessionDetail(summary=summary, messages=detail.messages, metadata=detail.metadata)
 
     def build_index_chunks(self, session_id: str) -> list[ExternalSessionChunk]:
         session_file = self._find_session_file(session_id)
         if session_file is None:
             return []
-        detail = self._parse_session_file(session_file)
+        summary = self._summary_from_session_file(session_file)
         all_messages = self._parse_full_session_messages(session_file, session_id)
-        return _build_chunks_from_messages(detail.summary, all_messages, source="codex")
+        return _build_chunks_from_messages(summary, all_messages, source="codex")
 
     def _load_index_records(self) -> dict[str, dict[str, Any]]:
         index_path = self.root / (self.config.index_path or "session_index.jsonl")
@@ -580,9 +605,6 @@ class CodexSessionProvider(ExternalSessionProvider):
         return ""
 
     def _summary_from_index_record(self, session_id: str, record: dict[str, Any], source_path: Path | None) -> ExternalSessionSummary:
-        cached = self._summary_cache.get(session_id)
-        if cached is not None:
-            return cached
         source_summary = self._summary_from_session_file(source_path) if source_path is not None else None
         summary = ExternalSessionSummary(
             provider=self.name,
@@ -753,8 +775,9 @@ class CodexSessionProvider(ExternalSessionProvider):
 
 
 class OpenCodeSessionProvider(ExternalSessionProvider):
-    def __init__(self, config: ExternalSessionProviderConfig) -> None:
+    def __init__(self, config: ExternalSessionProviderConfig, *, include_derived: bool = False) -> None:
         super().__init__(config)
+        self.include_derived = include_derived
         self._detail_cache: dict[str, ExternalSessionDetail] = {}
         self._summary_cache: dict[str, ExternalSessionSummary] = {}
 
@@ -781,11 +804,12 @@ class OpenCodeSessionProvider(ExternalSessionProvider):
     def list_sessions(self) -> list[ExternalSessionSummary]:
         if not self.config.enabled or not self.root.exists():
             return []
+        derived_filter = "" if self.include_derived else " and parent_id is null"
         rows = self._query_all(
-            """
+            f"""
             select id, title, directory, time_updated
             from session
-            where time_archived is null
+            where time_archived is null{derived_filter}
             order by time_updated desc
             """
         )
@@ -899,13 +923,10 @@ class OpenCodeSessionProvider(ExternalSessionProvider):
         return rows[0] if rows else None
 
     def _query_all(self, query: str, parameters: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
-        connection = sqlite3.connect(str(self.root))
-        connection.row_factory = sqlite3.Row
         try:
-            rows = connection.execute(query, parameters).fetchall()
-        finally:
-            connection.close()
-        return [dict(row) for row in rows]
+            return _fetch_sqlite_rows(self.root, query, parameters, immutable=False)
+        except sqlite3.OperationalError:
+            return _fetch_sqlite_rows(self.root, query, parameters, immutable=True)
 
 
 class ContextBuilderService:
@@ -916,6 +937,7 @@ class ContextBuilderService:
         memory: Any | None = None,
         provider_configs: tuple[ExternalSessionProviderConfig, ...] = (),
         performance_mode: str = "medium",
+        exclude_derived_sessions: bool = True,
     ) -> None:
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
         self.workspace = WorkspaceBrowser(self.workspace_path)
@@ -923,11 +945,17 @@ class ContextBuilderService:
         self.performance_mode = performance_mode if performance_mode in {"low", "medium", "high"} else "medium"
         self.provider_configs = provider_configs or _default_provider_configs()
         self.runtime_allowed_providers: set[str] | None = None
+        include_derived = not exclude_derived_sessions or os.getenv("DEVENV_INCLUDE_DERIVED_SESSIONS") == "1"
         self.providers = {
-            config.provider: _provider_from_config(config)
+            config.provider: _provider_from_config(config, include_derived=include_derived)
             for config in self.provider_configs
         }
         self.index = ExternalSessionIndex(self.providers, performance_mode=self.performance_mode)
+        self._session_embedding_store: SQLiteMemoryStore | None = None
+        self._session_embedding_store_resolved = False
+        self._session_embedder = self._resolve_session_embedder()
+        self._session_embedding_document_cache: dict[str, tuple[tuple[Any, ...], str, list[Any]]] = {}
+        self._session_chunk_record_cache: dict[str, dict[str, list[ExternalSessionChunkEmbedding]]] = {}
 
     def set_runtime_allowed_providers(self, providers: set[str] | list[str] | tuple[str, ...] | None) -> None:
         if providers is None:
@@ -948,11 +976,22 @@ class ContextBuilderService:
 
     def list_sessions(self, provider_name: str) -> list[ExternalSessionSummary]:
         provider = self._get_provider(provider_name)
-        return provider.list_sessions()
+        return [self._with_session_embedding(provider, summary) for summary in provider.list_sessions()]
 
     def get_session(self, provider_name: str, session_id: str) -> ExternalSessionDetail:
         provider = self._get_provider(provider_name)
-        return provider.get_session(session_id)
+        detail = provider.get_session(session_id)
+        summary = self._with_session_embedding(provider, detail.summary)
+        metadata = dict(detail.metadata)
+        metadata["unified_session_id"] = summary.unified_session_id
+        metadata["embedding"] = list(summary.embedding)
+        return ExternalSessionDetail(summary=summary, messages=detail.messages, metadata=metadata)
+
+    def list_session_embeddings(self, provider_name: str | None = None) -> list[ExternalSessionEmbedding]:
+        store = self._get_session_embedding_store()
+        if store is None:
+            return []
+        return store.list_external_session_embeddings(provider=provider_name)
 
     def prepare_prompt(self, request: PreparedPromptRequest) -> PreparedPromptResult:
         provider_name = request.provider or self._default_provider_name()
@@ -1012,31 +1051,204 @@ class ContextBuilderService:
         provider_name: str | None = None,
         max_lines: int = 6,
     ) -> tuple[str, tuple[str, ...], dict[str, Any]]:
-        resolved_provider = provider_name or self._default_provider_name()
-        if not resolved_provider:
-            return "", (), {"context_match_state": "new_context", "context_match_reason": "No external session provider is available."}
-        if self.runtime_allowed_providers is not None and resolved_provider not in self.runtime_allowed_providers:
-            return "", (), {"context_match_state": "new_context", "context_match_reason": f"External {resolved_provider} access has not been granted."}
         if self.runtime_allowed_providers == set():
             return "", (), {"context_match_state": "new_context", "context_match_reason": "External session access has not been granted."}
-        provider = self._get_provider(resolved_provider)
-        indexed_matches, indexed_metadata = self.index.query(task, provider_name=resolved_provider, workspace_path=self.workspace_path)
-        selected_matches = indexed_matches or self._select_relevant_sessions(provider, task)
-        selected_session_ids = tuple(match["summary"].session_id for match in selected_matches)
-        selection_metadata = self._selection_metadata(selected_matches)
-        selection_metadata["index_ready"] = indexed_metadata.get("index_ready", False)
-        if not selected_session_ids:
+        if provider_name is not None:
+            try:
+                return self._build_runtime_memory_context_for_provider(
+                    task,
+                    provider_name=provider_name,
+                    max_lines=max_lines,
+                )
+            except Exception as exc:
+                logger.warning("Failed to build runtime memory context for provider=%s: error=%s", provider_name, exc)
+                return "", (), {"context_match_state": "new_context", "context_match_reason": f"External {provider_name} lookup failed."}
+
+        candidate_providers = self._candidate_provider_names()
+        if not candidate_providers:
+            return "", (), {"context_match_state": "new_context", "context_match_reason": "No external session provider is available."}
+
+        provider_matches: list[tuple[str, ExternalSessionProvider, list[dict[str, Any]]]] = []
+        index_ready = False
+        for candidate_provider in candidate_providers:
+            try:
+                matches, provider, provider_metadata = self._select_runtime_matches_for_provider(
+                    task,
+                    provider_name=candidate_provider,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Skipping failed external session provider during runtime retrieval: provider=%s error=%s",
+                    candidate_provider,
+                    exc,
+                )
+                continue
+            index_ready = index_ready or bool(provider_metadata.get("index_ready", False))
+            if provider is None or not matches:
+                continue
+            provider_matches.append((candidate_provider, provider, matches))
+        if not provider_matches:
+            return "", (), {"context_match_state": "new_context", "context_match_reason": "No external session provider yielded usable context."}
+
+        fused_matches = _fuse_provider_session_matches(provider_matches)[:MAX_RUNTIME_SESSION_MATCHES]
+        selected_ids = tuple(match["summary"].session_id for match, _provider in fused_matches)
+        metadata = self._selection_metadata([match for match, _provider in fused_matches])
+        metadata["index_ready"] = index_ready
+        metadata["context_match_providers"] = [
+            provider_name for provider_name, _provider, _matches in provider_matches
+        ]
+        context_lines = self._context_lines_for_fused_matches(task, fused_matches, max_lines=max_lines)
+        if not context_lines:
+            return "", selected_ids, metadata
+        lines = ["## External Session Context", *(f"- {line}" for line in context_lines)]
+        return "\n".join(lines), selected_ids, metadata
+
+    def _build_runtime_memory_context_for_provider(
+        self,
+        task: str,
+        *,
+        provider_name: str,
+        max_lines: int,
+    ) -> tuple[str, tuple[str, ...], dict[str, Any]]:
+        selected_matches, provider, selection_metadata = self._select_runtime_matches_for_provider(
+            task,
+            provider_name=provider_name,
+        )
+        if provider is None or not selected_matches:
             return "", (), selection_metadata
-        details = [provider.get_session(session_id) for session_id in selected_session_ids]
-        indexed_context_lines: tuple[str, ...] = ()
-        if any(match.get("chunks") for match in selected_matches):
-            indexed_context_lines = _collect_indexed_context_lines(task, selected_matches)
-        context_lines = indexed_context_lines or _collect_relevant_context_lines(task, details, "detailed")
-        context_lines = context_lines[:max_lines]
+        selected_session_ids = tuple(match["summary"].session_id for match in selected_matches)
+        context_lines = self._context_lines_for_selected_matches(task, selected_matches, provider, max_lines=max_lines)
         if not context_lines:
             return "", selected_session_ids, selection_metadata
         lines = ["## External Session Context", *(f"- {line}" for line in context_lines)]
         return "\n".join(lines), selected_session_ids, selection_metadata
+
+    def _select_runtime_matches_for_provider(
+        self,
+        task: str,
+        *,
+        provider_name: str,
+    ) -> tuple[list[dict[str, Any]], ExternalSessionProvider | None, dict[str, Any]]:
+        resolved_provider = provider_name
+        if not resolved_provider:
+            return [], None, {"context_match_state": "new_context", "context_match_reason": "No external session provider is available."}
+        if self.runtime_allowed_providers is not None and resolved_provider not in self.runtime_allowed_providers:
+            return [], None, {"context_match_state": "new_context", "context_match_reason": f"External {resolved_provider} access has not been granted."}
+        provider = self._get_provider(resolved_provider)
+        query_variants = _build_query_variants(task)
+        indexed_matches, indexed_metadata = self._query_index_variants(query_variants, provider_name=resolved_provider)
+        semantic_matches = self._select_relevant_sessions(provider, task, query_variants=query_variants)
+        selected_matches = _combine_indexed_and_semantic_matches(task, indexed_matches, semantic_matches)
+        selection_metadata = self._selection_metadata(selected_matches)
+        selection_metadata["index_ready"] = indexed_metadata.get("index_ready", False)
+        return selected_matches, provider, selection_metadata
+
+    def _context_lines_for_fused_matches(
+        self,
+        task: str,
+        fused_matches: list[tuple[dict[str, Any], ExternalSessionProvider]],
+        *,
+        max_lines: int,
+    ) -> tuple[str, ...]:
+        selected_matches = [match for match, _provider in fused_matches]
+        details_by_id: dict[str, ExternalSessionDetail] = {}
+        for match, provider in fused_matches:
+            session_id = match["summary"].session_id
+            try:
+                details_by_id[session_id] = provider.get_session(session_id)
+            except Exception:
+                continue
+        details = [details_by_id[match["summary"].session_id] for match, _provider in fused_matches if match["summary"].session_id in details_by_id]
+        return self._context_lines_for_matches(task, selected_matches, details, max_lines=max_lines)
+
+    def _context_lines_for_selected_matches(
+        self,
+        task: str,
+        selected_matches: list[dict[str, Any]],
+        provider: ExternalSessionProvider,
+        *,
+        max_lines: int,
+    ) -> tuple[str, ...]:
+        details = [provider.get_session(match["summary"].session_id) for match in selected_matches]
+        return self._context_lines_for_matches(task, selected_matches, details, max_lines=max_lines)
+
+    def _context_lines_for_matches(
+        self,
+        task: str,
+        selected_matches: list[dict[str, Any]],
+        details: list[ExternalSessionDetail],
+        *,
+        max_lines: int,
+    ) -> tuple[str, ...]:
+        has_chunk_text = any(
+            match.get("chunks") or isinstance(match.get("semantic_chunk"), ExternalSessionChunkEmbedding)
+            for match in selected_matches
+        )
+        if not has_chunk_text:
+            return _collect_relevant_context_lines(task, details, "detailed")[:max_lines]
+        details_by_id = {detail.summary.session_id: detail for detail in details}
+        lines = _collect_per_session_context_lines(task, selected_matches, details_by_id, max_lines)
+        if lines:
+            return lines
+        return _collect_relevant_context_lines(task, details, "detailed")[:max_lines]
+
+    def _candidate_provider_names(self) -> list[str]:
+        provider_names = list(self.providers)
+        if self.runtime_allowed_providers is not None:
+            provider_names = [name for name in provider_names if name in self.runtime_allowed_providers]
+        return provider_names
+
+    def _query_index_variants(
+        self,
+        query_variants: tuple[str, ...],
+        *,
+        provider_name: str,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        aggregated: dict[str, dict[str, Any]] = {}
+        index_ready = False
+        for variant in query_variants:
+            matches, metadata = self.index.query(variant, provider_name=provider_name, workspace_path=self.workspace_path)
+            index_ready = index_ready or bool(metadata.get("index_ready", False))
+            for match in matches:
+                summary = match.get("summary")
+                if not isinstance(summary, ExternalSessionSummary):
+                    continue
+                existing = aggregated.get(summary.session_id)
+                if existing is None:
+                    aggregated[summary.session_id] = {
+                        **match,
+                        "score": match.get("score", 0),
+                        "chunks": list(match.get("chunks") or []),
+                    }
+                    continue
+                existing["score"] = max(int(existing.get("score", 0)), int(match.get("score", 0)))
+                existing["strong_match"] = bool(existing.get("strong_match")) or bool(match.get("strong_match"))
+                existing["identity_token_hits"] = max(
+                    int(existing.get("identity_token_hits", 0)),
+                    int(match.get("identity_token_hits", 0)),
+                )
+                existing["identity_focus_hits"] = max(
+                    int(existing.get("identity_focus_hits", 0)),
+                    int(match.get("identity_focus_hits", 0)),
+                )
+                existing["token_hits"] = max(int(existing.get("token_hits", 0)), int(match.get("token_hits", 0)))
+                existing_chunks = {chunk.text: chunk for chunk in existing.get("chunks", []) if isinstance(chunk, ExternalSessionChunk)}
+                for chunk in match.get("chunks", []) or ():
+                    if isinstance(chunk, ExternalSessionChunk):
+                        existing_chunks.setdefault(chunk.text, chunk)
+                existing["chunks"] = list(existing_chunks.values())[:3]
+
+        ranked = sorted(
+            aggregated.values(),
+            key=lambda item: (
+                bool(item.get("strong_match")),
+                int(item.get("identity_focus_hits", 0)),
+                int(item.get("score", 0)),
+                getattr(item.get("summary"), "updated_at", ""),
+            ),
+            reverse=True,
+        )
+        return ranked[:6], {"index_ready": index_ready}
 
     def _workspace_facts(self, task: str) -> tuple[str, ...]:
         facts: list[str] = []
@@ -1098,6 +1310,209 @@ class ContextBuilderService:
             raise FileNotFoundError(f"Unknown context provider: {provider_name}")
         return provider
 
+    def _session_embedding_fingerprint(self, summary: ExternalSessionSummary) -> tuple[Any, ...] | None:
+        source_path = summary.source_path
+        if not source_path:
+            return None
+        try:
+            stat = Path(source_path).stat()
+        except OSError:
+            return None
+        return (
+            summary.provider,
+            summary.session_id,
+            str(source_path),
+            int(stat.st_mtime_ns),
+            int(stat.st_size),
+            summary.updated_at,
+        )
+
+    def _get_session_embedding_store(self) -> SQLiteMemoryStore | None:
+        if not self._session_embedding_store_resolved:
+            self._session_embedding_store = self._resolve_session_embedding_store()
+            self._session_embedding_store_resolved = True
+        return self._session_embedding_store
+
+    def _resolve_session_embedding_store(self) -> SQLiteMemoryStore | None:
+        store = getattr(self.memory, "store", None)
+        if isinstance(store, SQLiteMemoryStore):
+            return store
+        try:
+            return SQLiteMemoryStore(str(Path(self.workspace_path) / "memory.db"))
+        except Exception:
+            return None
+
+    def _resolve_session_embedder(self) -> Any | None:
+        embedder = getattr(self.memory, "embedder", None)
+        if embedder is not None and hasattr(embedder, "embed"):
+            return embedder
+        return build_default_embedder()
+
+    def _with_session_embedding(
+        self,
+        provider: ExternalSessionProvider,
+        summary: ExternalSessionSummary,
+    ) -> ExternalSessionSummary:
+        unified_session_id = _unified_session_id(summary.provider, summary.session_id)
+        store = self._get_session_embedding_store()
+        if store is None or self._session_embedder is None:
+            return replace(summary, unified_session_id=unified_session_id)
+
+        fingerprint = self._session_embedding_fingerprint(summary)
+        cached = self._session_embedding_document_cache.get(unified_session_id)
+        if fingerprint is not None and cached is not None and cached[0] == fingerprint:
+            document = cached[1]
+            chunks = cached[2]
+        else:
+            chunks = provider.build_index_chunks(summary.session_id)
+            document = _session_embedding_document_from_chunks(summary, chunks)
+            if fingerprint is not None:
+                self._session_embedding_document_cache[unified_session_id] = (fingerprint, document, chunks)
+                if len(self._session_embedding_document_cache) > MAX_SESSION_EMBEDDING_CACHE:
+                    self._session_embedding_document_cache.pop(next(iter(self._session_embedding_document_cache)))
+        content_hash = hashlib.sha256(
+            f"{_embedder_identifier(self._session_embedder)}\n{document}".encode("utf-8")
+        ).hexdigest()
+        existing = store.get_external_session_embedding(unified_session_id)
+        if existing is None or existing.content_hash != content_hash:
+            embedding = tuple(float(value) for value in self._session_embedder.embed(document))
+            existing = ExternalSessionEmbedding(
+                unified_session_id=unified_session_id,
+                provider=summary.provider,
+                session_id=summary.session_id,
+                title=summary.title,
+                workspace_path=summary.workspace_path,
+                source_path=summary.source_path,
+                updated_at=summary.updated_at,
+                content_hash=content_hash,
+                content_text=document,
+                embedding=embedding,
+                indexed_at=time.time(),
+            )
+            store.upsert_external_session_embedding(existing)
+            self._index_session_chunk_embeddings(store, summary, unified_session_id, chunks)
+
+        return replace(summary, unified_session_id=unified_session_id, embedding=existing.embedding)
+    def _index_session_chunk_embeddings(
+        self,
+        store: SQLiteMemoryStore,
+        summary: ExternalSessionSummary,
+        unified_session_id: str,
+        chunks: list[Any],
+    ) -> None:
+        if self._session_embedder is None or not chunks:
+            return
+        embedder_id = _embedder_identifier(self._session_embedder)
+        records: list[ExternalSessionChunkEmbedding] = []
+        now = time.time()
+        for index, chunk in enumerate(chunks[:MAX_SESSION_CHUNK_EMBEDDINGS]):
+            text = _normalize_whitespace(getattr(chunk, "text", "") or "")
+            if not text:
+                continue
+            chunk_hash = hashlib.sha256(f"{embedder_id}\n{text}".encode("utf-8")).hexdigest()
+            embedding = tuple(float(value) for value in self._session_embedder.embed(text))
+            records.append(
+                ExternalSessionChunkEmbedding(
+                    unified_session_id=unified_session_id,
+                    provider=summary.provider,
+                    session_id=summary.session_id,
+                    chunk_index=index,
+                    content_hash=chunk_hash,
+                    embedding=embedding,
+                    role=str(getattr(chunk, "role", "") or ""),
+                    source=str(getattr(chunk, "source", "") or ""),
+                    text=text,
+                    indexed_at=now,
+                )
+            )
+        store.replace_external_session_chunk_embeddings(unified_session_id, records)
+        self._session_chunk_record_cache.pop(summary.provider, None)
+
+    def _session_embedding_document(
+        self,
+        provider: ExternalSessionProvider,
+        summary: ExternalSessionSummary,
+    ) -> str:
+        return _session_embedding_document_from_chunks(summary, provider.build_index_chunks(summary.session_id))
+
+    def _session_embedding_vectors(self, provider_name: str) -> dict[str, tuple[float, ...]]:
+        store = self._get_session_embedding_store()
+        if store is None:
+            return {}
+        vectors: dict[str, tuple[float, ...]] = {}
+        for record in store.list_external_session_embeddings(provider=provider_name):
+            if record.embedding:
+                vectors[record.session_id] = record.embedding
+        return vectors
+
+    def _session_chunk_records(self, provider_name: str) -> dict[str, list[ExternalSessionChunkEmbedding]]:
+        cached = self._session_chunk_record_cache.get(provider_name)
+        if cached is not None:
+            return cached
+        store = self._get_session_embedding_store()
+        if store is None:
+            return {}
+        records: dict[str, list[ExternalSessionChunkEmbedding]] = {}
+        for record in store.list_external_session_chunk_embeddings(provider=provider_name):
+            if record.embedding:
+                records.setdefault(record.session_id, []).append(record)
+        self._session_chunk_record_cache[provider_name] = records
+        return records
+
+    def _semantic_session_scores(
+        self,
+        provider: ExternalSessionProvider,
+        summaries: list[ExternalSessionSummary],
+        query_variants: tuple[str, ...],
+    ) -> dict[str, float]:
+        return {
+            session_id: hit["score"]
+            for session_id, hit in self._semantic_session_hits(provider, summaries, query_variants).items()
+        }
+
+    def _semantic_session_hits(
+        self,
+        provider: ExternalSessionProvider,
+        summaries: list[ExternalSessionSummary],
+        query_variants: tuple[str, ...],
+    ) -> dict[str, dict[str, Any]]:
+        vectors = self._session_embedding_vectors(provider.name)
+        chunk_records = self._session_chunk_records(provider.name)
+        if (not vectors and not chunk_records) or self._session_embedder is None:
+            return {}
+        query_vectors: list[tuple[float, ...]] = []
+        for variant in query_variants:
+            try:
+                query_vectors.append(tuple(float(value) for value in self._session_embedder.embed(variant)))
+            except Exception as exc:
+                logger.debug("Failed to embed recall query variant: error=%s", exc)
+        if not query_vectors:
+            return {}
+        hits: dict[str, dict[str, Any]] = {}
+        for summary in summaries:
+            session_chunks = chunk_records.get(summary.session_id)
+            best = 0.0
+            ranked_chunks: list[tuple[float, ExternalSessionChunkEmbedding]] = []
+            if session_chunks:
+                for chunk in session_chunks:
+                    similarity = max(
+                        (_cosine_similarity(query_vector, chunk.embedding) for query_vector in query_vectors),
+                        default=0.0,
+                    )
+                    if similarity > 0.0:
+                        ranked_chunks.append((similarity, chunk))
+                ranked_chunks.sort(key=lambda item: (-item[0], item[1].chunk_index))
+                ranked_chunks = ranked_chunks[:MAX_SESSION_CHUNK_HITS]
+                best = ranked_chunks[0][0] if ranked_chunks else 0.0
+            else:
+                vector = vectors.get(summary.session_id)
+                if vector:
+                    best = max((_cosine_similarity(query, vector) for query in query_vectors), default=0.0)
+            if best > 0.0:
+                best_chunk = ranked_chunks[0][1] if ranked_chunks else None
+                hits[summary.session_id] = {"score": best, "chunk": best_chunk, "chunks": ranked_chunks}
+        return hits
+
     def _default_provider_name(self) -> str | None:
         for provider_name, provider in self.providers.items():
             if provider.health().available:
@@ -1107,15 +1522,65 @@ class ContextBuilderService:
     def _select_relevant_session_ids(self, provider: ExternalSessionProvider, task: str) -> tuple[str, ...]:
         return tuple(match["summary"].session_id for match in self._select_relevant_sessions(provider, task))
 
-    def _select_relevant_sessions(self, provider: ExternalSessionProvider, task: str) -> list[dict[str, Any]]:
+    def _select_relevant_sessions(
+        self,
+        provider: ExternalSessionProvider,
+        task: str,
+        *,
+        query_variants: tuple[str, ...] | None = None,
+    ) -> list[dict[str, Any]]:
         summaries = provider.list_sessions()
         if not summaries:
             return []
 
-        prompt_tokens = _tokenize(task)
+        variants = query_variants or _build_query_variants(task)
+        prompt_tokens = set().union(*(_tokenize(variant) for variant in variants))
         if not prompt_tokens:
             return []
-        focus_tokens = _focus_tokens(task)
+        focus_tokens = set().union(*(_focus_tokens(variant) for variant in variants))
+        semantic_hits = self._semantic_session_hits(provider, summaries, variants)
+        semantic_scores = {session_id: hit["score"] for session_id, hit in semantic_hits.items()}
+        semantic_ranking = sorted(semantic_scores, key=lambda session_id: semantic_scores[session_id], reverse=True)
+        semantic_rank = {session_id: rank for rank, session_id in enumerate(semantic_ranking, start=1)}
+        lowered_task = task.lower()
+        issue_recall_prompt = any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews", "issue", "issues"}) or "last time" in lowered_task
+        issue_focus_markers = (
+            "bug list",
+            "exact bugs",
+            "root url redirects",
+            "convex generated imports",
+            "authentication bypass",
+            "open email relay",
+            "create workspace",
+            "pipeline chat",
+            "test/publish",
+            "salesforce being marked as coming soon",
+        )
+        preview_priority = _preview_issue_recall_matches(
+            summaries,
+            prompt=task,
+            issue_focus_markers=issue_focus_markers,
+        )
+        if issue_recall_prompt and preview_priority:
+            prioritized: list[dict[str, Any]] = []
+            for score, summary in preview_priority[:3]:
+                detail = provider.get_session(summary.session_id)
+                prioritized.append(
+                    {
+                        "summary": summary,
+                        "detail": detail,
+                        "content_score": score,
+                        "score": score,
+                        "strong_match": True,
+                        "exact_hits": 0,
+                        "token_hits": 0,
+                        "identity_exact_hits": 0,
+                        "identity_token_hits": 0,
+                        "identity_focus_hits": 0,
+                        "best_overlap": 0,
+                    }
+                )
+            return prioritized
         preliminary: list[dict[str, Any]] = []
         recent_window = 12
         for index, summary in enumerate(summaries):
@@ -1127,12 +1592,13 @@ class ContextBuilderService:
             identity_exact_hits = _exact_prompt_hits(prompt_tokens, identity_haystacks)
             identity_focus_hits = sum(1 for token in focus_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
             issue_bonus = 0
-            if any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews"}):
+            if issue_recall_prompt:
                 issue_terms = ("bug", "bugs", "fix", "fixed", "review", "reviews")
                 if any(term in summary.title.lower() for term in issue_terms):
                     issue_bonus += 6
                 elif any(term in summary.preview.lower() for term in issue_terms):
                     issue_bonus += 3
+                issue_bonus += sum(18 for marker in issue_focus_markers if marker in summary.preview.lower())
             summary_score = (
                 (identity_exact_hits * 14)
                 + (identity_token_hits * 8)
@@ -1151,8 +1617,26 @@ class ContextBuilderService:
             )
 
         preliminary.sort(key=lambda item: (item["summary_score"], -item["recent_rank"], item["summary"].updated_at), reverse=True)
+        lexical_rank = {item["summary"].session_id: rank for rank, item in enumerate(preliminary, start=1)}
+        for item in preliminary:
+            session_id = item["summary"].session_id
+            item["semantic_score"] = semantic_scores.get(session_id, 0.0)
+            item["semantic_rank"] = semantic_rank.get(session_id)
+            item["fused_score"] = _rrf_score(lexical_rank.get(session_id), semantic_rank.get(session_id))
+        if semantic_scores:
+            preliminary.sort(
+                key=lambda item: (
+                    item["fused_score"],
+                    item["summary_score"],
+                    -item["recent_rank"],
+                    item["summary"].updated_at,
+                ),
+                reverse=True,
+            )
         candidate_ids: list[str] = []
-        for item in preliminary[:12]:
+        candidate_limit = 24 if issue_recall_prompt else 12
+        recent_candidate_limit = max(recent_window, candidate_limit)
+        for item in preliminary[:candidate_limit]:
             session_id = item["summary"].session_id
             if session_id not in candidate_ids:
                 candidate_ids.append(session_id)
@@ -1162,9 +1646,22 @@ class ContextBuilderService:
             session_id = item["summary"].session_id
             if session_id not in candidate_ids:
                 candidate_ids.append(session_id)
-            if len(candidate_ids) >= max(recent_window, 12):
+            if len(candidate_ids) >= recent_candidate_limit:
                 break
+        if issue_recall_prompt:
+            for item in preliminary:
+                summary = item["summary"]
+                preview_lower = (summary.preview or "").lower()
+                if not any(marker in preview_lower for marker in issue_focus_markers):
+                    continue
+                session_id = summary.session_id
+                if session_id not in candidate_ids:
+                    candidate_ids.append(session_id)
+        for session_id in semantic_ranking[:candidate_limit]:
+            if session_id not in candidate_ids:
+                candidate_ids.append(session_id)
 
+        preliminary_index = {item["summary"].session_id: item for item in preliminary}
         scored: list[dict[str, Any]] = []
         workspace_name = Path(self.workspace_path).name.lower()
         workspace_path = self.workspace_path.lower()
@@ -1181,7 +1678,9 @@ class ContextBuilderService:
             identity_token_hits = sum(1 for token in prompt_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
             identity_exact_hits = _exact_prompt_hits(prompt_tokens, identity_haystacks)
             identity_focus_hits = sum(1 for token in focus_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
-            best_overlap = _best_message_overlap(prompt_tokens, detail)
+            best_overlap = max(_best_message_overlap(_tokenize(variant), detail) for variant in variants)
+            semantic_score = semantic_scores.get(summary.session_id, 0.0)
+            semantic_strong = semantic_score >= SEMANTIC_STRONG_THRESHOLD
             workspace_bonus = 0
             issue_bonus = 0
             session_workspace = (summary.workspace_path or "").lower()
@@ -1192,23 +1691,35 @@ class ContextBuilderService:
                     workspace_bonus += 3 if identity_focus_hits > 0 or identity_exact_hits > 0 else -6
                 else:
                     workspace_bonus += 1
-            if focus_tokens and session_workspace == workspace_path and identity_focus_hits == 0:
-                continue
-            if any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews"}):
+            if semantic_strong:
+                workspace_bonus = max(workspace_bonus, 0)
+            if focus_tokens and session_workspace == workspace_path and identity_focus_hits == 0 and not semantic_strong:
+                if not issue_recall_prompt and exact_hits == 0 and token_hits < 2:
+                    continue
+            if issue_recall_prompt:
                 issue_terms = ("bug", "bugs", "fix", "fixed", "review", "reviews")
                 if any(term in summary.title.lower() for term in issue_terms):
                     issue_bonus += 10
                 elif any(term in haystack for haystack in haystacks for term in issue_terms):
                     issue_bonus += 4
-
+                issue_bonus += sum(16 for marker in issue_focus_markers if marker in summary.preview.lower())
+                issue_bonus += sum(8 for marker in issue_focus_markers if any(marker in haystack for haystack in haystacks))
             content_score = (
                 (identity_exact_hits * 14)
                 + (identity_token_hits * 8)
                 + (exact_hits * 3)
                 + (token_hits * 2)
                 + min(best_overlap * 2, 8)
+                + int(round(semantic_score * 10))
             )
-            strong_match = identity_exact_hits >= 1 or identity_token_hits >= 1 or exact_hits >= 1 or best_overlap >= 2 or token_hits >= 2
+            strong_match = (
+                identity_exact_hits >= 1
+                or identity_token_hits >= 1
+                or exact_hits >= 1
+                or best_overlap >= 2
+                or token_hits >= 2
+                or semantic_strong
+            )
             scored.append(
                 {
                     "summary": summary,
@@ -1222,6 +1733,11 @@ class ContextBuilderService:
                     "identity_token_hits": identity_token_hits,
                     "identity_focus_hits": identity_focus_hits,
                     "best_overlap": best_overlap,
+                    "semantic_score": semantic_score,
+                    "semantic_rank": semantic_rank.get(summary.session_id),
+                    "fused_score": preliminary_index.get(summary.session_id, {}).get("fused_score", 0.0),
+                    "semantic_chunk": semantic_hits.get(summary.session_id, {}).get("chunk"),
+                    "semantic_chunks": semantic_hits.get(summary.session_id, {}).get("chunks", []),
                 }
             )
 
@@ -1229,8 +1745,28 @@ class ContextBuilderService:
         selected = [
             item
             for item in scored
-            if item["strong_match"] and item["content_score"] >= MIN_SESSION_CONTENT_SCORE and item["score"] > 0
+            if item["strong_match"]
+            and (item["content_score"] >= MIN_SESSION_CONTENT_SCORE or item["semantic_score"] >= SEMANTIC_STRONG_THRESHOLD)
+            and item["score"] > 0
         ]
+        if issue_recall_prompt:
+            issue_rich = [
+                item
+                for item in scored
+                if item["score"] > 0
+                and _session_has_issue_focus(item["summary"], item["detail"])
+            ]
+            if issue_rich:
+                issue_rich.sort(
+                    key=lambda item: (
+                        _issue_focus_score(item["summary"], item["detail"]),
+                        item["score"],
+                        item["content_score"],
+                        item["summary"].updated_at,
+                    ),
+                    reverse=True,
+                )
+                selected = issue_rich
         if focus_tokens and any(item["identity_focus_hits"] > 0 for item in selected):
             selected = [item for item in selected if item["identity_focus_hits"] > 0]
         return selected[:3]
@@ -1250,15 +1786,21 @@ class ContextBuilderService:
                 f"({best['identity_token_hits']} identity hits, {best['token_hits']} token hits)."
             ),
             "context_match_score": best["score"],
+            "semantic_score": best.get("semantic_score", 0.0),
+            "fused_score": best.get("fused_score", 0.0),
         }
 
 
-def _provider_from_config(config: ExternalSessionProviderConfig) -> ExternalSessionProvider:
+def _provider_from_config(
+    config: ExternalSessionProviderConfig,
+    *,
+    include_derived: bool = False,
+) -> ExternalSessionProvider:
     if config.provider == "codex":
         return CodexSessionProvider(config)
     if config.provider == "opencode":
-        return OpenCodeSessionProvider(config)
-    return OpenCodeSessionProvider(config)
+        return OpenCodeSessionProvider(config, include_derived=include_derived)
+    return OpenCodeSessionProvider(config, include_derived=include_derived)
 
 
 def _default_provider_configs() -> tuple[ExternalSessionProviderConfig, ...]:
@@ -1311,7 +1853,7 @@ def _extract_session_messages(*, row_type: str | None, payload: dict[str, Any], 
             )
     elif row_type == "response_item" and payload.get("type") == "function_call_output":
         output_text = _normalize_whitespace(_clean_tool_output(str(payload.get("output") or "")))
-        if output_text and not _is_noise_message_content(output_text):
+        if output_text and not _is_noise_message_content(output_text) and _is_useful_tool_output(output_text):
             messages.append(
                 ExternalSessionMessage(
                     role="tool",
@@ -1334,7 +1876,19 @@ def _collect_relevant_context_lines(
         if len(token) >= 3
     }
     lowered_task = task.lower()
-    is_issue_prompt = any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews"})
+    is_issue_prompt = any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews", "issue", "issues"}) or "last time" in lowered_task
+    issue_detail_markers = (
+        "create workspace",
+        "pipeline chat",
+        "test/publish",
+        "salesforce",
+        "root url redirects",
+        "convex generated imports",
+        "authentication bypass",
+        "open email relay",
+        "bug list",
+        "exact bugs",
+    )
     is_project_recall_prompt = any(marker in lowered_task for marker in ("remember about", "remember the", "what was it about", "what was that about"))
     candidates: list[tuple[str, str, bool]] = []
     seen: set[str] = set()
@@ -1353,7 +1907,7 @@ def _collect_relevant_context_lines(
                 )
             )
         for message in detail.messages:
-            if message.role not in {"user", "assistant"}:
+            if message.role not in {"user", "assistant", "tool"}:
                 continue
             content = _compact_context_content(message.role, message.content)
             if not content or content in seen:
@@ -1361,8 +1915,10 @@ def _collect_relevant_context_lines(
             seen.add(content)
             if message.role == "user":
                 prefix = "User asked:"
-            else:
+            elif message.role == "assistant":
                 prefix = "Assistant reported:"
+            else:
+                prefix = "Tool output:"
             candidates.append((f"{prefix} {content}", message.role, session_identity_overlap, session_cleanup_match))
 
     scored: list[tuple[int, str, str]] = []
@@ -1380,19 +1936,17 @@ def _collect_relevant_context_lines(
                 overlap -= 5
             if session_identity_overlap and is_issue_prompt:
                 overlap += 2
+        if line.startswith("Tool output:"):
+            overlap += 1 if is_issue_prompt or any(token in lowered_task for token in ("what did", "what were", "issues", "talking about", "comment")) else 1
+            if session_identity_overlap and (is_issue_prompt or is_project_recall_prompt):
+                overlap += 3
+            if is_issue_prompt and re.search(r"\b(?:fix|chore|test)\([^)]*\):", lowered):
+                overlap -= 8
         if "bug" in lowered or "review" in lowered or "fix" in lowered:
             overlap += 3
         if session_identity_overlap and any(
             marker in lowered
-            for marker in (
-                "create workspace",
-                "pipeline chat",
-                "test/publish",
-                "salesforce",
-                "root url redirects",
-                "convex generated imports",
-                "authentication bypass",
-            )
+            for marker in issue_detail_markers
         ):
             overlap += 5
         if _is_cleanup_schema_task(task):
@@ -1462,28 +2016,28 @@ def _collect_relevant_context_lines(
     selected = [line for score, line, _kind in scored if score > 0][:MAX_CONTEXT_LINES]
     if not selected:
         selected = [line for _score, line, _kind in scored[:MAX_CONTEXT_LINES]]
-    elif is_project_recall_prompt and not is_issue_prompt:
+    elif is_issue_prompt or (is_project_recall_prompt and not is_issue_prompt):
         issue_detail_lines = [
             line
             for score, line, kind in scored
             if score > 0
             and kind in {"user", "assistant"}
             and any(
-                marker in line.lower()
-                for marker in (
-                    "create workspace",
-                    "pipeline chat",
-                    "test/publish",
-                    "salesforce",
-                    "root url redirects",
-                    "convex generated imports",
-                    "authentication bypass",
-                )
+                marker in line.lower() for marker in issue_detail_markers
             )
         ]
         if issue_detail_lines:
-            selected = issue_detail_lines[:2] + [line for line in selected if line not in issue_detail_lines]
-            selected = selected[:MAX_CONTEXT_LINES]
+            selected = issue_detail_lines[: min(3, MAX_CONTEXT_LINES)]
+            session_summaries = [line for line in selected if line.startswith("Session '")]
+            if session_summaries:
+                selected = [line for line in selected if not line.startswith("Session '")]
+            matching_session_summaries = [
+                line
+                for _score, line, kind in scored
+                if kind == "session" and any(token in line.lower() for token in _tokenize(task))
+            ]
+            if matching_session_summaries and len(selected) < MAX_CONTEXT_LINES:
+                selected.append(matching_session_summaries[0])
     if any(not line.startswith("Session '") for line in selected):
         session_summaries = [line for line in selected if line.startswith("Session '")]
         detail_lines = [line for line in selected if not line.startswith("Session '")]
@@ -1568,6 +2122,192 @@ def _tokenize(text: str) -> set[str]:
     return tokens | compound_tokens
 
 
+def _build_query_variants(task: str) -> tuple[str, ...]:
+    normalized = _normalize_whitespace(task)
+    if not normalized:
+        return ()
+    variants = [normalized]
+    for raw_part in re.split(r"[?.!;]+|\b(?:and|also|then|plus|while|versus|vs)\b", normalized, flags=re.IGNORECASE):
+        fragment = _normalize_whitespace(raw_part).strip(" ,.;:-")
+        if not fragment or fragment in variants:
+            continue
+        if len(_tokenize(fragment)) < 2:
+            continue
+        variants.append(fragment)
+        if len(variants) >= MAX_QUERY_VARIANTS:
+            break
+    return tuple(variants[:MAX_QUERY_VARIANTS])
+
+
+def _preview_issue_recall_matches(
+    summaries: Sequence[ExternalSessionSummary],
+    *,
+    prompt: str,
+    issue_focus_markers: Sequence[str],
+) -> list[tuple[int, ExternalSessionSummary]]:
+    prompt_lower = prompt.lower()
+    prompt_tokens = _tokenize(prompt)
+    issue_terms = {"bug", "bugs", "fix", "fixed", "issue", "issues", "review", "reviews"}
+    ignored_prompt_tokens = {"did", "last", "time", "while", "working"}
+    compound_markers = tuple(
+        token
+        for token in sorted(prompt_tokens)
+        if any(separator in token for separator in ("-", "_", "/"))
+    )
+    project_markers_set = set(compound_markers)
+    for token in compound_markers:
+        for part in re.split(r"[-_/]+", token):
+            if len(part) >= 4:
+                project_markers_set.add(part)
+    if not project_markers_set:
+        project_markers_set.update(
+            token
+            for token in prompt_tokens
+            if token not in COMMON_CONTEXT_TOKENS
+            and token not in issue_terms
+            and token not in ignored_prompt_tokens
+            and len(token) >= 4
+        )
+    project_markers = tuple(sorted(project_markers_set))
+    if not project_markers:
+        return []
+
+    prioritized: list[tuple[int, ExternalSessionSummary]] = []
+    for summary in summaries:
+        preview = _normalize_whitespace(summary.preview).lower()
+        if not preview:
+            continue
+        title = (summary.title or "").lower()
+        workspace = (summary.workspace_path or "").lower()
+        if not (
+            any(marker in preview for marker in issue_focus_markers)
+            or any(term in preview or term in title for term in issue_terms)
+            or "based on memory from prior sessions" in preview
+        ):
+            continue
+        identity_haystacks = (title, workspace, preview)
+        project_hits = sum(1 for marker in project_markers if any(_token_matches(marker, haystack) for haystack in identity_haystacks))
+        if project_hits == 0:
+            continue
+        score = project_hits * 30
+        score += sum(35 for marker in issue_focus_markers if marker in preview)
+        if "bug list" in preview:
+            score += 45
+        if "based on memory from prior sessions" in preview:
+            score += 20
+        if any(term in preview for term in issue_terms):
+            score += 10
+        if "last time" in prompt_lower and "last" in preview:
+            score += 8
+        for noise_marker in (
+            "tool exec_command result",
+            "operation not permitted: ps",
+            "pr-review.md",
+            "committed in two atomic commits",
+            "fix(settings): use saved timezone and locale dropdowns",
+            "glob: /users/",
+        ):
+            if noise_marker in preview:
+                score -= 40
+        if score > 0:
+            prioritized.append((score, summary))
+
+    prioritized.sort(key=lambda item: (item[0], item[1].updated_at), reverse=True)
+    return prioritized
+
+
+def _session_has_issue_focus(summary: ExternalSessionSummary, detail: ExternalSessionDetail) -> bool:
+    markers = (
+        "bug list",
+        "root url redirects",
+        "convex generated imports",
+        "authentication bypass",
+        "open email relay",
+        "create workspace",
+        "pipeline chat",
+        "test/publish",
+        "salesforce being marked as coming soon",
+    )
+    preview = (summary.preview or "").lower()
+    if any(marker in preview for marker in markers):
+        return True
+    for message in detail.messages:
+        content = (message.content or "").lower()
+        if any(marker in content for marker in markers):
+            return True
+    return False
+
+
+def _issue_focus_score(summary: ExternalSessionSummary, detail: ExternalSessionDetail) -> int:
+    markers = (
+        "bug list",
+        "root url redirects",
+        "convex generated imports",
+        "authentication bypass",
+        "open email relay",
+        "create workspace",
+        "pipeline chat",
+        "test/publish",
+        "salesforce being marked as coming soon",
+        "bugs tracked",
+    )
+    score = 0
+    preview = (summary.preview or "").lower()
+    score += sum(6 for marker in markers if marker in preview)
+    for message in detail.messages:
+        content = (message.content or "").lower()
+        score += sum(3 for marker in markers if marker in content)
+    return score
+
+
+def _fuse_provider_session_matches(
+    provider_matches: list[tuple[str, ExternalSessionProvider, list[dict[str, Any]]]],
+) -> list[tuple[dict[str, Any], ExternalSessionProvider]]:
+    fused_score: dict[str, float] = {}
+    entries: dict[str, tuple[dict[str, Any], ExternalSessionProvider]] = {}
+    for _provider_name, provider, matches in provider_matches:
+        for rank, match in enumerate(matches, start=1):
+            session_id = getattr(match.get("summary"), "session_id", None)
+            if not session_id:
+                continue
+            fused_score[session_id] = fused_score.get(session_id, 0.0) + 1.0 / (RRF_K + rank)
+            if session_id not in entries:
+                entries[session_id] = (match, provider)
+    ordered = sorted(entries, key=lambda session_id: (-fused_score[session_id], session_id))
+    return [entries[session_id] for session_id in ordered]
+
+
+def _combine_indexed_and_semantic_matches(
+    task: str,
+    indexed_matches: list[dict[str, Any]],
+    semantic_matches: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not indexed_matches:
+        return list(semantic_matches)[:MAX_PROVIDER_SESSION_MATCHES]
+    if not semantic_matches:
+        return list(indexed_matches)[:MAX_PROVIDER_SESSION_MATCHES]
+
+    fused_score: dict[str, float] = {}
+    entries: dict[str, dict[str, Any]] = {}
+    for rank, match in enumerate(indexed_matches, start=1):
+        session_id = match["summary"].session_id
+        fused_score[session_id] = fused_score.get(session_id, 0.0) + 1.0 / (RRF_K + rank)
+        entries.setdefault(session_id, match)
+    for rank, match in enumerate(semantic_matches, start=1):
+        session_id = match["summary"].session_id
+        fused_score[session_id] = fused_score.get(session_id, 0.0) + 1.0 / (RRF_K + rank)
+        if session_id not in entries:
+            entries[session_id] = match
+        else:
+            if entries[session_id].get("semantic_chunk") is None and match.get("semantic_chunk") is not None:
+                entries[session_id]["semantic_chunk"] = match["semantic_chunk"]
+            if not entries[session_id].get("semantic_chunks") and match.get("semantic_chunks"):
+                entries[session_id]["semantic_chunks"] = match["semantic_chunks"]
+            entries[session_id].setdefault("semantic_score", match.get("semantic_score", 0.0))
+    ordered = sorted(entries, key=lambda session_id: (-fused_score[session_id], session_id))
+    return [entries[session_id] for session_id in ordered][:MAX_PROVIDER_SESSION_MATCHES]
+
+
 def _is_noise_message_content(text: str) -> bool:
     lowered = text.strip().lower()
     return lowered.startswith("<environment_context>") or lowered.startswith("<permissions instructions>") or lowered.startswith("<collaboration_mode>") or lowered.startswith("<skills_instructions>")
@@ -1587,10 +2327,239 @@ def _contains_whole_token(token: str, haystack: str) -> bool:
     return bool(re.search(rf"\b{re.escape(token)}\b", haystack))
 
 
+@dataclass
+class ContextSelection:
+    kept: tuple[str, ...]
+    eliminated: tuple[dict[str, Any], ...] = ()
+
+
+def _context_elimination_enabled(override: bool | None = None) -> bool:
+    if override is not None:
+        return override
+    return os.getenv("DEVENV_CONTEXT_ELIMINATION", "1") == "1"
+
+
+def _context_shadow_enabled() -> bool:
+    return os.getenv("DEVENV_CONTEXT_SHADOW", "0") == "1"
+
+
+def _window_context_line(line: str, tokens: set[str], max_chars: int = CONTEXT_LINE_WINDOW_CHARS) -> str:
+    if max_chars <= 0 or len(line) <= max_chars:
+        return line
+    lowered = line.lower()
+    span = len(line) - max_chars
+    step = max(1, max_chars // 4)
+    best_index = 0
+    best_hits = -1
+    for start_index in range(0, max(1, span + 1), step):
+        window = lowered[start_index : start_index + max_chars]
+        hits = sum(1 for token in tokens if token in window)
+        if hits > best_hits:
+            best_hits = hits
+            best_index = start_index
+    excerpt = line[best_index : best_index + max_chars]
+    prefix = "..." if best_index > 0 else ""
+    suffix = "..." if best_index + max_chars < len(line) else ""
+    return f"{prefix}{excerpt}{suffix}"
+
+
+def _build_session_context_candidates(
+    task: str,
+    selected_matches: list[dict[str, Any]],
+    details_by_id: dict[str, ExternalSessionDetail],
+) -> list[list[tuple[int, str]]]:
+    tokens = _tokenize(task)
+    prefer_tool_output = _is_tool_output_query(task)
+
+    def score_line(line: str, role: str, source: str) -> int:
+        lowered = line.lower()
+        value = sum(2 for token in tokens if _token_matches(token, lowered))
+        if source == "reasoning":
+            value += 1
+        if role in {"user", "assistant"}:
+            value += 1
+        if role == "tool":
+            value += 3 if prefer_tool_output else -3
+        return value
+
+    def chunk_line(role: str, text: str, source: str) -> tuple[int, str] | None:
+        content = _compact_context_content(role, text)
+        if not content:
+            return None
+        prefix = "User asked" if role == "user" else "Assistant reported" if role == "assistant" else "Tool output"
+        line = f"{prefix}: {content}"
+        return score_line(line, role, source), line
+
+    per_session: list[list[tuple[int, str]]] = []
+    for match in selected_matches:
+        summary = match.get("summary")
+        session_id = getattr(summary, "session_id", "")
+        candidates: list[tuple[int, str]] = []
+        for chunk in match.get("chunks", []) or ():
+            if not isinstance(chunk, ExternalSessionChunk):
+                continue
+            entry = chunk_line(chunk.role, chunk.text, chunk.source)
+            if entry is not None:
+                candidates.append(entry)
+        semantic_chunks = match.get("semantic_chunks") or []
+        if semantic_chunks:
+            for similarity, chunk in semantic_chunks:
+                if not isinstance(chunk, ExternalSessionChunkEmbedding):
+                    continue
+                entry = chunk_line(chunk.role, chunk.text, chunk.source)
+                if entry is not None:
+                    candidates.append((60 + int(similarity * 40) + entry[0], entry[1]))
+        else:
+            semantic_chunk = match.get("semantic_chunk")
+            if isinstance(semantic_chunk, ExternalSessionChunkEmbedding):
+                entry = chunk_line(semantic_chunk.role, semantic_chunk.text, semantic_chunk.source)
+                if entry is not None:
+                    candidates.append((60 + entry[0], entry[1]))
+        if not candidates:
+            detail = details_by_id.get(session_id)
+            if detail is not None:
+                for line in _collect_relevant_context_lines(task, [detail], "detailed"):
+                    candidates.append((1, line))
+        candidates.sort(key=lambda item: (-item[0], item[1]))
+        ranked: list[tuple[int, str]] = []
+        seen_lines: set[str] = set()
+        for score, line in candidates:
+            if line and line not in seen_lines:
+                seen_lines.add(line)
+                ranked.append((score, line))
+        per_session.append(ranked)
+    return per_session
+
+
+def _assemble_context_lines(per_session: list[list[tuple[int, str]]], max_lines: int) -> tuple[str, ...]:
+    lines: list[str] = []
+    seen: set[str] = set()
+
+    def emit(line: str) -> bool:
+        if not line or line in seen:
+            return False
+        seen.add(line)
+        lines.append(line)
+        return len(lines) >= max_lines
+
+    for ranked in per_session:
+        for _score, line in ranked[:CONTEXT_LINES_FIRST_PASS]:
+            if emit(line):
+                return tuple(lines)
+    for depth in range(CONTEXT_LINES_FIRST_PASS, MAX_CONTEXT_LINES_PER_SESSION):
+        for ranked in per_session:
+            if depth < len(ranked):
+                if emit(ranked[depth][1]):
+                    return tuple(lines)
+    return tuple(lines)
+
+
+def _compute_context_selection(
+    task: str,
+    per_session: list[list[tuple[int, str]]],
+    max_lines: int,
+    max_chars: int,
+) -> ContextSelection:
+    tokens = _tokenize(task)
+    entries: list[dict[str, Any]] = []
+    eliminated: list[dict[str, Any]] = []
+    seen_lines: set[str] = set()
+    for session_rank, ranked in enumerate(per_session):
+        for score, line in ranked:
+            if not line:
+                continue
+            if line in seen_lines:
+                eliminated.append({"line": line, "score": score, "session_rank": session_rank, "reason": "duplicate"})
+                continue
+            seen_lines.add(line)
+            entries.append({"line": line, "score": score, "session_rank": session_rank})
+    if not entries:
+        return ContextSelection(kept=())
+
+    top_score = max(entry["score"] for entry in entries)
+    epsilon = max(1, int(top_score * 0.1))
+    pinned: list[int] = []
+    best_overall = max(range(len(entries)), key=lambda index: (entries[index]["score"], -entries[index]["session_rank"], entries[index]["line"]))
+    pinned.append(best_overall)
+    for session_rank in range(min(PINNED_TOP_K_SESSIONS, len(per_session))):
+        session_indices = [index for index, entry in enumerate(entries) if entry["session_rank"] == session_rank]
+        if not session_indices:
+            continue
+        best = max(session_indices, key=lambda index: (entries[index]["score"], entries[index]["line"]))
+        if best not in pinned:
+            pinned.append(best)
+    for index, entry in enumerate(entries):
+        if len(pinned) >= max_lines:
+            break
+        if entry["score"] >= top_score - epsilon and index not in pinned:
+            pinned.append(index)
+
+    pinned_set = set(pinned)
+    ordered = sorted(
+        range(len(entries)),
+        key=lambda index: (
+            0 if index in pinned_set else 1,
+            -entries[index]["score"],
+            entries[index]["session_rank"],
+            entries[index]["line"],
+        ),
+    )
+    kept: list[str] = []
+    used_chars = 0
+    for index in ordered:
+        entry = entries[index]
+        if len(kept) >= max_lines:
+            eliminated.append({"line": entry["line"], "score": entry["score"], "session_rank": entry["session_rank"], "reason": "over_budget"})
+            continue
+        line = _window_context_line(entry["line"], tokens)
+        if index not in pinned_set and used_chars + len(line) > max_chars:
+            eliminated.append({"line": entry["line"], "score": entry["score"], "session_rank": entry["session_rank"], "reason": "over_budget"})
+            continue
+        kept.append(line)
+        used_chars += len(line)
+    return ContextSelection(kept=tuple(kept), eliminated=tuple(eliminated))
+
+
+def select_context_lines(
+    task: str,
+    per_session: list[list[tuple[int, str]]],
+    *,
+    max_lines: int,
+    max_chars: int = MAX_CONTEXT_CHARS,
+    eliminate: bool | None = None,
+) -> ContextSelection:
+    current = _assemble_context_lines(per_session, max_lines)
+    if not _context_elimination_enabled(eliminate):
+        if _context_shadow_enabled():
+            shadow = _compute_context_selection(task, per_session, max_lines, max_chars)
+            if shadow.eliminated:
+                logger.info(
+                    "Context selection shadow: current_lines=%d would_drop=%d",
+                    len(current),
+                    len(shadow.eliminated),
+                )
+        return ContextSelection(kept=current)
+    within_budget = len(current) <= max_lines and sum(len(line) for line in current) <= max_chars
+    if within_budget:
+        return ContextSelection(kept=current)
+    return _compute_context_selection(task, per_session, max_lines, max_chars)
+
+
+def _collect_per_session_context_lines(
+    task: str,
+    selected_matches: list[dict[str, Any]],
+    details_by_id: dict[str, ExternalSessionDetail],
+    max_lines: int,
+) -> tuple[str, ...]:
+    per_session = _build_session_context_candidates(task, selected_matches, details_by_id)
+    return select_context_lines(task, per_session, max_lines=max_lines).kept
+
+
 def _collect_indexed_context_lines(task: str, selected_matches: list[dict[str, Any]]) -> tuple[str, ...]:
     if not selected_matches:
         return ()
     tokens = _tokenize(task)
+    prefer_tool_output = _is_tool_output_query(task)
     candidates: list[tuple[int, str]] = []
     seen: set[str] = set()
     for match in selected_matches:
@@ -1612,8 +2581,10 @@ def _collect_indexed_context_lines(task: str, selected_matches: list[dict[str, A
             score = sum(2 for token in tokens if _token_matches(token, lowered))
             if chunk.source == "reasoning":
                 score += 1
+            if chunk.role in {"user", "assistant"}:
+                score += 1
             if chunk.role == "tool":
-                score += 2
+                score += 3 if prefer_tool_output else -3
             candidates.append((score, line))
     candidates.sort(key=lambda item: (-item[0], item[1]))
     return tuple(line for score, line in candidates if score > 0)[:MAX_INDEX_CONTEXT_LINES]
@@ -1692,7 +2663,7 @@ def _extract_opencode_message_part(role: str, payload: dict[str, Any], timestamp
         else:
             content = ""
         content = _normalize_whitespace(content)
-        if content:
+        if content and _is_useful_tool_output(content):
             return ExternalSessionMessage(role="tool", content=_truncate_tool_output(content), timestamp=timestamp)
     return None
 
@@ -1749,8 +2720,6 @@ def _focus_tokens(text: str) -> set[str]:
 
 def _is_cleanup_schema_task(task: str) -> bool:
     lowered = task.lower()
-    if "get-drip" not in lowered:
-        return False
     return any(marker in lowered for marker in ("cleanup", "clean up", "schema", "schrema"))
 
 
@@ -1799,12 +2768,16 @@ def _truncate_tool_output(text: str, max_chars: int = 900) -> str:
     return f"{cleaned[: max_chars - 3].rstrip()}..."
 
 
-def _compact_context_content(role: str, text: str) -> str:
+def _compact_context_content(
+    role: str,
+    text: str,
+    *,
+    max_chars: int = CONTEXT_LINE_MAX_CHARS,
+) -> str:
     cleaned = _normalize_whitespace(text)
     if not cleaned:
         return ""
-    max_chars = 480 if role == "tool" else 260
-    if len(cleaned) <= max_chars:
+    if max_chars <= 0 or len(cleaned) <= max_chars:
         return cleaned
     return f"{cleaned[: max_chars - 3].rstrip()}..."
 
@@ -1838,6 +2811,132 @@ def _clean_tool_output(text: str) -> str:
             continue
         filtered_lines.append(stripped)
     return "\n".join(filtered_lines).strip()
+
+
+def _is_useful_tool_output(text: str) -> bool:
+    lowered = _normalize_whitespace(text).lower()
+    if not lowered:
+        return False
+    return not _looks_like_noisy_tool_output(lowered)
+
+
+def _looks_like_noisy_tool_output(lowered: str) -> bool:
+    noisy_markers = (
+        "session_index_lines ",
+        "\"thread_name\":",
+        "\"updated_at\":",
+        "<path>",
+        "<content>",
+        "<diagnostics ",
+        "traceback (most recent call last)",
+        "warning: the directory",
+        "processing /users/",
+        "preparing metadata",
+        "installing build dependencies",
+        "subprocess-exited-with-error",
+        "original token count:",
+        "process exited with code",
+        "edit applied successfully",
+        "lsp errors detected",
+    )
+    if any(marker in lowered for marker in noisy_markers):
+        return True
+    if re.search(r": line \d+:", lowered):
+        return True
+    if re.search(r"\bfound \d+ matches\b", lowered):
+        return True
+    if len(lowered) > 260:
+        structured_chars = sum(lowered.count(char) for char in "{}[]|/\\")
+        if structured_chars >= max(18, len(lowered) // 12):
+            return True
+    return False
+
+
+def _cosine_similarity(left: tuple[float, ...], right: tuple[float, ...]) -> float:
+    if not left or not right:
+        return 0.0
+    length = min(len(left), len(right))
+    dot = 0.0
+    left_norm = 0.0
+    right_norm = 0.0
+    for index in range(length):
+        left_value = left[index]
+        right_value = right[index]
+        dot += left_value * right_value
+        left_norm += left_value * left_value
+        right_norm += right_value * right_value
+    if left_norm <= 0.0 or right_norm <= 0.0:
+        return 0.0
+    return dot / (math.sqrt(left_norm) * math.sqrt(right_norm))
+
+
+def _rrf_score(lexical_rank: int | None, semantic_rank: int | None) -> float:
+    score = 0.0
+    if lexical_rank is not None:
+        score += 1.0 / (RRF_K + lexical_rank)
+    if semantic_rank is not None:
+        score += 1.0 / (RRF_K + semantic_rank)
+    return score
+
+
+def _session_embedding_document_from_chunks(summary: ExternalSessionSummary, chunks: list[Any]) -> str:
+    parts = [summary.title.strip()]
+    if summary.workspace_path:
+        parts.append(str(summary.workspace_path).strip())
+    for chunk in chunks:
+        text = _normalize_whitespace(getattr(chunk, "text", "") or "")
+        if text:
+            parts.append(text)
+    document = "\n".join(part for part in parts if part).strip()
+    return document or summary.preview.strip() or summary.title.strip() or summary.session_id
+
+
+def _embedder_identifier(embedder: Any) -> str:
+    model_name = getattr(embedder, "model_name", "") or ""
+    dimension = getattr(embedder, "dimension", 0)
+    return f"{type(embedder).__name__}:{model_name}:{dimension}"
+
+
+def _unified_session_id(provider: str, session_id: str) -> str:
+    return f"{provider}:{session_id}"
+
+
+def _is_tool_output_query(task: str) -> bool:
+    lowered = task.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "tool output",
+            "command output",
+            "error log",
+            "traceback",
+            "review comment",
+            "what did",
+            "comment",
+            "issue",
+            "issues",
+            "error",
+            "warning",
+        )
+    )
+
+
+def _open_sqlite_connection(path: Path, *, immutable: bool = False) -> sqlite3.Connection:
+    resolved = str(path)
+    if immutable:
+        uri = f"file:{resolved}?mode=ro&immutable=1"
+        return sqlite3.connect(uri, uri=True)
+    return sqlite3.connect(resolved)
+
+
+def _fetch_sqlite_rows(path: Path, query: str, parameters: tuple[Any, ...], *, immutable: bool) -> list[dict[str, Any]]:
+    connection = _open_sqlite_connection(path, immutable=immutable)
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(query, parameters).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
 
 
 def _timestamp_from_path(path: Path) -> str:

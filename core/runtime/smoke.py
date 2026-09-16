@@ -8,7 +8,7 @@ from core.logging_utils import configure_logging
 
 from .context_builder import ContextBuilderService
 from .kernel import DevenvKernel
-from .models import PlanningMode
+from .models import DEFAULT_MAX_CONSECUTIVE_TOOLS, PlanningMode
 from .tooling import build_runtime_tools
 
 
@@ -18,7 +18,11 @@ def main() -> int:
     parser.add_argument("prompt", help="Single prompt to send through the runtime.")
     parser.add_argument("--db-path", default="memory.db")
     parser.add_argument("--vector-dir", default="vectors")
-    parser.add_argument("--max-consecutive-tools", type=int, default=5)
+    parser.add_argument(
+        "--max-consecutive-tools",
+        type=int,
+        default=DEFAULT_MAX_CONSECUTIVE_TOOLS,
+    )
     parser.add_argument("--performance-mode", default="low", choices=("low", "medium", "high"))
     parser.add_argument("--planning-mode", default=PlanningMode.AUTO.value, choices=tuple(mode.value for mode in PlanningMode))
     parser.add_argument("--backend-preference", default="opencode")

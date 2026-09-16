@@ -1,0 +1,22 @@
+{
+  "name": "devenv-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:vendor": "node ./scripts/build-vendor.mjs",
+    "check:mount": "node ./scripts/check-mount.mjs",
+    "visual:serve": "node ./scripts/visual-server.mjs",
+    "visual:capture": "node ./scripts/capture-homepage.mjs"
+  },
+  "dependencies": {
+    "highlight.js": "11.11.1",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "reactflow": "11.11.4"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.8",
+    "jsdom": "^29.1.1",
+    "playwright": "^1.62.0"
+  }
+}

@@ -2,3 +2,5 @@
 lancedb>=0.16.0
 mcp[cli]>=1.28.0
 sentence-transformers>=3.0.0
+textual>=8.2.8
+spacy>=3.7

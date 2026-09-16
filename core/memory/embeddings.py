@@ -59,3 +59,59 @@ class HashingEmbedder:
             return values
 
         return [value / magnitude for value in values]
+
+
+@dataclass
+class BgeSmallEmbedder:
+    model_name: str = "BAAI/bge-small-en-v1.5"
+    dimension: int = 384
+    local_files_only: bool = True
+
+    def __post_init__(self) -> None:
+        self._model = None
+
+    def embed(self, text: str) -> list[float]:
+        if self._model is None:
+            from sentence_transformers import SentenceTransformer
+            self._model = SentenceTransformer(self.model_name, local_files_only=self.local_files_only)
+        vector = self._model.encode(text, normalize_embeddings=True)
+        return [float(value) for value in vector]
+
+
+BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+_CARD_EMBEDDER: Embedder | None = None
+
+
+def build_card_embedder() -> Embedder:
+    """Return the interaction-card embedder, loading from the local cache without HF network calls."""
+    global _CARD_EMBEDDER
+    if _CARD_EMBEDDER is not None:
+        return _CARD_EMBEDDER
+    for local_files_only in (True, False):
+        try:
+            embedder: Embedder = BgeSmallEmbedder(local_files_only=local_files_only)
+            embedder.embed("warmup")
+        except Exception:
+            continue
+        _CARD_EMBEDDER = embedder
+        return embedder
+    _CARD_EMBEDDER = build_default_embedder()
+    return _CARD_EMBEDDER
+
+
+_DEFAULT_EMBEDDER: Embedder | None = None
+
+
+def build_default_embedder() -> Embedder:
+    """Return the production embedder, falling back to hashing if unavailable."""
+    global _DEFAULT_EMBEDDER
+    if _DEFAULT_EMBEDDER is not None:
+        return _DEFAULT_EMBEDDER
+    try:
+        embedder: Embedder = SentenceTransformerEmbedder()
+        embedder.embed("warmup")
+    except Exception:
+        _DEFAULT_EMBEDDER = HashingEmbedder(dimension=384)
+    else:
+        _DEFAULT_EMBEDDER = embedder
+    return _DEFAULT_EMBEDDER

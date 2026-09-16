@@ -102,6 +102,8 @@ class PeekLinesTool(BaseTool):
                 raise ValueError("range mode requires integer start and end arguments")
             if start < 1 or end < start:
                 raise ValueError("range mode requires 1 <= start <= end")
+            if start > len(lines) and lines:
+                raise ValueError(f"range mode start exceeds file length ({len(lines)} lines)")
             selected = lines[start - 1 : end]
             return {"line_start": start, "line_end": min(end, len(lines)), "lines": selected}
 

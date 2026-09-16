@@ -1,12 +1,13 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 import { AppProvider, useApp } from "./context/AppContext.js";
 import { Header } from "./components/Header.js";
 import { SettingsDropdown } from "./components/SettingsDropdown.js";
 import { ChatColumn } from "./components/ChatColumn.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { Toast } from "./components/Toast.js";
+import { BeamFrame, MetalSurface, MotionDeck, MotionReveal, MotionShimmerText, MotionStage } from "./components/MotionPrimitives.js";
 import { fetchHealth, updateSessionAccess as apiUpdateSessionAccess, updateBackendAccess as apiUpdateBackendAccess } from "./api.js";
-import { persistAccess, persistPreferredModels, persistSetupState } from "./utils/storage.js";
+import { loadPreferredBackend, persistAccess, persistPreferredModels, persistSetupState } from "./utils/storage.js";
 
 function AppInner() {
   const { state, dispatch } = useApp();
@@ -54,6 +55,7 @@ function AppInner() {
     restoreRef.current = true;
     const restore = async () => {
       const persisted = state.persistedAccess || { session_access: {}, backend_access: {} };
+      const preferredBackend = selectReachablePreferredBackend(state.health, loadPreferredBackend());
       try {
         if (persisted.session_access?.codex && !state.accessPolicy.session_access?.codex) {
           const payload = await apiUpdateSessionAccess("codex", true);
@@ -63,11 +65,22 @@ function AppInner() {
           const payload = await apiUpdateSessionAccess("opencode", true);
           dispatch({ type: "SET_ACCESS_POLICY", payload });
         }
-        for (const backend of ["opencode", "ollama", "codex"]) {
+        for (const backend of ["opencode", "ollama", "llama_cpp", "codex"]) {
           if (persisted.backend_access?.[backend] && !state.accessPolicy.backend_access?.[backend]) {
             const payload = await apiUpdateBackendAccess(backend, true);
             dispatch({ type: "SET_ACCESS_POLICY", payload });
           }
+        }
+        if (
+          shouldAutoEnablePreferredBackend({
+            health: state.health,
+            preferredBackend,
+            accessPolicy: state.accessPolicy,
+            persistedAccess: persisted,
+          })
+        ) {
+          const payload = await apiUpdateBackendAccess(preferredBackend, true);
+          dispatch({ type: "SET_ACCESS_POLICY", payload });
         }
         const payload = await fetchHealth();
         dispatch({ type: "SET_HEALTH", payload });
@@ -118,6 +131,13 @@ function AppInner() {
     const handler = (e) => {
       if (e.detail?.suggestion) {
         dispatch({ type: "SET_PROMPT", payload: e.detail.suggestion });
+        if (Array.isArray(e.detail.selectedTools)) {
+          dispatch({ type: "SET_SELECTED_TOOLS", payload: e.detail.selectedTools });
+        }
+        if (typeof e.detail.planMode === "boolean") {
+          dispatch({ type: "SET_PLAN_MODE", payload: e.detail.planMode });
+        }
+        dispatch({ type: "SET_TOOL_PICKER_OPEN", payload: false });
       }
     };
     window.addEventListener("opencode-suggestion", handler);
@@ -137,11 +157,25 @@ function AppInner() {
   }, [state.showSettings]);
 
   if (state.bootError) {
-    return React.createElement("div", { className: "loading-shell" }, `Failed to load interface: ${state.bootError}`);
+    return React.createElement(BootStateScreen, {
+      icon: "error",
+      eyebrow: "Startup interrupted",
+      title: "Devenv hit a boot failure",
+      body: state.bootError,
+      tone: "ember",
+      detail: "The web shell loaded, but the health handshake did not complete.",
+    });
   }
 
   if (!state.health) {
-    return React.createElement("div", { className: "loading-shell" }, "Booting Devenv web interface...");
+    return React.createElement(BootStateScreen, {
+      icon: "deployed_code",
+      eyebrow: "Preparing workspace",
+      title: "Booting Devenv web interface",
+      body: "Restoring your local shell, checking runtime health, and bringing the workspace online.",
+      tone: "ocean",
+      loading: true,
+    });
   }
 
   const indexing = state.health.indexing || null;
@@ -167,14 +201,42 @@ function AppInner() {
 
   return React.createElement(
     "div",
-    { className: "flex flex-col h-screen overflow-hidden bg-background" },
-    React.createElement(Header, null),
-    state.showSettings ? React.createElement(SettingsDropdown, null) : null,
+    { className: "app-shell flex flex-col min-h-screen bg-background" },
+    React.createElement("div", { className: "app-shell-noise", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-orbit app-shell-orbit-one", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-orbit app-shell-orbit-two", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-veil app-shell-veil-top", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-veil app-shell-veil-bottom", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-aura app-shell-aura-one", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-aura app-shell-aura-two", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-aura app-shell-aura-three", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-beam app-shell-beam-top", "aria-hidden": "true" }),
+    React.createElement("div", { className: "app-shell-beam app-shell-beam-bottom", "aria-hidden": "true" }),
     React.createElement(
-      "main",
-      { className: "flex flex-1 overflow-hidden" },
-      React.createElement(ChatColumn, null),
-      React.createElement(Sidebar, null)
+      "div",
+      { className: "app-shell-core" },
+      React.createElement(Header, null),
+      state.showSettings ? React.createElement(SettingsDropdown, null) : null,
+      React.createElement(
+        "main",
+        { className: "app-main flex flex-1 items-start" },
+        React.createElement(
+          MotionStage,
+          { axis: "y", className: "app-main-chat flex-1 min-w-0" },
+          React.createElement(
+            BeamFrame,
+            { active: state.isRunning, tone: "ocean", className: "app-main-chat-shell" },
+            React.createElement("div", { className: "app-main-chat-shell-orbit", "aria-hidden": "true" }),
+            React.createElement("div", { className: "app-main-chat-shell-orbit app-main-chat-shell-orbit-two", "aria-hidden": "true" }),
+            React.createElement(ChatColumn, null)
+          )
+        ),
+        React.createElement(
+          MotionStage,
+          { axis: "x", delay: 110, className: "app-main-sidebar-stage" },
+          React.createElement(Sidebar, null)
+        )
+      )
     ),
     React.createElement(Toast, null)
   );
@@ -285,11 +347,16 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
   const opencodeDone = phase === "opencode_done" || phase === "all_done";
 
   return React.createElement(
-    "div",
-    { className: "loading-shell" },
+    MotionStage,
+    { className: "loading-shell loading-shell-setup", delay: 40 },
+    React.createElement("div", { className: "startup-orbit startup-orbit-one", "aria-hidden": "true" }),
+    React.createElement("div", { className: "startup-orbit startup-orbit-two", "aria-hidden": "true" }),
     React.createElement(
-      "div",
-      { className: "startup-card", style: { maxWidth: "760px" } },
+      BeamFrame,
+      { tone: "ocean", className: "startup-frame" },
+      React.createElement(
+        MetalSurface,
+        { className: "startup-card", style: { maxWidth: "760px" } },
       React.createElement(
         "div",
         { className: "flex flex-col gap-4 mb-5" },
@@ -336,6 +403,21 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
               )
             )
           : null
+      ),
+      React.createElement(
+        "div",
+        { className: "startup-summary-rail" },
+        React.createElement("span", { className: "startup-summary-pill" }, activeProvider),
+        React.createElement("span", { className: "startup-summary-pill" }, isChunking ? "Indexing" : anyGranted ? "Ready" : "Awaiting grant"),
+        React.createElement("span", { className: "startup-summary-pill" }, isChunking ? `${progress.percent}%` : anyGranted ? "Saved" : "0%"),
+        React.createElement("span", { className: "startup-summary-copy" }, "Remembered provider access unlocks prior-session grounding and background indexing.")
+      ),
+      React.createElement(
+        MotionDeck,
+        { className: "startup-status-grid mb-5" },
+        startupStatusChip("Provider", activeProvider),
+        startupStatusChip("Phase", isChunking ? "Indexing" : anyGranted ? "Ready" : "Awaiting grant"),
+        startupStatusChip("Progress", isChunking ? `${progress.percent}%` : anyGranted ? "Saved" : "0%")
       ),
       React.createElement(
         "div",
@@ -459,6 +541,7 @@ function ConsentScreen({ dispatch, accessPolicy, indexing, onFinish }) {
             React.createElement("span", { className: "material-symbols-outlined text-[18px]" }, "arrow_forward")
           )
         : null
+      )
     )
   );
 }
@@ -472,13 +555,22 @@ function startupFact(label, body) {
   );
 }
 
+function startupStatusChip(label, value) {
+  return React.createElement(
+    "div",
+    { className: "startup-status-chip" },
+    React.createElement("span", { className: "startup-status-label" }, label),
+    React.createElement("strong", { className: "startup-status-value" }, value)
+  );
+}
+
 function setupRow(provider, label, granted, done, isActive, handleGrant) {
   const isButtonDisabled = granted || done || isActive;
   return React.createElement(
     "div",
     {
       key: provider,
-      className: "flex items-center justify-between p-3 bg-surface-container rounded-lg border " + (done || granted ? "border-primary/40" : "border-outline-variant"),
+      className: "startup-provider-row flex items-center justify-between p-3 bg-surface-container rounded-lg border " + (done || granted ? "border-primary/40" : "border-outline-variant"),
     },
     React.createElement(
       "div",
@@ -509,6 +601,7 @@ function setupRow(provider, label, granted, done, isActive, handleGrant) {
 }
 
 function applyHealthPayload(dispatch, payload) {
+  const preferredBackend = selectReachablePreferredBackend(payload, loadPreferredBackend());
   dispatch({
     type: "SET_HEALTH_META",
     payload: {
@@ -519,12 +612,34 @@ function applyHealthPayload(dispatch, payload) {
       selectedModelsByBackend: payload.selected_models_by_backend || {},
     },
   });
-  dispatch({ type: "SET_ACCESS_POLICY", payload: payload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, codex: false } } });
+  dispatch({ type: "SET_ACCESS_POLICY", payload: payload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, llama_cpp: false, codex: false } } });
   dispatch({ type: "SET_BACKENDS", payload: payload.ai_backends || {} });
   dispatch({ type: "SET_ACTIVE_BACKEND", payload: payload.active_backend || "opencode" });
-  dispatch({ type: "SET_PREFERRED_BACKEND", payload: payload.preferred_backend || "opencode" });
+  dispatch({ type: "SET_PREFERRED_BACKEND", payload: preferredBackend });
   dispatch({ type: "SET_PERFORMANCE_MODE", payload: payload.performance_mode || "medium" });
   dispatch({ type: "SET_PRIVACY_MODE", payload: payload.privacy || { no_memory: false, incognito: false } });
+}
+
+function selectReachablePreferredBackend(payload, persistedPreferredBackend) {
+  const requested = String(persistedPreferredBackend || payload?.preferred_backend || "opencode").trim().toLowerCase() || "opencode";
+  if (backendLooksReachable(payload, requested)) return requested;
+  if (backendLooksReachable(payload, "ollama")) return "ollama";
+  if (backendLooksReachable(payload, "llama_cpp")) return "llama_cpp";
+  if (backendLooksReachable(payload, "opencode")) return "opencode";
+  if (backendLooksReachable(payload, "codex")) return "codex";
+  return requested;
+}
+
+function backendLooksReachable(payload, backend) {
+  const status = payload?.ai_backends?.[backend];
+  return Boolean(status?.available);
+}
+
+function shouldAutoEnablePreferredBackend({ health, preferredBackend, accessPolicy, persistedAccess }) {
+  if (!preferredBackend || !backendLooksReachable(health, preferredBackend)) return false;
+  if (accessPolicy?.backend_access?.[preferredBackend]) return false;
+  if (persistedAccess?.backend_access?.[preferredBackend]) return false;
+  return preferredBackend === "ollama" || preferredBackend === "llama_cpp";
 }
 
 function formatDuration(ms) {
@@ -532,6 +647,78 @@ function formatDuration(ms) {
   const seconds = totalSeconds % 60;
   const minutes = Math.floor(totalSeconds / 60);
   return minutes ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+}
+
+function BootStateScreen({ icon, eyebrow, title, body, detail, tone = "ocean", loading = false }) {
+  return React.createElement(
+    "div",
+    { className: "loading-shell" },
+    React.createElement("div", { className: "startup-orbit startup-orbit-one", "aria-hidden": "true" }),
+    React.createElement("div", { className: "startup-orbit startup-orbit-two", "aria-hidden": "true" }),
+    React.createElement(
+      MotionReveal,
+      { className: "loading-shell-panel", delay: 40 },
+      React.createElement(
+        BeamFrame,
+        { tone, className: "startup-frame" },
+        React.createElement(
+          MetalSurface,
+          { className: "startup-card startup-card-compact" },
+          React.createElement(
+            "div",
+            { className: "startup-hero" },
+            React.createElement(
+              "div",
+              { className: "startup-icon-shell" },
+              React.createElement("span", { className: "material-symbols-outlined text-[22px]" }, icon)
+            ),
+            React.createElement(
+              "div",
+              { className: "startup-hero-copy" },
+              React.createElement("div", { className: "startup-kicker" }, eyebrow),
+              React.createElement("h1", { className: "startup-title font-headline-sm text-headline-sm text-on-surface" }, title),
+              React.createElement(
+                loading ? MotionShimmerText : "p",
+                loading ? { className: "startup-copy is-booting" } : { className: "startup-copy" },
+                body
+              )
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "startup-summary-rail startup-summary-rail-compact" },
+            React.createElement("span", { className: "startup-summary-pill" }, loading ? "Booting" : "Error"),
+            React.createElement("span", { className: "startup-summary-pill" }, loading ? "Restoring memory" : "Handshake failed"),
+            React.createElement("span", { className: "startup-summary-copy" }, loading ? "The shell is mounting while the runtime health handshake completes." : "The web shell rendered, but the backend handshake still needs to recover.")
+          ),
+          React.createElement(
+            "div",
+            { className: "startup-section-intro" },
+            React.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, loading ? "Live boot status" : "Failure details"),
+            React.createElement(
+              "p",
+              { className: "text-[12px] leading-5 text-on-surface-variant", style: { margin: "6px 0 0" } },
+              detail || "Devenv is validating the local runtime before rendering the main workspace."
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "startup-facts-grid" },
+            startupFact("Runtime", loading ? "Health checks and provider wiring are running now." : "Retry after the backend health endpoint is reachable."),
+            startupFact("UI shell", "The local light interface is mounted before chat history is restored."),
+            startupFact("Local-first", "Ollama remains available once the runtime handshake succeeds.")
+          ),
+          React.createElement(
+            MotionDeck,
+            { className: "startup-status-grid mt-4" },
+            startupStatusChip("Surface", loading ? "Booting" : "Error"),
+            startupStatusChip("Memory", loading ? "Restoring" : "Paused"),
+            startupStatusChip("Backend", loading ? "Checking" : "Retry needed")
+          )
+        )
+      )
+    )
+  );
 }
 
 export function App() {

@@ -43,3 +43,91 @@ class ManageMemoryToolTest(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertIsNone(self.memory.store.get_node("proj_calendar"))
         self.assertIn("sync_state", result.data)
+
+    def test_update_mode_creates_manual_node_when_missing(self) -> None:
+        result = self.tool.execute(node_id="manual_fact", mode="update", text="Manual fact for later recall.")
+
+        self.assertTrue(result.success)
+        node = self.memory.store.get_node("manual_fact")
+        self.assertIsNotNone(node)
+        self.assertEqual(node.category, "manual")
+        self.assertEqual(node.label, "Manual Fact")
+        self.assertEqual(node.summary, "Manual fact for later recall.")
+
+    def test_update_mode_rejects_blank_text(self) -> None:
+        result = self.tool.execute(node_id="proj_calendar", mode="update", text="   ")
+
+        self.assertFalse(result.success)
+        self.assertIn("non-empty text", result.output)
+
+    def test_prune_mode_reports_missing_node_clearly(self) -> None:
+        result = self.tool.execute(node_id="missing_fact", mode="prune")
+
+        self.assertFalse(result.success)
+        self.assertFalse(result.data["deleted"])
+        self.assertEqual(result.output, "Memory node not found: missing_fact")
+
+    def test_create_mode_creates_manual_node_explicitly(self) -> None:
+        result = self.tool.execute(
+            node_id="atlas_backend_fact",
+            mode="create",
+            label="Atlas Backend Fact",
+            category="project",
+            text="Project Atlas used FastAPI for the backend service.",
+        )
+
+        self.assertTrue(result.success)
+        node = self.memory.store.get_node("atlas_backend_fact")
+        self.assertIsNotNone(node)
+        self.assertEqual(node.label, "Atlas Backend Fact")
+        self.assertEqual(node.category, "project")
+        self.assertEqual(node.summary, "Project Atlas used FastAPI for the backend service.")
+        self.assertTrue(result.data["created"])
+
+    def test_create_mode_accepts_action_alias(self) -> None:
+        result = self.tool.execute(
+            node_id="atlas_stack_fact",
+            action="create",
+            text="Project Atlas used SQLite for local state.",
+        )
+
+        self.assertTrue(result.success)
+        node = self.memory.store.get_node("atlas_stack_fact")
+        self.assertIsNotNone(node)
+        self.assertEqual(node.label, "Atlas Stack Fact")
+        self.assertEqual(node.category, "manual")
+
+    def test_valid_action_wins_over_unsupported_mode(self) -> None:
+        result = self.tool.execute(
+            node_id="atlas_runtime_fact",
+            mode="code",
+            action="create",
+            text="Project Atlas runs locally.",
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["mode"], "create")
+
+    def test_create_mode_rejects_existing_node(self) -> None:
+        result = self.tool.execute(node_id="proj_calendar", mode="create", text="Duplicate fact.")
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.output, "Memory node already exists: proj_calendar")
+
+    def test_create_mode_is_idempotent_for_identical_existing_node(self) -> None:
+        result = self.tool.execute(
+            node_id="proj_calendar",
+            mode="create",
+            label="Calendar Project",
+            category="project",
+            text="Calendar backend with reminders.",
+        )
+
+        self.assertTrue(result.success)
+        self.assertTrue(result.data["idempotent"])
+
+    def test_create_mode_rejects_blank_text(self) -> None:
+        result = self.tool.execute(node_id="atlas_backend_fact", mode="create", text="   ")
+
+        self.assertFalse(result.success)
+        self.assertIn("non-empty text", result.output)

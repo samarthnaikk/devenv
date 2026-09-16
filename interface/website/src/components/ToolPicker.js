@@ -1,19 +1,48 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 import { useApp } from "../context/AppContext.js";
+import { BeamFrame, MotionDeck, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 const TOOL_META = {
-  generate_pdf: { icon: "picture_as_pdf", label: "PDF", hint: "Generate polished PDFs" },
-  generate_prompt: { icon: "auto_awesome", label: "Prompt", hint: "Prepare a strong prompt" },
-  knowledge_search: { icon: "hub", label: "Knowledge", hint: "Pull repos and references" },
-  web_search: { icon: "language", label: "Web", hint: "Search live sources" },
+  list_directory: { icon: "folder_open", label: "Files", hint: "Map folders and top-level structure", category: "workspace" },
+  locate_files: { icon: "find_in_page", label: "Locate", hint: "Find likely files before reading", category: "workspace" },
+  read_file: { icon: "description", label: "Read", hint: "Open exact files and inspect content", category: "workspace" },
+  search_text: { icon: "match_case", label: "Search", hint: "Search the repo for strings and usages", category: "workspace" },
+  inspect_symbols: { icon: "route", label: "Symbols", hint: "Inspect definitions, exports, and structure", category: "workspace" },
+  track_symbol: { icon: "conversion_path", label: "Trace", hint: "Follow a symbol through the codebase", category: "workspace" },
+  generate_pdf: { icon: "picture_as_pdf", label: "PDF", hint: "Generate polished PDFs", category: "artifacts" },
+  generate_prompt: { icon: "auto_awesome", label: "Prompt", hint: "Prepare a strong prompt", category: "artifacts" },
+  knowledge_search: { icon: "hub", label: "Knowledge", hint: "Pull repos and references", category: "research" },
+  web_search: { icon: "language", label: "Web", hint: "Search live sources", category: "research" },
+};
+
+const TOOL_CATEGORY_META = {
+  workspace: {
+    label: "Workspace",
+    detail: "Stay grounded in the current repo before planning or answering.",
+  },
+  research: {
+    label: "Live Research",
+    detail: "Pull current web facts or external references when memory is not enough.",
+  },
+  artifacts: {
+    label: "Artifacts",
+    detail: "Generate polished outputs instead of only answering in chat.",
+  },
 };
 
 const USER_VISIBLE_TOOLS = new Set(Object.keys(TOOL_META));
 
 export function ToolPicker() {
   const { state, dispatch } = useApp();
-  const availableTools = (Array.isArray(state.health?.tools) ? state.health.tools : []).filter((toolName) => USER_VISIBLE_TOOLS.has(toolName));
-  const visibleSelectedTools = state.selectedTools.filter((toolName) => USER_VISIBLE_TOOLS.has(toolName));
+  const toolReadiness = state.health?.tool_readiness || {};
+  const registeredTools = new Set((Array.isArray(state.health?.tools) ? state.health.tools : []).filter((toolName) => USER_VISIBLE_TOOLS.has(toolName)));
+  const displayTools = Array.from(
+    new Set([
+      ...registeredTools,
+      ...Object.keys(toolReadiness).filter((toolName) => USER_VISIBLE_TOOLS.has(toolName)),
+    ])
+  );
+  const visibleSelectedTools = state.selectedTools.filter((toolName) => USER_VISIBLE_TOOLS.has(toolName) && isToolAvailable(toolName, registeredTools, toolReadiness));
   const selected = new Set(visibleSelectedTools);
   const [droppingTools, setDroppingTools] = React.useState([]);
   const selectedToolsKey = state.selectedTools.join("|");
@@ -53,6 +82,8 @@ export function ToolPicker() {
   };
 
   const selectedTools = Array.from(selected);
+  const routeSummary = summarizeRoute(visibleSelectedTools, state.planMode);
+  const groupedTools = groupToolsByCategory(displayTools);
   const selectedToolChips = selectedTools.map((toolName) => {
     const meta = describeTool(toolName);
     return React.createElement(
@@ -78,23 +109,31 @@ export function ToolPicker() {
       "div",
       { className: "tool-picker-trigger-row" },
       React.createElement(
-        "button",
-        {
-          type: "button",
-          className: "tool-picker-trigger flex items-center gap-2 px-3 py-1.5 bg-surface-container-highest rounded-lg border border-outline-variant hover:bg-surface-variant transition-colors",
-          onClick: toggleToolPicker,
-          "aria-label": selected.size ? `Choose tools, ${selected.size} selected` : "Choose tools",
-        },
-        React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "TOOLS"),
-        React.createElement("span", { className: "material-symbols-outlined text-[16px] text-on-surface-variant" }, state.toolPickerOpen ? "expand_less" : "expand_more")
+        BeamFrame,
+        { active: state.toolPickerOpen, tone: "mono", className: "tool-picker-trigger-shell rounded-xl" },
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            className: "tool-picker-trigger flex items-center gap-2 px-3 py-1.5 bg-surface-container-highest rounded-xl border border-outline-variant hover:bg-surface-variant transition-colors",
+            onClick: toggleToolPicker,
+            "aria-label": selected.size ? `Choose tools, ${selected.size} selected` : "Choose tools",
+          },
+          React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "TOOLS"),
+          React.createElement("span", { className: "material-symbols-outlined text-[16px] text-on-surface-variant ml-auto" }, state.toolPickerOpen ? "expand_less" : "expand_more")
+        )
       )
     ),
     selectedTools.length
       ? React.createElement(
-          "div",
-          { className: "tool-picker-selected-row" },
-          React.createElement("span", { className: "tool-picker-selected-label" }, "Active tools"),
-          React.createElement("div", { className: "tool-picker-selected-list" }, selectedToolChips)
+          MotionReveal,
+          null,
+          React.createElement(
+            "div",
+            { className: "tool-picker-selected-row" },
+            React.createElement("span", { className: "tool-picker-selected-label" }, "Active tools"),
+            React.createElement("div", { className: "tool-picker-selected-list" }, selectedToolChips)
+          )
         )
       : null,
     state.toolPickerOpen
@@ -105,6 +144,9 @@ export function ToolPicker() {
           React.createElement(
             "div",
             { className: "tool-picker-panel-inner" },
+            React.createElement("span", { className: "tool-picker-panel-ribbon", "aria-hidden": "true" }),
+            React.createElement("span", { className: "tool-picker-panel-orbit tool-picker-panel-orbit-one", "aria-hidden": "true" }),
+            React.createElement("span", { className: "tool-picker-panel-orbit tool-picker-panel-orbit-two", "aria-hidden": "true" }),
             React.createElement(
               React.Fragment,
               null,
@@ -114,8 +156,8 @@ export function ToolPicker() {
                 React.createElement(
                   "div",
                   { className: "tool-picker-panel-copy" },
-                  React.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, "Choose functions"),
-                  React.createElement("span", { className: "text-[11px] leading-5 text-on-surface-variant" }, "Pick tool cards from the tray. Selected ones drop into your active tool row.")
+                  React.createElement("strong", { className: "font-label-caps text-label-caps text-on-surface" }, "Route this turn"),
+                  React.createElement("span", { className: "text-[11px] leading-5 text-on-surface-variant" }, routeSummary.panel)
                 ),
                 React.createElement(
                   "button",
@@ -124,38 +166,104 @@ export function ToolPicker() {
                     className: "font-label-caps text-label-caps text-primary bg-transparent border border-outline-variant rounded-full px-3 py-1 shrink-0 hover:bg-surface-container-high transition-colors",
                     onClick: clearToolSelection,
                   },
-                  "Use all"
+                  "Clear"
                 )
               ),
               React.createElement(
                 "div",
-                { className: "tool-picker-grid" },
-                availableTools.map((toolName) => {
-                  const meta = describeTool(toolName);
-                  return React.createElement(
-                    "button",
-                    {
-                      key: toolName,
-                      type: "button",
-                      className: `tool-picker-tile${selected.has(toolName) ? " is-selected" : ""}`,
-                      onClick: () => toggleTool(toolName),
-                    },
+                { className: "tool-picker-summary-rail" },
+                React.createElement(
+                  "span",
+                  { className: "tool-picker-summary-pill" },
+                  `${selectedTools.length || 0} active`
+                ),
+                React.createElement(
+                  "span",
+                  { className: "tool-picker-summary-pill" },
+                  `${groupedTools.length} lanes`
+                ),
+                React.createElement(
+                  "span",
+                  { className: "tool-picker-summary-copy" },
+                  selectedTools.length
+                    ? "Selected routes will constrain this turn."
+                    : "Leave the tray clear to keep routing automatic."
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "tool-picker-route-note" },
+                React.createElement("span", { className: "tool-picker-route-label" }, state.planMode ? "Plan mode" : "Auto route"),
+                React.createElement("span", { className: "tool-picker-route-copy" }, state.planMode ? "The runtime will inspect the repo and return a flowchart only. Live route cards stay selected for normal turns after you exit plan mode." : "Leave the tray empty to let Devenv choose between memory, live search, and tool-assisted execution.")
+              ),
+              React.createElement(
+                MotionDeck,
+                { className: "tool-picker-preview-deck" },
+                React.createElement(
+                  "div",
+                  { className: "tool-picker-preview-card" },
+                  React.createElement("span", { className: "tool-picker-preview-kicker" }, "Lane"),
+                  React.createElement("strong", { className: "tool-picker-preview-title" }, state.planMode ? "Blueprint lane" : routeSummary.trigger),
+                  React.createElement("span", { className: "tool-picker-preview-copy" }, routeSummary.panel)
+                ),
+                React.createElement(
+                  "div",
+                  { className: "tool-picker-preview-card tool-picker-preview-card-secondary" },
+                  React.createElement("span", { className: "tool-picker-preview-kicker" }, "Selection"),
+                  React.createElement("strong", { className: "tool-picker-preview-title" }, selectedTools.length ? `${selectedTools.length} active route${selectedTools.length === 1 ? "" : "s"}` : "Runtime freedom"),
+                  React.createElement("span", { className: "tool-picker-preview-copy" }, selectedTools.length ? "The runtime will stay inside these visible tool surfaces where possible." : "Let the model decide when memory, workspace tools, or live search is actually needed.")
+                )
+              ),
+              React.createElement(
+                MotionDeck,
+                { className: "tool-picker-sections" },
+                groupedTools.map(([category, toolNames]) =>
+                  React.createElement(
+                    "section",
+                    { key: category, className: "tool-picker-section" },
                     React.createElement(
-                      "span",
-                      { className: "tool-picker-tile-icon" },
-                      React.createElement("span", { className: "material-symbols-outlined text-[18px] text-primary" }, meta.icon)
+                      "div",
+                      { className: "tool-picker-section-copy" },
+                      React.createElement("span", { className: "tool-picker-section-label" }, TOOL_CATEGORY_META[category]?.label || "Tools"),
+                      React.createElement("span", { className: "tool-picker-section-detail" }, TOOL_CATEGORY_META[category]?.detail || "Route the runtime through these tools.")
                     ),
-                    React.createElement("span", { className: "tool-picker-tile-label" }, meta.label),
-                    React.createElement("span", { className: "tool-picker-tile-hint" }, meta.hint),
-                    selected.has(toolName)
-                      ? React.createElement(
-                          "span",
-                          { className: "tool-picker-tile-check" },
-                          React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "south")
-                        )
-                      : null
-                  );
-                })
+                    React.createElement(
+                      "div",
+                      { className: "tool-picker-grid" },
+                      toolNames.map((toolName) => {
+                        const meta = describeTool(toolName, toolReadiness[toolName]);
+                        const isAvailable = isToolAvailable(toolName, registeredTools, toolReadiness);
+                        return React.createElement(
+                          "button",
+                          {
+                            key: toolName,
+                            type: "button",
+                            className: `tool-picker-tile${selected.has(toolName) ? " is-selected" : ""}${isAvailable ? "" : " is-disabled"}`,
+                            onClick: () => isAvailable && toggleTool(toolName),
+                            disabled: !isAvailable,
+                          },
+                          React.createElement(
+                            "span",
+                            { className: "tool-picker-tile-icon" },
+                            React.createElement("span", { className: "material-symbols-outlined text-[18px] text-primary" }, meta.icon)
+                          ),
+                          React.createElement("span", { className: "tool-picker-tile-label" }, meta.label),
+                          React.createElement("span", { className: "tool-picker-tile-hint" }, meta.hint),
+                          !isAvailable
+                            ? React.createElement("span", { className: "tool-picker-tile-state" }, "Unavailable")
+                            : null,
+                          selected.has(toolName)
+                            ? React.createElement(
+                                "span",
+                                { className: "tool-picker-tile-check" },
+                                React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "south")
+                              )
+                            : null
+                        );
+                      })
+                    )
+                  )
+                )
               )
             )
           )
@@ -164,7 +272,22 @@ export function ToolPicker() {
   );
 }
 
-function describeTool(toolName) {
+function groupToolsByCategory(toolNames) {
+  const orderedCategories = ["workspace", "research", "artifacts"];
+  return orderedCategories
+    .map((category) => [
+      category,
+      toolNames.filter((toolName) => (TOOL_META[toolName]?.category || "workspace") === category),
+    ])
+    .filter(([, items]) => items.length);
+}
+
+function isToolAvailable(toolName, registeredTools, toolReadiness) {
+  if (registeredTools.has(toolName)) return true;
+  return toolReadiness?.[toolName]?.ready === true;
+}
+
+function describeTool(toolName, readiness = {}) {
   const meta = TOOL_META[toolName] || {};
   const fallbackLabel = String(toolName || "")
     .split("_")
@@ -174,6 +297,41 @@ function describeTool(toolName) {
   return {
     icon: meta.icon || "build",
     label: meta.label || fallbackLabel || "Tool",
-    hint: meta.hint || "General workspace action",
+    hint: (typeof readiness.detail === "string" && readiness.detail.trim()) || meta.hint || "General workspace action",
+  };
+}
+
+function summarizeRoute(selectedTools, planMode) {
+  if (planMode) {
+    return {
+      trigger: "Plan flow active",
+      panel: "Plan mode uses repo inspection and blueprint generation first. Route cards remain available for direct turns after planning.",
+    };
+  }
+  if (!selectedTools.length) {
+    return {
+      trigger: "Auto route",
+      panel: "Pick a route card to bias the runtime toward web, knowledge, prompt, or PDF work. Leave everything clear for automatic routing.",
+    };
+  }
+  const workspaceRoutes = selectedTools.filter((toolName) => ["list_directory", "locate_files", "read_file", "search_text", "inspect_symbols", "track_symbol"].includes(toolName));
+  if (workspaceRoutes.length && workspaceRoutes.length === selectedTools.length) {
+    return {
+      trigger: workspaceRoutes.length === 1 ? `${describeTool(workspaceRoutes[0]).label} route` : "Workspace route",
+      panel: workspaceRoutes.length === 1
+        ? `This turn is constrained to ${describeTool(workspaceRoutes[0]).label.toLowerCase()} inspection inside the repo.`
+        : "This turn is constrained to repo inspection tools, which helps Devenv stay grounded in the current codebase before answering or planning.",
+    };
+  }
+  if (selectedTools.length === 1) {
+    const meta = describeTool(selectedTools[0]);
+    return {
+      trigger: `${meta.label} route`,
+      panel: `This turn is biased toward ${meta.label.toLowerCase()} behavior. You can stack more route cards if the request needs multiple surfaces.`,
+    };
+  }
+  return {
+    trigger: `${selectedTools.length} routes active`,
+    panel: "Multiple route cards are active, so the runtime will constrain itself to those selected surfaces where possible.",
   };
 }

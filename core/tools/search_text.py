@@ -106,7 +106,10 @@ class SearchTextTool(BaseTool):
         return matches
 
     def _regex_search(self, files: list, query: str, root) -> list[dict[str, object]]:
-        pattern = re.compile(query)
+        try:
+            pattern = re.compile(query)
+        except re.error as exc:
+            raise ValueError(f"Invalid regex pattern: {exc}") from exc
         matches: list[dict[str, object]] = []
         for file_path in files:
             for line_number, line in enumerate(file_path.read_text(encoding="utf-8").splitlines(), start=1):

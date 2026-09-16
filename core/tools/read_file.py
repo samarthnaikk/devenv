@@ -93,7 +93,11 @@ class ReadFileTool(BaseTool):
         if isinstance(features, str):
             requested = [features]
         elif isinstance(features, Iterable):
-            requested = [item for item in features if isinstance(item, str)]
+            raw_items = list(features)
+            invalid_types = [type(item).__name__ for item in raw_items if not isinstance(item, str)]
+            if invalid_types:
+                raise ValueError("features iterable must contain only strings")
+            requested = list(raw_items)
         else:
             requested = []
 

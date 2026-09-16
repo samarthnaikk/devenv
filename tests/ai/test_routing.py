@@ -143,6 +143,20 @@ class OpenCodeRoutingTest(unittest.TestCase):
         self.assertEqual(response.backend, "ollama")
         self.assertEqual(router.last_backend_used, "ollama")
 
+    def test_routing_core_prefers_llama_cpp_when_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            router = RoutingAICore(
+                workspace_path=tempdir,
+                opencode_ai=_FakeOpenCodeCore(),
+                llama_cpp_ai=_FakeLlamaCppCore(),
+            )
+            router.set_backend_preference("llama_cpp", opencode_enabled=False, llama_cpp_enabled=True)
+            response = router.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
+
+        self.assertEqual(response.content, "llama.cpp")
+        self.assertEqual(response.backend, "llama_cpp")
+        self.assertEqual(router.last_backend_used, "llama_cpp")
+
     def test_routing_core_preserves_temperature_for_selected_backend(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             ollama = _FakeOllamaCore()
@@ -155,6 +169,17 @@ class OpenCodeRoutingTest(unittest.TestCase):
             router.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[], temperature=0.0)
 
         self.assertEqual(ollama.last_temperature, 0.0)
+
+    def test_routing_core_requires_llama_cpp_access(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            router = RoutingAICore(
+                workspace_path=tempdir,
+                opencode_ai=_FakeOpenCodeCore(),
+                llama_cpp_ai=_FakeLlamaCppCore(),
+            )
+            router.set_backend_preference("llama_cpp", opencode_enabled=False, llama_cpp_enabled=False)
+            with self.assertRaises(RuntimeError):
+                router.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
 
     def test_routing_core_rejects_invalid_backend_preference(self) -> None:
         router = RoutingAICore(workspace_path=".", opencode_ai=_FakeOpenCodeCore())
@@ -405,10 +430,11 @@ class OpenCodeRoutingTest(unittest.TestCase):
             manager.inspect.return_value = _fake_server_status()
 
             core = OpenCodeAICore(workspace_path=tempdir, executable="opencode", client=client, server_manager=manager)
-            with self.assertRaises(RuntimeError):
-                core.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
-            with self.assertRaises(RuntimeError) as retry_ctx:
-                core.chat(messages=[{"role": "user", "content": "hello again"}], tool_names=[])
+            with patch.dict(os.environ, {"DEVENV_OPENCODE_ALLOW_CLI_FALLBACK": "0"}, clear=False):
+                with self.assertRaises(RuntimeError):
+                    core.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
+                with self.assertRaises(RuntimeError) as retry_ctx:
+                    core.chat(messages=[{"role": "user", "content": "hello again"}], tool_names=[])
 
         self.assertEqual(len(client.sent_messages), 1)
         self.assertIn("recent transport failure cached", str(retry_ctx.exception).lower())
@@ -425,13 +451,14 @@ class OpenCodeRoutingTest(unittest.TestCase):
             manager.inspect.return_value = _fake_server_status()
 
             core = OpenCodeAICore(workspace_path=tempdir, executable="opencode", client=client, server_manager=manager)
-            with patch.object(
-                core,
-                "_legacy_cli_chat",
-                return_value=AIResponse(content="CLI rescue", tool_calls=(), finish_reason="stop", usage={"total_tokens": 3}),
-            ) as legacy_chat:
-                with self.assertRaises(RuntimeError):
-                    core.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
+            with patch.dict(os.environ, {"DEVENV_OPENCODE_ALLOW_CLI_FALLBACK": "0"}, clear=False):
+                with patch.object(
+                    core,
+                    "_legacy_cli_chat",
+                    return_value=AIResponse(content="CLI rescue", tool_calls=(), finish_reason="stop", usage={"total_tokens": 3}),
+                ) as legacy_chat:
+                    with self.assertRaises(RuntimeError):
+                        core.chat(messages=[{"role": "user", "content": "hello"}], tool_names=[])
 
         legacy_chat.assert_not_called()
         self.assertIn("opencode server failed", core.last_error.lower())
@@ -579,6 +606,37 @@ class _FakeOllamaCore:
     def chat(self, **kwargs) -> AIResponse:
         self.last_temperature = kwargs.get("temperature")
         return AIResponse(content="Ollama", finish_reason="stop", usage={"total_tokens": 1}, backend="ollama")
+
+
+class _FakeLlamaCppCore:
+    def __init__(self) -> None:
+        self.model = "qwen2.5-coder.gguf"
+        self.last_backend_reason = "llama.cpp handled the turn."
+        self.last_temperature = None
+
+    def register_tool(self, tool: BaseTool) -> None:
+        return None
+
+    def status(self):
+        from core.ai.models import AIBackendStatus
+
+        return AIBackendStatus(name="llama_cpp", available=True, enabled=True, model=self.model, detail="Configured")
+
+    def set_model(self, model: str) -> None:
+        self.model = model
+
+    def set_performance_mode(self, performance_mode: str) -> None:
+        return None
+
+    def reset_session(self) -> None:
+        return None
+
+    def abort(self) -> bool:
+        return False
+
+    def chat(self, **kwargs) -> AIResponse:
+        self.last_temperature = kwargs.get("temperature")
+        return AIResponse(content="llama.cpp", finish_reason="stop", usage={"total_tokens": 1}, backend="llama_cpp")
 
 
 def _fake_message(message_id: str, *, structured_output: dict[str, Any] | None, usage: dict[str, int], text: str | None = None):

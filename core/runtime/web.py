@@ -5,6 +5,8 @@ import logging
 import os
 import inspect
 import re
+import shutil
+import subprocess
 import sysconfig
 import time
 from collections import Counter
@@ -21,6 +23,7 @@ from .context_builder import ContextBuilderService
 from .kernel import DevenvKernel
 from .mcp_http import MCPHTTPServerManager, default_mcp_http_server_config
 from .models import (
+    DEFAULT_MAX_CONSECUTIVE_TOOLS,
     PlanningMode,
     PreparedPromptRequest,
     PrivacyModeState,
@@ -40,7 +43,8 @@ DEFAULT_WEB_MODELS = (
     "opencode/claude-haiku-4-5",
     "opencode/north-mini-code-free",
 )
-DEFAULT_OLLAMA_MODELS = ("qwen2.5:3b",)
+DEFAULT_OLLAMA_MODELS: tuple[str, ...] = ()
+DEFAULT_LLAMACPP_MODELS: tuple[str, ...] = ()
 READ_ONLY_PLAN_TOOLS = (
     "list_directory",
     "locate_files",
@@ -96,7 +100,7 @@ Rules:
 class AccessPolicy:
     def __init__(self) -> None:
         self.session_access: dict[str, bool] = {"codex": False, "opencode": False}
-        self.backend_access: dict[str, bool] = {"opencode": False, "ollama": False, "codex": False}
+        self.backend_access: dict[str, bool] = {"opencode": False, "ollama": False, "llama_cpp": False, "codex": False}
 
     def set_session_access(self, provider: str, allowed: bool) -> dict[str, object]:
         self.session_access[provider] = allowed
@@ -126,6 +130,7 @@ class DevenvWebApp:
         self.config = config
         self.port = port
         self.static_root = _resolve_static_root()
+        _ensure_static_bundle(self.static_root)
         self.performance_mode = (
             config.performance_mode
             if config.performance_mode in {"low", "medium", "high"}
@@ -193,6 +198,7 @@ class DevenvWebApp:
         active_provider_label = {
             "opencode": "OpenCode CLI",
             "ollama": "Ollama",
+            "llama_cpp": "llama.cpp",
             "codex": "Codex via OpenAI",
         }.get(active_backend, getattr(self.kernel.ai, "provider_label", "OpenCode CLI"))
         model_catalog = self._model_catalog(ai_statuses=ai_statuses, active_backend=active_backend, current_model=model)
@@ -223,7 +229,12 @@ class DevenvWebApp:
             "ai_model": model,
             "available_models": list(model_catalog.get(active_backend, [])),
             "available_models_by_backend": model_catalog,
-            "selected_models_by_backend": self._selected_models_by_backend(ai_statuses, fallback_model=model, preferred_backend=preferred_backend),
+            "selected_models_by_backend": self._selected_models_by_backend(
+                ai_statuses,
+                fallback_model=model,
+                preferred_backend=preferred_backend,
+                fallback_backend=active_backend,
+            ),
             "context_builder_enabled": True,
             "context_sources": [
                 source.to_dict() for source in self.context_builder.list_sources()
@@ -261,23 +272,59 @@ class DevenvWebApp:
         return readiness
 
     def _build_tool_readiness(self) -> dict[str, ToolReadiness]:
-        return {
+        readiness = {
+            "list_directory": ToolReadiness(
+                name="list_directory",
+                ready="list_directory" in self.kernel.tools,
+                detail="Directory inspection is available for mapping folders and top-level workspace structure.",
+            ),
+            "locate_files": ToolReadiness(
+                name="locate_files",
+                ready="locate_files" in self.kernel.tools,
+                detail="Filename and path lookup is available for finding likely files before deeper inspection.",
+            ),
+            "read_file": ToolReadiness(
+                name="read_file",
+                ready="read_file" in self.kernel.tools,
+                detail="Direct file reading is available for opening exact files and reviewing source content.",
+            ),
+            "search_text": ToolReadiness(
+                name="search_text",
+                ready="search_text" in self.kernel.tools,
+                detail="Repo-wide text search is available for finding strings, selectors, and usage sites.",
+            ),
+            "inspect_symbols": ToolReadiness(
+                name="inspect_symbols",
+                ready="inspect_symbols" in self.kernel.tools,
+                detail="Symbol inspection is available for definitions, exports, and structural code lookup.",
+            ),
+            "track_symbol": ToolReadiness(
+                name="track_symbol",
+                ready="track_symbol" in self.kernel.tools,
+                detail="Symbol tracing is available for following a definition through the codebase.",
+            ),
+            "knowledge_search": ToolReadiness(
+                name="knowledge_search",
+                ready="knowledge_search" in self.kernel.tools,
+                detail="Reference search is available for repos, docs, videos, and discussion threads.",
+            ),
             "web_search": ToolReadiness(
                 name="web_search",
-                ready=True,
+                ready="web_search" in self.kernel.tools,
                 detail="Structured web and image search are available through the web_search runtime tool.",
             ),
             "generate_prompt": ToolReadiness(
                 name="generate_prompt",
-                ready=True,
+                ready="generate_prompt" in self.kernel.tools,
                 detail="Prompt-preparation primitives are available and will be exposed as a runtime tool.",
             ),
             "generate_pdf": ToolReadiness(
                 name="generate_pdf",
-                ready=True,
+                ready="generate_pdf" in self.kernel.tools,
                 detail="LaTeX-backed PDF generation is available through the generate_pdf runtime tool.",
             ),
         }
+        return readiness
 
     def _available_models(self, *, current_model: str) -> list[str]:
         configured = os.getenv("DEVENV_AVAILABLE_MODELS", "")
@@ -300,6 +347,7 @@ class DevenvWebApp:
         catalog: dict[str, list[str]] = {
             "opencode": self._available_models(current_model=current_model if active_backend == "opencode" else getattr(getattr(self.kernel.ai, "opencode_ai", None), "model", "")),
             "ollama": list(DEFAULT_OLLAMA_MODELS),
+            "llama_cpp": list(DEFAULT_LLAMACPP_MODELS),
             "codex": [],
         }
         if isinstance(ai_statuses, dict):
@@ -313,6 +361,13 @@ class DevenvWebApp:
                         if candidate and candidate not in ordered:
                             ordered.append(candidate)
                     catalog["ollama"] = ordered
+                elif backend == "llama_cpp":
+                    models = [str(item).strip() for item in metadata.get("models", []) if str(item).strip()]
+                    ordered = []
+                    for candidate in [model_name, *models, *DEFAULT_LLAMACPP_MODELS]:
+                        if candidate and candidate not in ordered:
+                            ordered.append(candidate)
+                    catalog["llama_cpp"] = ordered
                 elif backend == "codex":
                     catalog["codex"] = [model_name] if model_name else []
         return catalog
@@ -323,10 +378,12 @@ class DevenvWebApp:
         *,
         fallback_model: str,
         preferred_backend: str,
+        fallback_backend: str | None = None,
     ) -> dict[str, str]:
         selected = {
             "opencode": str(getattr(getattr(self.kernel.ai, "opencode_ai", None), "model", "") or ""),
             "ollama": str(getattr(getattr(self.kernel.ai, "ollama_ai", None), "model", "") or ""),
+            "llama_cpp": str(getattr(getattr(self.kernel.ai, "llama_cpp_ai", None), "model", "") or ""),
             "codex": str(getattr(getattr(self.kernel.ai, "codex_ai", None), "model", "") or ""),
         }
         if isinstance(ai_statuses, dict):
@@ -334,7 +391,13 @@ class DevenvWebApp:
                 model_name = str(getattr(status, "model", "") or "").strip()
                 if model_name:
                     selected[backend] = model_name
-        if preferred_backend in selected and not selected[preferred_backend]:
+        effective_fallback_backend = str(fallback_backend or "").strip().lower()
+        if (
+            preferred_backend in selected
+            and not selected[preferred_backend]
+            and effective_fallback_backend == preferred_backend
+            and fallback_model
+        ):
             selected[preferred_backend] = fallback_model
         return selected
 
@@ -376,6 +439,32 @@ class DevenvWebApp:
         self._require_provider_access(provider_name)
         detail = self.context_builder.get_session(provider_name, session_id)
         return detail.to_dict()
+
+    def build_session_embeddings_payload(self, *, include_vectors: bool = False) -> dict[str, object]:
+        providers = [
+            provider_name
+            for provider_name in sorted(self.access_policy.session_access)
+            if self.access_policy.can_access_provider(provider_name)
+        ]
+        records = []
+        for provider_name in providers:
+            records.extend(self.context_builder.list_session_embeddings(provider_name))
+        embeddings: list[dict[str, object]] = []
+        for record in records:
+            entry: dict[str, object] = {
+                "provider": record.provider,
+                "session_id": record.session_id,
+                "unified_session_id": record.unified_session_id,
+                "embedding_dimension": len(record.embedding),
+                "title": record.title,
+                "workspace_path": record.workspace_path,
+                "updated_at": record.updated_at,
+                "indexed_at": record.indexed_at,
+            }
+            if include_vectors:
+                entry["embedding"] = list(record.embedding)
+            embeddings.append(entry)
+        return {"embeddings": embeddings}
 
     def build_prepared_prompt_payload(
         self, payload: dict[str, object]
@@ -430,6 +519,8 @@ class DevenvWebApp:
             kwargs["opencode_enabled"] = self.access_policy.can_use_backend("opencode")
         if "ollama_enabled" in parameters:
             kwargs["ollama_enabled"] = self.access_policy.can_use_backend("ollama")
+        if "llama_cpp_enabled" in parameters:
+            kwargs["llama_cpp_enabled"] = self.access_policy.can_use_backend("llama_cpp")
         if "codex_enabled" in parameters:
             kwargs["codex_enabled"] = self.access_policy.can_use_backend("codex")
         if "session_budget_tokens" in parameters:
@@ -484,6 +575,7 @@ class DevenvWebApp:
                 backend_preference,
                 opencode_enabled=self.access_policy.can_use_backend("opencode"),
                 ollama_enabled=self.access_policy.can_use_backend("ollama"),
+                llama_cpp_enabled=self.access_policy.can_use_backend("llama_cpp"),
                 codex_enabled=self.access_policy.can_use_backend("codex"),
             )
         try:
@@ -517,6 +609,7 @@ class DevenvWebApp:
         max_tools = max_consecutive_tools or self.config.max_consecutive_tools
         repair_attempts = 0
         detail_refinement_attempts = 0
+        aggressive_local_plan_fallback = backend_preference in {"ollama", "llama_cpp"} and local_only
 
         while True:
             ai_response = self.kernel.ai.chat(
@@ -616,9 +709,27 @@ class DevenvWebApp:
             content = ai_response.content or ""
             blueprint = _parse_plan_blueprint(content)
             if blueprint is not None:
+                needs_refinement = _plan_blueprint_needs_refinement(prompt, blueprint, steps)
+                if needs_refinement and aggressive_local_plan_fallback and not steps:
+                    fallback_blueprint = _build_repo_grounded_fallback_plan(
+                        prompt,
+                        repo_grounding=repo_grounding,
+                    )
+                    ai_logs.append("Planner blueprint was generic on local HTTP backend mode; substituted repo-grounded fallback plan")
+                    system_logs.append("Used deterministic repo-grounded fallback blueprint for plan mode")
+                    return _build_plan_result(
+                        final_response=json.dumps(fallback_blueprint, indent=2),
+                        blueprint=fallback_blueprint,
+                        steps=steps,
+                        total_usage=total_usage,
+                        ai_logs=ai_logs,
+                        system_logs=system_logs,
+                        metadata=metadata,
+                        elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                    )
                 if (
-                    detail_refinement_attempts < PLAN_DETAIL_REFINEMENT_LIMIT
-                    and _plan_blueprint_needs_refinement(prompt, blueprint, steps)
+                    needs_refinement
+                    and detail_refinement_attempts < PLAN_DETAIL_REFINEMENT_LIMIT
                 ):
                     detail_refinement_attempts += 1
                     ai_logs.append("Planner blueprint was valid but too generic; requesting a more detailed repo-aware graph")
@@ -630,6 +741,23 @@ class DevenvWebApp:
                         }
                     )
                     continue
+                if needs_refinement:
+                    fallback_blueprint = _build_repo_grounded_fallback_plan(
+                        prompt,
+                        repo_grounding=repo_grounding,
+                    )
+                    ai_logs.append("Planner blueprint remained too generic after refinement; substituted repo-grounded fallback plan")
+                    system_logs.append("Used deterministic repo-grounded fallback blueprint after repeated generic planner output")
+                    return _build_plan_result(
+                        final_response=json.dumps(fallback_blueprint, indent=2),
+                        blueprint=fallback_blueprint,
+                        steps=steps,
+                        total_usage=total_usage,
+                        ai_logs=ai_logs,
+                        system_logs=system_logs,
+                        metadata=metadata,
+                        elapsed_ms=int((time.perf_counter() - turn_started_at) * 1000),
+                    )
                 return _build_plan_result(
                     final_response=content,
                     blueprint=blueprint,
@@ -859,7 +987,12 @@ class DevenvWebApp:
             "ai_model": cleaned,
             "available_models": list(model_catalog.get(cleaned_backend or preferred_backend or active_backend, [])),
             "available_models_by_backend": model_catalog,
-            "selected_models_by_backend": self._selected_models_by_backend(statuses, fallback_model=cleaned, preferred_backend=preferred_backend),
+            "selected_models_by_backend": self._selected_models_by_backend(
+                statuses,
+                fallback_model=cleaned,
+                preferred_backend=preferred_backend,
+                fallback_backend=cleaned_backend or preferred_backend,
+            ),
         }
 
     def update_session_access(self, provider: str, allowed: bool) -> dict[str, object]:
@@ -875,8 +1008,8 @@ class DevenvWebApp:
         return snapshot
 
     def update_backend_access(self, backend: str, allowed: bool) -> dict[str, object]:
-        if backend not in {"opencode", "ollama", "codex"}:
-            raise ValueError("backend must be one of: opencode, ollama, codex")
+        if backend not in {"opencode", "ollama", "llama_cpp", "codex"}:
+            raise ValueError("backend must be one of: opencode, ollama, llama_cpp, codex")
         return self.access_policy.set_backend_access(backend, allowed)
 
     def update_performance_mode(self, performance_mode: str) -> dict[str, object]:
@@ -886,6 +1019,8 @@ class DevenvWebApp:
         self.performance_mode = cleaned
         if hasattr(self.context_builder, "set_performance_mode"):
             self.context_builder.set_performance_mode(cleaned)
+        if hasattr(self.kernel.ai, "set_performance_mode"):
+            self.kernel.ai.set_performance_mode(cleaned)
         return {"performance_mode": self.performance_mode}
 
     def update_privacy_mode(
@@ -953,6 +1088,14 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/context-sources":
                 self._write_json(
                     HTTPStatus.OK, self.app.build_context_sources_payload()
+                )
+                return
+            if parsed.path == "/api/session-embeddings":
+                query = parse_qs(parsed.query)
+                include_vectors = query.get("include_vectors", ["0"])[0].lower() in {"1", "true", "yes", "on"}
+                self._write_json(
+                    HTTPStatus.OK,
+                    self.app.build_session_embeddings_payload(include_vectors=include_vectors),
                 )
                 return
             if parsed.path.startswith("/api/context-sources/"):
@@ -1265,7 +1408,11 @@ def main() -> int:
     )
     parser.add_argument("--db-path", default="memory.db")
     parser.add_argument("--vector-dir", default="vectors")
-    parser.add_argument("--max-consecutive-tools", type=int, default=5)
+    parser.add_argument(
+        "--max-consecutive-tools",
+        type=int,
+        default=DEFAULT_MAX_CONSECUTIVE_TOOLS,
+    )
     parser.add_argument(
         "--performance-mode", default="low", choices=("low", "medium", "high")
     )
@@ -1320,6 +1467,54 @@ def _is_valid_static_root(path: Path) -> bool:
         and (path / "index.html").is_file()
         and (path / "styles.css").is_file()
     )
+
+
+def _ensure_static_bundle(static_root: Path) -> None:
+    build_script = static_root / "scripts" / "build-vendor.mjs"
+    entry_bundle = static_root / "vendor" / "app.js"
+    if not build_script.is_file():
+        return
+    if entry_bundle.is_file() and not _static_bundle_is_stale(static_root, entry_bundle):
+        return
+    node_path = shutil.which("node")
+    if not node_path:
+        if entry_bundle.is_file():
+            logger.warning("Skipping website bundle rebuild because Node.js is not available on PATH.")
+            return
+        raise RuntimeError("Devenv website bundle is missing and Node.js is not available to rebuild it.")
+    logger.info("Rebuilding website bundle before serving static assets: root=%s", static_root)
+    completed = subprocess.run(
+        [node_path, str(build_script)],
+        cwd=str(static_root),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or f"exit status {completed.returncode}").strip()
+        raise RuntimeError(f"Website asset build failed: {detail}")
+
+
+def _static_bundle_is_stale(static_root: Path, bundle_path: Path) -> bool:
+    bundle_mtime = bundle_path.stat().st_mtime
+    watch_roots = (
+        static_root / "src",
+        static_root / "scripts",
+        static_root / "vendor-entries",
+    )
+    for root in watch_roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if path.is_file() and path.stat().st_mtime > bundle_mtime:
+                return True
+    index_path = static_root / "index.html"
+    if index_path.is_file() and index_path.stat().st_mtime > bundle_mtime:
+        return True
+    package_path = static_root / "package.json"
+    if package_path.is_file() and package_path.stat().st_mtime > bundle_mtime:
+        return True
+    return False
 
 
 def _merge_usage_counts(target: dict[str, int], usage: dict[str, int] | None) -> None:
@@ -1732,6 +1927,120 @@ def _plan_detail_refinement_prompt(user_prompt: str) -> str:
         "- Name at least 2 existing repository files or concrete integration surfaces from the provided grounding.\n"
         "- Include discovery, implementation, verification, and follow-up/documentation steps where relevant.\n"
         "- If the repository context is still too vague, inspect read-only tools before returning the refined blueprint.\n"
+    )
+
+
+def _build_repo_grounded_fallback_plan(
+    user_prompt: str,
+    *,
+    repo_grounding: str,
+) -> dict[str, object]:
+    prompt_lowered = str(user_prompt or "").lower()
+    paths = _repo_grounding_paths(repo_grounding)
+    if any(token in prompt_lowered for token in ("ui", "shell", "interface", "animation", "theme", "chat")):
+        preferred_ui_paths = [
+            "interface/website/src/App.js",
+            "interface/website/src/components/Composer.js",
+            "interface/website/src/components/Transcript.js",
+            "interface/website/styles.css",
+            "tests/runtime/test_web.py",
+        ]
+        prioritized_paths = [candidate for candidate in preferred_ui_paths if candidate in paths]
+        remaining_paths = [candidate for candidate in paths if candidate not in prioritized_paths]
+        missing_paths = [candidate for candidate in preferred_ui_paths if candidate not in prioritized_paths]
+        paths = [*prioritized_paths, *remaining_paths, *missing_paths]
+    primary = paths[0] if len(paths) > 0 else "README.md"
+    secondary = paths[1] if len(paths) > 1 else primary
+    tertiary = paths[2] if len(paths) > 2 else secondary
+    verification_path = next(
+        (path for path in paths if path.startswith("tests/")),
+        "tests/runtime/test_web.py" if "plan" in prompt_lowered or "runtime" in prompt_lowered else "README.md",
+    )
+
+    if any(token in prompt_lowered for token in ("ui", "shell", "interface", "animation", "theme", "chat")):
+        tasks = [
+            {
+                "task_id": "inspect-ui-shell",
+                "description": f"Inspect the current UI shell and interaction entrypoints in `{primary}` and `{secondary}` to confirm the animation and layout surfaces that actually drive the experience.",
+                "level": 0,
+            },
+            {
+                "task_id": "upgrade-primary-surface",
+                "description": f"Implement the primary UI-shell improvements in `{primary}`, keeping the light-theme direction and stronger motion language aligned with the existing product surface.",
+                "level": 1,
+            },
+            {
+                "task_id": "upgrade-supporting-surfaces",
+                "description": f"Update supporting interaction surfaces in `{secondary}` and `{tertiary}` so the transcript, composer, or adjacent panels match the upgraded shell instead of feeling visually disconnected.",
+                "level": 2,
+            },
+            {
+                "task_id": "verify-ui-runtime",
+                "description": f"Verify the updated UI behavior through the runtime and web-serving path, using `{verification_path}` or the live web runtime checks as the verification anchor.",
+                "level": 3,
+            },
+            {
+                "task_id": "final-polish-pass",
+                "description": "Do a final polish pass on copy, motion timing, and interaction states so the upgraded shell reads as one coherent product surface rather than a set of isolated tweaks.",
+                "level": 4,
+            },
+        ]
+    else:
+        tasks = [
+            {
+                "task_id": "inspect-current-implementation",
+                "description": f"Inspect the current implementation in `{primary}` and `{secondary}` to confirm the real integration points for this request.",
+                "level": 0,
+            },
+            {
+                "task_id": "implement-primary-change",
+                "description": f"Implement the primary changes in `{primary}` based on the confirmed integration surface rather than a generic project plan.",
+                "level": 1,
+            },
+            {
+                "task_id": "update-dependent-surfaces",
+                "description": f"Update dependent logic in `{secondary}` and `{tertiary}` so the main change is reflected consistently across the runtime or UI flow.",
+                "level": 2,
+            },
+            {
+                "task_id": "verify-behavior",
+                "description": f"Verify the behavior through `{verification_path}` or the closest runtime/web check that exercises the changed path end to end.",
+                "level": 3,
+            },
+            {
+                "task_id": "document-follow-up",
+                "description": "Capture any remaining risks, follow-up cleanup, or validation notes after the main implementation and verification steps are complete.",
+                "level": 4,
+            },
+        ]
+    edges = [
+        {"from": tasks[index]["task_id"], "to": tasks[index + 1]["task_id"]}
+        for index in range(len(tasks) - 1)
+    ]
+    return {"tasks": tasks, "edges": edges}
+
+
+def _repo_grounding_paths(repo_grounding: str) -> list[str]:
+    paths: list[str] = []
+    for match in re.findall(r"`([^`]+)`", str(repo_grounding or "")):
+        cleaned = str(match).strip()
+        if cleaned and _looks_like_repo_path(cleaned) and cleaned not in paths:
+            paths.append(cleaned)
+    return paths
+
+
+def _looks_like_repo_path(value: str) -> bool:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return False
+    lowered = cleaned.lower()
+    if lowered in {"readme.md", "license", "pyproject.toml"}:
+        return True
+    if "/" not in cleaned:
+        return False
+    return any(
+        lowered.endswith(suffix)
+        for suffix in (".py", ".md", ".js", ".jsx", ".ts", ".tsx", ".json", ".css", ".html")
     )
 
 

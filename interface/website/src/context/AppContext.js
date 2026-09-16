@@ -1,7 +1,7 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 import { loadTheme, loadPersistedAccess, loadPreferredBackend, loadPreferredModels, loadSetupState } from "../utils/storage.js";
 
-const READ_ONLY_TOOLS = ["list_directory", "read_file", "glob", "grep", "inspect_symbols", "search_symbols"];
+const READ_ONLY_TOOLS = ["list_directory", "locate_files", "read_file", "peek_lines", "inspect_symbols", "search_text", "track_symbol"];
 
 const initialState = {
   health: null,
@@ -20,7 +20,7 @@ const initialState = {
     label: "New context",
     detail: "No prior Devenv session has been reused yet.",
   },
-  accessPolicy: { session_access: { codex: false, opencode: false }, backend_access: { opencode: false, ollama: false, codex: false } },
+  accessPolicy: { session_access: { codex: false, opencode: false }, backend_access: { opencode: false, ollama: false, llama_cpp: false, codex: false } },
   persistedAccess: loadPersistedAccess(),
   backends: {},
   activeBackend: "opencode",
@@ -41,14 +41,14 @@ const initialState = {
   latestElapsedMs: 0,
   runStartedAt: 0,
   healthRefreshPending: false,
-  pendingRunMode: "memory",
+  pendingRunMode: "direct",
   selectedTools: [],
   toolPickerOpen: false,
   planMode: false,
   planBlueprint: null,
   replyTarget: null,
   showSettings: false,
-  sidebarCollapsed: false,
+  sidebarCollapsed: true,
   setupComplete: loadSetupState(),
 };
 

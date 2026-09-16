@@ -39,3 +39,9 @@ class WriteFileToolTest(unittest.TestCase):
 
         self.assertTrue(result.success)
         self.assertEqual(target.read_text(encoding="utf-8"), "line1\nline2\n")
+
+    def test_directory_target_is_rejected_cleanly(self) -> None:
+        result = self.tool.execute(path=str(self.root), content="oops", mode="overwrite")
+
+        self.assertFalse(result.success)
+        self.assertIn("Expected a file path, got a directory", result.output)

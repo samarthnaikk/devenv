@@ -12,6 +12,7 @@ from typing import Any
 
 from core.ai.codex_backend import CodexAICore
 from core.ai.engine import DEFAULT_SYSTEM_INSTRUCTIONS
+from core.ai.llama_cpp_backend import LlamaCppAICore
 from core.ai.models import AIBackendStatus, AIResponse, ToolCallRequest
 from core.ai.ollama_backend import OllamaAICore
 from core.ai.opencode_client import (
@@ -423,6 +424,7 @@ class RoutingAICore:
         workspace_path: str,
         opencode_ai: OpenCodeAICore | None = None,
         ollama_ai: OllamaAICore | None = None,
+        llama_cpp_ai: LlamaCppAICore | None = None,
         codex_ai: Any | None = None,
     ) -> None:
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
@@ -434,6 +436,10 @@ class RoutingAICore:
             workspace_path=self.workspace_path,
             system_instructions=DEFAULT_SYSTEM_INSTRUCTIONS,
         )
+        self.llama_cpp_ai = llama_cpp_ai or LlamaCppAICore(
+            workspace_path=self.workspace_path,
+            system_instructions=DEFAULT_SYSTEM_INSTRUCTIONS,
+        )
         self.codex_ai = codex_ai or CodexAICore(
             workspace_path=self.workspace_path,
             system_instructions=DEFAULT_SYSTEM_INSTRUCTIONS,
@@ -442,6 +448,7 @@ class RoutingAICore:
         self.preferred_backend = "opencode"
         self.opencode_enabled = False
         self.ollama_enabled = False
+        self.llama_cpp_enabled = False
         self.codex_enabled = False
         self.last_backend_used = "opencode"
         self.last_backend_reason = "OpenCode handled the turn."
@@ -450,6 +457,7 @@ class RoutingAICore:
     def register_tool(self, tool: BaseTool) -> None:
         self.opencode_ai.register_tool(tool)
         self.ollama_ai.register_tool(tool)
+        self.llama_cpp_ai.register_tool(tool)
         if self.codex_ai is not None and hasattr(self.codex_ai, "register_tool"):
             self.codex_ai.register_tool(tool)
 
@@ -458,6 +466,7 @@ class RoutingAICore:
         statuses = {
             "opencode": opencode_status,
             "ollama": self.ollama_ai.status(),
+            "llama_cpp": self.llama_cpp_ai.status(),
         }
         if self.codex_ai is not None and hasattr(self.codex_ai, "status"):
             statuses["codex"] = self.codex_ai.status()
@@ -468,6 +477,8 @@ class RoutingAICore:
         self.model = cleaned
         if self.preferred_backend == "codex" and self.codex_ai is not None and hasattr(self.codex_ai, "set_model"):
             self.codex_ai.set_model(cleaned)
+        elif self.preferred_backend == "llama_cpp":
+            self.llama_cpp_ai.set_model(cleaned)
         elif self.preferred_backend == "ollama":
             self.ollama_ai.set_model(cleaned)
         else:
@@ -480,28 +491,45 @@ class RoutingAICore:
             self.opencode_ai.model = cleaned_model
         elif cleaned_backend == "ollama":
             self.ollama_ai.set_model(cleaned_model)
+        elif cleaned_backend == "llama_cpp":
+            self.llama_cpp_ai.set_model(cleaned_model)
         elif cleaned_backend == "codex" and self.codex_ai is not None and hasattr(self.codex_ai, "set_model"):
             self.codex_ai.set_model(cleaned_model)
         else:
-            raise ValueError("backend must be one of: opencode, ollama, codex")
+            raise ValueError("backend must be one of: opencode, ollama, llama_cpp, codex")
         if self.preferred_backend == cleaned_backend:
             self.model = cleaned_model
 
     def set_backend_preference(
-        self, backend: str, *, opencode_enabled: bool, ollama_enabled: bool = False, codex_enabled: bool = False
+        self,
+        backend: str,
+        *,
+        opencode_enabled: bool,
+        ollama_enabled: bool = False,
+        llama_cpp_enabled: bool = False,
+        codex_enabled: bool = False,
     ) -> None:
         cleaned = str(backend or "opencode").strip().lower() or "opencode"
-        if cleaned not in {"opencode", "ollama", "codex"}:
-            raise ValueError("backend must be one of: opencode, ollama, codex")
+        if cleaned not in {"opencode", "ollama", "llama_cpp", "codex"}:
+            raise ValueError("backend must be one of: opencode, ollama, llama_cpp, codex")
         self.preferred_backend = cleaned
         self.opencode_enabled = opencode_enabled
         self.ollama_enabled = ollama_enabled
+        self.llama_cpp_enabled = llama_cpp_enabled
         self.codex_enabled = codex_enabled
+
+    def set_performance_mode(self, performance_mode: str) -> None:
+        if hasattr(self.ollama_ai, "set_performance_mode"):
+            self.ollama_ai.set_performance_mode(performance_mode)
+        if hasattr(self.llama_cpp_ai, "set_performance_mode"):
+            self.llama_cpp_ai.set_performance_mode(performance_mode)
 
     def reset_session(self) -> None:
         self.opencode_ai.reset_session()
         if hasattr(self.ollama_ai, "reset_session"):
             self.ollama_ai.reset_session()
+        if hasattr(self.llama_cpp_ai, "reset_session"):
+            self.llama_cpp_ai.reset_session()
         if self.codex_ai is not None and hasattr(self.codex_ai, "reset_session"):
             self.codex_ai.reset_session()
 
@@ -554,6 +582,21 @@ class RoutingAICore:
             self.last_backend_reason = self.ollama_ai.last_backend_reason
             self.last_backend_fallback = ""
             self.model = self.ollama_ai.model
+            return response
+        if self.preferred_backend == "llama_cpp":
+            if not self.llama_cpp_enabled:
+                self.last_backend_fallback = "llama.cpp backend access has not been granted."
+                raise RuntimeError(self.last_backend_fallback)
+            response = self.llama_cpp_ai.chat(
+                messages=messages,
+                memory_context=memory_context,
+                temperature=temperature,
+                tool_names=tool_names,
+            )
+            self.last_backend_used = "llama_cpp"
+            self.last_backend_reason = self.llama_cpp_ai.last_backend_reason
+            self.last_backend_fallback = ""
+            self.model = self.llama_cpp_ai.model
             return response
         if not self.opencode_enabled:
             self.last_backend_fallback = "OpenCode backend access has not been granted."

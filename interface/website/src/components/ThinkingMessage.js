@@ -1,6 +1,8 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, formatDuration, formatBackendLabel } from "../utils/format.js";
+import { ThinkingOrb, stateForThinkingStep } from "./ThinkingOrb.js";
+import { BeamFrame, MetalSurface, MotionDeck, MotionReveal, MotionShimmerText, MotionStack, MotionStage, MotionSwap } from "./MotionPrimitives.js";
 
 export function ThinkingMessage({ message }) {
   const { state } = useApp();
@@ -15,37 +17,89 @@ export function ThinkingMessage({ message }) {
   const lastStatus = timelineSteps.length ? timelineSteps[timelineSteps.length - 1].text : "";
   const summary = summarizeSearchCards(searchCards);
   const elapsed = state.isRunning ? formatDuration(Date.now() - state.runStartedAt) : formatDuration(state.latestElapsedMs || 0);
+  const activeStep = timelineSteps[timelineSteps.length - 1] || searchCards[searchCards.length - 1] || { label: headline, text: headline };
+  const orbState = searchCards.length || state.pendingRunMode === "web" || state.pendingRunMode === "knowledge"
+    ? "searching"
+    : stateForThinkingStep(activeStep, message.pending);
+  const statusWord = {
+    working: "Working",
+    searching: "Searching",
+    solving: "Thinking",
+    listening: "Listening",
+    composing: "Composing",
+    shaping: "Shaping",
+  }[orbState];
+  const groupedTimeline = groupTimelineSteps(timelineSteps);
 
   return React.createElement(
-    "div",
-    { className: "ml-8 space-y-4" },
+    MotionStage,
+    { className: "thinking-shell ml-8 space-y-4", delay: 70 },
     React.createElement(
-      "div",
-      { className: "inset-terminal rounded-lg border border-outline-variant p-4" },
+      BeamFrame,
+      { active: message.pending, tone: orbState === "searching" ? "ocean" : "mono", className: "thinking-card inset-terminal rounded-[24px] border border-outline-variant p-4" },
+      React.createElement("span", { className: "thinking-card-ribbon", "aria-hidden": "true" }),
+      React.createElement("span", { className: "thinking-card-orbit thinking-card-orbit-one", "aria-hidden": "true" }),
+      React.createElement("span", { className: "thinking-card-orbit thinking-card-orbit-two", "aria-hidden": "true" }),
+      React.createElement("span", { className: "thinking-card-grid", "aria-hidden": "true" }),
       React.createElement(
         "div",
-        { className: "flex justify-between items-center mb-4" },
+        { className: "thinking-card-head flex justify-between items-center mb-4" },
+        React.createElement(
+          "div",
+          { className: "flex items-center gap-3 min-w-0" },
+          React.createElement(ThinkingOrb, { state: orbState, size: 64, paused: !message.pending, label: `${headline}: ${orbState}` }),
+          React.createElement("span", { className: "material-symbols-outlined text-primary text-[18px]" }, "terminal"),
           React.createElement(
             "div",
-            { className: "flex items-center gap-2" },
-            React.createElement("span", { className: "material-symbols-outlined text-primary text-[18px]" }, "terminal"),
-            React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface uppercase" }, headline)
+            { className: "min-w-0 flex flex-col" },
+            React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface uppercase" }, headline),
+            React.createElement(
+              MotionShimmerText,
+              { className: "thinking-headline-detail", active: message.pending },
+              message.pending ? "Inspecting, routing, and shaping the next response" : "Trace retained for inspection"
+            )
+          )
         ),
         React.createElement(
           "div",
-          { className: "flex items-center gap-2" },
+          { className: "thinking-head-pills flex items-center gap-2" },
           React.createElement("span", { className: "font-label-caps text-label-caps text-on-surface-variant" }, elapsed),
           React.createElement(
             "span",
-            { className: "px-2 py-0.5 rounded bg-secondary-container text-on-secondary-container font-label-caps text-[10px]" },
+            { className: "thinking-pill px-2 py-0.5 rounded bg-secondary-container text-on-secondary-container font-label-caps text-[10px]" },
             formatBackendLabel(state.activeBackend)
           )
         )
       ),
+      React.createElement(
+        MotionDeck,
+        { className: "thinking-metrics mb-4" },
+        metricPill("Trace", `${timelineSteps.length} step${timelineSteps.length === 1 ? "" : "s"}`),
+        metricPill(searchCards.length ? "Search" : "Mode", searchCards.length ? `${searchCards.length} live source${searchCards.length === 1 ? "" : "s"}` : headline.replace(/ trace$/i, "")),
+        metricPill("Status", message.pending ? statusWord : "Completed")
+      ),
+      React.createElement(
+        "div",
+        { className: "thinking-runway-bar" },
+        React.createElement(
+          MotionSwap,
+          { className: "thinking-runway-copy" },
+          React.createElement(
+            "div",
+            { className: "thinking-runway-head" },
+            React.createElement("span", { className: `thinking-runway-pip${message.pending ? " is-live" : ""}`, "aria-hidden": "true" }),
+            React.createElement("span", { className: "thinking-runway-label" }, activeStep.label || "Trace")
+          ),
+          React.createElement("span", { className: "thinking-runway-text" }, activeStep.text || headline)
+        )
+      ),
       summary
         ? React.createElement(
-            "div",
-            { className: "mb-4 flex flex-wrap gap-2" },
+            MotionStack,
+            { className: "thinking-summary-stack mb-4" },
+            React.createElement(
+              MotionDeck,
+              { className: "thinking-summary-deck" },
             summary.map((item, index) =>
               React.createElement(
                 "div",
@@ -56,38 +110,95 @@ export function ThinkingMessage({ message }) {
                 `${item.label}: ${item.value}`
               )
             )
+            )
           )
         : null,
       React.createElement(
         "div",
-        { className: "space-y-1 font-code-sm text-code-sm text-on-surface-variant" },
-        timelineSteps.map((step, i) =>
+        { className: "thinking-timeline space-y-3 font-code-sm text-code-sm text-on-surface-variant" },
+        groupedTimeline.map((group, groupIndex) =>
           React.createElement(
-            "div",
-            { key: i, className: "flex gap-4" },
-            React.createElement("span", { className: "text-outline w-4 shrink-0" }, i + 1),
-            React.createElement("span", null, `[${(step.label || "TRACE").toUpperCase()}] ${step.text}`)
+            MotionReveal,
+            { key: `${group.label}-${groupIndex}`, delay: groupIndex * 55, className: "thinking-trace-row" },
+            React.createElement(
+              "section",
+              { className: "thinking-trace-group" },
+              React.createElement(
+                "div",
+                { className: "thinking-trace-group-head" },
+                React.createElement("span", { className: "thinking-trace-group-label" }, group.label),
+                React.createElement("span", { className: "thinking-trace-group-count" }, `${group.steps.length} event${group.steps.length === 1 ? "" : "s"}`)
+              ),
+              React.createElement(
+                "div",
+                { className: "thinking-trace-group-body" },
+                group.steps.map(({ step, absoluteIndex }, localIndex) =>
+                  React.createElement(
+                    MotionReveal,
+                    { key: `${group.label}-${absoluteIndex}`, delay: localIndex * 28 },
+                    React.createElement(
+                      "div",
+                      { className: "thinking-step-row flex gap-3 items-start" },
+                      React.createElement("span", { className: "thinking-step-rail", "aria-hidden": "true" }),
+                      React.createElement(ThinkingOrb, {
+                        state: stateForThinkingStep(step, message.pending && absoluteIndex === timelineSteps.length - 1),
+                        size: 20,
+                        paused: !(message.pending && absoluteIndex === timelineSteps.length - 1),
+                        label: `${step.text}: ${stateForThinkingStep(step, message.pending && absoluteIndex === timelineSteps.length - 1)}`,
+                      }),
+                      React.createElement("span", { className: "thinking-step-index" }, absoluteIndex + 1),
+                      React.createElement(
+                        "div",
+                        { className: "thinking-step-copy" },
+                        React.createElement(
+                          "div",
+                          { className: "thinking-step-meta" },
+                          React.createElement("span", { className: "thinking-step-tag" }, step.label || "Trace"),
+                          React.createElement("span", { className: "thinking-step-state" }, describeStepState(step, message.pending && absoluteIndex === timelineSteps.length - 1))
+                        ),
+                        React.createElement("div", { className: "thinking-step-text" }, step.text)
+                      )
+                    )
+                  )
+                )
+              )
+            )
           )
         )
       ),
       searchCards.length
         ? React.createElement(
             "div",
-            { className: "space-y-2 mt-3" },
-            searchCards.map((step, i) => step.kind === "knowledge_search" ? renderKnowledgeCard(step, i) : renderSearchCard(step, i))
+            { className: "space-y-2 mt-3 thinking-results-zone" },
+            searchCards.map((step, i) =>
+              React.createElement(
+                MotionStack,
+                { key: `${step.kind}-${i}`, className: "thinking-result-stack" },
+                step.kind === "knowledge_search" ? renderKnowledgeCard(step, i) : renderSearchCard(step, i)
+              )
+            )
           )
         : null
     ),
     React.createElement(
-      "div",
-      { className: "flex items-center gap-3 px-4 py-2 bg-surface-container rounded-full border border-outline-variant w-fit" },
+      MetalSurface,
+      { className: "thinking-status-pill flex items-center gap-3 px-4 py-2 bg-surface-container rounded-full border border-outline-variant w-fit" },
+      React.createElement("span", { className: "material-symbols-outlined text-primary text-[16px]" }, "bolt"),
       React.createElement(
         "span",
-        { className: `material-symbols-outlined text-primary text-[16px]${message.pending ? " animate-pulse" : ""}` },
-        "bolt"
-      ),
-      React.createElement("span", { className: "font-body-md text-body-md text-on-surface" }, lastStatus || (message.pending ? "Processing..." : "Completed"))
+        { className: `font-body-md text-body-md text-on-surface process-status${message.pending ? " is-live" : ""}` },
+        message.pending ? React.createElement(MotionSwap, null, React.createElement("span", { className: "process-status-word" }, statusWord), React.createElement("span", { className: "process-status-dots", "aria-hidden": "true" }, "...")) : (lastStatus || "Completed")
+      )
     )
+  );
+}
+
+function metricPill(label, value) {
+  return React.createElement(
+    "div",
+    { className: "thinking-metric-pill" },
+    React.createElement("span", { className: "thinking-metric-label" }, label),
+    React.createElement("strong", { className: "thinking-metric-value" }, value)
   );
 }
 
@@ -95,8 +206,11 @@ function renderSearchCard(step, key) {
   const query = String(step.query || "").trim();
   const results = Array.isArray(step.results) ? step.results : [];
   return React.createElement(
-    "div",
-    { key, className: "border border-outline-variant rounded-xl bg-terminal p-3" },
+    MotionReveal,
+    { key, className: "thinking-search-wrap" },
+    React.createElement(
+      "div",
+      { className: "thinking-search-panel border border-outline-variant rounded-xl bg-terminal p-3" },
     React.createElement(
       "div",
       { className: "mb-2 flex items-start justify-between gap-3" },
@@ -120,11 +234,11 @@ function renderSearchCard(step, key) {
     results.length
       ? React.createElement(
           "div",
-          { className: "space-y-2" },
+          { className: "space-y-2 thinking-result-list" },
           results.map((item, ri) =>
             React.createElement(
               "div",
-              { key: ri, className: "rounded-lg border border-outline-variant/70 bg-surface-container-low px-3 py-2" },
+              { key: ri, className: "thinking-result-card rounded-lg border border-outline-variant/70 bg-surface-container-low px-3 py-2" },
               React.createElement("div", { className: "font-body-md text-body-md text-on-surface" }, item.title || item.url || "Result"),
               item.url
                 ? React.createElement(
@@ -137,6 +251,7 @@ function renderSearchCard(step, key) {
           )
         )
       : React.createElement("div", { className: "font-code-sm text-code-sm text-on-surface-variant" }, "Search completed.")
+    )
   );
 }
 
@@ -169,8 +284,11 @@ function KnowledgeSearchCard({ step }) {
   const results = Array.isArray(step.results) ? step.results : [];
   const sourceMeta = getKnowledgeSourceMeta(step.source);
   return React.createElement(
-    "div",
-    { className: "border border-outline-variant rounded-xl bg-terminal p-3" },
+    MotionReveal,
+    { className: "thinking-search-wrap" },
+    React.createElement(
+      "div",
+      { className: "thinking-search-panel border border-outline-variant rounded-xl bg-terminal p-3" },
     React.createElement(
       "button",
       {
@@ -205,7 +323,7 @@ function KnowledgeSearchCard({ step }) {
             ? results.map((item, index) =>
                 React.createElement(
                   "div",
-                  { key: `${step.source}-${index}`, className: "rounded-lg border border-outline-variant/70 bg-surface-container-low px-3 py-2" },
+                  { key: `${step.source}-${index}`, className: "thinking-result-card rounded-lg border border-outline-variant/70 bg-surface-container-low px-3 py-2" },
                   React.createElement("div", { className: "font-body-md text-body-md text-on-surface" }, item.title || item.url || "Result"),
                   item.url
                     ? React.createElement("a", { className: "block mt-1 font-code-sm text-code-sm text-primary/70 hover:text-primary break-all", href: item.url, target: "_blank", rel: "noreferrer" }, item.url)
@@ -215,7 +333,33 @@ function KnowledgeSearchCard({ step }) {
             : React.createElement("div", { className: "font-code-sm text-code-sm text-on-surface-variant" }, "No results yet for this source.")
         )
       : null
+    )
   );
+}
+
+function groupTimelineSteps(steps) {
+  const groups = [];
+  steps.forEach((step, absoluteIndex) => {
+    const label = String(step.label || "Trace").trim() || "Trace";
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup && lastGroup.label === label) {
+      lastGroup.steps.push({ step, absoluteIndex });
+      return;
+    }
+    groups.push({ label, steps: [{ step, absoluteIndex }] });
+  });
+  return groups;
+}
+
+function describeStepState(step, isLive) {
+  if (isLive) return "live";
+  const state = stateForThinkingStep(step, false);
+  if (state === "searching") return "search";
+  if (state === "working") return "run";
+  if (state === "listening") return "input";
+  if (state === "composing") return "compose";
+  if (state === "shaping") return "shape";
+  return "done";
 }
 
 function parseThinkingEntries(content) {
@@ -275,11 +419,24 @@ function humanizeThinkingLine(line, sourceTag = "") {
     return { kind: "web_search_result", title: payload, url: "" };
   }
   if (lowered.includes("queued prompt")) return null;
-  if (lowered.includes("memory context chars")) return { kind: "text", label: "Context", text: "Built the context packet" };
+  if (lowered.includes("memory context chars")) return { kind: "text", label: "Context", text: "Measured the available session context" };
   if (lowered.includes("prior-session")) return null;
   if (lowered.includes("new context")) return null;
-  if (lowered.includes("checkpoint blueprint") || lowered.includes("checkpoint")) return { kind: "text", label: "Reasoning", text: "Reasoned through the next step" };
-  if (lowered.includes("verification passed")) return { kind: "text", label: "Verify", text: "Verified the response" };
+  if (lowered.includes("mapped the request into")) return { kind: "text", label: "Plan", text: line };
+  if (lowered.includes("execution plan")) return { kind: "text", label: "Plan", text: line };
+  if (lowered.includes("distilled context packet")) return { kind: "text", label: "Context", text: line };
+  if (lowered.includes("grounded context packet")) return { kind: "text", label: "Context", text: line };
+  if (lowered.includes("executed the active checkpoint")) return { kind: "text", label: "Run", text: line };
+  if (lowered.includes("recorded runtime output")) return { kind: "text", label: "Trace", text: line };
+  if (lowered.includes("verification confirmed")) return { kind: "text", label: "Verify", text: line };
+  if (lowered.includes("verified the runtime result")) return { kind: "text", label: "Verify", text: line };
+  if (lowered.includes("verification flagged an issue")) return { kind: "text", label: "Verify", text: line };
+  if (lowered.includes("focused on:")) return { kind: "text", label: "Focus", text: line };
+  if (lowered.includes("answer destination:")) return { kind: "text", label: "Output", text: line };
+  if (lowered.includes("touched files recorded:")) return { kind: "text", label: "Files", text: line };
+  if (lowered.includes("planned checkpoints:")) return { kind: "text", label: "Plan", text: line };
+  if (lowered.includes("checkpoint blueprint") || lowered.includes("checkpoint")) return { kind: "text", label: "Plan", text: "Refined the current execution checkpoint" };
+  if (lowered.includes("verification passed")) return { kind: "text", label: "Verify", text: "Verified the runtime result" };
   if (lowered.includes("waiting for runtime response")) return { kind: "text", label: "Runtime", text: "Waiting for the runtime" };
   if (lowered.includes("retrying in")) return { kind: "text", label: "Retry", text: line };
   if (lowered.startsWith("query:") && /github|youtube|reddit|stackoverflow|quora|documentation/i.test(line)) return { kind: "text", label: "Search", text: line.replace(/^query:\s*/i, "") };

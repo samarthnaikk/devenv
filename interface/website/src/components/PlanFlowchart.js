@@ -1,110 +1,81 @@
-import React from "https://esm.sh/react@18.2.0";
-import ReactFlow, {
+import React from "react";
+import {
+  ReactFlow,
   Handle, Position, Background, Controls,
   MarkerType, useNodesState, useEdgesState,
-} from "https://esm.sh/reactflow@11?deps=react@18.2.0,react-dom@18.2.0";
+} from "reactflow";
 import { validatePlanBlueprint, normalizeBlueprint } from "../utils/validation.js";
 import { escapeHtml } from "../utils/format.js";
+import { BeamFrame, MetalSurface, MotionDeck, MotionNumber, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 function BlueprintNode({ data }) {
   const [showModal, setShowModal] = React.useState(false);
-  const statusColor = data.status === "done" ? "#4fdbc8" : data.status === "active" ? "#facc15" : "#3c4947";
+  const statusColor = data.status === "done" ? "var(--primary)" : data.status === "active" ? "#facc15" : "var(--outline)";
   const statusIcon = data.status === "done" ? "check_circle" : data.status === "active" ? "play_circle" : "circle";
 
   return React.createElement(
     React.Fragment,
     null,
-    React.createElement(
-      "div",
-      {
-        style: {
-          background: "#1e2023",
-          border: `1px solid ${data.status === "active" ? "#4fdbc8" : "#3c4947"}`,
-          borderRadius: "8px",
-          padding: "12px 16px",
-          width: `${data.width || 320}px`,
-          maxWidth: `${data.width || 320}px`,
-          position: "relative",
-          color: "#e2e2e6",
-          fontFamily: "Inter, sans-serif",
-          boxSizing: "border-box",
-        },
-      },
-      React.createElement(Handle, { type: "target", position: Position.Top, style: { background: "#3c4947", width: 8, height: 8 } }),
       React.createElement(
         "div",
-        { style: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" } },
+        {
+          className: `plan-node-shell${data.status === "active" ? " is-active" : ""}${data.status === "done" ? " is-done" : ""}`,
+          style: { width: `${data.width || 320}px`, maxWidth: `${data.width || 320}px` },
+        },
+        React.createElement("span", { className: "plan-node-orbit", "aria-hidden": "true" }),
+        React.createElement(Handle, { type: "target", position: Position.Top, style: { background: "var(--outline)", width: 8, height: 8 } }),
+        React.createElement(
+          "div",
+          { className: "plan-node-head" },
         React.createElement(
           "span",
           { style: { fontSize: "16px", color: statusColor } },
           React.createElement("span", { className: "material-symbols-outlined", style: { fontSize: "16px", fontVariationSettings: "'FILL' 1" } }, statusIcon)
         ),
+          React.createElement(
+            "span",
+            { className: "plan-node-level" },
+            `L${data.level}`
+          ),
+          React.createElement("span", { className: "plan-node-status" }, formatNodeStatus(data.status))
+        ),
         React.createElement(
-          "span",
-          { style: { fontSize: "10px", padding: "2px 6px", borderRadius: "4px", background: "#282a2d", color: "#859490", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" } },
-          `L${data.level}`
-        )
-      ),
-      React.createElement(
-        "div",
-        { style: { fontSize: "13px", fontWeight: 500, lineHeight: 1.4, marginBottom: "4px", whiteSpace: "normal", wordBreak: "break-word" } },
-        escapeHtml(data.label || "")
-      ),
-      React.createElement(
-        "button",
-        {
-          type: "button",
-          style: {
-            position: "absolute",
-            top: "8px",
-            right: "8px",
-            background: "none",
-            border: "none",
-            color: "#859490",
-            cursor: "pointer",
-            padding: "2px",
-            fontSize: "14px",
-            lineHeight: 1,
-          },
+          "div",
+          { className: "plan-node-label" },
+          escapeHtml(data.label || "")
+        ),
+        data.desc
+          ? React.createElement(
+              "div",
+              { className: "plan-node-desc-preview" },
+              escapeHtml(truncateNodeCopy(data.desc))
+            )
+          : null,
+        React.createElement(
+          "button",
+          {
+            type: "button",
+          className: "plan-node-info",
           onClick: (e) => { e.stopPropagation(); setShowModal(true); },
           title: "Details",
         },
         React.createElement("span", { className: "material-symbols-outlined", style: { fontSize: "14px" } }, "info")
       ),
-      React.createElement(Handle, { type: "source", position: Position.Bottom, style: { background: "#3c4947", width: 8, height: 8 } })
+      React.createElement(Handle, { type: "source", position: Position.Bottom, style: { background: "var(--outline)", width: 8, height: 8 } })
     ),
     showModal ? React.createElement(
       "div",
-      {
-        style: {
-          position: "fixed", inset: 0, zIndex: 100,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          background: "rgba(0,0,0,0.6)",
-        },
-        onClick: () => setShowModal(false),
-      },
+      { className: "plan-node-modal-backdrop", onClick: () => setShowModal(false) },
       React.createElement(
         "div",
-        {
-          style: {
-            background: "#1e2023", border: "1px solid #3c4947", borderRadius: "8px",
-            padding: "20px", maxWidth: "400px", width: "90%",
-            color: "#e2e2e6", fontFamily: "Inter, sans-serif",
-          },
-          onClick: (e) => e.stopPropagation(),
-        },
-        React.createElement("h3", { style: { margin: "0 0 8px", fontSize: "16px", fontWeight: 600 } }, escapeHtml(data.label || "")),
-        React.createElement("p", { style: { margin: 0, fontSize: "13px", color: "#bbcac6", lineHeight: 1.5 } }, escapeHtml(data.desc || "No description")),
+        { className: "plan-node-modal", onClick: (e) => e.stopPropagation() },
+        React.createElement("h3", { className: "plan-node-modal-title" }, escapeHtml(data.label || "")),
+        React.createElement("p", { className: "plan-node-modal-copy" }, escapeHtml(data.desc || "No description")),
         React.createElement(
           "button",
           {
             type: "button",
-            style: {
-              marginTop: "12px", padding: "6px 16px",
-              background: "#333538", border: "1px solid #3c4947",
-              borderRadius: "6px", color: "#e2e2e6", cursor: "pointer",
-              fontFamily: "Inter, sans-serif", fontSize: "12px",
-            },
+            className: "plan-node-modal-close",
             onClick: () => setShowModal(false),
           },
           "Close"
@@ -217,7 +188,7 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
 
   if (!validation.valid) {
     return React.createElement(
-      "div",
+      MotionReveal,
       { className: "flex flex-col gap-2 w-full max-w-[88rem]" },
       React.createElement(
         "div",
@@ -247,61 +218,139 @@ export function PlanFlowchart({ blueprint, mode = "auto" }) {
   }, [flowNodes, flowEdges, setNodes, setEdges]);
 
   return React.createElement(
-    "div",
-    { className: "flex flex-col gap-2 w-full max-w-[88rem]" },
+    MotionReveal,
+    { className: "plan-shell w-full max-w-[88rem]" },
     React.createElement(
-      "div",
-      { className: "flex items-center gap-2 mb-1" },
+      BeamFrame,
+      { active: normalized.nodes.some((node) => node.status === "active"), tone: "ocean", className: "flex flex-col gap-2 w-full max-w-[88rem]" },
       React.createElement(
         "div",
-        { className: "w-6 h-6 rounded-full bg-surface-container-highest flex items-center justify-center" },
-        React.createElement("span", { className: "material-symbols-outlined text-[14px] text-primary" }, "account_tree")
-      ),
-      React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "Execution Plan"),
-      React.createElement(
-        "span",
-        { className: `px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] ${blueprint.verification_passed ? "text-primary" : allDone ? "text-primary" : "text-on-surface-variant"}` },
-        blueprint.verification_passed ? "Verified" : allDone ? "Done" : "In progress"
-      ),
-      React.createElement(
-        "span",
-        { className: "px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
-        mode === "forced" ? "Plan mode" : "Auto-planned"
-      ),
-      React.createElement(
-        "span",
-        { className: "px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
-        `${normalized.nodes.length} steps`
-      )
-    ),
-      React.createElement(
-        "div",
-        { style: { height: "380px", border: "1px solid #3c4947", borderRadius: "8px", background: "#0a0c0e" } },
+        { className: "plan-header flex items-center gap-2 mb-1 flex-wrap" },
         React.createElement(
-          ReactFlow,
-        {
-          nodes,
-          edges,
-          onNodesChange,
-          onEdgesChange,
-          nodeTypes,
-          fitView: true,
-          fitViewOptions: { padding: 0.28, minZoom: 0.4 },
-          panOnDrag: true,
-          panOnScroll: true,
-          zoomOnScroll: true,
-          zoomOnPinch: true,
-          zoomOnDoubleClick: false,
-          nodesDraggable: false,
-          nodesConnectable: false,
-          elementsSelectable: true,
-          minZoom: 0.35,
-          maxZoom: 2.5,
-          proOptions: { hideAttribution: true },
-        },
-        React.createElement(Controls, { showInteractive: false, position: "bottom-right" }),
-        React.createElement(Background, { color: "#1e2023", gap: 20 })
+          "div",
+          { className: "w-6 h-6 rounded-full bg-surface-container-highest flex items-center justify-center" },
+          React.createElement("span", { className: "material-symbols-outlined text-[14px] text-primary" }, "account_tree")
+        ),
+        React.createElement("span", { className: "font-label-caps text-label-caps text-primary" }, "Execution Plan"),
+        React.createElement(
+          MotionShimmerText,
+          { className: "plan-header-copy", active: normalized.nodes.some((node) => node.status === "active") },
+          normalized.nodes.some((node) => node.status === "active")
+            ? "Steps are actively progressing through the graph"
+            : "Blueprint is ready to inspect and execute"
+        ),
+        React.createElement(
+          "span",
+          { className: `plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] ${blueprint.verification_passed ? "text-primary" : allDone ? "text-primary" : "text-on-surface-variant"}` },
+          blueprint.verification_passed ? "Verified" : allDone ? "Done" : "In progress"
+        ),
+        React.createElement(
+          "span",
+          { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
+          mode === "forced" ? "Plan mode" : "Auto-planned"
+        ),
+        React.createElement(
+          "span",
+          { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
+          `${normalized.nodes.length} steps`
+        ),
+        React.createElement(
+          "span",
+          { className: "plan-header-pill px-2 py-0.5 rounded-full bg-surface-container-highest font-code-sm text-[10px] text-on-surface-variant" },
+          `${normalized.edges.length} links`
+        )
+      ),
+      React.createElement(
+        "div",
+        { className: "plan-runway-rail" },
+        React.createElement("span", { className: "plan-runway-pill" }, blueprint.verification_passed ? "Verified" : allDone ? "Done" : "Active graph"),
+        React.createElement("span", { className: "plan-runway-pill" }, mode === "forced" ? "Plan mode" : "Auto plan"),
+        React.createElement("span", { className: "plan-runway-pill" }, nextActionLabel(normalized.nodes)),
+        React.createElement("span", { className: "plan-runway-copy" }, normalized.nodes.some((node) => node.status === "active") ? "The execution graph is actively progressing through the current checkpoint." : "This graph is staged and ready to inspect before execution continues.")
+      ),
+      React.createElement(
+        MotionDeck,
+        { className: "plan-summary-grid mb-2" },
+        planStat("Layers", String(new Set(normalized.nodes.map((node) => node.level)).size), "Execution depth across the graph", 0),
+        planStat("Next", nextActionLabel(normalized.nodes), "The step that should move first", 1),
+        planStat("State", blueprint.verification_passed ? "Verified" : allDone ? "Done" : normalized.nodes.some((node) => node.status === "active") ? "Running" : "Ready", "Current graph status", 2)
+      ),
+      React.createElement(
+        MetalSurface,
+        { className: "plan-flow-canvas-shell" },
+        React.createElement(
+          "div",
+          { className: "plan-flow-canvas", style: { height: "380px" } },
+          React.createElement(
+            ReactFlow,
+            {
+              nodes,
+              edges,
+              onNodesChange,
+              onEdgesChange,
+              nodeTypes,
+              fitView: true,
+              fitViewOptions: { padding: 0.28, minZoom: 0.4 },
+              panOnDrag: true,
+              panOnScroll: true,
+              zoomOnScroll: true,
+              zoomOnPinch: true,
+              zoomOnDoubleClick: false,
+              nodesDraggable: false,
+              nodesConnectable: false,
+              elementsSelectable: true,
+              minZoom: 0.35,
+              maxZoom: 2.5,
+              proOptions: { hideAttribution: true },
+            },
+            React.createElement(Controls, { showInteractive: false, position: "bottom-right" }),
+            React.createElement(Background, { color: "rgba(108, 130, 149, 0.2)", gap: 22, size: 1.2 })
+          )
+        )
       )
     )
   );
+}
+
+function planStat(label, value, detail, index) {
+  const numeric = /^\d+$/.test(String(value || "").trim());
+  return React.createElement(
+    MotionReveal,
+    { delay: index * 70 },
+    React.createElement(
+      MetalSurface,
+      { className: "plan-summary-card" },
+      React.createElement("span", { className: "plan-summary-label" }, label),
+      React.createElement(
+        "strong",
+        { className: "plan-summary-value" },
+        numeric ? React.createElement(MotionNumber, { value }) : React.createElement(MotionShimmerText, { active: false }, value)
+      ),
+      React.createElement("span", { className: "plan-summary-detail" }, detail)
+    ),
+  );
+}
+
+function nextActionLabel(nodes) {
+  const active = nodes.find((node) => node.status === "active");
+  if (active?.label) return truncatePlanStat(active.label);
+  const pending = nodes.find((node) => node.status !== "done");
+  if (pending?.label) return truncatePlanStat(pending.label);
+  return "Complete";
+}
+
+function truncatePlanStat(value) {
+  const text = String(value || "").trim();
+  return text.length > 32 ? `${text.slice(0, 29)}...` : text;
+}
+
+function formatNodeStatus(status) {
+  if (status === "done") return "done";
+  if (status === "active") return "live";
+  return "queued";
+}
+
+function truncateNodeCopy(value) {
+  const text = String(value || "").trim();
+  return text.length > 84 ? `${text.slice(0, 81)}...` : text;
 }

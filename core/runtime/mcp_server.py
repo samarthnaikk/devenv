@@ -7,7 +7,11 @@ import logging
 from pathlib import Path
 from typing import Annotated, Any, Literal, get_args
 
-from pydantic import Field
+try:
+    from pydantic import Field
+except ModuleNotFoundError:  # pragma: no cover - exercised in lightweight test envs
+    def Field(**kwargs):
+        return kwargs
 
 from core.logging_utils import configure_logging
 from core.memory import MemoryEngine
@@ -90,6 +94,16 @@ def _annotation_for_property(name: str, property_schema: dict[str, Any], *, requ
         annotation = Literal.__getitem__(literal_values)
     elif schema_type == "integer":
         annotation = int
+    elif schema_type == "boolean":
+        annotation = bool
+    elif schema_type == "array":
+        item_schema = property_schema.get("items")
+        if isinstance(item_schema, dict):
+            annotation = list[_annotation_for_property(f"{name}_item", item_schema, required=True)]
+        else:
+            annotation = list[str]
+    elif schema_type == "object":
+        annotation = dict[str, Any]
     else:
         annotation = str
 

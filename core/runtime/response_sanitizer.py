@@ -83,7 +83,7 @@ def collapse_repeated_blocks(content: str | None) -> str | None:
     for index, block in enumerate(blocks):
         if is_affirmative_only_block(block):
             next_block = blocks[index + 1] if index + 1 < len(blocks) else ""
-            if next_block:
+            if next_block.lstrip().lower().startswith(("yes.", "yeah.", "yep.")):
                 continue
         canonical = canonicalize_response_block(block)
         if canonical and canonical in seen_canonical:

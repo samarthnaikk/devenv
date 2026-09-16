@@ -1,8 +1,9 @@
-import React from "https://esm.sh/react@18.2.0";
+import React from "react";
 import { useApp } from "../context/AppContext.js";
 import { escapeHtml, formatBackendLabel } from "../utils/format.js";
-import { persistAccess } from "../utils/storage.js";
+import { loadPreferredBackend, persistAccess } from "../utils/storage.js";
 import { showToast } from "./Header.js";
+import { BeamFrame, MetalSurface, MotionDeck, MotionReveal, MotionShimmerText } from "./MotionPrimitives.js";
 
 const PERFORMANCE_STEPS = ["low", "medium", "high"];
 
@@ -12,8 +13,11 @@ export function AccessCard() {
   const opencodeSessionAllowed = Boolean(state.accessPolicy.session_access?.opencode);
   const opencodeBackendAllowed = Boolean(state.accessPolicy.backend_access?.opencode);
   const ollamaBackendAllowed = Boolean(state.accessPolicy.backend_access?.ollama);
+  const llamaCppBackendAllowed = Boolean(state.accessPolicy.backend_access?.llama_cpp);
   const codexBackendAllowed = Boolean(state.accessPolicy.backend_access?.codex);
   const activeBackendLabel = formatBackendLabel(state.activeBackend);
+  const preferredBackendLabel = formatBackendLabel(state.preferredBackend || "opencode");
+  const preferredModel = state.healthMeta.selectedModelsByBackend?.[state.preferredBackend || "opencode"] || state.healthMeta.model || "";
 
   const updateSessionAccess = async (provider, allowed) => {
     dispatch({ type: "SET_ACCESS_UPDATING", payload: true });
@@ -97,19 +101,48 @@ export function AccessCard() {
 
   return React.createElement(
     "section",
-    { className: "space-y-3" },
+    { className: "workspace-card-stack space-y-3" },
     React.createElement(
-      "h3",
-      { className: "font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2" },
-      React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "vpn_key"),
-      "ACCESS & PROVIDERS"
+      MotionReveal,
+      null,
+      React.createElement(
+        "div",
+        { className: "workspace-card-title-row" },
+        React.createElement(
+          "h3",
+          { className: "font-label-caps text-label-caps text-on-surface-variant flex items-center gap-2" },
+          React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, "vpn_key"),
+          "ACCESS & PROVIDERS"
+        ),
+        React.createElement(
+          MotionShimmerText,
+          { className: "workspace-card-title-meta", active: state.isRunning },
+          state.accessUpdating ? "Syncing runtime access" : "Consent, backends, and privacy controls"
+        )
+      )
     ),
     React.createElement(
       "div",
-      { className: "bg-surface-container rounded-lg border border-outline-variant overflow-hidden" },
+      { className: "workspace-summary-rail" },
+      React.createElement("span", { className: "workspace-summary-pill" }, activeBackendLabel),
+      React.createElement("span", { className: "workspace-summary-pill" }, state.performanceMode || "medium"),
+      React.createElement("span", { className: "workspace-summary-pill" }, state.privacyMode.incognito ? "Incognito" : "Memory on"),
+      React.createElement("span", { className: "workspace-summary-copy" }, "Provider consent, backend access, and runtime privacy live together here.")
+    ),
+    React.createElement(
+      BeamFrame,
+      { active: state.accessUpdating, tone: "mono", className: "workspace-card-shell workspace-card-shell-access rounded-[22px] overflow-hidden" },
+      React.createElement("span", { className: "workspace-card-ribbon", "aria-hidden": "true" }),
+      React.createElement(
+        MotionDeck,
+        { className: "workspace-status-grid p-3 border-b border-outline-variant/30" },
+        statusStat("Active", activeBackendLabel, state.isRunning ? "Handling the current turn" : "Ready for the next prompt"),
+        statusStat("Preferred", preferredBackendLabel, preferredModel ? compactModelName(preferredModel) : "Routing default"),
+        statusStat("Privacy", state.privacyMode.incognito ? "Incognito" : "Memory on", state.privacyMode.incognito ? "No memory retained" : "Sessions can be grounded")
+      ),
       React.createElement(
         "div",
-        { className: "p-3 border-b border-outline-variant/30 flex justify-between items-center" },
+        { className: "workspace-card-section workspace-card-section-head p-3 border-b border-outline-variant/30 flex justify-between items-center" },
         React.createElement("span", { className: "font-body-md text-body-md" }, "Consent"),
         React.createElement("span", { className: "text-primary material-symbols-outlined text-[18px]" }, "check_circle")
       ),
@@ -117,69 +150,70 @@ export function AccessCard() {
       renderProviderRow("opencode", "OpenCode", opencodeSessionAllowed, "session", state, updateSessionAccess),
       renderBackendRow("opencode", opencodeBackendAllowed, activeBackendLabel, state, updateBackendAccess),
       renderBackendRow("ollama", ollamaBackendAllowed, activeBackendLabel, state, updateBackendAccess),
-      renderBackendRow("codex", codexBackendAllowed, activeBackendLabel, state, updateBackendAccess)
-    ),
-    React.createElement(
-      "div",
-      { className: "space-y-3 pt-2" },
+      renderBackendRow("llama_cpp", llamaCppBackendAllowed, activeBackendLabel, state, updateBackendAccess),
+      renderBackendRow("codex", codexBackendAllowed, activeBackendLabel, state, updateBackendAccess),
       React.createElement(
         "div",
-        { className: "flex flex-col gap-1.5" },
-        React.createElement("label", { className: "font-label-caps text-label-caps text-on-surface-variant" }, "PERFORMANCE MODE"),
+        { className: "workspace-card-section space-y-3 pt-4 px-3 pb-3" },
         React.createElement(
           "div",
-          { className: "rounded-xl border border-outline-variant bg-surface-container-highest px-3 py-3" },
+          { className: "flex flex-col gap-1.5" },
+          React.createElement("label", { className: "font-label-caps text-label-caps text-on-surface-variant" }, "PERFORMANCE MODE"),
           React.createElement(
             "div",
-            { className: "mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.16em] text-on-surface-variant" },
-            React.createElement("span", null, "Low"),
-            React.createElement("span", { className: "text-primary" }, escapeHtml((state.performanceMode || "medium").replace(/^./, (char) => char.toUpperCase()))),
-            React.createElement("span", null, "High")
-          ),
+            { className: "workspace-card-subpanel rounded-xl border border-outline-variant bg-surface-container-highest px-3 py-3" },
+            React.createElement(
+              "div",
+              { className: "mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.16em] text-on-surface-variant" },
+              React.createElement("span", null, "Low"),
+              React.createElement("span", { className: "text-primary" }, escapeHtml((state.performanceMode || "medium").replace(/^./, (char) => char.toUpperCase()))),
+              React.createElement("span", null, "High")
+            ),
+            React.createElement("input", {
+              className: "h-2 w-full cursor-pointer appearance-none rounded-full bg-[linear-gradient(90deg,rgba(79,219,200,0.18),rgba(79,219,200,0.75))] outline-none accent-primary",
+              type: "range",
+              min: "0",
+              max: String(PERFORMANCE_STEPS.length - 1),
+              step: "1",
+              value: String(Math.max(0, PERFORMANCE_STEPS.indexOf(state.performanceMode))),
+              onChange: handlePerformanceChange,
+              "aria-label": "Performance mode",
+            }),
+            React.createElement(
+              "div",
+              { className: "mt-2 grid grid-cols-3 text-[10px] uppercase tracking-[0.14em] text-outline" },
+              React.createElement("span", { className: "text-left" }, "Quiet"),
+              React.createElement("span", { className: "text-center" }, "Balanced"),
+              React.createElement("span", { className: "text-right" }, "Fast")
+            )
+          )
+        ),
+        React.createElement(
+          "label",
+          { className: "workspace-toggle-row flex items-center gap-3 cursor-pointer" },
           React.createElement("input", {
-            className: "h-2 w-full cursor-pointer appearance-none rounded-full bg-[linear-gradient(90deg,rgba(79,219,200,0.18),rgba(79,219,200,0.75))] outline-none accent-primary",
-            type: "range",
-            min: "0",
-            max: String(PERFORMANCE_STEPS.length - 1),
-            step: "1",
-            value: String(Math.max(0, PERFORMANCE_STEPS.indexOf(state.performanceMode))),
-            onChange: handlePerformanceChange,
-            "aria-label": "Performance mode",
+            className: "w-4 h-4 rounded border-outline-variant bg-surface-container text-primary focus:ring-0 focus:ring-offset-0",
+            type: "checkbox",
+            checked: state.privacyMode.incognito,
+            onChange: handleIncognitoToggle,
+          }),
+          React.createElement("span", { className: "font-body-md text-body-md" }, "Incognito")
+        ),
+        React.createElement(
+          "label",
+          { className: "workspace-toggle-row flex items-center gap-3 cursor-pointer" },
+          React.createElement("input", {
+            className: "w-4 h-4 rounded border-outline-variant bg-surface-container text-primary focus:ring-0 focus:ring-offset-0",
+            type: "checkbox",
+            checked: state.planMode,
+            onChange: handlePlanToggle,
           }),
           React.createElement(
             "div",
-            { className: "mt-2 grid grid-cols-3 text-[10px] uppercase tracking-[0.14em] text-outline" },
-            React.createElement("span", { className: "text-left" }, "Quiet"),
-            React.createElement("span", { className: "text-center" }, "Balanced"),
-            React.createElement("span", { className: "text-right" }, "Fast")
+            { className: "flex flex-col" },
+            React.createElement("span", { className: "font-body-md text-body-md" }, "Plan mode"),
+            React.createElement("span", { className: "text-[10px] text-on-surface-variant" }, "Generate a flowchart plan only")
           )
-        )
-      ),
-      React.createElement(
-        "label",
-        { className: "flex items-center gap-3 cursor-pointer" },
-        React.createElement("input", {
-          className: "w-4 h-4 rounded border-outline-variant bg-surface-container text-primary focus:ring-0 focus:ring-offset-0",
-          type: "checkbox",
-          checked: state.privacyMode.incognito,
-          onChange: handleIncognitoToggle,
-        }),
-        React.createElement("span", { className: "font-body-md text-body-md" }, "Incognito")
-      ),
-      React.createElement(
-        "label",
-        { className: "flex items-center gap-3 cursor-pointer" },
-        React.createElement("input", {
-          className: "w-4 h-4 rounded border-outline-variant bg-surface-container text-primary focus:ring-0 focus:ring-offset-0",
-          type: "checkbox",
-          checked: state.planMode,
-          onChange: handlePlanToggle,
-        }),
-        React.createElement(
-          "div",
-          { className: "flex flex-col" },
-          React.createElement("span", { className: "font-body-md text-body-md" }, "Plan mode"),
-          React.createElement("span", { className: "text-[10px] text-on-surface-variant" }, "Generate a flowchart plan only")
         )
       )
     )
@@ -190,18 +224,27 @@ function renderProviderRow(provider, label, allowed, type, state, updateSessionA
   const actionAttr = allowed ? "revoke" : "grant";
   return React.createElement(
     "div",
-    { key: provider, className: "p-3 border-b border-outline-variant/30 flex justify-between items-center" },
+    { key: provider, className: "workspace-card-row workspace-access-row p-3 border-b border-outline-variant/30 flex justify-between items-center gap-3" },
     React.createElement(
       "div",
-      { className: "flex flex-col" },
-      React.createElement("span", { className: "font-body-md text-body-md" }, escapeHtml(label)),
-      React.createElement("span", { className: `text-[10px] uppercase font-bold ${allowed ? "text-primary" : "text-outline"}` }, allowed ? "Granted" : "Not granted")
+      { className: "flex items-center gap-3 min-w-0" },
+      React.createElement(
+        "div",
+        { className: `workspace-access-icon${allowed ? " is-live" : ""}` },
+        React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, allowed ? "lock_open" : "vpn_key_off")
+      ),
+      React.createElement(
+        "div",
+        { className: "flex flex-col min-w-0" },
+        React.createElement("span", { className: "font-body-md text-body-md" }, escapeHtml(label)),
+        React.createElement("span", { className: `text-[10px] uppercase font-bold ${allowed ? "text-primary" : "text-outline"}` }, allowed ? "Granted" : "Not granted")
+      )
     ),
     React.createElement(
       "button",
       {
         type: "button",
-        className: `px-3 py-1 rounded font-label-caps text-[10px] transition-colors ${allowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"}`,
+        className: `workspace-access-action px-3 py-1 rounded font-label-caps text-[10px] transition-colors ${allowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"}`,
         onClick: () => updateSessionAccess(provider, actionAttr === "grant"),
         disabled: state.accessUpdating,
       },
@@ -213,24 +256,48 @@ function renderProviderRow(provider, label, allowed, type, state, updateSessionA
 function renderBackendRow(backend, allowed, activeBackendLabel, state, updateBackendAccess) {
   const label = formatBackendLabel(backend);
   const isActive = activeBackendLabel === label;
+  const isPreferred = (state.preferredBackend || "opencode") === backend;
+  const backendStatus = state.backends?.[backend] || null;
+  const model = state.healthMeta.selectedModelsByBackend?.[backend] || backendStatus?.model || "";
+  const detail = backendStatus?.detail || (allowed ? "Ready for routing." : "Access is still disabled.");
   return React.createElement(
     "div",
-    { className: "p-3 border-b border-outline-variant/30 flex justify-between items-center" },
+    { className: "workspace-card-row workspace-access-row p-3 border-b border-outline-variant/30 flex justify-between items-center gap-3" },
     React.createElement(
       "div",
-      { className: "flex flex-col" },
-      React.createElement("span", { className: "font-body-md text-body-md" }, label),
+      { className: "flex items-center gap-3 min-w-0" },
       React.createElement(
-        "span",
-        { className: "text-[10px] text-outline uppercase font-bold" },
-        isActive ? "Active" : allowed ? "Enabled" : "Disabled"
+        "div",
+        { className: `workspace-access-icon workspace-access-icon-backend${isActive ? " is-live" : ""}` },
+        React.createElement("span", { className: "material-symbols-outlined text-[16px]" }, backend === "ollama" ? "neurology" : backend === "llama_cpp" ? "memory" : backend === "codex" ? "deployed_code" : "bolt")
+      ),
+      React.createElement(
+        "div",
+        { className: "flex flex-col min-w-0" },
+        React.createElement(
+          "div",
+          { className: "workspace-access-label-row" },
+          React.createElement("span", { className: "font-body-md text-body-md" }, label),
+          isActive ? React.createElement("span", { className: "workspace-inline-pill is-active" }, "Active") : null,
+          isPreferred ? React.createElement("span", { className: "workspace-inline-pill" }, "Preferred") : null
+        ),
+        React.createElement(
+          "span",
+          { className: "text-[10px] text-outline uppercase font-bold" },
+          isActive ? "Active" : allowed ? "Enabled" : "Disabled"
+        ),
+        React.createElement(
+          "span",
+          { className: "workspace-access-detail" },
+          model ? `${compactModelName(model)} · ${detail}` : detail
+        )
       )
     ),
     React.createElement(
       "button",
       {
         type: "button",
-        className: `px-3 py-1 rounded font-label-caps text-[10px] transition-colors ${allowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"}`,
+        className: `workspace-access-action px-3 py-1 rounded font-label-caps text-[10px] transition-colors ${allowed ? "bg-surface-variant text-on-surface hover:bg-error hover:text-on-error" : "bg-primary text-on-primary hover:opacity-80"}`,
         onClick: () => updateBackendAccess(backend, !allowed),
         disabled: state.accessUpdating,
       },
@@ -239,10 +306,29 @@ function renderBackendRow(backend, allowed, activeBackendLabel, state, updateBac
   );
 }
 
+function statusStat(label, value, detail) {
+  return React.createElement(
+    MetalSurface,
+    { className: "workspace-status-stat" },
+    React.createElement("span", { className: "workspace-status-label" }, label),
+    React.createElement("strong", { className: "workspace-status-value" }, value),
+    React.createElement("span", { className: "workspace-status-detail" }, detail)
+  );
+}
+
+function compactModelName(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const lastSegment = text.split("/").pop() || text;
+  return lastSegment.length > 24 ? `${lastSegment.slice(0, 21)}...` : lastSegment;
+}
+
 async function refreshHealth(dispatch, options = {}) {
   try {
     const { fetchHealth } = await import("../api.js");
     const healthPayload = await fetchHealth();
+    const persistedPreferredBackend = loadPreferredBackend();
+    const preferredBackend = persistedPreferredBackend || healthPayload.preferred_backend || "opencode";
     dispatch({ type: "SET_HEALTH", payload: healthPayload });
     dispatch({
       type: "SET_HEALTH_META",
@@ -254,10 +340,10 @@ async function refreshHealth(dispatch, options = {}) {
         selectedModelsByBackend: healthPayload.selected_models_by_backend || {},
       },
     });
-    dispatch({ type: "SET_ACCESS_POLICY", payload: healthPayload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, codex: false } } });
+    dispatch({ type: "SET_ACCESS_POLICY", payload: healthPayload.access_policy || { session_access: {}, backend_access: { opencode: false, ollama: false, llama_cpp: false, codex: false } } });
     dispatch({ type: "SET_BACKENDS", payload: healthPayload.ai_backends || {} });
     dispatch({ type: "SET_ACTIVE_BACKEND", payload: healthPayload.active_backend || "opencode" });
-    dispatch({ type: "SET_PREFERRED_BACKEND", payload: healthPayload.preferred_backend || "opencode" });
+    dispatch({ type: "SET_PREFERRED_BACKEND", payload: preferredBackend });
     dispatch({ type: "SET_PERFORMANCE_MODE", payload: healthPayload.performance_mode || "medium" });
     dispatch({ type: "SET_PRIVACY_MODE", payload: healthPayload.privacy || { no_memory: false, incognito: false } });
   } catch (err) {
