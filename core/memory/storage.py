@@ -418,6 +418,17 @@ class SQLiteMemoryStore:
             ).fetchall()
         return [_row_to_interaction_card(row) for row in rows]
 
+    def delete_interaction_cards_for_session(self, session_id: str) -> list[str]:
+        with self.transaction() as connection:
+            rows = connection.execute(
+                "SELECT card_id FROM interaction_cards WHERE session_id = ?", (session_id,)
+            ).fetchall()
+            card_ids = [str(row["card_id"]) for row in rows]
+            connection.execute("DELETE FROM interaction_cards WHERE session_id = ?", (session_id,))
+            for card_id in card_ids:
+                connection.execute("DELETE FROM interaction_cards_fts WHERE card_id = ?", (card_id,))
+        return card_ids
+
     def upsert_node(self, node: MemoryNode) -> None:
         with self.transaction() as connection:
             connection.execute(

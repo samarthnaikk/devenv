@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 from core.memory.cards import build_interaction_cards
@@ -8,12 +11,51 @@ from core.memory.embeddings import build_card_embedder
 from core.memory.vector_index import LanceDBVectorIndex
 from core.runtime.context_builder import ContextBuilderService, _default_provider_configs
 
+META_TITLE_PATTERNS = (
+    "Retrieval engine branch changes review",
+    "Explore retrieval engine code",
+    "Mine ",
+    "sessions (@explore subagent)",
+)
+
+
+def load_excluded_session_ids(cutoff_iso: str, opencode_db: str) -> set[str]:
+    excluded: set[str] = set()
+    if not cutoff_iso or not os.path.exists(opencode_db):
+        return excluded
+    cutoff = datetime.fromisoformat(cutoff_iso).replace(tzinfo=timezone.utc)
+    connection = sqlite3.connect(opencode_db)
+    connection.row_factory = sqlite3.Row
+    try:
+        for row in connection.execute("select id, title, time_updated from session"):
+            title = str(row["title"] or "")
+            updated = datetime.fromtimestamp(int(row["time_updated"]) / 1000, tz=timezone.utc)
+            if updated >= cutoff or any(pattern in title for pattern in META_TITLE_PATTERNS):
+                excluded.add(str(row["id"]))
+    finally:
+        connection.close()
+    return excluded
+
+
+def purge_excluded(store, vector_index, excluded: set[str]) -> int:
+    removed = 0
+    for session_id in excluded:
+        for card_id in store.delete_interaction_cards_for_session(session_id):
+            try:
+                vector_index.delete(card_id)
+            except Exception:
+                pass
+            removed += 1
+    return removed
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Ingest deterministic interaction cards from session archives.")
     parser.add_argument("--workspace", default=str(Path.cwd()))
     parser.add_argument("--provider", choices=("codex", "opencode", "all"), default="all")
     parser.add_argument("--limit", type=int, default=0, help="max sessions per provider (for testing)")
+    parser.add_argument("--exclude-after", default="2026-09-15T00:00:00", help="skip sessions updated after this")
+    parser.add_argument("--no-exclude", action="store_true", help="disable meta-session exclusion")
     args = parser.parse_args()
 
     workspace = Path(args.workspace).expanduser().resolve()
@@ -25,6 +67,12 @@ def main() -> int:
     embedder = build_card_embedder()
     vector_index = LanceDBVectorIndex(str(workspace / "vectors"), table_name="interaction_cards", dimension=embedder.dimension)
     print(f"embedder: {type(embedder).__name__}", flush=True)
+
+    excluded: set[str] = set()
+    if not args.no_exclude:
+        excluded = load_excluded_session_ids(args.exclude_after, str(Path.home() / ".local" / "share" / "opencode" / "opencode.db"))
+        removed = purge_excluded(store, vector_index, excluded)
+        print(f"excluded {len(excluded)} meta session(s); purged {removed} card(s)", flush=True)
 
     providers = ["codex", "opencode"] if args.provider == "all" else [args.provider]
     for provider_name in providers:
@@ -39,6 +87,8 @@ def main() -> int:
         print(f"{provider_name}: {len(summaries)} session(s)", flush=True)
         written = 0
         for index, summary in enumerate(summaries, start=1):
+            if summary.session_id in excluded:
+                continue
             try:
                 chunks = provider.build_index_chunks(summary.session_id)
             except Exception:

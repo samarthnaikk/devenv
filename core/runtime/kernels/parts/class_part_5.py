@@ -456,6 +456,37 @@ class KernelPlanningMixin:
         except Exception as exc:
             logger.warning("Failed to record working memory; continuing: error=%s", exc)
 
+    def _retrieve_card_memory_context(self, user_prompt: str) -> tuple[str, list[Any]]:
+        memory = getattr(self, "memory", None)
+        if memory is None or not hasattr(memory, "retrieve_cards"):
+            return "", []
+        if _should_skip_retrieval_for_prompt(user_prompt) or _should_skip_current_workspace_memory_lookup(user_prompt):
+            return "", []
+        try:
+            from core.memory.card_retrieval import DEFAULT_MIN_SCORE
+            from core.runtime.context_builder import _build_query_variants
+        except Exception:
+            return "", []
+        lanes = list(_build_query_variants(user_prompt))
+        try:
+            matches = memory.retrieve_cards(user_prompt, lanes=lanes)
+        except Exception as exc:
+            logger.warning("Card retrieval failed; continuing without card context: error=%s", exc)
+            return "", []
+        if not matches:
+            return "", []
+        if max(match.score for match in matches) < DEFAULT_MIN_SCORE:
+            return "", []
+        lines = ["## Interaction Memory"]
+        for match in matches:
+            card = match.card
+            intent = " ".join(card.intent_text.split())[:200]
+            answer = " ".join(card.answer_text.split())[:300]
+            lines.append(
+                f"- [{card.project or 'unknown'}] {intent} — {answer} (source: {card.provider}:{card.session_id[:8]})"
+            )
+        return "\n".join(lines), matches
+
     def _retrieve_memory_context(self, user_prompt: str, *, local_only: bool = False) -> tuple[str, dict[str, Any]]:
         memory_context = ""
         metadata: dict[str, Any] = {
@@ -489,6 +520,18 @@ class KernelPlanningMixin:
                     return memory_context, metadata
             except Exception as exc:
                 logger.warning("Memory retrieval failed; continuing without memory context: error=%s", exc)
+        card_context, card_matches = self._retrieve_card_memory_context(user_prompt)
+        if card_context:
+            combined = card_context if not memory_context.strip() else f"{memory_context.rstrip()}\n\n{card_context}"
+            metadata.update(
+                {
+                    "card_context_state": "reused_prior_cards",
+                    "card_context_count": len(card_matches),
+                    "card_context_sources": [match.card.session_id for match in card_matches],
+                }
+            )
+            self._persist_last_retrieval_trace(RetrievalTrace(markdown_context=combined))
+            return combined, metadata
         if _should_skip_external_session_context(user_prompt):
             metadata["external_context_reason"] = "Skipped external session lookup for a current-workspace inspection prompt."
             return memory_context, metadata
