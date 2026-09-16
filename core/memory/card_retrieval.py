@@ -12,6 +12,7 @@ DEFAULT_LANE_TOP_K = 5
 DEFAULT_TOP_K = 8
 DEFAULT_MIN_SIMILARITY = 0.15
 DEFAULT_MIN_SCORE = 0.02
+PROJECT_AFFINITY_BOOST = 0.004
 
 
 @dataclass(frozen=True)
@@ -95,4 +96,18 @@ class CardRetriever:
             if len(chosen) >= top_k:
                 break
             chosen.setdefault(match.card.card_id, match)
-        return sorted(chosen.values(), key=lambda match: (-match.score, match.card.card_id))[:top_k]
+
+        ranked = sorted(chosen.values(), key=lambda match: (-match.score, match.card.card_id))
+        anchor_projects = {match.card.project for match in ranked[:3] if match.card.project}
+        if anchor_projects:
+            boosted = [
+                CardMatch(
+                    card=match.card,
+                    score=match.score
+                    + (PROJECT_AFFINITY_BOOST if match.card.project in anchor_projects else 0.0),
+                    lane=match.lane,
+                )
+                for match in ranked
+            ]
+            ranked = sorted(boosted, key=lambda match: (-match.score, match.card.card_id))
+        return ranked[:top_k]
