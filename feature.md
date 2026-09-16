@@ -107,6 +107,16 @@ It focuses on what a user can do in the product, not the internal tool-call or i
 - Single-turn smoke/runtime command for direct testing.
 - MCP server surface for exposing the local tool deck externally.
 
+## Native AI Agents (ACP)
+
+- Connect to a native coding agent from the TUI with `/ai`.
+- Pick from available agents (`/ai`) or connect directly (`/ai opencode`).
+- The agent runs its own loop: its native tools, permissions, MCP servers, LSP, and `AGENTS.md` rules all apply.
+- Stream agent messages, thoughts, tool calls, and plans into a dedicated full-screen view.
+- Answer agent permission requests inline; cancel a turn with `Esc` and close the agent view with `Ctrl+Q`.
+- Independent of retrieval, memory, the kernel, and backend routing; each connection is a fresh agent session.
+
+
 ## Current Strengths
 
 - Good for project Q&A with persistent memory.

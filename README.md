@@ -144,9 +144,22 @@ Useful commands (also available from the command palette via `Ctrl+P` or the foo
 - `/backend` — open the backend picker or switch with `/backend <name>`
 - `/model` — open the model picker or set with `/model [backend] <name>`
 - `/permissions` — open the permission picker
+- `/ai` — open the AI agent picker, `/ai <agent>` to connect (e.g. `/ai opencode`), `/ai list` to list
 - `/status`, `/providers`, `/clear`, `/exit`
 
 Backend and model selections are persisted per workspace. If no session source is enabled, the sidebar prompts `/enable` (or `F3`/`F4`) before indexing begins.
+
+## Native AI Agents (ACP)
+
+Devenv can hand a session to a native coding agent and let that agent run its own loop instead of routing prompts through the Devenv backend abstraction. Agents are launched over the Agent Client Protocol (ACP): Devenv spawns the agent as a subprocess, negotiates capabilities, opens a session in the workspace, and streams the agent's own updates (messages, thoughts, tool calls, plans) into a dedicated full-screen agent view.
+
+- `/ai` opens a picker of available agents; `/ai opencode` connects directly.
+- OpenCode is the first agent (`opencode acp`), so its native tools, permissions, MCP servers, LSP, and `AGENTS.md` rules all apply.
+- Each `/ai` connection starts a fresh agent session and is independent of the retrieval engine, memory, kernel, and backend routing; the existing `/backend opencode` path is unchanged.
+- Permissions requested by the agent surface as a modal in the TUI. `Esc` cancels the current turn and `Ctrl+Q` closes the agent view.
+- ACP connections require the full Textual TUI; the plain-input fallback only lists agents.
+
+OpenCode must be authenticated for turns to succeed (`opencode auth login`). The connection itself uses `opencode acp` and is configured by OpenCode, not by `OPENCODE_MODEL`/`OPENCODE_SERVER_*`.
 
 ## Retrieval Engine
 
@@ -335,7 +348,7 @@ Key areas:
 - `core.memory`: memory interfaces, storage, retrieval, consolidation, embeddings, and models
 - `core.runtime`: terminal runtime, web runtime, MCP server, and runtime orchestration
 - `core.tools`: base tool abstractions and local tool implementations
-- `core.ai`: OpenCode transport, routing, and model-facing contracts
+- `core.ai`: OpenCode transport, routing, model-facing contracts, and the ACP agent client
 
 ## How A Message Flows
 
@@ -549,6 +562,7 @@ python -m pip install -e .
 
 The runtime stack expects local availability of:
 
+- `agent-client-protocol`
 - `lancedb`
 - `sentence-transformers`
 - `textual`

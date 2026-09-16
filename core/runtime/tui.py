@@ -117,6 +117,7 @@ def _strip_ansi(text: str) -> str:
 class TUICommandResult:
     message: str
     should_exit: bool = False
+    agent: str | None = None
 
 
 @dataclass(frozen=True)
@@ -354,6 +355,7 @@ class DevenvTUIController:
         self.access_policy = AccessPolicy()
         self.mode = "retrieve"
         self.preferred_backend = getattr(self.kernel.ai, "preferred_backend", "opencode") or "opencode"
+        self.preferred_agent: str | None = None
         self._load_persisted_state()
         self._apply_runtime_preferences()
 
@@ -377,6 +379,7 @@ class DevenvTUIController:
     def _persist_state(self) -> None:
         payload = {
             "preferred_backend": self.preferred_backend,
+            "preferred_agent": self.preferred_agent or "",
             "mode": self.mode,
             "backend_access": dict(self.access_policy.backend_access),
             "session_access": dict(self.access_policy.session_access),
@@ -399,6 +402,9 @@ class DevenvTUIController:
         preferred_backend = str(payload.get("preferred_backend", "") or "").strip().lower()
         if preferred_backend in BACKENDS:
             self.preferred_backend = preferred_backend
+        preferred_agent = str(payload.get("preferred_agent", "") or "").strip().lower()
+        if preferred_agent:
+            self.preferred_agent = preferred_agent
         persisted_mode = str(payload.get("mode", "") or "").strip().lower()
         if persisted_mode in {"retrieve", "solve"}:
             self.mode = persisted_mode
@@ -463,6 +469,8 @@ class DevenvTUIController:
             return TUICommandResult(self._handle_backend_command(args))
         if command == "/model":
             return TUICommandResult(self._handle_model_command(args))
+        if command == "/ai":
+            return self._handle_ai_command(args)
         if command == "/providers":
             return TUICommandResult(self.providers_text())
         if command in {"/retrieve", "/recall"}:
@@ -510,6 +518,8 @@ class DevenvTUIController:
                 "/model                  Open the model picker",
                 "/model <name>           Set model for the preferred backend",
                 "/model <backend> <name> Set model for a specific backend",
+                "/ai                     List available AI agents",
+                "/ai <agent>             Connect to a native AI agent (e.g. opencode)",
                 "/providers              Show session-source health",
                 "/clear                  Start a fresh runtime thread",
                 "/exit                   Quit the TUI",
@@ -699,6 +709,67 @@ class DevenvTUIController:
                 self.kernel.ai.model = cleaned_model
         self._persist_state()
         return f"Model for `{backend}` set to `{cleaned_model}`."
+
+    def available_agent_options(self) -> list[Any]:
+        from core.ai.agents import available_agents
+
+        return available_agents()
+
+    def resolve_agent(self, name: str) -> Any | None:
+        from core.ai.agents import resolve_agent
+
+        return resolve_agent(name)
+
+    def create_agent_session(self, name: str):
+        from core.ai.acp_agent import ACPAgentSession
+
+        spec = self.resolve_agent(name)
+        if spec is None:
+            raise ValueError(f"Unknown AI agent `{name}`.")
+        return ACPAgentSession(spec, self.config.workspace_path)
+
+    def remember_agent(self, name: str) -> None:
+        cleaned = str(name or "").strip().lower()
+        if cleaned:
+            self.preferred_agent = cleaned
+            self._persist_state()
+
+    def agent_list_text(self) -> str:
+        lines = [_style("AI Agents", Ansi.BOLD, Ansi.CYAN)]
+        for option in self.available_agent_options():
+            state = "ready" if option.available else "unavailable"
+            color = Ansi.GREEN if option.available else Ansi.DIM
+            detail = f"  {_style(option.detail, Ansi.DIM)}" if option.detail else ""
+            lines.append(
+                f"- {option.spec.name}: {option.spec.title} "
+                f"[{_style(state, color)}]{detail}"
+            )
+        lines.append("")
+        lines.append(_style("Connect with `/ai <agent>` (e.g. `/ai opencode`).", Ansi.DIM))
+        return "\n".join(lines)
+
+    def _handle_ai_command(self, args: list[str]) -> TUICommandResult:
+        if not args:
+            return TUICommandResult(self.agent_list_text())
+        name = args[0].lower()
+        if name == "list":
+            return TUICommandResult(self.agent_list_text())
+        if len(args) != 1:
+            return TUICommandResult("Usage: /ai [list|<agent>]")
+        spec = self.resolve_agent(name)
+        if spec is None:
+            known = ", ".join(option.spec.name for option in self.available_agent_options()) or "none"
+            return TUICommandResult(f"Unknown AI agent `{name}`. Available agents: {known}.")
+        from core.ai.agents import agent_availability
+
+        availability = agent_availability(spec)
+        if not availability.available:
+            return TUICommandResult(f"AI agent `{name}` is unavailable. {availability.detail}")
+        self.remember_agent(name)
+        return TUICommandResult(
+            f"Opening `{availability.spec.title}` agent…",
+            agent=name,
+        )
 
     def _prompt_choice(self, title: str, options: list[str], *, allow_cancel: bool = True) -> int | None:
         lines = [_style(title, Ansi.BOLD, Ansi.CYAN)]
@@ -897,6 +968,16 @@ class DevenvTUIController:
                     f"Toggle session provider {provider} [{state}]",
                     f"/permission provider {provider} {'off' if state == 'on' else 'on'}",
                     f"permission provider session toggle {provider} {state}",
+                )
+            )
+        for option in self.available_agent_options():
+            state = "ready" if option.available else "unavailable"
+            entries.append(
+                PaletteEntry(
+                    f"agent:{option.spec.name}",
+                    f"Connect AI agent {option.spec.title} [{state}]",
+                    f"/ai {option.spec.name}",
+                    f"ai agent {option.spec.name} {option.spec.title} connect {state}",
                 )
             )
         normalized_query = query.strip().lower()
@@ -1221,6 +1302,10 @@ if TEXTUAL_AVAILABLE:
                 return
             if value.startswith("/"):
                 command_name = value.split()[0].lower()
+                if command_name == "/ai":
+                    self._activity(f"command: {value}")
+                    self._handle_ai_input(value)
+                    return
                 result = self.controller.handle_command(value)
                 self._activity(f"command: {value}")
                 if result.message:
@@ -1244,6 +1329,39 @@ if TEXTUAL_AVAILABLE:
             self._set_busy(True)
             self._activity(f"retrieving: {value}")
             self._run_retrieval(value)
+
+        def _handle_ai_input(self, value: str) -> None:
+            tokens = value.split()[1:]
+            if not tokens:
+                self._open_agent_picker()
+                return
+            result = self.controller.handle_command(value)
+            if result.message:
+                self._mount_command_card(value, result.message)
+            if result.agent:
+                self._open_agent(result.agent)
+
+        def _open_agent_picker(self) -> None:
+            from .tui_agent import AgentPickerScreen
+
+            options = self.controller.available_agent_options()
+            self.push_screen(AgentPickerScreen(options), self._on_agent_picked)
+
+        def _on_agent_picked(self, name: str | None) -> None:
+            if name:
+                self._open_agent(name)
+
+        def _open_agent(self, name: str) -> None:
+            from .tui_agent import AgentScreen
+
+            try:
+                session = self.controller.create_agent_session(name)
+            except ValueError as exc:
+                self.notify(str(exc), severity="error")
+                return
+            self.controller.remember_agent(name)
+            self._activity(f"agent: connecting to {name}")
+            self.push_screen(AgentScreen(session))
 
         @work(thread=True)
         def _run_retrieval(self, query: str) -> None:

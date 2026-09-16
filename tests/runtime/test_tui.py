@@ -4,6 +4,8 @@ import logging
 import queue
 import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 from core.runtime.models import RunConfig, RuntimeTurnResult, StageTrace, ToolExecutionStep
 from core.runtime.tui import (
@@ -506,6 +508,105 @@ class DevenvTUITest(unittest.TestCase):
         lines = _format_turn_result_lines(RuntimeTurnResult(final_response=None))
 
         self.assertEqual(lines, ["[yellow]Assistant[/] The runtime completed without producing a visible response."])
+
+    def test_ai_list_command_lists_agents(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+            result = controller.handle_command("/ai list")
+
+        self.assertIn("opencode", result.message)
+        self.assertIn("OpenCode", result.message)
+        self.assertIsNone(result.agent)
+
+    def test_ai_command_connects_to_available_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            with mock.patch("core.ai.agents.shutil.which", return_value="/usr/bin/opencode"):
+                result = controller.handle_command("/ai opencode")
+
+        self.assertEqual(result.agent, "opencode")
+        self.assertEqual(controller.preferred_agent, "opencode")
+
+    def test_ai_command_reports_unavailable_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            with mock.patch("core.ai.agents.shutil.which", return_value=None):
+                result = controller.handle_command("/ai opencode")
+
+        self.assertIsNone(result.agent)
+        self.assertIn("unavailable", result.message)
+
+    def test_ai_command_rejects_unknown_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+            result = controller.handle_command("/ai not-an-agent")
+
+        self.assertIn("Unknown AI agent", result.message)
+
+    def test_ai_preference_persists_across_controller_instances(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            first = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            with mock.patch("core.ai.agents.shutil.which", return_value="/usr/bin/opencode"):
+                first.handle_command("/ai opencode")
+            first.close()
+
+            second = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+        self.assertEqual(second.preferred_agent, "opencode")
+
+    def test_palette_entries_include_agent_actions(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+            entries = controller.palette_entries("opencode")
+
+        self.assertTrue(any(entry.command == "/ai opencode" for entry in entries))
+
+    def test_help_text_mentions_ai_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+            help_text = controller.help_text()
+
+        self.assertIn("/ai", help_text)
+
+    def test_create_agent_session_builds_acp_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+            session = controller.create_agent_session("opencode")
+
+        self.assertEqual(session.spec.name, "opencode")
+        self.assertEqual(session.workspace_path, str(Path(tempdir).resolve()))
 
 
 if __name__ == "__main__":
