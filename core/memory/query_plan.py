@@ -4,7 +4,9 @@ import re
 from functools import lru_cache
 from typing import Any
 
-MAX_QUERY_LANES = 4
+from .synonyms import expand_query_synonyms
+
+MAX_QUERY_LANES = 6
 
 _IDENTIFIER_PATTERNS = (
     re.compile(r"[A-Za-z0-9_./\\-]+\.[A-Za-z0-9]{1,6}\b"),
@@ -91,4 +93,9 @@ def build_query_plan(query: str, max_lanes: int = MAX_QUERY_LANES) -> list[str]:
             break
         if identifier not in lanes:
             lanes.append(identifier)
+    aliases = expand_query_synonyms(normalized)
+    if aliases and len(lanes) < max_lanes:
+        synonym_lane = _normalize(" ".join(aliases))
+        if synonym_lane and synonym_lane not in lanes:
+            lanes.append(synonym_lane)
     return lanes[:max_lanes]
