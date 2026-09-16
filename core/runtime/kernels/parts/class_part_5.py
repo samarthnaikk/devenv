@@ -464,10 +464,13 @@ class KernelPlanningMixin:
             return "", []
         try:
             from core.memory.card_retrieval import DEFAULT_MIN_SCORE
+            from core.memory.query_plan import build_query_plan
             from core.runtime.context_builder import _build_query_variants
         except Exception:
             return "", []
-        lanes = list(_build_query_variants(user_prompt))
+        lanes = build_query_plan(user_prompt)
+        if not lanes:
+            lanes = list(_build_query_variants(user_prompt))
         try:
             matches = memory.retrieve_cards(user_prompt, lanes=lanes)
         except Exception as exc:
