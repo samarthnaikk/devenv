@@ -71,6 +71,21 @@ class ExternalSessionChunkEmbedding:
 
 
 @dataclass(frozen=True)
+class InteractionCard:
+    card_id: str
+    provider: str
+    session_id: str
+    project: str
+    workspace_path: str | None
+    turn_index: int
+    intent_text: str
+    answer_text: str
+    ts: str
+    content_hash: str
+    search_text: str = ""
+
+
+@dataclass(frozen=True)
 class WorkingMemoryMessage:
     role: str
     content: str

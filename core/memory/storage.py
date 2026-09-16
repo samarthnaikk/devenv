@@ -10,6 +10,7 @@ from .models import (
     EpisodicLog,
     ExternalSessionChunkEmbedding,
     ExternalSessionEmbedding,
+    InteractionCard,
     MemoryNode,
     NodeEdge,
 )
@@ -91,6 +92,23 @@ SCHEMA_STATEMENTS = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_external_session_chunk_embeddings_provider ON external_session_chunk_embeddings(provider)",
+    """
+    CREATE TABLE IF NOT EXISTS interaction_cards (
+        card_id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        project TEXT NOT NULL DEFAULT '',
+        workspace_path TEXT,
+        turn_index INTEGER NOT NULL DEFAULT 0,
+        intent_text TEXT NOT NULL DEFAULT '',
+        answer_text TEXT NOT NULL DEFAULT '',
+        ts TEXT NOT NULL DEFAULT '',
+        content_hash TEXT NOT NULL,
+        search_text TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_interaction_cards_provider ON interaction_cards(provider)",
+    "CREATE INDEX IF NOT EXISTS idx_interaction_cards_session_id ON interaction_cards(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_external_session_embeddings_session_id ON external_session_embeddings(session_id)",
 )
 
@@ -102,6 +120,10 @@ FTS_SCHEMA_STATEMENTS = (
     """
     CREATE VIRTUAL TABLE IF NOT EXISTS episodic_logs_fts
     USING fts5(log_id, raw_interaction)
+    """,
+    """
+    CREATE VIRTUAL TABLE IF NOT EXISTS interaction_cards_fts
+    USING fts5(card_id, intent_text, answer_text, search_text)
     """,
 )
 
@@ -314,6 +336,87 @@ class SQLiteMemoryStore:
         with self.transaction() as connection:
             rows = connection.execute(query, params).fetchall()
         return [_row_to_external_session_chunk_embedding(row) for row in rows]
+
+    def upsert_interaction_card(self, card: InteractionCard) -> None:
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO interaction_cards (
+                    card_id, provider, session_id, project, workspace_path, turn_index,
+                    intent_text, answer_text, ts, content_hash, search_text
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(card_id) DO UPDATE SET
+                    provider = excluded.provider,
+                    session_id = excluded.session_id,
+                    project = excluded.project,
+                    workspace_path = excluded.workspace_path,
+                    turn_index = excluded.turn_index,
+                    intent_text = excluded.intent_text,
+                    answer_text = excluded.answer_text,
+                    ts = excluded.ts,
+                    content_hash = excluded.content_hash,
+                    search_text = excluded.search_text
+                """,
+                (
+                    card.card_id,
+                    card.provider,
+                    card.session_id,
+                    card.project,
+                    card.workspace_path,
+                    card.turn_index,
+                    card.intent_text,
+                    card.answer_text,
+                    card.ts,
+                    card.content_hash,
+                    card.search_text,
+                ),
+            )
+            self._upsert_interaction_card_fts(connection, card)
+
+    def get_interaction_card(self, card_id: str) -> InteractionCard | None:
+        with self.transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT card_id, provider, session_id, project, workspace_path, turn_index,
+                       intent_text, answer_text, ts, content_hash, search_text
+                FROM interaction_cards WHERE card_id = ?
+                """,
+                (card_id,),
+            ).fetchone()
+        return _row_to_interaction_card(row) if row else None
+
+    def list_interaction_cards(self, provider: str | None = None) -> list[InteractionCard]:
+        query = (
+            "SELECT card_id, provider, session_id, project, workspace_path, turn_index,"
+            " intent_text, answer_text, ts, content_hash, search_text FROM interaction_cards"
+        )
+        params: tuple[str, ...] = ()
+        if provider:
+            query += " WHERE provider = ?"
+            params = (provider,)
+        query += " ORDER BY provider, session_id, turn_index"
+        with self.transaction() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [_row_to_interaction_card(row) for row in rows]
+
+    def search_interaction_cards_fts(self, query: str, limit: int = 5) -> list[InteractionCard]:
+        cleaned_query = _normalize_fts_query(query)
+        if not cleaned_query or not self._fts_enabled:
+            return []
+        with self.transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT c.card_id, c.provider, c.session_id, c.project, c.workspace_path, c.turn_index,
+                       c.intent_text, c.answer_text, c.ts, c.content_hash, c.search_text
+                FROM interaction_cards_fts fts
+                JOIN interaction_cards c ON c.card_id = fts.card_id
+                WHERE interaction_cards_fts MATCH ?
+                ORDER BY bm25(interaction_cards_fts)
+                LIMIT ?
+                """,
+                (cleaned_query, limit),
+            ).fetchall()
+        return [_row_to_interaction_card(row) for row in rows]
 
     def upsert_node(self, node: MemoryNode) -> None:
         with self.transaction() as connection:
@@ -750,6 +853,21 @@ class SQLiteMemoryStore:
                 """,
                 (str(row["log_id"]), str(row["raw_interaction"])),
             )
+        connection.execute("DELETE FROM interaction_cards_fts")
+        card_rows = connection.execute(
+            """
+            SELECT card_id, intent_text, answer_text, search_text
+            FROM interaction_cards
+            """
+        ).fetchall()
+        for row in card_rows:
+            connection.execute(
+                """
+                INSERT INTO interaction_cards_fts (card_id, intent_text, answer_text, search_text)
+                VALUES (?, ?, ?, ?)
+                """,
+                (str(row["card_id"]), str(row["intent_text"]), str(row["answer_text"]), str(row["search_text"])),
+            )
 
     def _upsert_node_fts(self, connection: sqlite3.Connection, node: MemoryNode) -> None:
         if not self._fts_enabled:
@@ -761,6 +879,18 @@ class SQLiteMemoryStore:
             VALUES (?, ?, ?, ?)
             """,
             (node.node_id, node.label, node.category, node.summary),
+        )
+
+    def _upsert_interaction_card_fts(self, connection: sqlite3.Connection, card: InteractionCard) -> None:
+        if not self._fts_enabled:
+            return
+        connection.execute("DELETE FROM interaction_cards_fts WHERE card_id = ?", (card.card_id,))
+        connection.execute(
+            """
+            INSERT INTO interaction_cards_fts (card_id, intent_text, answer_text, search_text)
+            VALUES (?, ?, ?, ?)
+            """,
+            (card.card_id, card.intent_text, card.answer_text, card.search_text),
         )
 
     def _delete_node_fts(self, connection: sqlite3.Connection, node_id: str) -> None:
@@ -791,6 +921,22 @@ def _row_to_node(row: sqlite3.Row) -> MemoryNode:
         created_at=float(row["created_at"]),
         last_accessed=float(row["last_accessed"]),
         access_count=int(row["access_count"]),
+    )
+
+
+def _row_to_interaction_card(row: sqlite3.Row) -> InteractionCard:
+    return InteractionCard(
+        card_id=str(row["card_id"]),
+        provider=str(row["provider"]),
+        session_id=str(row["session_id"]),
+        project=str(row["project"] or ""),
+        workspace_path=str(row["workspace_path"]) if row["workspace_path"] is not None else None,
+        turn_index=int(row["turn_index"]),
+        intent_text=str(row["intent_text"] or ""),
+        answer_text=str(row["answer_text"] or ""),
+        ts=str(row["ts"] or ""),
+        content_hash=str(row["content_hash"]),
+        search_text=str(row["search_text"] or ""),
     )
 
 

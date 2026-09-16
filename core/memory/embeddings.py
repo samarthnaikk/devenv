@@ -61,6 +61,41 @@ class HashingEmbedder:
         return [value / magnitude for value in values]
 
 
+@dataclass
+class BgeSmallEmbedder:
+    model_name: str = "BAAI/bge-small-en-v1.5"
+    dimension: int = 384
+
+    def __post_init__(self) -> None:
+        self._model = None
+
+    def embed(self, text: str) -> list[float]:
+        if self._model is None:
+            from sentence_transformers import SentenceTransformer
+            self._model = SentenceTransformer(self.model_name)
+        vector = self._model.encode(text, normalize_embeddings=True)
+        return [float(value) for value in vector]
+
+
+BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+_CARD_EMBEDDER: Embedder | None = None
+
+
+def build_card_embedder() -> Embedder:
+    """Return the interaction-card embedder, falling back to the default on failure."""
+    global _CARD_EMBEDDER
+    if _CARD_EMBEDDER is not None:
+        return _CARD_EMBEDDER
+    try:
+        embedder: Embedder = BgeSmallEmbedder()
+        embedder.embed("warmup")
+    except Exception:
+        _CARD_EMBEDDER = build_default_embedder()
+    else:
+        _CARD_EMBEDDER = embedder
+    return _CARD_EMBEDDER
+
+
 _DEFAULT_EMBEDDER: Embedder | None = None
 
 
