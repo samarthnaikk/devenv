@@ -10,7 +10,7 @@ QUERY_SYNONYMS: dict[str, tuple[str, ...]] = {
     "release": ("tag", "publish", "deploy"),
     "publish": ("release", "tag", "pypi", "deploy"),
     "deploy": ("release", "publish", "ci"),
-    "github": ("git", "workflow", "actions", "repo"),
+    "github": ("git", "repo"),
     "workflow": ("actions", "ci", "pipeline"),
     "timeout": ("connection dropped", "hang", "stall", "slow"),
     "auth": ("authentication", "login", "session", "token"),
@@ -19,6 +19,12 @@ QUERY_SYNONYMS: dict[str, tuple[str, ...]] = {
     "error": ("bug", "crash", "failure", "traceback"),
     "refactor": ("cleanup", "restructure"),
     "blank": ("white screen", "empty", "crash"),
+    "tags": ("tag", "release", "publish"),
+    "releases": ("release", "tag", "publish"),
+    "errors": ("error", "bug", "crash", "failure"),
+    "bugs": ("bug", "error", "issue", "failure"),
+    "workflows": ("workflow", "actions", "ci", "pipeline"),
+    "migrations": ("migration", "schema", "database"),
 }
 
 

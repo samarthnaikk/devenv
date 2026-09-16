@@ -12,6 +12,7 @@ DEFAULT_LANE_TOP_K = 5
 DEFAULT_TOP_K = 8
 DEFAULT_MIN_SIMILARITY = 0.15
 DEFAULT_MIN_SCORE = 0.02
+DEFAULT_RESERVE_LANES = 3
 PROJECT_AFFINITY_BOOST = 0.004
 
 
@@ -84,7 +85,7 @@ class CardRetriever:
             return []
 
         chosen: dict[str, CardMatch] = {}
-        for _lane, matches in lane_results:
+        for _lane, matches in lane_results[:DEFAULT_RESERVE_LANES]:
             best = matches[0]
             chosen.setdefault(best.card.card_id, best)
 

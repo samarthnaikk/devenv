@@ -223,6 +223,11 @@ def _context_body_lines(context: str) -> list[str]:
 
 
 def _retrieval_metrics(outcome: RetrievalOutcome) -> str:
+    if outcome.metadata.get("card_context_state") == "reused_prior_cards":
+        parts = [f"{outcome.metadata.get('card_context_count', 0)} card(s)", "engine: interaction-memory"]
+        if outcome.elapsed_ms:
+            parts.append(f"{outcome.elapsed_ms} ms")
+        return "  ·  ".join(parts)
     providers = ", ".join(outcome.metadata.get("context_match_providers", []) or []) or "—"
     parts = [
         f"{len(outcome.session_ids)} session(s)",
@@ -877,6 +882,16 @@ class DevenvTUIController:
     def run_retrieval(self, query: str, *, max_lines: int = 12) -> RetrievalOutcome:
         self._apply_runtime_preferences()
         started = time.perf_counter()
+        card_context, card_metadata = self._retrieve_card_context(query)
+        if card_context:
+            elapsed_ms = int(round((time.perf_counter() - started) * 1000))
+            return RetrievalOutcome(
+                query=query,
+                context=card_context,
+                session_ids=(),
+                metadata=card_metadata,
+                elapsed_ms=elapsed_ms,
+            )
         context, session_ids, metadata = self.context_builder.build_runtime_memory_context(
             query,
             max_lines=max_lines,
@@ -889,6 +904,38 @@ class DevenvTUIController:
             metadata=dict(metadata),
             elapsed_ms=elapsed_ms,
         )
+
+    def _retrieve_card_context(self, query: str) -> tuple[str, dict[str, Any]]:
+        memory = getattr(self.kernel, "memory", None)
+        if memory is None or not hasattr(memory, "retrieve_cards"):
+            return "", {}
+        try:
+            from core.memory.card_retrieval import DEFAULT_MIN_SCORE
+            from core.memory.query_plan import build_query_plan
+        except Exception:
+            return "", {}
+        lanes = build_query_plan(query)
+        try:
+            matches = memory.retrieve_cards(query, lanes=lanes, top_k=8)
+        except Exception:
+            return "", {}
+        if not matches or max(match.score for match in matches) < DEFAULT_MIN_SCORE:
+            return "", {}
+        lines = ["## Interaction Memory"]
+        for match in matches:
+            card = match.card
+            intent = " ".join(card.intent_text.split())[:200]
+            answer = " ".join(card.answer_text.split())[:300]
+            lines.append(
+                f"- [{card.project or 'unknown'}] {intent} — {answer} (source: {card.provider}:{card.session_id[:8]})"
+            )
+        metadata = {
+            "card_context_state": "reused_prior_cards",
+            "card_context_count": len(matches),
+            "card_context_sources": [f"{match.card.provider}:{match.card.session_id[:8]}" for match in matches],
+            "index_ready": True,
+        }
+        return "\n".join(lines), metadata
 
     def run_prompt(self, prompt: str) -> RuntimeTurnResult:
         self._apply_runtime_preferences()
