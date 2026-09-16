@@ -6,6 +6,8 @@ import logging
 import os
 import queue
 import re
+import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -299,6 +301,27 @@ def _retrieval_plain_text(outcome: RetrievalOutcome) -> str:
     return "\n".join(lines)
 
 
+def _copy_to_system_clipboard(text: str) -> bool:
+    """Copy text to the OS clipboard (pbcopy/clip/xclip/wl-copy). Returns True on success."""
+    if not text:
+        return False
+    candidates: list[list[str]] = []
+    if sys.platform == "darwin":
+        candidates.append(["pbcopy"])
+    elif sys.platform.startswith("win"):
+        candidates.append(["clip"])
+    else:
+        candidates.extend([["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]])
+    for command in candidates:
+        try:
+            completed = subprocess.run(command, input=text, text=True, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if completed.returncode == 0:
+            return True
+    return False
+
+
 class DevenvTUIController:
     def __init__(
         self,
@@ -314,6 +337,7 @@ class DevenvTUIController:
             vector_dir=config.vector_dir,
         )
         self.prompt_input = prompt_input or input
+        self.last_retrieval_text = ""
         self.context_builder = ContextBuilderService(
             config.workspace_path,
             memory=self.kernel.memory,
@@ -445,6 +469,12 @@ class DevenvTUIController:
             if not args:
                 return TUICommandResult("Usage: /retrieve <query>")
             return TUICommandResult(_retrieval_plain_text(self.run_retrieval(" ".join(args))))
+        if command == "/copy":
+            if not self.last_retrieval_text:
+                return TUICommandResult("Nothing to copy yet. Run /retrieve first.")
+            if _copy_to_system_clipboard(self.last_retrieval_text):
+                return TUICommandResult("Copied the last retrieval result to the clipboard.")
+            return TUICommandResult("Clipboard copy failed (no pbcopy/clip/xclip available).")
         if command == "/enable":
             return TUICommandResult(self.enable_all_sources())
         if command == "/sources":
@@ -469,6 +499,7 @@ class DevenvTUIController:
                 "/status                 Show active backend, model, and permissions",
                 "/mode retrieve|solve    Switch TUI mode (solve is still in progress)",
                 "/retrieve <query>       Retrieve prior sessions and chunks for a query",
+                "/copy                   Copy the last retrieval result to the clipboard",
                 "/enable                 Enable all session sources (codex + opencode)",
                 "/sources                Show session source status",
                 "/permissions            Open the permission picker or show command help",
@@ -884,6 +915,7 @@ class DevenvTUIController:
         started = time.perf_counter()
         card_context, card_metadata = self._retrieve_card_context(query)
         if card_context:
+            self.last_retrieval_text = card_context
             elapsed_ms = int(round((time.perf_counter() - started) * 1000))
             return RetrievalOutcome(
                 query=query,
@@ -896,6 +928,7 @@ class DevenvTUIController:
             query,
             max_lines=max_lines,
         )
+        self.last_retrieval_text = context
         elapsed_ms = int(round((time.perf_counter() - started) * 1000))
         return RetrievalOutcome(
             query=query,
@@ -1144,7 +1177,13 @@ if TEXTUAL_AVAILABLE:
             if self._last_outcome is None:
                 self.notify("Nothing to copy yet.", severity="warning")
                 return
-            self.copy_to_clipboard(_retrieval_plain_text(self._last_outcome))
+            text = _retrieval_plain_text(self._last_outcome)
+            if not _copy_to_system_clipboard(text):
+                try:
+                    self.copy_to_clipboard(text)
+                except Exception:
+                    self.notify("Clipboard copy failed.", severity="error")
+                    return
             self.notify("Copied last retrieval result to the clipboard.")
             self._activity("Copied last result to clipboard.")
 

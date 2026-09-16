@@ -65,6 +65,7 @@ class HashingEmbedder:
 class BgeSmallEmbedder:
     model_name: str = "BAAI/bge-small-en-v1.5"
     dimension: int = 384
+    local_files_only: bool = True
 
     def __post_init__(self) -> None:
         self._model = None
@@ -72,7 +73,7 @@ class BgeSmallEmbedder:
     def embed(self, text: str) -> list[float]:
         if self._model is None:
             from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(self.model_name)
+            self._model = SentenceTransformer(self.model_name, local_files_only=self.local_files_only)
         vector = self._model.encode(text, normalize_embeddings=True)
         return [float(value) for value in vector]
 
@@ -82,17 +83,19 @@ _CARD_EMBEDDER: Embedder | None = None
 
 
 def build_card_embedder() -> Embedder:
-    """Return the interaction-card embedder, falling back to the default on failure."""
+    """Return the interaction-card embedder, loading from the local cache without HF network calls."""
     global _CARD_EMBEDDER
     if _CARD_EMBEDDER is not None:
         return _CARD_EMBEDDER
-    try:
-        embedder: Embedder = BgeSmallEmbedder()
-        embedder.embed("warmup")
-    except Exception:
-        _CARD_EMBEDDER = build_default_embedder()
-    else:
+    for local_files_only in (True, False):
+        try:
+            embedder: Embedder = BgeSmallEmbedder(local_files_only=local_files_only)
+            embedder.embed("warmup")
+        except Exception:
+            continue
         _CARD_EMBEDDER = embedder
+        return embedder
+    _CARD_EMBEDDER = build_default_embedder()
     return _CARD_EMBEDDER
 
 
