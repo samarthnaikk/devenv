@@ -15,7 +15,7 @@ from acp.schema import (
 )
 
 from core.ai.acp_agent import ACPAgentError, ACPAgentSession
-from core.ai.agents import AgentSpec
+from core.ai.agents import AgentSpec, Launch
 
 _FAKE_AGENT = r"""
 import sys, json
@@ -78,8 +78,7 @@ def _fake_spec(script: str) -> AgentSpec:
     return AgentSpec(
         name="fake",
         title="Fake Agent",
-        command=sys.executable,
-        args=("-c", script),
+        launches=(Launch(command=sys.executable, args=("-c", script)),),
     )
 
 
@@ -150,8 +149,7 @@ class ACPAgentSessionTest(unittest.IsolatedAsyncioTestCase):
             spec = AgentSpec(
                 name="missing",
                 title="Missing",
-                command="definitely-not-a-real-agent-binary",
-                args=(),
+                launches=(Launch(command="definitely-not-a-real-agent-binary"),),
             )
             session = ACPAgentSession(spec, tempdir)
             with self.assertRaises(ACPAgentError):

@@ -7,7 +7,7 @@ import unittest
 from acp.schema import AgentMessageChunk, AvailableCommandsUpdate
 
 from core.ai.acp_agent import AgentSessionInfo
-from core.ai.agents import AgentSpec
+from core.ai.agents import AgentSpec, Launch
 
 _TEXTUAL_AVAILABLE = importlib.util.find_spec("textual") is not None
 if _TEXTUAL_AVAILABLE:
@@ -21,7 +21,11 @@ else:  # pragma: no cover - exercised only without textual
 
 class FakeAgentSession:
     def __init__(self) -> None:
-        self.spec = AgentSpec(name="fake", title="Fake Agent", command="fake", args=("acp",))
+        self.spec = AgentSpec(
+            name="fake",
+            title="Fake Agent",
+            launches=(Launch(command="fake", args=("acp",)),),
+        )
         self.events: asyncio.Queue = asyncio.Queue()
         self.permission_handler = None
         self.started = False
