@@ -519,7 +519,7 @@ class DevenvTUIController:
                 "/model <name>           Set model for the preferred backend",
                 "/model <backend> <name> Set model for a specific backend",
                 "/ai                     List available AI agents",
-                "/ai <agent>             Connect to a native AI agent (e.g. opencode)",
+                "/ai <agent>             Connect to a native agent (opencode|gemini|claude|codex)",
                 "/providers              Show session-source health",
                 "/clear                  Start a fresh runtime thread",
                 "/exit                   Quit the TUI",
@@ -740,12 +740,19 @@ class DevenvTUIController:
             state = "ready" if option.available else "unavailable"
             color = Ansi.GREEN if option.available else Ansi.DIM
             detail = f"  {_style(option.detail, Ansi.DIM)}" if option.detail else ""
+            if option.available and option.launch is not None and option.launch.label:
+                detail = f"{detail} {_style(f'[{option.launch.label}]', Ansi.DIM)}"
             lines.append(
                 f"- {option.spec.name}: {option.spec.title} "
                 f"[{_style(state, color)}]{detail}"
             )
         lines.append("")
-        lines.append(_style("Connect with `/ai <agent>` (e.g. `/ai opencode`).", Ansi.DIM))
+        lines.append(
+            _style("Connect with `/ai <agent>` (e.g. `/ai opencode`, `/ai claude`, `/ai codex`).", Ansi.DIM)
+        )
+        lines.append(
+            _style("Add custom agents in agents.json (see README).", Ansi.DIM)
+        )
         return "\n".join(lines)
 
     def _handle_ai_command(self, args: list[str]) -> TUICommandResult:

@@ -163,7 +163,10 @@ class AgentPickerScreen(ModalScreen[str | None]):
     @staticmethod
     def _label(option: AgentAvailability) -> str:
         if option.available:
-            return f"{option.spec.title}  ·  {option.spec.description}"
+            label = f"{option.spec.title}  ·  {option.spec.description}"
+            if option.launch is not None and option.launch.label:
+                label = f"{label}  ·  {option.launch.label}"
+            return label
         return f"{option.spec.title}  ·  unavailable: {option.detail}"
 
     def on_mount(self) -> None:
