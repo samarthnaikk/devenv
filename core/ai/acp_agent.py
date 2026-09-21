@@ -43,7 +43,7 @@ from acp.schema import (
     WriteTextFileResponse,
 )
 
-from .agents import AgentSpec
+from .agents import AgentSpec, Launch, agent_availability
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,7 @@ class AgentSessionInfo:
     agent_version: str
     session_id: str
     modes: list[SessionMode] = field(default_factory=list)
+    auth_methods: list[Any] = field(default_factory=list)
 
 
 class ACPAgentSession:
@@ -97,6 +98,7 @@ class ACPAgentSession:
 
         self._process: asyncio.subprocess.Process | None = None
         self._connection: ClientSideConnection | None = None
+        self._launch: Launch | None = None
         self._client = _DevenvACPClient(self)
         self._stderr_lines: list[str] = []
         self._stderr_task: asyncio.Task[None] | None = None
@@ -110,13 +112,18 @@ class ACPAgentSession:
             return self.info
         self._closed = False
 
+        availability = agent_availability(self.spec)
+        if not availability.available or availability.launch is None:
+            raise ACPAgentError(f"Cannot start `{self.spec.name}`: {availability.detail}")
+        self._launch = availability.launch
+
         env = os.environ.copy()
         for key, value in self.spec.env.items():
             env.setdefault(key, value)
 
         try:
             self._process = await asyncio.create_subprocess_exec(
-                *self.spec.launch_command(),
+                *self._launch.launch_command(),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -124,11 +131,11 @@ class ACPAgentSession:
                 env=env,
             )
         except OSError as exc:
-            raise ACPAgentError(f"Failed to start `{self.spec.command}`: {exc}") from exc
+            raise ACPAgentError(f"Failed to start `{self._launch.command}`: {exc}") from exc
 
         if self._process.stdin is None or self._process.stdout is None:
             await self.close()
-            raise ACPAgentError(f"`{self.spec.command}` did not expose stdio pipes.")
+            raise ACPAgentError(f"`{self._launch.command}` did not expose stdio pipes.")
 
         if self._process.stderr is not None:
             self._stderr_task = asyncio.create_task(self._drain_stderr())
@@ -154,6 +161,8 @@ class ACPAgentSession:
                     version=DEVENV_VERSION,
                 ),
             )
+            auth_methods = list(getattr(initialize, "auth_methods", []) or [])
+            await self._authenticate_if_possible(auth_methods)
             session = await self._connection.new_session(
                 cwd=self.workspace_path,
                 mcp_servers=[],
@@ -164,6 +173,8 @@ class ACPAgentSession:
             message = f"ACP handshake failed: {exc}"
             if detail:
                 message = f"{message}\n{detail}"
+            if self.spec.auth_hint:
+                message = f"{message}\n{self.spec.auth_hint}"
             raise ACPAgentError(message) from exc
 
         agent_info = initialize.agent_info
@@ -173,6 +184,7 @@ class ACPAgentSession:
             agent_version=(getattr(agent_info, "version", None) or ""),
             session_id=session.session_id,
             modes=list(getattr(session, "modes", []) or []),
+            auth_methods=auth_methods,
         )
         logger.info(
             "Connected ACP agent %s (%s) session=%s",
@@ -195,6 +207,27 @@ class ACPAgentSession:
         except Exception as exc:
             raise ACPAgentError(f"Prompt failed: {exc}") from exc
         return str(getattr(response, "stop_reason", "") or "")
+
+    async def _authenticate_if_possible(self, auth_methods: list[Any]) -> None:
+        """Best-effort auth using non-blocking (env-var) methods.
+
+        Terminal/browser methods are left to the agent so we never block the
+        handshake on a flow this client cannot drive.
+        """
+
+        if not auth_methods or not _auto_auth_enabled():
+            return
+        method = _select_env_auth_method(auth_methods)
+        if method is None or self._connection is None:
+            return
+        method_id = str(getattr(method, "id", "") or "")
+        if not method_id:
+            return
+        try:
+            await self._connection.authenticate(method_id=method_id)
+            logger.info("Authenticated ACP agent with method %s", method_id)
+        except Exception as exc:  # pragma: no cover - auth is best-effort
+            logger.warning("ACP authenticate with %s failed: %s", method_id, exc)
 
     async def cancel(self) -> None:
         if self._connection is None or self.info is None:
@@ -359,6 +392,24 @@ class _DevenvACPClient(Client):
 
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
         return None
+
+
+def _select_env_auth_method(auth_methods: list[Any]) -> Any | None:
+    for method in auth_methods:
+        if _auth_method_type(method) == "env_var":
+            return method
+    return None
+
+
+def _auth_method_type(method: Any) -> str:
+    if isinstance(method, dict):
+        return str(method.get("type") or "")
+    return str(getattr(method, "type", "") or "")
+
+
+def _auto_auth_enabled() -> bool:
+    raw = os.getenv("DEVENV_ACP_AUTO_AUTH", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
 
 
 __all__ = [

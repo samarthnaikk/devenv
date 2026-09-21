@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -69,6 +70,33 @@ for line in sys.stdin:
         with open("perm-result.json", "w") as fh:
             fh.write(json.dumps(msg.get("result")))
         send({"jsonrpc": "2.0", "id": pending, "result": {"stopReason": "end_turn"}})
+    elif mid is not None:
+        send({"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": "method not found"}})
+"""
+
+
+_FAKE_AUTH_AGENT = r"""
+import sys, json
+
+def send(obj):
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    msg = json.loads(line)
+    method = msg.get("method")
+    mid = msg.get("id")
+    if method == "initialize":
+        send({"jsonrpc": "2.0", "id": mid, "result": {"protocolVersion": 1, "agentCapabilities": {}, "authMethods": [{"id": "env", "name": "API key", "type": "env_var", "vars": [{"name": "FAKE_KEY"}]}, {"id": "term", "name": "Login", "type": "terminal"}], "agentInfo": {"name": "fake-auth", "title": "Fake Auth", "version": "0.0.1"}}})
+    elif method == "authenticate":
+        with open("auth-called.json", "w") as fh:
+            fh.write(json.dumps({"methodId": msg["params"].get("methodId")}))
+        send({"jsonrpc": "2.0", "id": mid, "result": {}})
+    elif method == "session/new":
+        send({"jsonrpc": "2.0", "id": mid, "result": {"sessionId": "sess-auth"}})
     elif mid is not None:
         send({"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": "method not found"}})
 """
@@ -144,6 +172,19 @@ class ACPAgentSessionTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(written.read_text(encoding="utf-8"), "world")
             await session.close()
 
+    async def test_auto_authenticates_env_method_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            session = ACPAgentSession(_fake_spec(_FAKE_AUTH_AGENT), tempdir)
+            os.environ.pop("DEVENV_ACP_AUTO_AUTH", None)
+            info = await session.start()
+            await session.close()
+
+            written = json.loads((Path(tempdir) / "auth-called.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(written["methodId"], "env")
+        self.assertEqual(info.session_id, "sess-auth")
+        self.assertEqual(len(info.auth_methods), 2)
+
     async def test_start_fails_when_command_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             spec = AgentSpec(
@@ -154,6 +195,20 @@ class ACPAgentSessionTest(unittest.IsolatedAsyncioTestCase):
             session = ACPAgentSession(spec, tempdir)
             with self.assertRaises(ACPAgentError):
                 await session.start()
+
+    async def test_start_fails_with_install_hint_when_no_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            spec = AgentSpec(
+                name="missing",
+                title="Missing",
+                launches=(Launch(command="definitely-not-a-real-agent-binary"),),
+                install_hint="npm install -g missing-agent",
+            )
+            session = ACPAgentSession(spec, tempdir)
+            with self.assertRaises(ACPAgentError) as ctx:
+                await session.start()
+
+        self.assertIn("npm install -g missing-agent", str(ctx.exception))
 
 
 if __name__ == "__main__":
