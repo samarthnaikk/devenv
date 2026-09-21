@@ -144,7 +144,7 @@ Useful commands (also available from the command palette via `Ctrl+P` or the foo
 - `/backend` — open the backend picker or switch with `/backend <name>`
 - `/model` — open the model picker or set with `/model [backend] <name>`
 - `/permissions` — open the permission picker
-- `/ai` — open the AI agent picker, `/ai <agent>` to connect (e.g. `/ai opencode`), `/ai list` to list
+- `/ai` — open the AI agent picker, `/ai <agent>` to connect (e.g. `/ai opencode`, `/ai claude`, `/ai codex`), `/ai list` to list
 - `/status`, `/providers`, `/clear`, `/exit`
 
 Backend and model selections are persisted per workspace. If no session source is enabled, the sidebar prompts `/enable` (or `F3`/`F4`) before indexing begins.
@@ -153,13 +153,53 @@ Backend and model selections are persisted per workspace. If no session source i
 
 Devenv can hand a session to a native coding agent and let that agent run its own loop instead of routing prompts through the Devenv backend abstraction. Agents are launched over the Agent Client Protocol (ACP): Devenv spawns the agent as a subprocess, negotiates capabilities, opens a session in the workspace, and streams the agent's own updates (messages, thoughts, tool calls, plans) into a dedicated full-screen agent view.
 
-- `/ai` opens a picker of available agents; `/ai opencode` connects directly.
-- OpenCode is the first agent (`opencode acp`), so its native tools, permissions, MCP servers, LSP, and `AGENTS.md` rules all apply.
+- `/ai` opens a picker of available agents; `/ai <agent>` connects directly and `/ai list` lists them.
+- The agent owns its native tools, permissions, MCP servers, LSP, and `AGENTS.md` rules; Devenv only brokers file reads/writes and permission prompts.
 - Each `/ai` connection starts a fresh agent session and is independent of the retrieval engine, memory, kernel, and backend routing; the existing `/backend opencode` path is unchanged.
 - Permissions requested by the agent surface as a modal in the TUI. `Esc` cancels the current turn and `Ctrl+Q` closes the agent view.
 - ACP connections require the full Textual TUI; the plain-input fallback only lists agents.
 
-OpenCode must be authenticated for turns to succeed (`opencode auth login`). The connection itself uses `opencode acp` and is configured by OpenCode, not by `OPENCODE_MODEL`/`OPENCODE_SERVER_*`.
+Built-in agents:
+
+| Agent | Command | Notes |
+| --- | --- | --- |
+| `opencode` | `opencode acp` | Native ACP. Authenticate with `opencode auth login`. |
+| `gemini` | `gemini --acp` | Native ACP (Gemini CLI). Sign in once via `gemini`. |
+| `claude` | `claude-code-acp`, else `npx -y @zed-industries/claude-code-acp` | Claude Code via the Claude Agent SDK adapter. `claude login` or `ANTHROPIC_API_KEY`. |
+| `codex` | `codex-acp`, else `npx -y @agentclientprotocol/codex-acp` | Codex via the Codex App Server adapter. `codex login` or `OPENAI_API_KEY`/`CODEX_API_KEY`. |
+
+Agents without native ACP are launched through adapters. When an adapter is not installed globally, Devenv falls back to `npx` automatically (requires Node). Install an adapter globally to avoid the first-run download:
+
+```bash
+npm install -g @zed-industries/claude-code-acp
+npm install -g @agentclientprotocol/codex-acp
+```
+
+Each CLI keeps its own authentication and billing: Devenv never sees API keys and the connection uses the agent's configured model, not `OPENCODE_MODEL`/`OPENCODE_SERVER_*`.
+
+### Custom agents
+
+Add or override agents without changing code by declaring `agent_servers` in `agents.json`, looked up in this order:
+
+- `$DEVENV_AGENTS_PATH` when set, else
+- `$DEVENV_HOME/agents.json`, else
+- `$XDG_CONFIG_HOME/devenv/agents.json`, else `~/.config/devenv/agents.json`.
+
+```json
+{
+  "agent_servers": {
+    "my-agent": {
+      "title": "My Agent",
+      "description": "Custom ACP agent",
+      "command": "node",
+      "args": ["/path/to/agent.js", "--acp"],
+      "env": {"MY_AGENT_KEY": "..."}
+    }
+  }
+}
+```
+
+Use `launches` instead of `command`/`args` to declare a priority list (for example a global binary with an `npx` fallback). Custom entries override built-ins with the same name.
 
 ## Retrieval Engine
 

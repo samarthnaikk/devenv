@@ -111,6 +111,10 @@ It focuses on what a user can do in the product, not the internal tool-call or i
 
 - Connect to a native coding agent from the TUI with `/ai`.
 - Pick from available agents (`/ai`) or connect directly (`/ai opencode`).
+- Built-in agents: OpenCode, Gemini CLI, Claude Code, and Codex.
+- Claude Code and Codex run through ACP adapters, launched from a global install or an automatic `npx` fallback.
+- Register custom ACP agents in `agents.json` without touching code.
+- Use each CLI's own login and billing; env-var auth methods are picked up automatically and the rest are surfaced as a hint.
 - The agent runs its own loop: its native tools, permissions, MCP servers, LSP, and `AGENTS.md` rules all apply.
 - Stream agent messages, thoughts, tool calls, and plans into a dedicated full-screen view.
 - Answer agent permission requests inline; cancel a turn with `Esc` and close the agent view with `Ctrl+Q`.
