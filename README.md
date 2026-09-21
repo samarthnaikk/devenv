@@ -149,11 +149,13 @@ Useful commands (also available from the command palette via `Ctrl+P` or the foo
 
 Backend and model selections are persisted per workspace. If no session source is enabled, the sidebar prompts `/enable` (or `F3`/`F4`) before indexing begins.
 
+The sidebar shows an **AI AGENTS** section listing each native agent with its launch mode (`native`/`global`/`npx`) and availability. Press `F6` (or run `/ai`) to open the agent picker.
+
 ## Native AI Agents (ACP)
 
 Devenv can hand a session to a native coding agent and let that agent run its own loop instead of routing prompts through the Devenv backend abstraction. Agents are launched over the Agent Client Protocol (ACP): Devenv spawns the agent as a subprocess, negotiates capabilities, opens a session in the workspace, and streams the agent's own updates (messages, thoughts, tool calls, plans) into a dedicated full-screen agent view.
 
-- `/ai` opens a picker of available agents; `/ai <agent>` connects directly and `/ai list` lists them.
+- The sidebar **AI AGENTS** section shows each agent's readiness; `F6` or `/ai` opens the picker, `/ai <agent>` connects directly, and `/ai list` lists them.
 - The agent owns its native tools, permissions, MCP servers, LSP, and `AGENTS.md` rules; Devenv only brokers file reads/writes and permission prompts.
 - Each `/ai` connection starts a fresh agent session and is independent of the retrieval engine, memory, kernel, and backend routing; the existing `/backend opencode` path is unchanged.
 - Permissions requested by the agent surface as a modal in the TUI. `Esc` cancels the current turn and `Ctrl+Q` closes the agent view.

@@ -70,6 +70,10 @@ Screen {{
     height: auto;
 }}
 
+#agents-list {{
+    height: auto;
+}}
+
 #index-bar {{
     margin: 0;
 }}

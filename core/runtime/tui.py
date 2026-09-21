@@ -1116,6 +1116,7 @@ if TEXTUAL_AVAILABLE:
             ("f3", "toggle_codex", "Codex"),
             ("f4", "toggle_opencode", "OpenCode"),
             ("f5", "toggle_logs", "Logs"),
+            ("f6", "open_agents", "Agents"),
             ("ctrl+y", "copy_result", "Copy"),
             ("ctrl+e", "export_result", "Export"),
             ("ctrl+l", "clear_results", "Clear"),
@@ -1139,6 +1140,8 @@ if TEXTUAL_AVAILABLE:
                     yield Static("", id="mode-pills")
                     yield Static("SOURCES", classes="section-title")
                     yield Static("", id="sources-list")
+                    yield Static("AI AGENTS", classes="section-title")
+                    yield Static("", id="agents-list")
                     yield Static("INDEX", classes="section-title")
                     yield ProgressBar(total=100, show_percentage=True, show_eta=False, id="index-bar")
                     yield Static("", id="index-info")
@@ -1166,6 +1169,7 @@ if TEXTUAL_AVAILABLE:
             self._refresh_header()
             self._refresh_sidebar()
             self._refresh_sources()
+            self._refresh_agents()
             self._refresh_index()
             self.query_one("#composer", Input).focus()
             self.set_interval(0.25, self._drain_logs)
@@ -1227,6 +1231,9 @@ if TEXTUAL_AVAILABLE:
 
         def action_toggle_logs(self) -> None:
             self.query_one("#log-panel", Vertical).toggle_class("hidden")
+
+        def action_open_agents(self) -> None:
+            self._open_agent_picker()
 
         def action_clear_results(self) -> None:
             for card in self._result_cards:
@@ -1481,6 +1488,27 @@ if TEXTUAL_AVAILABLE:
                 lines.append(f"[{color}]{pip}[/] [{TEXT}]{provider}[/]  {suffix}")
             try:
                 self.query_one("#sources-list", Static).update("\n".join(lines))
+            except Exception:  # pragma: no cover
+                pass
+
+        def _refresh_agents(self) -> None:
+            try:
+                options = self.controller.available_agent_options()
+            except Exception:  # pragma: no cover - defensive
+                options = []
+            lines: list[str] = []
+            for option in options:
+                color = TEAL if option.available else TEXT_MUTED
+                pip = "●" if option.available else "○"
+                if option.available and option.launch is not None and option.launch.label:
+                    tag = f"[{TEXT_MUTED}]{option.launch.label}[/]"
+                else:
+                    tag = f"[{TEXT_MUTED}]{'off' if not option.available else 'ready'}[/]"
+                lines.append(f"[{color}]{pip}[/] [{TEXT}]{option.spec.name}[/]  {tag}")
+            if not lines:
+                lines.append(f"[{TEXT_MUTED}]none available[/]")
+            try:
+                self.query_one("#agents-list", Static).update("\n".join(lines))
             except Exception:  # pragma: no cover
                 pass
 

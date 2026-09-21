@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import logging
 import queue
 import tempfile
@@ -607,6 +608,62 @@ class DevenvTUITest(unittest.TestCase):
 
         self.assertEqual(session.spec.name, "opencode")
         self.assertEqual(session.workspace_path, str(Path(tempdir).resolve()))
+
+
+_TEXTUAL_AVAILABLE = importlib.util.find_spec("textual") is not None
+
+if _TEXTUAL_AVAILABLE:
+    from core.runtime.tui import DevenvTextualApp
+
+
+@unittest.skipIf(not _TEXTUAL_AVAILABLE, "textual is not installed")
+class DevenvTextualAppTest(unittest.IsolatedAsyncioTestCase):
+    async def test_sidebar_exposes_agents_section(self) -> None:
+        import io
+
+        from rich.console import Console
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            app = DevenvTextualApp(controller)
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                buffer = io.StringIO()
+                Console(file=buffer, force_terminal=False, width=80).print(
+                    app.query_one("#agents-list").render()
+                )
+                rendered = buffer.getvalue()
+                agent_names = [option.spec.name for option in controller.available_agent_options()]
+
+        for name in agent_names:
+            self.assertIn(name, rendered)
+
+    async def test_open_agents_action_pushes_picker(self) -> None:
+        from core.runtime.tui_agent import AgentPickerScreen
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            app = DevenvTextualApp(controller)
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.action_open_agents()
+                await pilot.pause()
+                self.assertIsInstance(app.screen, AgentPickerScreen)
+
+    async def test_agents_binding_is_registered(self) -> None:
+        bindings = {}
+        for binding in DevenvTextualApp.BINDINGS:
+            if isinstance(binding, tuple):
+                bindings[binding[0]] = binding[1]
+            else:
+                bindings[binding.key] = binding.action
+        self.assertEqual(bindings.get("f6"), "open_agents")
 
 
 if __name__ == "__main__":
