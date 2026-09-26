@@ -1461,7 +1461,12 @@ class ContextBuilderService:
         if store is None:
             return {}
         vectors: dict[str, tuple[float, ...]] = {}
-        for record in store.list_external_session_embeddings(provider=provider_name):
+        lightweight = getattr(store, "list_external_session_embedding_vectors", None)
+        if callable(lightweight):
+            records = lightweight(provider=provider_name)
+        else:
+            records = store.list_external_session_embeddings(provider=provider_name)
+        for record in records:
             if record.embedding:
                 vectors[record.session_id] = record.embedding
         self._session_vector_cache[provider_name] = vectors

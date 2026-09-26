@@ -128,6 +128,9 @@ FTS_SCHEMA_STATEMENTS = (
 )
 
 
+FTS_SCHEMA_VERSION = "2"
+
+
 class SQLiteMemoryStore:
     def __init__(self, db_path: str) -> None:
         self.db_path = Path(db_path)
@@ -173,7 +176,23 @@ class SQLiteMemoryStore:
                 "CREATE INDEX IF NOT EXISTS idx_episodic_logs_external_context_query ON episodic_logs(external_context_query)"
             )
             if self._fts_enabled:
-                self._rebuild_fts(connection)
+                self._ensure_fts_current(connection)
+
+    def _ensure_fts_current(self, connection: sqlite3.Connection) -> None:
+        row = connection.execute(
+            "SELECT value FROM engine_state WHERE key = 'fts_schema_version'"
+        ).fetchone()
+        if row is not None and str(row["value"]) == FTS_SCHEMA_VERSION:
+            return
+        self._rebuild_fts(connection)
+        connection.execute(
+            """
+            INSERT INTO engine_state (key, value)
+            VALUES ('fts_schema_version', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (FTS_SCHEMA_VERSION,),
+        )
 
     def upsert_external_session_embedding(self, record: ExternalSessionEmbedding) -> None:
         with self.transaction() as connection:
@@ -267,6 +286,24 @@ class SQLiteMemoryStore:
         with self.transaction() as connection:
             rows = connection.execute(query, params).fetchall()
         return [_row_to_external_session_embedding(row) for row in rows]
+
+    def list_external_session_embedding_vectors(
+        self, provider: str | None = None
+    ) -> list[ExternalSessionEmbedding]:
+        """Lightweight projection returning only ``session_id`` + ``embedding``.
+
+        Avoids transferring the (large) ``content_text`` column when only the
+        vector is needed, e.g. semantic recall over session-level embeddings.
+        """
+        query = "SELECT unified_session_id, provider, session_id, embedding_json FROM external_session_embeddings"
+        params: tuple[str, ...] = ()
+        if provider:
+            query += " WHERE provider = ?"
+            params = (provider,)
+        query += " ORDER BY provider, session_id"
+        with self.transaction() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [_row_to_external_session_embedding_vector(row) for row in rows]
 
     def replace_external_session_chunk_embeddings(
         self,
@@ -970,6 +1007,21 @@ def _row_to_external_session_embedding(row: sqlite3.Row) -> ExternalSessionEmbed
         content_text=str(row["content_text"] or ""),
         embedding=embedding,
         indexed_at=float(row["indexed_at"]),
+    )
+
+
+def _row_to_external_session_embedding_vector(row: sqlite3.Row) -> ExternalSessionEmbedding:
+    try:
+        parsed = json.loads(str(row["embedding_json"]))
+    except (TypeError, json.JSONDecodeError):
+        parsed = []
+    embedding = tuple(float(value) for value in parsed if isinstance(value, (int, float)))
+    return ExternalSessionEmbedding(
+        unified_session_id=str(row["unified_session_id"]),
+        provider=str(row["provider"]),
+        session_id=str(row["session_id"]),
+        content_hash="",
+        embedding=embedding,
     )
 
 

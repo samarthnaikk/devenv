@@ -98,6 +98,41 @@ class SQLiteMemoryStoreTest(unittest.TestCase):
         )
         self.assertEqual(self.store.list_external_session_embeddings("codex"), [record])
 
+    def test_external_session_embedding_vectors_projection_matches_full(self) -> None:
+        record = ExternalSessionEmbedding(
+            unified_session_id="codex:session-123",
+            provider="codex",
+            session_id="session-123",
+            title="Session 123",
+            workspace_path="/tmp/workspace",
+            source_path="/tmp/.codex",
+            updated_at="2026-08-20T10:00:00Z",
+            content_hash="abc123",
+            content_text="entire session text",
+            embedding=(0.1, 0.2, 0.3),
+            indexed_at=123.0,
+        )
+        self.store.upsert_external_session_embedding(record)
+
+        vectors = self.store.list_external_session_embedding_vectors("codex")
+
+        self.assertEqual(len(vectors), 1)
+        self.assertEqual(vectors[0].session_id, "session-123")
+        self.assertEqual(vectors[0].embedding, (0.1, 0.2, 0.3))
+        self.assertEqual(vectors[0].content_text, "")
+
+    def test_fts_rebuild_is_gated_by_schema_version(self) -> None:
+        from unittest import mock
+
+        db_path = f"{self.tempdir.name}/fresh.db"
+        with mock.patch.object(SQLiteMemoryStore, "_rebuild_fts", autospec=True) as rebuild:
+            SQLiteMemoryStore(db_path)
+        self.assertEqual(rebuild.call_count, 1)
+
+        with mock.patch.object(SQLiteMemoryStore, "_rebuild_fts", autospec=True) as rebuild:
+            SQLiteMemoryStore(db_path)
+        self.assertEqual(rebuild.call_count, 0)
+
     def test_external_session_chunk_embeddings_replace_and_list(self) -> None:
         records = [
             ExternalSessionChunkEmbedding(
