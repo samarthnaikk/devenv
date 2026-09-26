@@ -20,6 +20,11 @@ from core.memory.embeddings import HashingEmbedder, build_default_embedder
 from core.memory.models import ExternalSessionChunkEmbedding, ExternalSessionEmbedding
 from core.memory.storage import SQLiteMemoryStore
 
+try:  # optional acceleration; falls back to the exact pure-Python path when absent
+    import numpy as _np
+except ImportError:  # pragma: no cover - numpy ships with the ML stack in practice
+    _np = None
+
 from .models import (
     ExternalSessionDetail,
     ExternalSessionMessage,
@@ -965,6 +970,8 @@ class ContextBuilderService:
         self._session_embedder = self._resolve_session_embedder()
         self._session_embedding_document_cache: dict[str, tuple[tuple[Any, ...], str, list[Any]]] = {}
         self._session_chunk_record_cache: dict[str, dict[str, list[ExternalSessionChunkEmbedding]]] = {}
+        self._session_vector_cache: dict[str, dict[str, tuple[float, ...]]] = {}
+        self._chunk_embedding_matrix_cache: dict[str, tuple[list[ExternalSessionChunkEmbedding], Any]] = {}
 
     def set_runtime_allowed_providers(self, providers: set[str] | list[str] | tuple[str, ...] | None) -> None:
         if providers is None:
@@ -1436,6 +1443,8 @@ class ContextBuilderService:
             )
         store.replace_external_session_chunk_embeddings(unified_session_id, records)
         self._session_chunk_record_cache.pop(summary.provider, None)
+        self._session_vector_cache.pop(summary.provider, None)
+        self._chunk_embedding_matrix_cache.pop(summary.provider, None)
 
     def _session_embedding_document(
         self,
@@ -1445,6 +1454,9 @@ class ContextBuilderService:
         return _session_embedding_document_from_chunks(summary, provider.build_index_chunks(summary.session_id))
 
     def _session_embedding_vectors(self, provider_name: str) -> dict[str, tuple[float, ...]]:
+        cached = self._session_vector_cache.get(provider_name)
+        if cached is not None:
+            return cached
         store = self._get_session_embedding_store()
         if store is None:
             return {}
@@ -1452,6 +1464,7 @@ class ContextBuilderService:
         for record in store.list_external_session_embeddings(provider=provider_name):
             if record.embedding:
                 vectors[record.session_id] = record.embedding
+        self._session_vector_cache[provider_name] = vectors
         return vectors
 
     def _session_chunk_records(self, provider_name: str) -> dict[str, list[ExternalSessionChunkEmbedding]]:
@@ -1497,21 +1510,37 @@ class ContextBuilderService:
                 logger.debug("Failed to embed recall query variant: error=%s", exc)
         if not query_vectors:
             return {}
+        chunk_scores: dict[str, list[tuple[float, ExternalSessionChunkEmbedding]]] = {}
+        if _np is not None and chunk_records:
+            records, matrix = self._chunk_embedding_matrix(provider.name)
+            if matrix is not None and len(records) > 0:
+                query_matrix = _l2_normalize_rows(_np.asarray(query_vectors, dtype=_np.float64))
+                best_per_record = (query_matrix @ matrix.T).max(axis=0)
+                for record, raw in zip(records, best_per_record, strict=False):
+                    score = float(raw)
+                    if score > 0.0:
+                        chunk_scores.setdefault(record.session_id, []).append((score, record))
         hits: dict[str, dict[str, Any]] = {}
         for summary in summaries:
             session_chunks = chunk_records.get(summary.session_id)
             best = 0.0
             ranked_chunks: list[tuple[float, ExternalSessionChunkEmbedding]] = []
             if session_chunks:
-                for chunk in session_chunks:
-                    similarity = max(
-                        (_cosine_similarity(query_vector, chunk.embedding) for query_vector in query_vectors),
-                        default=0.0,
-                    )
-                    if similarity > 0.0:
-                        ranked_chunks.append((similarity, chunk))
-                ranked_chunks.sort(key=lambda item: (-item[0], item[1].chunk_index))
-                ranked_chunks = ranked_chunks[:MAX_SESSION_CHUNK_HITS]
+                if _np is not None:
+                    ranked_chunks = sorted(
+                        chunk_scores.get(summary.session_id, []),
+                        key=lambda item: (-item[0], item[1].chunk_index),
+                    )[:MAX_SESSION_CHUNK_HITS]
+                else:
+                    for chunk in session_chunks:
+                        similarity = max(
+                            (_cosine_similarity(query_vector, chunk.embedding) for query_vector in query_vectors),
+                            default=0.0,
+                        )
+                        if similarity > 0.0:
+                            ranked_chunks.append((similarity, chunk))
+                    ranked_chunks.sort(key=lambda item: (-item[0], item[1].chunk_index))
+                    ranked_chunks = ranked_chunks[:MAX_SESSION_CHUNK_HITS]
                 best = ranked_chunks[0][0] if ranked_chunks else 0.0
             else:
                 vector = vectors.get(summary.session_id)
@@ -1521,6 +1550,23 @@ class ContextBuilderService:
                 best_chunk = ranked_chunks[0][1] if ranked_chunks else None
                 hits[summary.session_id] = {"score": best, "chunk": best_chunk, "chunks": ranked_chunks}
         return hits
+
+    def _chunk_embedding_matrix(
+        self, provider_name: str
+    ) -> tuple[list[ExternalSessionChunkEmbedding], Any]:
+        cached = self._chunk_embedding_matrix_cache.get(provider_name)
+        if cached is not None:
+            return cached
+        records_map = self._session_chunk_records(provider_name)
+        records: list[ExternalSessionChunkEmbedding] = []
+        for items in records_map.values():
+            records.extend(items)
+        matrix = None
+        if _np is not None and records:
+            matrix = _l2_normalize_rows(_np.asarray([record.embedding for record in records], dtype=_np.float64))
+        result = (records, matrix)
+        self._chunk_embedding_matrix_cache[provider_name] = result
+        return result
 
     def _default_provider_name(self) -> str | None:
         for provider_name, provider in self.providers.items():
@@ -2924,6 +2970,13 @@ def _cosine_similarity(left: tuple[float, ...], right: tuple[float, ...]) -> flo
     if left_norm <= 0.0 or right_norm <= 0.0:
         return 0.0
     return dot / (math.sqrt(left_norm) * math.sqrt(right_norm))
+
+
+def _l2_normalize_rows(matrix: Any) -> Any:
+    """Return ``matrix`` with each row scaled to unit L2 norm (zero rows stay zero)."""
+    norms = _np.linalg.norm(matrix, axis=1, keepdims=True)
+    norms[norms == 0.0] = 1.0
+    return matrix / norms
 
 
 def _rrf_score(lexical_rank: int | None, semantic_rank: int | None) -> float:

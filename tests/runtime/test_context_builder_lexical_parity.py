@@ -3,8 +3,12 @@ from __future__ import annotations
 import random
 import string
 import unittest
+from types import SimpleNamespace
 
+import core.runtime.context_builder as context_builder
+from core.memory.models import ExternalSessionChunkEmbedding
 from core.runtime.context_builder import (
+    ContextBuilderService,
     ExternalSessionChunk,
     _chunk_token_hits,
     _exact_prompt_hits,
@@ -12,6 +16,7 @@ from core.runtime.context_builder import (
     _token_matches,
     _tokenize,
 )
+from core.runtime.models import ExternalSessionSummary
 
 
 def _reference_hits(tokens: set[str], haystack: str) -> tuple[int, int]:
@@ -89,5 +94,80 @@ class ChunkTokenHitParityTest(unittest.TestCase):
         self.assertEqual(chunk.search_text, chunk.search_text.lower())
 
 
+class _FakeEmbedder:
+    def embed(self, text: str) -> list[float]:
+        rng = random.Random(sum(ord(char) for char in text))
+        return [rng.uniform(-1.0, 1.0) for _ in range(8)]
+
+
+@unittest.skipIf(context_builder._np is None, "numpy not installed")
+class SemanticHitsParityTest(unittest.TestCase):
+    """The NumPy cosine path must select the same sessions/chunks as the pure-Python path."""
+
+    def _make_service(self, vectors, chunk_records) -> ContextBuilderService:
+        service = object.__new__(ContextBuilderService)
+        service._session_embedder = _FakeEmbedder()  # type: ignore[assignment]
+        service._session_vector_cache = {}
+        service._session_chunk_record_cache = {}
+        service._chunk_embedding_matrix_cache = {}
+        service._session_embedding_vectors = lambda name: vectors  # type: ignore[assignment]
+        service._session_chunk_records = lambda name: chunk_records  # type: ignore[assignment]
+        return service
+
+    @staticmethod
+    def _records(session_id: str, count: int, seed: int) -> list[ExternalSessionChunkEmbedding]:
+        rng = random.Random(seed)
+        return [
+            ExternalSessionChunkEmbedding(
+                unified_session_id=f"u::{session_id}",
+                provider="codex",
+                session_id=session_id,
+                chunk_index=index,
+                content_hash=f"h{index}",
+                embedding=tuple(rng.uniform(-1.0, 1.0) for _ in range(8)),
+                role="assistant",
+                source="codex",
+                text=f"chunk {index}",
+                indexed_at=0.0,
+            )
+            for index in range(count)
+        ]
+
+    def test_numpy_and_python_paths_agree(self) -> None:
+        rng = random.Random(7)
+        vectors = {"s3": tuple(rng.uniform(-1.0, 1.0) for _ in range(8))}
+        chunk_records = {
+            "s1": self._records("s1", 5, seed=1),
+            "s2": self._records("s2", 3, seed=2),
+        }
+        summaries = [
+            ExternalSessionSummary("codex", session_id, "title", "2026-01-01T00:00:00Z")
+            for session_id in ("s1", "s2", "s3")
+        ]
+        provider = SimpleNamespace(name="codex")
+        variants = ("alpha beta gamma", "delta epsilon")
+
+        service = self._make_service(vectors, chunk_records)
+        numpy_hits = service._semantic_session_hits(provider, summaries, variants)
+
+        service._chunk_embedding_matrix_cache = {}
+        original = context_builder._np
+        context_builder._np = None
+        try:
+            python_hits = service._semantic_session_hits(provider, summaries, variants)
+        finally:
+            context_builder._np = original
+
+        self.assertEqual(set(numpy_hits), set(python_hits))
+        for session_id, numpy_hit in numpy_hits.items():
+            python_hit = python_hits[session_id]
+            self.assertAlmostEqual(numpy_hit["score"], python_hit["score"], places=9)
+            self.assertEqual(
+                [chunk.chunk_index for _score, chunk in numpy_hit["chunks"]],
+                [chunk.chunk_index for _score, chunk in python_hit["chunks"]],
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
+
