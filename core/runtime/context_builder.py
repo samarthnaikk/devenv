@@ -376,9 +376,14 @@ class ExternalSessionIndex:
 
 def _build_provider_chunks(provider: "ExternalSessionProvider", session_id: str) -> list[ExternalSessionChunk]:
     try:
-        return provider.build_index_chunks(session_id)
+        chunks = provider.build_index_chunks(session_id)
     except Exception:
         return []
+    for chunk in chunks:
+        # Precompute derived lexical state in the (parallel) index worker so the
+        # first query does not pay for it on the critical path.
+        chunk.search_words
+    return chunks
 
 
 def _index_profile_settings(performance_mode: str) -> tuple[int, float]:
@@ -468,6 +473,7 @@ class CodexSessionProvider(ExternalSessionProvider):
         self._session_file_map: dict[str, Path] | None = None
         self._history_preview_cache: dict[str, str] | None = None
         self._summary_cache: dict[str, ExternalSessionSummary] = {}
+        self._index_records_cache: tuple[tuple[int, int], dict[str, dict[str, Any]]] | None = None
 
     def health(self) -> ExternalSourceHealth:
         available = self.config.enabled and self.root.exists()
@@ -566,10 +572,19 @@ class CodexSessionProvider(ExternalSessionProvider):
 
     def _load_index_records(self) -> dict[str, dict[str, Any]]:
         index_path = self.root / (self.config.index_path or "session_index.jsonl")
-        records: dict[str, dict[str, Any]] = {}
         if not index_path.exists():
-            return records
+            return {}
+        cache_key: tuple[int, int] | None = None
+        try:
+            stat = index_path.stat()
+            cache_key = (int(stat.st_mtime_ns), int(stat.st_size))
+        except OSError:
+            cache_key = None
+        if cache_key is not None and self._index_records_cache is not None:
+            if self._index_records_cache[0] == cache_key:
+                return self._index_records_cache[1]
 
+        records: dict[str, dict[str, Any]] = {}
         for raw_line in index_path.read_text(encoding="utf-8").splitlines():
             try:
                 payload = json.loads(raw_line)
@@ -578,6 +593,8 @@ class CodexSessionProvider(ExternalSessionProvider):
             session_id = str(payload.get("id") or "").strip()
             if session_id:
                 records[session_id] = payload
+        if cache_key is not None:
+            self._index_records_cache = (cache_key, records)
         return records
 
     def _find_session_file(self, session_id: str) -> Path | None:
