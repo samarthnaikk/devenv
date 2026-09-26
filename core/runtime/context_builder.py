@@ -11,6 +11,7 @@ import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
+from functools import cached_property
 import hashlib
 from pathlib import Path
 from typing import Any
@@ -113,10 +114,14 @@ class ExternalSessionChunk:
     text: str
     timestamp: str | None = None
 
-    @property
+    @cached_property
     def search_text(self) -> str:
         parts = [self.title, self.workspace_path or "", self.role, self.source, self.text]
         return _normalize_whitespace(" ".join(part for part in parts if part)).lower()
+
+    @cached_property
+    def search_words(self) -> frozenset[str]:
+        return frozenset(_WHOLE_WORD_RE.findall(self.search_text))
 
 
 class ExternalSessionIndex:
@@ -204,6 +209,9 @@ class ExternalSessionIndex:
         tokens = _tokenize(task)
         if not tokens:
             return [], {"index_ready": self.status().get("completed", False)}
+        simple_tokens = tuple(token for token in tokens if _is_ascii_token(token))
+        compound_tokens = tuple(token for token in tokens if not _is_ascii_token(token))
+        issue_terms_present = bool(tokens & {"bug", "bugs", "fix", "fixed", "review", "reviews"})
         focus_tokens = _focus_tokens(task)
         workspace_name = Path(workspace_path).name.lower()
         workspace_path_lower = workspace_path.lower()
@@ -232,17 +240,18 @@ class ExternalSessionIndex:
                 identity_token_hits = sum(1 for token in tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
                 identity_exact_hits = _exact_prompt_hits(tokens, identity_haystacks)
                 identity_focus_hits = sum(1 for token in focus_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
+                session_workspace = (summary.workspace_path or "").lower()
                 top_chunks: list[tuple[int, ExternalSessionChunk, int, int]] = []
                 for chunk in chunks:
                     haystack = chunk.search_text
-                    token_hits = sum(1 for token in tokens if _token_matches(token, haystack))
-                    exact_hits = _exact_prompt_hits(tokens, [haystack])
+                    token_hits, exact_hits = _chunk_token_hits(
+                        simple_tokens, compound_tokens, chunk.search_words, haystack
+                    )
                     issue_bonus = 0
-                    if any(token in tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews"}):
+                    if issue_terms_present:
                         if any(term in haystack for term in ("bug", "bugs", "fix", "fixed", "review", "issue")):
                             issue_bonus += 4
                     workspace_bonus = 0
-                    session_workspace = (summary.workspace_path or "").lower()
                     if session_workspace == workspace_path_lower:
                         workspace_bonus += 3
                     elif workspace_name and workspace_name in session_workspace:
@@ -2325,6 +2334,53 @@ def _token_matches(token: str, haystack: str) -> bool:
 
 def _contains_whole_token(token: str, haystack: str) -> bool:
     return bool(re.search(rf"\b{re.escape(token)}\b", haystack))
+
+
+_WHOLE_WORD_RE = re.compile(r"\w+")
+_ASCII_TOKEN_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_")
+
+
+def _is_ascii_token(token: str) -> bool:
+    return bool(token) and all(char in _ASCII_TOKEN_CHARS for char in token)
+
+
+def _simple_token_hit(token: str, haystack_words: frozenset[str]) -> bool:
+    """Set-membership equivalent of ``_token_matches`` for [a-z0-9_]+ tokens."""
+    if token in haystack_words:
+        return True
+    if token.endswith("ers") and token[:-3] and token[:-3] in haystack_words:
+        return True
+    if token.endswith("er") and token[:-2] and token[:-2] in haystack_words:
+        return True
+    return False
+
+
+def _chunk_token_hits(
+    simple_tokens: tuple[str, ...],
+    compound_tokens: tuple[str, ...],
+    haystack_words: frozenset[str],
+    haystack: str,
+) -> tuple[int, int]:
+    """Return ``(token_hits, exact_hits)`` identical to the per-token regex path.
+
+    ASCII tokens use O(1) set lookups against precomputed words; tokens containing
+    ``-`` or ``/`` fall back to the exact ``\\btoken\\b`` regex to guarantee parity.
+    """
+    token_hits = 0
+    exact_hits = 0
+    for token in simple_tokens:
+        if token in haystack_words:
+            exact_hits += 1
+            token_hits += 1
+        elif _simple_token_hit(token, haystack_words):
+            token_hits += 1
+    for token in compound_tokens:
+        if _contains_whole_token(token, haystack):
+            exact_hits += 1
+            token_hits += 1
+        elif _token_matches(token, haystack):
+            token_hits += 1
+    return token_hits, exact_hits
 
 
 @dataclass
