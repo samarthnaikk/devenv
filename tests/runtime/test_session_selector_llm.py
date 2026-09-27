@@ -105,6 +105,25 @@ class ParseSelectionTest(unittest.TestCase):
         result = parse_selection(json.dumps({"selected": ["c1"], "confidence": 4}), self.candidates)
         self.assertEqual(result.confidence, 1.0)
 
+    def test_parses_coverage_and_filters_unknown_ids(self) -> None:
+        raw = json.dumps(
+            {
+                "selected": ["c1"],
+                "coverage": [
+                    {"subquestion": "part a", "session_id": "c1", "evidence": ["line a"]},
+                    {"subquestion": "part b", "session_id": "ghost", "evidence": ["x"]},
+                ],
+            }
+        )
+        result = parse_selection(raw, self.candidates)
+        self.assertEqual(len(result.coverage), 2)
+        self.assertEqual(result.coverage[0]["session_id"], "c1")
+        self.assertEqual(result.coverage[0]["evidence"], ["line a"])
+        self.assertEqual(result.coverage[1]["session_id"], "")
+
+    def test_selector_schema_has_coverage(self) -> None:
+        self.assertIn("coverage", SELECTOR_SCHEMA["properties"])
+
 
 class ExtractJsonTest(unittest.TestCase):
     def test_ignores_stray_braces_in_prose(self) -> None:

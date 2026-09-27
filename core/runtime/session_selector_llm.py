@@ -33,6 +33,18 @@ SELECTOR_SCHEMA: dict = {
             "type": "object",
             "additionalProperties": {"type": "array", "items": {"type": "string"}},
         },
+        "coverage": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "subquestion": {"type": "string"},
+                    "session_id": {"type": "string"},
+                    "evidence": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["subquestion", "session_id"],
+            },
+        },
         "reasons": {
             "type": "object",
             "additionalProperties": {"type": "string"},
@@ -51,8 +63,10 @@ Rules:
 - For every cross-project choice, give a short reason (under 12 words).
 - The snippet lines shown for each candidate are the passages the retriever
   matched; base your decision and evidence on them, not on the title alone.
-- If the query has several parts, make sure the chosen session(s) and evidence
-  cover every part; quote the exact lines for each part.
+- If the query has several parts, first decompose it into atomic sub-questions,
+  then ensure every sub-question is answered: put each one in the "coverage"
+  list with the session id and the exact evidence lines that answer it. If a
+  sub-question cannot be answered, include it with an empty session id.
 - Select only sessions that genuinely contain the answer. If none do, return an
   empty "selected" list.
 - Never invent session ids; use only the ids listed in CANDIDATES.
@@ -66,6 +80,9 @@ fences. The object must look exactly like:
   "need_more": false,
   "refined_query": "",
   "evidence": {"<session_id>": ["<verbatim line>", ...]},
+  "coverage": [
+    {"subquestion": "<part of the query>", "session_id": "<session_id>", "evidence": ["<verbatim line>"]}
+  ],
   "reasons": {"<session_id>": "<short reason>"}
 }"""
 
@@ -277,6 +294,27 @@ def parse_selection(raw: str, candidates: Sequence[SessionCandidate]) -> Selecti
     refined_query = payload.get("refined_query")
     refined = str(refined_query).strip() if isinstance(refined_query, str) else ""
 
+    coverage: list[dict] = []
+    raw_coverage = payload.get("coverage")
+    if isinstance(raw_coverage, list):
+        for entry in raw_coverage:
+            if not isinstance(entry, dict):
+                continue
+            subquestion = str(entry.get("subquestion") or "").strip()
+            if not subquestion:
+                continue
+            session_id = str(entry.get("session_id") or "").strip()
+            if session_id and session_id not in known:
+                session_id = ""
+            lines = [str(line)[:300] for line in _string_list(entry.get("evidence"))][:5]
+            coverage.append(
+                {
+                    "subquestion": subquestion[:200],
+                    "session_id": session_id,
+                    "evidence": lines,
+                }
+            )
+
     return SelectionResult(
         session_ids=tuple(selected),
         confidence=confidence_value,
@@ -285,6 +323,7 @@ def parse_selection(raw: str, candidates: Sequence[SessionCandidate]) -> Selecti
         reason="; ".join(f"{sid}: {text}" for sid, text in reasons.items())[:400],
         evidence=evidence,
         ordered=tuple(ordered),
+        coverage=tuple(coverage),
     )
 
 
@@ -383,6 +422,7 @@ class LLMSessionSelector:
         votes: dict[str, int] = {}
         ranks: dict[str, list[int]] = {}
         evidence: dict[str, list[str]] = {}
+        coverage: list[dict] = []
         confidences: list[float] = []
         reasons: list[str] = []
         need_more = False
@@ -409,6 +449,9 @@ class LLMSessionSelector:
                 ranks.setdefault(session_id, []).append(rank)
             for session_id, lines in result.evidence.items():
                 evidence.setdefault(session_id, lines)
+            for entry in result.coverage:
+                if entry not in coverage:
+                    coverage.append(entry)
             need_more = need_more or result.need_more
             refined = refined or result.refined_query
             if result.reason:
@@ -439,4 +482,5 @@ class LLMSessionSelector:
             refined_query=refined,
             reason="; ".join(reasons)[:400],
             evidence=evidence,
+            coverage=tuple(coverage),
         )

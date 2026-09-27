@@ -196,6 +196,24 @@ class PassthroughTest(unittest.TestCase):
         self.assertEqual(session_ids, ("c1",))
         self.assertTrue(metadata["selector_evidence_used"])
 
+    def test_coverage_evidence_reaches_context(self) -> None:
+        class Covered:
+            def select(self, task, candidates, *, workspace_path):
+                return SelectionResult(
+                    session_ids=("c1",),
+                    coverage=(
+                        {"subquestion": "the regex fix", "session_id": "c1", "evidence": ["coverage proof line"]},
+                    ),
+                )
+
+        builder = FakeContextBuilder({"codex": [_match("c1")]})
+        orchestrator = SessionSelectionOrchestrator(
+            builder, enabled=True, selector=Covered()
+        )
+        context, _ids, metadata = orchestrator.select("query", max_lines=6)
+        self.assertIn("coverage proof line", context)
+        self.assertEqual(metadata["selector_coverage_subquestions"], 1)
+
     def test_context_merges_selector_evidence_and_engine_lines(self) -> None:
         class Evidenced:
             def select(self, task, candidates, *, workspace_path):

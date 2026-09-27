@@ -128,6 +128,7 @@ class SelectionResult:
     evidence: dict[str, list[str]] = field(default_factory=dict)
     degraded: bool = False
     ordered: tuple[str, ...] = ()
+    coverage: tuple[dict[str, Any], ...] = ()
 
 
 class SessionSelector(Protocol):
@@ -376,6 +377,8 @@ class SessionSelectionOrchestrator:
         evidence_lines: list[str] = []
         for session_id in selected_ids:
             evidence_lines.extend(result.evidence.get(session_id, []))
+        for entry in result.coverage:
+            evidence_lines.extend(entry.get("evidence", []))
         body = [
             normalized
             for normalized in (_normalize_evidence(line) for line in evidence_lines)
@@ -406,6 +409,7 @@ class SessionSelectionOrchestrator:
         metadata["selector_evidence_used"] = bool(body)
         metadata["selector_engine_lines_used"] = bool(engine_lines)
         metadata["selector_drill_line_count"] = len(drill_lines)
+        metadata["selector_coverage_subquestions"] = len(result.coverage)
         if not combined:
             return "", selected_ids, metadata
         context = "\n".join(
