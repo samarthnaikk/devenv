@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -27,6 +28,10 @@ _ENABLED_VALUES = {"1", "true", "yes", "on"}
 
 def session_selector_enabled() -> bool:
     return os.getenv("DEVENV_SESSION_SELECTOR", "").strip().lower() in _ENABLED_VALUES
+
+
+def _normalize_evidence(text: str) -> str:
+    return re.sub(r"\s+", " ", str(text)).strip()
 
 
 @dataclass(frozen=True)
@@ -49,6 +54,7 @@ class SelectionResult:
     reason: str = ""
     evidence: dict[str, list[str]] = field(default_factory=dict)
     degraded: bool = False
+    ordered: tuple[str, ...] = ()
 
 
 class SessionSelector(Protocol):
@@ -190,12 +196,32 @@ class SessionSelectionOrchestrator:
             "index_ready": True,
         }
         if not selected_fused:
+            metadata["selector_abstained"] = True
+            metadata["selector_evidence_used"] = False
             return "", (), metadata
 
         selected_ids = tuple(
             getattr(match.get("summary"), "session_id", "")
             for match, _provider in selected_fused
         )
+        metadata["selector_abstained"] = False
+
+        evidence_lines: list[str] = []
+        for session_id in selected_ids:
+            evidence_lines.extend(result.evidence.get(session_id, []))
+        body = [
+            normalized
+            for normalized in (_normalize_evidence(line) for line in evidence_lines)
+            if normalized
+        ]
+        if body:
+            metadata["selector_evidence_used"] = True
+            context = "\n".join(
+                ["## External Session Context", *(f"- {line}" for line in body[:max_lines])]
+            )
+            return context, selected_ids, metadata
+
+        metadata["selector_evidence_used"] = False
         lines = self.context_builder._context_lines_for_fused_matches(
             task, selected_fused, max_lines=max_lines
         )

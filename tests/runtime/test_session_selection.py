@@ -152,6 +152,25 @@ class PassthroughTest(unittest.TestCase):
         self.assertEqual(context, "")
         self.assertEqual(session_ids, ())
         self.assertEqual(metadata["context_match_state"], "new_context")
+        self.assertTrue(metadata["selector_abstained"])
+
+    def test_selector_evidence_is_used_for_context(self) -> None:
+        class Evidenced:
+            def select(self, task, candidates, *, workspace_path):
+                return SelectionResult(
+                    session_ids=("c1",),
+                    reason="ok",
+                    evidence={"c1": ["the exact proof line"]},
+                )
+
+        builder = FakeContextBuilder({"codex": [_match("c1")]})
+        orchestrator = SessionSelectionOrchestrator(
+            builder, enabled=True, selector=Evidenced()
+        )
+        context, session_ids, metadata = orchestrator.select("query", max_lines=4)
+        self.assertIn("the exact proof line", context)
+        self.assertEqual(session_ids, ("c1",))
+        self.assertTrue(metadata["selector_evidence_used"])
 
 
 class EnvFlagTest(unittest.TestCase):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 import unittest
 
 from core.runtime.session_selection import SessionCandidate
@@ -122,6 +123,53 @@ class LLMSessionSelectorTest(unittest.TestCase):
         result = selector.select("query", [_candidate("c1")], workspace_path="/ws/devenv")
         self.assertTrue(result.degraded)
         self.assertEqual(result.session_ids, ())
+
+
+class PermutationTest(unittest.TestCase):
+    def test_majority_selection_survives_shuffles(self) -> None:
+        import re
+
+        seen_first: list[str] = []
+
+        def chat(messages):
+            ids = re.findall(r"id=(\S+)", messages[1]["content"])
+            seen_first.append(ids[0])
+            return json.dumps({"selected": ["c2"], "ordered": ["c2", "c1", "c3"]})
+
+        selector = LLMSessionSelector(chat, permutations=3, rng=random.Random(0))
+        result = selector.select(
+            "query",
+            [_candidate("c1"), _candidate("c2"), _candidate("c3")],
+            workspace_path="/ws/devenv",
+        )
+        self.assertEqual(result.session_ids, ("c2",))
+        self.assertGreater(len(set(seen_first)), 1, "candidate order should vary")
+
+    def test_minority_selection_is_dropped(self) -> None:
+        import re
+
+        def chat(messages):
+            ids = re.findall(r"id=(\S+)", messages[1]["content"])
+            # Always pick whichever candidate happens to be first (position bias).
+            return json.dumps({"selected": [ids[0]], "ordered": ids})
+
+        selector = LLMSessionSelector(chat, permutations=3, rng=random.Random(1))
+        result = selector.select(
+            "query",
+            [_candidate("c1"), _candidate("c2"), _candidate("c3")],
+            workspace_path="/ws/devenv",
+        )
+        # No candidate is picked by a majority, so nothing survives.
+        self.assertEqual(result.session_ids, ())
+        self.assertFalse(result.degraded)
+
+    def test_degraded_when_all_permutations_fail(self) -> None:
+        def chat(_messages):
+            raise RuntimeError("down")
+
+        selector = LLMSessionSelector(chat, permutations=2)
+        result = selector.select("query", [_candidate("c1")], workspace_path="/ws/devenv")
+        self.assertTrue(result.degraded)
 
 
 if __name__ == "__main__":

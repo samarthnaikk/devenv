@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import random
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -154,15 +156,31 @@ def parse_selection(raw: str, candidates: Sequence[SessionCandidate]) -> Selecti
         refined_query=refined or None,
         reason="; ".join(f"{sid}: {text}" for sid, text in reasons.items())[:400],
         evidence=evidence,
+        ordered=tuple(ordered),
     )
 
 
 class LLMSessionSelector:
-    """SessionSelector implementation driven by a chat callable."""
+    """SessionSelector implementation driven by a chat callable.
 
-    def __init__(self, chat: ChatFn, *, model: str = "") -> None:
+    ``permutations > 1`` runs the listwise prompt over shuffled candidate orders
+    and aggregates the selections. A session must be chosen by a majority of the
+    permutations to survive, which defends against listwise position bias at the
+    cost of extra model calls.
+    """
+
+    def __init__(
+        self,
+        chat: ChatFn,
+        *,
+        model: str = "",
+        permutations: int = 1,
+        rng: random.Random | None = None,
+    ) -> None:
         self._chat = chat
         self.model = model
+        self._permutations = max(1, int(permutations))
+        self._rng = rng or random.Random()
 
     def select(
         self,
@@ -171,8 +189,19 @@ class LLMSessionSelector:
         *,
         workspace_path: str,
     ) -> SelectionResult:
-        if not candidates:
+        ordered_candidates = list(candidates)
+        if not ordered_candidates:
             return SelectionResult(session_ids=(), reason="no candidates")
+        if self._permutations <= 1:
+            return self._select_single(task, ordered_candidates, workspace_path)
+        return self._select_permuted(task, ordered_candidates, workspace_path)
+
+    def _select_single(
+        self,
+        task: str,
+        candidates: list[SessionCandidate],
+        workspace_path: str,
+    ) -> SelectionResult:
         messages = build_selector_messages(task, candidates, workspace_path=workspace_path)
         try:
             raw = self._chat(messages)
@@ -184,3 +213,70 @@ class LLMSessionSelector:
                 degraded=True,
             )
         return parse_selection(raw, candidates)
+
+    def _select_permuted(
+        self,
+        task: str,
+        candidates: list[SessionCandidate],
+        workspace_path: str,
+    ) -> SelectionResult:
+        votes: dict[str, int] = {}
+        ranks: dict[str, list[int]] = {}
+        evidence: dict[str, list[str]] = {}
+        confidences: list[float] = []
+        reasons: list[str] = []
+        need_more = False
+        refined: str | None = None
+        successes = 0
+
+        for _ in range(self._permutations):
+            order = list(candidates)
+            self._rng.shuffle(order)
+            messages = build_selector_messages(task, order, workspace_path=workspace_path)
+            try:
+                raw = self._chat(messages)
+            except Exception as exc:  # pragma: no cover - backend failures
+                logger.warning("Session selector permutation failed: error=%s", exc)
+                continue
+            result = parse_selection(raw, order)
+            if result.degraded:
+                continue
+            successes += 1
+            confidences.append(result.confidence)
+            for session_id in result.session_ids:
+                votes[session_id] = votes.get(session_id, 0) + 1
+            for rank, session_id in enumerate(result.ordered or result.session_ids, start=1):
+                ranks.setdefault(session_id, []).append(rank)
+            for session_id, lines in result.evidence.items():
+                evidence.setdefault(session_id, lines)
+            need_more = need_more or result.need_more
+            refined = refined or result.refined_query
+            if result.reason:
+                reasons.append(result.reason)
+
+        if successes == 0:
+            return SelectionResult(
+                session_ids=(),
+                reason="selector error across permutations",
+                degraded=True,
+            )
+
+        threshold = max(1, math.ceil(successes / 2))
+        chosen = [session_id for session_id, count in votes.items() if count >= threshold]
+
+        def average_rank(session_id: str) -> float:
+            session_ranks = ranks.get(session_id)
+            if not session_ranks:
+                return float(10**6)
+            return sum(session_ranks) / len(session_ranks)
+
+        chosen.sort(key=average_rank)
+        confidence = round(sum(confidences) / len(confidences), 3) if confidences else 0.0
+        return SelectionResult(
+            session_ids=tuple(chosen),
+            confidence=confidence,
+            need_more=need_more,
+            refined_query=refined,
+            reason="; ".join(reasons)[:400],
+            evidence=evidence,
+        )
