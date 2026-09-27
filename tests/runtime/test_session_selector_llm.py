@@ -7,6 +7,8 @@ import unittest
 from core.runtime.session_selection import SessionCandidate
 from core.runtime.session_selector_llm import (
     LLMSessionSelector,
+    SELECTOR_SCHEMA,
+    _chat_accepts_schema,
     _extract_json,
     build_selector_messages,
     parse_selection,
@@ -162,6 +164,38 @@ class RepairRetryTest(unittest.TestCase):
         result = selector.select("query", [_candidate("c1")], workspace_path="/ws/devenv")
         self.assertTrue(result.degraded)
         self.assertEqual(calls["n"], 2)
+
+
+class SchemaSupportTest(unittest.TestCase):
+    def test_detects_schema_capable_callables(self) -> None:
+        def one_arg(_messages):
+            return "{}"
+
+        def two_arg(_messages, _schema=None):
+            return "{}"
+
+        self.assertFalse(_chat_accepts_schema(one_arg))
+        self.assertTrue(_chat_accepts_schema(two_arg))
+
+    def test_selector_passes_schema(self) -> None:
+        seen: dict = {}
+
+        def chat(_messages, schema=None):
+            seen["schema"] = schema
+            return json.dumps({"selected": ["c1"]})
+
+        selector = LLMSessionSelector(chat)
+        result = selector.select("query", [_candidate("c1")], workspace_path="/ws/devenv")
+        self.assertEqual(result.session_ids, ("c1",))
+        self.assertEqual(seen["schema"], SELECTOR_SCHEMA)
+
+    def test_one_arg_chat_still_works(self) -> None:
+        def chat(_messages):
+            return json.dumps({"selected": ["c2"]})
+
+        selector = LLMSessionSelector(chat)
+        result = selector.select("query", [_candidate("c2")], workspace_path="/ws/devenv")
+        self.assertEqual(result.session_ids, ("c2",))
 
 
 class LLMSessionSelectorTest(unittest.TestCase):

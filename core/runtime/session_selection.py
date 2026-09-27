@@ -9,6 +9,7 @@ selector, or when disabled, it is a byte-for-byte passthrough of
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -497,8 +498,19 @@ def _make_chat_selector(
             logger.warning("Could not create selector model core (%s): %s", model, exc)
             core = None
 
-    def chat(messages: list[dict[str, str]]) -> str:
-        response = core.chat(messages) if core is not None else ai.chat(messages)
+    def chat(messages: list[dict[str, str]], schema: dict | None = None) -> str:
+        engine = core if core is not None else ai
+        try:
+            response = (
+                engine.chat(messages, output_schema=schema)
+                if schema is not None
+                else engine.chat(messages)
+            )
+        except TypeError:  # pragma: no cover - callable without schema support
+            response = engine.chat(messages)
+        structured = dict(getattr(response, "metadata", {}) or {}).get("structured")
+        if isinstance(structured, dict) and "selected" in structured:
+            return json.dumps(structured)
         return getattr(response, "content", "") or ""
 
     return LLMSessionSelector(chat, model=model, permutations=permutations)

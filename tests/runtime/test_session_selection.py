@@ -386,6 +386,32 @@ class FactoryTest(unittest.TestCase):
         self.assertTrue(metadata["selector_applied"])
         self.assertIn("title c1", context)
 
+    def test_structured_output_is_unwrapped(self) -> None:
+        class StructuredAI:
+            def __init__(self) -> None:
+                self.seen_schema = None
+
+            def chat(self, messages, output_schema=None):
+                self.seen_schema = output_schema
+                return type(
+                    "Response",
+                    (),
+                    {"content": "", "metadata": {"structured": {"selected": ["c1"], "confidence": 0.9}}},
+                )()
+
+        builder = FakeContextBuilder({"codex": [_match("c1")]})
+        ai = StructuredAI()
+        with mock.patch.dict(
+            os.environ,
+            {"DEVENV_SESSION_SELECTOR": "1", "DEVENV_SESSION_SELECTOR_MODEL": ""},
+            clear=True,
+        ):
+            orchestrator = build_session_orchestrator(builder, ai, "/ws/app")
+            _context, session_ids, _meta = orchestrator.select("query")
+
+        self.assertEqual(session_ids, ("c1",))
+        self.assertIsNotNone(ai.seen_schema)
+
     def test_shadow_mode_returns_engine_context(self) -> None:
         class Stub:
             def select(self, task, candidates, *, workspace_path):

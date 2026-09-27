@@ -669,5 +669,43 @@ def _fake_server_status():
     )()
 
 
+class OpenCodeOutputSchemaTest(unittest.TestCase):
+    def test_custom_output_schema_is_forwarded(self) -> None:
+        core = OpenCodeAICore(workspace_path=".", model="opencode/test-model")
+        captured: dict = {}
+
+        def fake_once(session_id, *, prompt, output_format):
+            captured["output_format"] = output_format
+            return type("Message", (), {"structured_output": {"selected": ["s1"]}, "raw": {}, "parts": ()})()
+
+        core._send_server_message_once = fake_once  # type: ignore[method-assign]
+        core._structured_output_supported = True
+        core._send_server_message(
+            "session",
+            prompt="prompt",
+            resolved_tool_names=[],
+            output_schema={"type": "object", "properties": {"selected": {"type": "array"}}},
+        )
+        output_format = captured["output_format"]
+        self.assertEqual(output_format["type"], "json_schema")
+        self.assertEqual(
+            output_format["schema"],
+            {"type": "object", "properties": {"selected": {"type": "array"}}},
+        )
+
+    def test_default_schema_when_no_custom_schema(self) -> None:
+        core = OpenCodeAICore(workspace_path=".", model="opencode/test-model")
+        captured: dict = {}
+
+        def fake_once(session_id, *, prompt, output_format):
+            captured["output_format"] = output_format
+            return type("Message", (), {"structured_output": None, "raw": {}, "parts": ()})()
+
+        core._send_server_message_once = fake_once  # type: ignore[method-assign]
+        core._structured_output_supported = True
+        core._send_server_message("session", prompt="prompt", resolved_tool_names=[])
+        self.assertEqual(captured["output_format"], _opencode_output_format([]))
+
+
 if __name__ == "__main__":
     unittest.main()

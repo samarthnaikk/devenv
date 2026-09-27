@@ -6,6 +6,7 @@ The selector is intentionally transport-agnostic: it takes a ``chat`` callable
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import math
@@ -18,7 +19,28 @@ from .session_selection import SessionCandidate, SelectionResult
 
 logger = logging.getLogger(__name__)
 
-ChatFn = Callable[[list[dict[str, str]]], str]
+ChatFn = Callable[..., str]
+
+SELECTOR_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "ordered": {"type": "array", "items": {"type": "string"}},
+        "selected": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": "number"},
+        "need_more": {"type": "boolean"},
+        "refined_query": {"type": "string"},
+        "evidence": {
+            "type": "object",
+            "additionalProperties": {"type": "array", "items": {"type": "string"}},
+        },
+        "reasons": {
+            "type": "object",
+            "additionalProperties": {"type": "string"},
+        },
+    },
+    "required": ["selected"],
+    "additionalProperties": True,
+}
 
 SYSTEM_PROMPT = """You select which past coding sessions answer a developer's query.
 
@@ -55,6 +77,22 @@ def project_name(workspace_path: str | None) -> str:
     if not workspace_path:
         return "unknown"
     return Path(str(workspace_path)).name or "unknown"
+
+
+def _chat_accepts_schema(fn: Callable[..., str]) -> bool:
+    try:
+        signature = inspect.signature(fn)
+    except (TypeError, ValueError):  # pragma: no cover - builtins
+        return False
+    parameters = list(signature.parameters.values())
+    if any(param.kind == param.VAR_POSITIONAL for param in parameters):
+        return True
+    positional = [
+        param
+        for param in parameters
+        if param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD)
+    ]
+    return len(positional) >= 2
 
 
 def build_selector_messages(
@@ -273,6 +311,12 @@ class LLMSessionSelector:
         self._permutations = max(1, int(permutations))
         self._rng = rng or random.Random()
         self._max_retries = max(0, int(max_retries))
+        self._accepts_schema = _chat_accepts_schema(chat)
+
+    def _call_chat(self, messages: list[dict[str, str]]) -> str:
+        if self._accepts_schema:
+            return self._chat(messages, SELECTOR_SCHEMA)
+        return self._chat(messages)
 
     def _parse_with_repair(
         self,
@@ -289,7 +333,7 @@ class LLMSessionSelector:
                 task, parse_candidates, workspace_path=workspace_path
             )
             try:
-                repaired = self._chat(repair_messages)
+                repaired = self._call_chat(repair_messages)
             except Exception as exc:  # pragma: no cover - backend failures
                 logger.warning("Session selector repair failed: error=%s", exc)
                 return result
@@ -320,7 +364,7 @@ class LLMSessionSelector:
     ) -> SelectionResult:
         messages = build_selector_messages(task, candidates, workspace_path=workspace_path)
         try:
-            raw = self._chat(messages)
+            raw = self._call_chat(messages)
         except Exception as exc:  # pragma: no cover - backend failures degrade gracefully
             logger.warning("Session selector chat failed: error=%s", exc)
             return SelectionResult(
@@ -350,7 +394,7 @@ class LLMSessionSelector:
             self._rng.shuffle(order)
             messages = build_selector_messages(task, order, workspace_path=workspace_path)
             try:
-                raw = self._chat(messages)
+                raw = self._call_chat(messages)
             except Exception as exc:  # pragma: no cover - backend failures
                 logger.warning("Session selector permutation failed: error=%s", exc)
                 continue

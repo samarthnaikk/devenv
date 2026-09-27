@@ -96,6 +96,7 @@ class OpenCodeAICore:
         memory_context: str | None = None,
         temperature: float = 0.2,
         tool_names: Iterable[str] | None = None,
+        output_schema: dict[str, Any] | None = None,
     ) -> AIResponse:
         del temperature
         if not shutil.which(self.executable):
@@ -107,7 +108,10 @@ class OpenCodeAICore:
             )
         self._raise_if_transport_backoff_active()
         return self._server_chat(
-            messages=messages, memory_context=memory_context, tool_names=tool_names
+            messages=messages,
+            memory_context=memory_context,
+            tool_names=tool_names,
+            output_schema=output_schema,
         )
 
     def reset_session(self) -> None:
@@ -136,6 +140,7 @@ class OpenCodeAICore:
         messages: list[dict[str, Any]],
         memory_context: str | None,
         tool_names: Iterable[str] | None,
+        output_schema: dict[str, Any] | None = None,
     ) -> AIResponse:
         resolved_tool_names = [
             name for name in (tool_names or ()) if name in self._tools
@@ -154,7 +159,10 @@ class OpenCodeAICore:
         try:
             session_id = self._ensure_session()
             response = self._send_server_message(
-                session_id, prompt=prompt, resolved_tool_names=resolved_tool_names
+                session_id,
+                prompt=prompt,
+                resolved_tool_names=resolved_tool_names,
+                output_schema=output_schema,
             )
         except OpenCodeClientError as exc:
             if _should_fallback_to_legacy_cli(exc):
@@ -194,16 +202,24 @@ class OpenCodeAICore:
         )
         self.last_error = ""
         finish_reason = "tool_calls" if tool_calls else "stop"
+        structured_output = None
+        if hasattr(response, "structured_output"):
+            candidate = response.structured_output
+            if isinstance(candidate, dict):
+                structured_output = candidate
+        metadata: dict[str, Any] = {
+            "transport": "server",
+            "session_id": session_id,
+        }
+        if structured_output is not None:
+            metadata["structured"] = structured_output
         return AIResponse(
             content=content,
             tool_calls=tool_calls,
             finish_reason=finish_reason,
             usage=usage,
             backend="opencode",
-            metadata={
-                "transport": "server",
-                "session_id": session_id,
-            },
+            metadata=metadata,
         )
 
     def _legacy_cli_chat(
@@ -287,13 +303,23 @@ class OpenCodeAICore:
         return self._session_id
 
     def _send_server_message(
-        self, session_id: str, *, prompt: str, resolved_tool_names: list[str]
+        self,
+        session_id: str,
+        *,
+        prompt: str,
+        resolved_tool_names: list[str],
+        output_schema: dict[str, Any] | None = None,
     ):
-        output_format = (
-            None
-            if self._structured_output_supported is False
-            else _opencode_output_format(resolved_tool_names)
-        )
+        if self._structured_output_supported is False:
+            output_format = None
+        elif output_schema is not None:
+            output_format = {
+                "type": "json_schema",
+                "schema": output_schema,
+                "retryCount": 2,
+            }
+        else:
+            output_format = _opencode_output_format(resolved_tool_names)
         try:
             response = self._send_server_message_once(
                 session_id,
@@ -545,6 +571,7 @@ class RoutingAICore:
         memory_context: str | None = None,
         temperature: float = 0.2,
         tool_names: Iterable[str] | None = None,
+        output_schema: dict[str, Any] | None = None,
     ) -> AIResponse:
         if self.preferred_backend == "codex":
             if self.codex_ai is None:
@@ -606,6 +633,7 @@ class RoutingAICore:
             memory_context=memory_context,
             temperature=temperature,
             tool_names=tool_names,
+            output_schema=output_schema,
         )
         self.last_backend_used = "opencode"
         self.last_backend_reason = self.opencode_ai.last_backend_reason
