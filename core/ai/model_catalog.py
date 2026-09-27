@@ -267,6 +267,7 @@ def discover_opencode_models(
     provider: str | None = None,
     verbose: bool = True,
     refresh: bool = False,
+    cache_only: bool = False,
     executable: str = "opencode",
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     runner: Runner | None = None,
@@ -279,10 +280,18 @@ def discover_opencode_models(
 
     Never raises: a discovery failure degrades to a stale cache and finally to the
     configured fallback identifiers, so the TUI picker always has something to show.
+    With ``cache_only=True`` the subprocess is never run, making the call safe from
+    latency-sensitive paths such as command-palette construction.
     """
     run = runner or _default_runner
     current_time = time.time() if now is None else now
     resolved_cache = Path(cache_path) if cache_path is not None else default_cache_path()
+
+    if cache_only:
+        cached_any = _read_cache(resolved_cache, ttl_seconds=None, now=current_time)
+        if cached_any is not None:
+            return _filter_provider(cached_any, provider)
+        return _filter_provider(_coerce_fallback(fallback), provider)
 
     if not refresh:
         cached = _read_cache(resolved_cache, ttl_seconds=ttl_seconds, now=current_time)

@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from core.ai.model_catalog import OpenCodeModelInfo, discover_opencode_models
 from core.logging_utils import configure_logging
 
 from .context_builder import ContextBuilderService
@@ -355,6 +356,7 @@ class DevenvTUIController:
         self.access_policy = AccessPolicy()
         self.mode = "retrieve"
         self.preferred_backend = getattr(self.kernel.ai, "preferred_backend", "opencode") or "opencode"
+        self.selector_model: str = ""
         self.preferred_agent: str | None = None
         self._load_persisted_state()
         self._apply_runtime_preferences()
@@ -469,6 +471,8 @@ class DevenvTUIController:
             return TUICommandResult(self._handle_backend_command(args))
         if command == "/model":
             return TUICommandResult(self._handle_model_command(args))
+        if command == "/models":
+            return TUICommandResult(self._handle_models_command(args))
         if command == "/ai":
             return self._handle_ai_command(args)
         if command == "/providers":
@@ -518,6 +522,10 @@ class DevenvTUIController:
                 "/model                  Open the model picker",
                 "/model <name>           Set model for the preferred backend",
                 "/model <backend> <name> Set model for a specific backend",
+                "/model selector         Open the retrieval-selector model picker",
+                "/model selector <name>  Set the retrieval-selector model",
+                "/model refresh          Refresh the OpenCode model list",
+                "/models [provider]      List all models OpenCode reports",
                 "/ai                     List available AI agents",
                 "/ai <agent>             Connect to a native agent (opencode|gemini|claude|codex)",
                 "/providers              Show session-source health",
@@ -683,6 +691,13 @@ class DevenvTUIController:
     def _handle_model_command(self, args: list[str]) -> str:
         if not args:
             return self._interactive_model_picker() or "Model selection cancelled."
+        if args[0].lower() == "refresh":
+            if len(args) > 1:
+                return "Usage: /model refresh"
+            models = self.available_models(refresh=True)
+            return f"Refreshed OpenCode model list ({len(models)} models)."
+        if args[0].lower() == "selector":
+            return self._handle_selector_model_command(args[1:])
         backend = self.preferred_backend
         if len(args) == 1:
             model = args[0]
@@ -709,6 +724,70 @@ class DevenvTUIController:
                 self.kernel.ai.model = cleaned_model
         self._persist_state()
         return f"Model for `{backend}` set to `{cleaned_model}`."
+
+    def _handle_selector_model_command(self, args: list[str]) -> str:
+        if not args:
+            return self._interactive_model_picker(role="selector") or "Model selection cancelled."
+        model = " ".join(args).strip()
+        if not model:
+            return "Model name cannot be empty."
+        self.selector_model = model
+        self._persist_state()
+        return f"Retrieval-selector model set to `{model}`."
+
+    def _handle_models_command(self, args: list[str]) -> str:
+        provider = args[0].strip().lower() if args else None
+        models = self.available_models(provider=provider)
+        if provider and not models:
+            available = sorted({model.provider_id for model in self.available_models()})
+            return f"No models found for provider `{provider}`. Providers: {', '.join(available) or 'none'}."
+        if not models:
+            return "No models available from OpenCode."
+        grouped: dict[str, list[OpenCodeModelInfo]] = {}
+        for model in models:
+            grouped.setdefault(model.provider_id, []).append(model)
+        lines = [f"OpenCode models ({len(models)}):"]
+        for provider_id in sorted(grouped):
+            provider_models = grouped[provider_id]
+            lines.append("")
+            lines.append(f"{provider_id} ({len(provider_models)}):")
+            for model in provider_models:
+                cost = model.cost_input
+                suffix = f"  ·  ${cost:g}/1M in" if cost is not None else ""
+                lines.append(f"  {model.model_id}{suffix}")
+        lines.append("")
+        lines.append("Use /model to open the picker, or /model <name> to set one.")
+        return "\n".join(lines)
+
+    def available_models(
+        self,
+        *,
+        provider: str | None = None,
+        refresh: bool = False,
+        cache_only: bool = False,
+    ) -> list[OpenCodeModelInfo]:
+        return discover_opencode_models(
+            provider=provider,
+            refresh=refresh,
+            cache_only=cache_only,
+            fallback=self._fallback_models(),
+        )
+
+    def _fallback_models(self) -> tuple[str, ...]:
+        return tuple(DEFAULT_WEB_MODELS)
+
+    def current_answer_model(self) -> str:
+        statuses = getattr(self.kernel.ai, "status", lambda: {})()
+        return self._backend_model(statuses, self.preferred_backend)
+
+    def get_selector_model(self) -> str:
+        return self.selector_model
+
+    def set_selector_model(self, model: str) -> str:
+        return self._handle_selector_model_command([model])
+
+    def set_answer_model(self, model: str) -> str:
+        return self._handle_model_command([model])
 
     def available_agent_options(self) -> list[Any]:
         from core.ai.agents import available_agents
@@ -846,7 +925,26 @@ class DevenvTUIController:
             return None
         return self._handle_backend_command([BACKENDS[backend_index]])
 
-    def _interactive_model_picker(self) -> str | None:
+    def _interactive_model_picker(self, *, role: str = "answer") -> str | None:
+        if role == "selector":
+            models = self.available_models()
+            if not models:
+                return "No OpenCode models available for the selector."
+            current = self.selector_model
+            options = [model.full_id for model in models]
+            if current and current not in options:
+                options.insert(0, current)
+            options.append("Enter custom model…")
+            model_index = self._prompt_choice("Selector Model Picker", options)
+            if model_index is None:
+                return None
+            if model_index == len(options) - 1:
+                custom_model = self._prompt_text("Custom selector model name\n> ")
+                if custom_model is None:
+                    return None
+                return self._handle_selector_model_command([custom_model])
+            return self._handle_selector_model_command([options[model_index]])
+
         backend_options = []
         statuses = getattr(self.kernel.ai, "status", lambda: {})()
         for backend in BACKENDS:
@@ -862,8 +960,12 @@ class DevenvTUIController:
             current = str(backend_models.get(backend, "") or "").strip()
             if current:
                 known_models.append(current)
+        if backend == "opencode":
+            for model in self.available_models():
+                if model.full_id and model.full_id not in known_models:
+                    known_models.append(model.full_id)
         defaults = {
-            "opencode": ("opencode/claude-sonnet-4", "opencode/gpt-5-codex"),
+            "opencode": (),
             "ollama": ("qwen2.5:3b", "qwen2.5-coder:7b"),
             "llama_cpp": ("qwen2.5-coder.gguf", "deepseek-coder.gguf"),
             "codex": ("gpt-5-codex", "gpt-5-codex-high"),
@@ -897,8 +999,9 @@ class DevenvTUIController:
     def _available_opencode_models(self, current_model: str) -> list[str]:
         configured = os.getenv("DEVENV_AVAILABLE_MODELS", "")
         configured_models = [item.strip() for item in configured.split(",") if item.strip()]
+        discovered = [model.full_id for model in self.available_models(cache_only=True)]
         ordered: list[str] = []
-        for model_name in [current_model, *configured_models, *DEFAULT_WEB_MODELS]:
+        for model_name in [current_model, *configured_models, *discovered]:
             if model_name and model_name not in ordered:
                 ordered.append(model_name)
         return ordered
@@ -967,6 +1070,39 @@ class DevenvTUIController:
                         f"model {backend} {model_name}",
                     )
                 )
+        for model_name in self.model_options_for_backend("opencode"):
+            entries.append(
+                PaletteEntry(
+                    f"selector_model:{model_name}",
+                    f"Set selector model to {model_name}",
+                    f"/model selector {model_name}",
+                    f"selector model retrieval {model_name}",
+                )
+            )
+        entries.append(
+            PaletteEntry(
+                "model_selector_pick",
+                "Open selector model picker",
+                "/model selector",
+                "selector model retrieval pick open",
+            )
+        )
+        entries.append(
+            PaletteEntry(
+                "models_list",
+                "List all OpenCode models",
+                "/models",
+                "models list providers available opencode",
+            )
+        )
+        entries.append(
+            PaletteEntry(
+                "models_refresh",
+                "Refresh OpenCode model list",
+                "/model refresh",
+                "model refresh reload opencode models",
+            )
+        )
         for provider in SESSION_PROVIDERS:
             state = "on" if self.access_policy.can_access_provider(provider) else "off"
             entries.append(
@@ -1171,6 +1307,7 @@ if TEXTUAL_AVAILABLE:
             self._refresh_sources()
             self._refresh_agents()
             self._refresh_index()
+            self._warm_model_cache()
             self.query_one("#composer", Input).focus()
             self.set_interval(0.25, self._drain_logs)
             self.set_interval(0.75, self._refresh_index)
@@ -1320,6 +1457,10 @@ if TEXTUAL_AVAILABLE:
                     self._activity(f"command: {value}")
                     self._handle_ai_input(value)
                     return
+                if command_name in {"/model", "/models"}:
+                    self._activity(f"command: {value}")
+                    self._handle_model_input(value)
+                    return
                 result = self.controller.handle_command(value)
                 self._activity(f"command: {value}")
                 if result.message:
@@ -1354,6 +1495,79 @@ if TEXTUAL_AVAILABLE:
                 self._mount_command_card(value, result.message)
             if result.agent:
                 self._open_agent(result.agent)
+
+        def _handle_model_input(self, value: str) -> None:
+            tokens = value.split()[1:]
+            if not tokens:
+                self._open_model_picker("answer")
+                return
+            lowered = tokens[0].lower()
+            if lowered == "selector" and len(tokens) == 1:
+                self._open_model_picker("selector")
+                return
+            self._run_model_command(value)
+
+        @work(thread=True)
+        def _run_model_command(self, value: str) -> None:
+            try:
+                result = self.controller.handle_command(value)
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self.call_from_thread(self.notify, f"Model command failed: {exc}", severity="error")
+                return
+            self.call_from_thread(self._after_model_command, value, result)
+
+        def _after_model_command(self, value: str, result: Any) -> None:
+            if getattr(result, "message", ""):
+                self._mount_command_card(value, result.message)
+            self._refresh_header()
+
+        def _open_model_picker(self, role: str) -> None:
+            self._activity(f"loading models for the {role} picker…")
+            self._load_and_open_model_picker(role)
+
+        @work(thread=True)
+        def _load_and_open_model_picker(self, role: str) -> None:
+            try:
+                models = self.controller.available_models()
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self.call_from_thread(self.notify, f"Could not load models: {exc}", severity="error")
+                return
+            self.call_from_thread(self._push_model_picker, role, models)
+
+        def _push_model_picker(self, role: str, models: Any) -> None:
+            from .tui_model import ModelPickerScreen
+
+            if not models:
+                self.notify("No OpenCode models available.", severity="warning")
+                return
+            if role == "selector":
+                current = self.controller.get_selector_model()
+                title = "Select the retrieval-selector model"
+            else:
+                current = self.controller.current_answer_model()
+                title = "Select the answer model"
+            self.push_screen(
+                ModelPickerScreen(models, current=current, title=title),
+                lambda choice: self._on_model_picked(role, choice),
+            )
+
+        def _on_model_picked(self, role: str, model: str | None) -> None:
+            if not model:
+                return
+            if role == "selector":
+                message = self.controller.set_selector_model(model)
+            else:
+                message = self.controller.set_answer_model(model)
+            self._mount_command_card(f"/model {role}", message)
+            self._refresh_header()
+            self.notify(message)
+
+        @work(thread=True)
+        def _warm_model_cache(self) -> None:
+            try:
+                self.controller.available_models()
+            except Exception:  # pragma: no cover - best effort warm-up
+                return
 
         def _open_agent_picker(self) -> None:
             from .tui_agent import AgentPickerScreen

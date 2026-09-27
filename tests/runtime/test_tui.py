@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from core.ai.model_catalog import OpenCodeModelInfo
 from core.runtime.models import RunConfig, RuntimeTurnResult, StageTrace, ToolExecutionStep
 from core.runtime.tui import (
     DevenvTUIController,
@@ -270,6 +271,87 @@ class DevenvTUITest(unittest.TestCase):
 
         self.assertIn("gpt-5-codex-high", result.message)
         self.assertEqual(controller.kernel.ai.backend_models["codex"], "gpt-5-codex-high")
+
+    def test_selector_model_command_sets_selector_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+            result = controller.handle_command("/model selector opencode/claude-haiku-4-5")
+
+        self.assertIn("Retrieval-selector model set", result.message)
+        self.assertEqual(controller.get_selector_model(), "opencode/claude-haiku-4-5")
+
+    def test_models_command_lists_models(self) -> None:
+        models = [
+            OpenCodeModelInfo("opencode", "claude-sonnet-4", name="Claude Sonnet 4", cost_input=3.0),
+            OpenCodeModelInfo("anthropic", "claude-opus-4-6", name="Claude Opus 4.6"),
+        ]
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            with mock.patch.object(controller, "available_models", return_value=models):
+                result = controller.handle_command("/models")
+
+        self.assertIn("OpenCode models (2)", result.message)
+        self.assertIn("opencode (1)", result.message)
+        self.assertIn("anthropic (1)", result.message)
+        self.assertIn("claude-sonnet-4", result.message)
+
+    def test_models_command_filters_by_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            with mock.patch.object(
+                controller,
+                "available_models",
+                side_effect=lambda provider=None, **kwargs: (
+                    [OpenCodeModelInfo("anthropic", "claude-opus-4-6")]
+                    if provider == "anthropic"
+                    else []
+                ),
+            ):
+                result = controller.handle_command("/models unknown")
+
+        self.assertIn("No models found for provider `unknown`", result.message)
+
+    def test_model_refresh_command_reports_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            with mock.patch.object(
+                controller,
+                "available_models",
+                return_value=[OpenCodeModelInfo("opencode", "x")],
+            ) as patched:
+                result = controller.handle_command("/model refresh")
+
+        patched.assert_called_once_with(refresh=True)
+        self.assertIn("Refreshed OpenCode model list (1 models)", result.message)
+
+    def test_palette_entries_include_selector_and_models_actions(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            models = [OpenCodeModelInfo("opencode", "claude-sonnet-4", name="Claude Sonnet 4")]
+            with mock.patch.object(controller, "available_models", return_value=models):
+                entries = controller.palette_entries("model")
+
+        commands = [entry.command for entry in entries]
+        self.assertIn("/models", commands)
+        self.assertIn("/model refresh", commands)
+        self.assertIn("/model selector", commands)
+        self.assertIn("/model selector opencode/claude-sonnet-4", commands)
 
     def test_palette_entries_include_toggle_and_model_actions(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
