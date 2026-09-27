@@ -10,6 +10,7 @@ import json
 import logging
 import math
 import random
+import re
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -34,7 +35,8 @@ Rules:
   empty "selected" list.
 - Never invent session ids; use only the ids listed in CANDIDATES.
 
-Respond with a single JSON object and nothing else:
+Output ONLY a single JSON object. Do not include analysis, prose, or code
+fences. The object must look exactly like:
 {
   "ordered": ["<session_id>", ...],
   "selected": ["<session_id>", ...],
@@ -44,6 +46,9 @@ Respond with a single JSON object and nothing else:
   "evidence": {"<session_id>": ["<verbatim line>", ...]},
   "reasons": {"<session_id>": "<short reason>"}
 }"""
+
+_SELECTION_KEYS = {"selected", "ordered", "evidence", "confidence"}
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
 
 
 def project_name(workspace_path: str | None) -> str:
@@ -78,20 +83,101 @@ def build_selector_messages(
     ]
 
 
-def _extract_json(raw: str) -> object:
-    text = (raw or "").strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.lower().startswith("json"):
-            text = text[4:]
-    start = text.find("{")
-    if start == -1:
-        return None
-    try:
-        payload, _ = json.JSONDecoder().raw_decode(text[start:])
-    except json.JSONDecodeError:
-        return None
+def _raw_json_objects(text: str) -> list[dict]:
+    decoder = json.JSONDecoder()
+    results: list[dict] = []
+    index = 0
+    length = len(text)
+    while index < length:
+        start = text.find("{", index)
+        if start == -1:
+            break
+        try:
+            payload, end = decoder.raw_decode(text[start:])
+        except json.JSONDecodeError:
+            index = start + 1
+            continue
+        if isinstance(payload, dict):
+            results.append(payload)
+        index = start + max(end, 1)
+    return results
+
+
+def _looks_like_selection(payload: dict) -> bool:
+    return any(key in payload for key in _SELECTION_KEYS)
+
+
+def _unwrap_payload(payload: object) -> object:
+    """Unwrap ``{"type":"final","content":"<json>"}`` style wrappers."""
+    for _ in range(3):
+        if not isinstance(payload, dict) or _looks_like_selection(payload):
+            break
+        content = payload.get("content")
+        if isinstance(content, dict):
+            payload = content
+            continue
+        if isinstance(content, str):
+            nested = _first_json_object(content)
+            if isinstance(nested, dict):
+                payload = nested
+                continue
+        break
     return payload
+
+
+def _first_json_object(text: str) -> dict | None:
+    objects = _raw_json_objects(text)
+    return objects[0] if objects else None
+
+
+def _extract_json(raw: str) -> object:
+    """Extract the selector payload from arbitrary model text.
+
+    Model-agnostic: prefers fenced JSON blocks, then scans every ``{`` in the
+    text (so reasoning prose with stray braces cannot shadow the real payload),
+    and unwraps ``{"type":"final","content":"..."}`` wrappers.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return None
+    candidates: list[dict] = []
+    for match in _JSON_FENCE_RE.finditer(text):
+        block = match.group(1).strip()
+        candidates.extend(_raw_json_objects(block))
+        nested = _first_json_object(block)
+        if nested is not None:
+            candidates.append(nested)
+    candidates.extend(_raw_json_objects(text))
+
+    best: dict | None = None
+    for payload in candidates:
+        unwrapped = _unwrap_payload(payload)
+        if not isinstance(unwrapped, dict) or not _looks_like_selection(unwrapped):
+            continue
+        if "selected" in unwrapped:
+            return unwrapped
+        if best is None:
+            best = unwrapped
+    return best
+
+
+def build_repair_messages(
+    task: str,
+    candidates: Sequence[SessionCandidate],
+    *,
+    workspace_path: str | None,
+) -> list[dict[str, str]]:
+    messages = build_selector_messages(task, candidates, workspace_path=workspace_path)
+    messages.append(
+        {
+            "role": "user",
+            "content": (
+                "Your previous reply could not be parsed. Reply again with ONLY the "
+                "JSON object and no prose, analysis, or code fences."
+            ),
+        }
+    )
+    return messages
 
 
 def _string_list(value: object) -> list[str]:
@@ -180,11 +266,37 @@ class LLMSessionSelector:
         model: str = "",
         permutations: int = 1,
         rng: random.Random | None = None,
+        max_retries: int = 1,
     ) -> None:
         self._chat = chat
         self.model = model
         self._permutations = max(1, int(permutations))
         self._rng = rng or random.Random()
+        self._max_retries = max(0, int(max_retries))
+
+    def _parse_with_repair(
+        self,
+        task: str,
+        parse_candidates: Sequence[SessionCandidate],
+        workspace_path: str,
+        raw: str,
+    ) -> SelectionResult:
+        result = parse_selection(raw, parse_candidates)
+        if not result.degraded or self._max_retries <= 0:
+            return result
+        for _ in range(self._max_retries):
+            repair_messages = build_repair_messages(
+                task, parse_candidates, workspace_path=workspace_path
+            )
+            try:
+                repaired = self._chat(repair_messages)
+            except Exception as exc:  # pragma: no cover - backend failures
+                logger.warning("Session selector repair failed: error=%s", exc)
+                return result
+            result = parse_selection(repaired, parse_candidates)
+            if not result.degraded:
+                return result
+        return result
 
     def select(
         self,
@@ -216,7 +328,7 @@ class LLMSessionSelector:
                 reason=f"selector error: {type(exc).__name__}",
                 degraded=True,
             )
-        return parse_selection(raw, candidates)
+        return self._parse_with_repair(task, candidates, workspace_path, raw)
 
     def _select_permuted(
         self,
@@ -242,7 +354,7 @@ class LLMSessionSelector:
             except Exception as exc:  # pragma: no cover - backend failures
                 logger.warning("Session selector permutation failed: error=%s", exc)
                 continue
-            result = parse_selection(raw, order)
+            result = self._parse_with_repair(task, order, workspace_path, raw)
             if result.degraded:
                 continue
             successes += 1

@@ -7,6 +7,7 @@ import unittest
 from core.runtime.session_selection import SessionCandidate
 from core.runtime.session_selector_llm import (
     LLMSessionSelector,
+    _extract_json,
     build_selector_messages,
     parse_selection,
     project_name,
@@ -101,6 +102,66 @@ class ParseSelectionTest(unittest.TestCase):
     def test_confidence_clamped(self) -> None:
         result = parse_selection(json.dumps({"selected": ["c1"], "confidence": 4}), self.candidates)
         self.assertEqual(result.confidence, 1.0)
+
+
+class ExtractJsonTest(unittest.TestCase):
+    def test_ignores_stray_braces_in_prose(self) -> None:
+        raw = (
+            "Let me think. The format {a: b} is odd, but {not json}.\n"
+            'Final: {"selected": ["s1"], "confidence": 0.5}'
+        )
+        payload = _extract_json(raw)
+        self.assertEqual(payload, {"selected": ["s1"], "confidence": 0.5})
+
+    def test_prefers_fenced_block(self) -> None:
+        raw = (
+            "Analysis with a brace { here.\n"
+            "```json\n"
+            '{"selected": ["s2"], "ordered": ["s2"]}\n'
+            "```\n"
+            "trailing notes"
+        )
+        payload = _extract_json(raw)
+        self.assertEqual(payload, {"selected": ["s2"], "ordered": ["s2"]})
+
+    def test_unwraps_final_content_wrapper(self) -> None:
+        raw = '{"type": "final", "content": "{\\"selected\\": [\\"s1\\"]}"}'
+        payload = _extract_json(raw)
+        self.assertEqual(payload, {"selected": ["s1"]})
+
+    def test_returns_none_when_no_json(self) -> None:
+        self.assertIsNone(_extract_json("no json here at all"))
+
+    def test_picks_object_with_selected_key(self) -> None:
+        raw = '{"note": {"selected": "x"}} then {"selected": ["s1"]}'
+        payload = _extract_json(raw)
+        self.assertEqual(payload, {"selected": ["s1"]})
+
+
+class RepairRetryTest(unittest.TestCase):
+    def test_repairs_after_unparseable_reply(self) -> None:
+        replies = ["I cannot produce JSON.", '{"selected": ["c1"], "confidence": 0.7}']
+
+        def chat(_messages):
+            return replies.pop(0)
+
+        selector = LLMSessionSelector(chat, max_retries=1)
+        result = selector.select("query", [_candidate("c1")], workspace_path="/ws/devenv")
+        self.assertFalse(result.degraded)
+        self.assertEqual(result.session_ids, ("c1",))
+        self.assertEqual(replies, [])
+
+    def test_stays_degraded_when_repair_also_fails(self) -> None:
+        calls = {"n": 0}
+
+        def chat(_messages):
+            calls["n"] += 1
+            return "still not json"
+
+        selector = LLMSessionSelector(chat, max_retries=1)
+        result = selector.select("query", [_candidate("c1")], workspace_path="/ws/devenv")
+        self.assertTrue(result.degraded)
+        self.assertEqual(calls["n"], 2)
 
 
 class LLMSessionSelectorTest(unittest.TestCase):
