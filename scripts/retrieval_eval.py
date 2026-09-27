@@ -225,6 +225,8 @@ def run_question(
     providers: list[str],
     *,
     diagnostics: bool,
+    orchestrator: Any | None = None,
+    answer_core: Any | None = None,
 ) -> dict[str, Any]:
     external_query = _compose_external_memory_query(question, [])
     record: dict[str, Any] = {
@@ -246,6 +248,21 @@ def run_question(
     except Exception as exc:  # pragma: no cover
         record["runtime"] = {"error": f"{type(exc).__name__}: {exc}"}
     record["runtime_seconds"] = round(time.time() - started, 2)
+
+    if orchestrator is not None and getattr(orchestrator, "uses_selector", False):
+        selector_started = time.time()
+        try:
+            selector_context, selector_ids, selector_metadata = orchestrator.select(
+                external_query, max_lines=12
+            )
+            record["selector"] = {
+                "session_ids": list(selector_ids),
+                "context": selector_context,
+                "metadata": dict(selector_metadata),
+                "seconds": round(time.time() - selector_started, 2),
+            }
+        except Exception as exc:  # pragma: no cover - defensive
+            record["selector"] = {"error": f"{type(exc).__name__}: {exc}"}
 
     per_provider: dict[str, Any] = {}
     candidates: dict[str, Any] = {}
@@ -293,7 +310,152 @@ def run_question(
     except Exception:  # pragma: no cover - workspace capture is best effort
         pass
     record["workspace_by_session"] = workspace_by_session
+    if answer_core is not None:
+        context_for_answer = (
+            record.get("selector", {}).get("context")
+            or record.get("runtime", {}).get("context", "")
+        )
+        record["answer"] = _answer_with_core(answer_core, question, context_for_answer)
     return record
+
+
+# --------------------------------------------------------------------------- selector / answer helpers
+
+
+def _build_opencode_core(workspace: str, model: str) -> Any:
+    from core.ai.routing import OpenCodeAICore
+
+    return OpenCodeAICore(workspace_path=workspace, model=(model or None))
+
+
+def _build_orchestrator(
+    service: ContextBuilderService,
+    workspace: str,
+    selector_model: str,
+    answer_model: str,
+) -> Any:
+    from core.runtime.session_selection import build_session_orchestrator
+
+    os.environ["DEVENV_SESSION_SELECTOR"] = "1"
+    ai = _build_opencode_core(workspace, answer_model)
+    return build_session_orchestrator(
+        service, ai, service.workspace_path, selector_model=selector_model
+    )
+
+
+def _answer_with_core(answer_core: Any, question: str, context: str) -> str:
+    system = (
+        "You are a careful engineering assistant. Answer using ONLY the provided "
+        "prior-session context. Quote exact identifiers, filenames, and values."
+    )
+    user = (
+        f"QUESTION:\n{question}\n\n"
+        f"PRIOR SESSION CONTEXT:\n{context or '(empty)'}\n\n"
+        "Answer the question as fully as the context allows:"
+    )
+    try:
+        response = answer_core.chat(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        )
+        return str(getattr(response, "content", "") or "")
+    except Exception as exc:  # pragma: no cover - backend failures
+        return f"(answer model error: {type(exc).__name__}: {exc})"
+
+
+def build_custom_score(
+    record: dict[str, Any],
+    truth_ids: list[str],
+    expects: list[str],
+) -> dict[str, Any]:
+    ground_truth = set(truth_ids)
+    runtime_ids = list(record.get("runtime", {}).get("session_ids", []))
+    selector_ids = list(record.get("selector", {}).get("session_ids", []))
+    candidate_ids: list[str] = []
+    for candidates in record.get("candidates", {}).values():
+        for candidate in candidates:
+            session_id = candidate.get("session_id")
+            if session_id and session_id not in candidate_ids:
+                candidate_ids.append(session_id)
+    engine_context = str(record.get("runtime", {}).get("context", "")).lower()
+    selector_context = str(record.get("selector", {}).get("context", "")).lower()
+    answer = str(record.get("answer", ""))
+    answer_lower = answer.lower()
+
+    def coverage(text: str) -> list[str]:
+        return [token for token in expects if token.lower() in text]
+
+    selector_metadata = record.get("selector", {}).get("metadata", {})
+    return {
+        "id": record["id"],
+        "question": record["question"],
+        "ground_truth": sorted(ground_truth),
+        "candidate_ids": candidate_ids,
+        "candidate_rank": position(ground_truth, candidate_ids),
+        "runtime_ids": runtime_ids,
+        "runtime_rank": position(ground_truth, runtime_ids),
+        "selector_ids": selector_ids,
+        "selector_rank": position(ground_truth, selector_ids) if selector_ids else None,
+        "engine_context_coverage": coverage(engine_context),
+        "selector_context_coverage": coverage(selector_context) if selector_ids else [],
+        "answer_coverage": coverage(answer_lower) if answer else [],
+        "selector_confidence": selector_metadata.get("selector_confidence"),
+        "selector_attempts": selector_metadata.get("selector_attempts"),
+        "selector_evidence_used": selector_metadata.get("selector_evidence_used"),
+        "selector_abstained": selector_metadata.get("selector_abstained"),
+        "selector_seconds": record.get("selector", {}).get("seconds"),
+        "answer": answer,
+    }
+
+
+def run_custom_queries(
+    service: ContextBuilderService,
+    providers: list[str],
+    queries: list[str],
+    truth_ids: list[str],
+    expects: list[str],
+    *,
+    orchestrator: Any | None,
+    answer_core: Any | None,
+    output_dir: Path,
+) -> int:
+    if not truth_ids:
+        print("warning: no --truth provided; rank scoring will be blank")
+    results: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for index, question in enumerate(queries, start=1):
+        question_id = f"C{index}"
+        print(f"\n=== {question_id}: {question}")
+        record = run_question(
+            service,
+            question_id,
+            question,
+            providers,
+            diagnostics=True,
+            orchestrator=orchestrator,
+            answer_core=answer_core,
+        )
+        score = build_custom_score(record, truth_ids, expects)
+        results.append((record, score))
+        print(f"  candidate_rank={score['candidate_rank']} runtime_rank={score['runtime_rank']} "
+              f"selector_rank={score['selector_rank']} "
+              f"confidence={score['selector_confidence']} attempts={score['selector_attempts']} "
+              f"seconds={record.get('runtime_seconds', 0)}s")
+        print(f"  candidates: {[c.get('session_id') for cs in record.get('candidates', {}).values() for c in cs][:12]}")
+        print(f"  engine_context_covered={score['engine_context_coverage']}")
+        print(f"  selector_context_covered={score['selector_context_coverage']}")
+        if answer_core is not None:
+            print(f"  answer_covered={score['answer_coverage']}")
+            print("  ---- answer ----")
+            print("  " + (score["answer"] or "(empty)").replace("\n", "\n  "))
+            print("  ----------------")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    payload = {"scores": [score for _record, score in results],
+               "records": {score["id"]: record for record, score in results}}
+    (output_dir / "custom_results.json").write_text(
+        json.dumps(payload, indent=2), encoding="utf-8"
+    )
+    print(f"\nsaved {output_dir / 'custom_results.json'}")
+    return 0
 
 
 # --------------------------------------------------------------------------- scoring
@@ -573,7 +735,81 @@ def main() -> int:
         default="default",
         help="enable/disable bounded context elimination for this run",
     )
+    parser.add_argument(
+        "--selector",
+        action="store_true",
+        help="also route retrieval through the session-selection orchestration layer",
+    )
+    parser.add_argument(
+        "--selector-model",
+        default=os.getenv("DEVENV_SESSION_SELECTOR_MODEL", ""),
+        help="model id for the selection/reasoning role",
+    )
+    parser.add_argument(
+        "--answer-model",
+        default=os.getenv("OPENCODE_MODEL", ""),
+        help="model id for the answering role",
+    )
+    parser.add_argument(
+        "--answer",
+        action="store_true",
+        help="also run the answer model over the selected context",
+    )
+    parser.add_argument(
+        "--query",
+        action="append",
+        default=[],
+        help="ad-hoc multi-component question (repeatable); bypasses the questions file",
+    )
+    parser.add_argument(
+        "--truth",
+        action="append",
+        default=[],
+        help="ground-truth session id for --query scoring (repeatable)",
+    )
+    parser.add_argument(
+        "--expect",
+        action="append",
+        default=[],
+        help="expected substring in the context/answer for --query (repeatable)",
+    )
     args = parser.parse_args()
+
+    if args.query:
+        os.makedirs(args.output_dir, exist_ok=True)
+        providers = [name.strip() for name in args.providers.split(",") if name.strip()]
+        meta_ids = load_meta_session_ids(args.exclude_after)
+        service = ContextBuilderService(
+            str(Path(args.workspace).resolve()),
+            provider_configs=_default_provider_configs(),
+            performance_mode=args.performance_mode,
+        )
+        install_meta_filter(service, meta_ids)
+        service.set_runtime_allowed_providers(set(providers))
+        while True:
+            status = service.indexing_status()
+            if status.get("completed") or (
+                not status.get("active") and status.get("finished_at")
+            ):
+                break
+            time.sleep(0.5)
+        print(f"index build: {service.indexing_status().get('message')}")
+        orchestrator = None
+        if args.selector:
+            orchestrator = _build_orchestrator(
+                service, args.workspace, args.selector_model, args.answer_model
+            )
+        answer_core = _build_opencode_core(args.workspace, args.answer_model) if args.answer else None
+        return run_custom_queries(
+            service,
+            providers,
+            args.query,
+            args.truth,
+            args.expect,
+            orchestrator=orchestrator,
+            answer_core=answer_core,
+            output_dir=Path(args.output_dir),
+        )
 
     questions_path = Path(args.questions)
     text = questions_path.read_text(encoding="utf-8")
@@ -633,6 +869,15 @@ def main() -> int:
             f"index build: {index_seconds:.1f}s ({service.indexing_status().get('message')})"
         )
 
+    orchestrator = None
+    if args.selector:
+        orchestrator = _build_orchestrator(
+            service, args.workspace, args.selector_model, args.answer_model
+        )
+    answer_core = (
+        _build_opencode_core(args.workspace, args.answer_model) if args.answer else None
+    )
+
     runs: list[dict[str, dict[str, Any]]] = []
     scores: list[dict[str, Any]] = []
     started = time.time()
@@ -646,6 +891,8 @@ def main() -> int:
                 question["question"],
                 providers,
                 diagnostics=not args.no_diagnostics,
+                orchestrator=orchestrator,
+                answer_core=answer_core,
             )
             run_records[question["id"]] = record
             truth = answer_key.get(question["id"])

@@ -104,5 +104,51 @@ class ScoreQuestionTest(unittest.TestCase):
         self.assertEqual(score["precision_at_1"], 1.0)
 
 
+class CustomScoreTest(unittest.TestCase):
+    def _record(self) -> dict:
+        return {
+            "id": "C1",
+            "question": "multi component question",
+            "runtime": {
+                "session_ids": ["a", "b"],
+                "context": "mentions matQ5 but not the counts",
+                "metadata": {},
+            },
+            "selector": {
+                "session_ids": ["b", "a"],
+                "context": "mentions matQ5 and wrapLatexText and 75/75 and 71/75",
+                "metadata": {"selector_confidence": 0.8, "selector_attempts": 2},
+                "seconds": 3.5,
+            },
+            "candidates": {"opencode": [{"session_id": "a"}, {"session_id": "b"}]},
+            "answer": "The boundary bug was matQ5; final counts 75/75 and 71/75.",
+            "runtime_seconds": 2.0,
+        }
+
+    def test_custom_score_ranks_and_coverage(self) -> None:
+        score = retrieval_eval.build_custom_score(
+            self._record(),
+            truth_ids=["b"],
+            expects=["matQ5", "wrapLatexText", "75/75", "71/75"],
+        )
+        self.assertEqual(score["runtime_rank"], 2)
+        self.assertEqual(score["selector_rank"], 1)
+        self.assertEqual(score["candidate_rank"], 2)
+        self.assertEqual(score["engine_context_coverage"], ["matQ5"])
+        self.assertEqual(
+            score["selector_context_coverage"],
+            ["matQ5", "wrapLatexText", "75/75", "71/75"],
+        )
+        self.assertEqual(score["answer_coverage"], ["matQ5", "75/75", "71/75"])
+        self.assertEqual(score["selector_confidence"], 0.8)
+
+    def test_custom_score_without_selector(self) -> None:
+        record = self._record()
+        record["selector"] = {}
+        score = retrieval_eval.build_custom_score(record, truth_ids=["b"], expects=[])
+        self.assertIsNone(score["selector_rank"])
+        self.assertEqual(score["runtime_rank"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()
