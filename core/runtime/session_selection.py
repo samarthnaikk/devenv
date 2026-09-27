@@ -55,6 +55,57 @@ def _normalize_evidence(text: str) -> str:
     return re.sub(r"\s+", " ", str(text)).strip()
 
 
+def _normalize_project_path(path: str | None) -> str:
+    if not path:
+        return ""
+    return os.path.normpath(str(path).strip()).replace("\\", "/").rstrip("/").lower()
+
+
+_PROJECT_GATE_MODES = {"off", "demote", "filter"}
+
+
+def project_gate_mode() -> str:
+    mode = os.getenv("DEVENV_SESSION_PROJECT_GATE", "off").strip().lower()
+    return mode if mode in _PROJECT_GATE_MODES else "off"
+
+
+def apply_project_gate(
+    candidates: Sequence[SessionCandidate],
+    *,
+    workspace_path: str | None,
+    query: str = "",
+    mode: str = "demote",
+) -> list[SessionCandidate]:
+    """Soft-demote (or hard-filter) candidates that belong to another project.
+
+    Deterministic backstop for when prompt-only project handling is insufficient.
+    Candidates with an unknown workspace are kept; a foreign project is kept when
+    the query explicitly names it. ``mode="off"`` is a no-op.
+    """
+    if mode not in {"demote", "filter"} or not candidates:
+        return list(candidates)
+    target = _normalize_project_path(workspace_path)
+    query_lower = (query or "").lower()
+    same_project: list[SessionCandidate] = []
+    foreign: list[SessionCandidate] = []
+    for candidate in candidates:
+        session_workspace = _normalize_project_path(candidate.workspace_path)
+        if not session_workspace:
+            same_project.append(candidate)
+            continue
+        if target and session_workspace == target:
+            same_project.append(candidate)
+            continue
+        project_name = session_workspace.rsplit("/", 1)[-1]
+        if project_name and project_name in query_lower:
+            same_project.append(candidate)
+            continue
+        foreign.append(candidate)
+    if mode == "filter":
+        return same_project
+    return [*same_project, *foreign]
+
+
 @dataclass(frozen=True)
 class SessionCandidate:
     session_id: str
@@ -161,7 +212,22 @@ class SessionSelectionOrchestrator:
 
         if not provider_matches:
             return []
-        return _fuse_provider_session_matches(provider_matches)[: self.max_candidates]
+        fused = _fuse_provider_session_matches(provider_matches)
+        gate_mode = project_gate_mode()
+        if gate_mode != "off":
+            workspace_path = getattr(self.context_builder, "workspace_path", "") or ""
+            candidates = [self._to_candidate(match) for match, _provider in fused]
+            gated = apply_project_gate(
+                candidates, workspace_path=workspace_path, query=task, mode=gate_mode
+            )
+            order = {candidate.session_id: index for index, candidate in enumerate(gated)}
+            fused = sorted(
+                fused,
+                key=lambda match_provider: order.get(
+                    getattr(match_provider[0].get("summary"), "session_id", ""), 10**6
+                ),
+            )
+        return fused[: self.max_candidates]
 
     @staticmethod
     def _to_candidate(match: dict[str, Any]) -> SessionCandidate:

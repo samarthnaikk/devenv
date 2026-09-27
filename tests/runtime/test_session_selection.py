@@ -10,7 +10,9 @@ from core.runtime.session_selection import (
     SessionCandidate,
     SessionSelectionOrchestrator,
     SelectionResult,
+    apply_project_gate,
     build_session_orchestrator,
+    project_gate_mode,
     session_selector_enabled,
 )
 
@@ -245,6 +247,64 @@ class RequeryTest(unittest.TestCase):
             "base", SelectionResult(session_ids=(), refined_query="opencode server"), "/ws/facepred"
         )
         self.assertEqual(refined, "opencode server facepred")
+
+
+class ProjectGateTest(unittest.TestCase):
+    def _candidate(self, sid: str, workspace: str | None) -> SessionCandidate:
+        return SessionCandidate(
+            session_id=sid,
+            provider="codex",
+            title=f"title {sid}",
+            workspace_path=workspace,
+            score=5,
+            updated_at="2026-01-01T00:00:00",
+        )
+
+    def test_off_is_noop(self) -> None:
+        candidates = [self._candidate("a", "/ws/other"), self._candidate("b", "/ws/app")]
+        gated = apply_project_gate(candidates, workspace_path="/ws/app", mode="off")
+        self.assertEqual([c.session_id for c in gated], ["a", "b"])
+
+    def test_demote_moves_same_project_first(self) -> None:
+        candidates = [self._candidate("a", "/ws/other"), self._candidate("b", "/ws/app")]
+        gated = apply_project_gate(candidates, workspace_path="/ws/app", mode="demote")
+        self.assertEqual([c.session_id for c in gated], ["b", "a"])
+
+    def test_filter_drops_foreign(self) -> None:
+        candidates = [
+            self._candidate("a", "/ws/other"),
+            self._candidate("b", "/ws/app"),
+            self._candidate("c", None),
+        ]
+        gated = apply_project_gate(candidates, workspace_path="/ws/app", mode="filter")
+        self.assertEqual([c.session_id for c in gated], ["b", "c"])
+
+    def test_query_naming_project_keeps_it(self) -> None:
+        candidates = [self._candidate("a", "/ws/other")]
+        gated = apply_project_gate(
+            candidates,
+            workspace_path="/ws/app",
+            query="how did we fix the other bug",
+            mode="filter",
+        )
+        self.assertEqual([c.session_id for c in gated], ["a"])
+
+    def test_gate_mode_default_off(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(project_gate_mode(), "off")
+        with mock.patch.dict(os.environ, {"DEVENV_SESSION_PROJECT_GATE": "demote"}, clear=True):
+            self.assertEqual(project_gate_mode(), "demote")
+        with mock.patch.dict(os.environ, {"DEVENV_SESSION_PROJECT_GATE": "bogus"}, clear=True):
+            self.assertEqual(project_gate_mode(), "off")
+
+    def test_orchestrator_applies_gate_when_enabled(self) -> None:
+        builder = FakeContextBuilder(
+            {"codex": [_match("f1", workspace="/ws/other"), _match("c1", workspace="/ws/app")]}
+        )
+        orchestrator = SessionSelectionOrchestrator(builder, enabled=True)
+        with mock.patch.dict(os.environ, {"DEVENV_SESSION_PROJECT_GATE": "demote"}, clear=True):
+            candidates = orchestrator.collect_candidates("query")
+        self.assertEqual([c.session_id for c in candidates], ["c1", "f1"])
 
 
 class EnvFlagTest(unittest.TestCase):
