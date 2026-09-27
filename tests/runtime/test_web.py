@@ -606,6 +606,29 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertTrue(health["access_policy"]["backend_access"]["llama_cpp"])
         self.assertTrue(health["access_policy"]["backend_access"]["codex"])
 
+    def test_available_models_include_discovered_opencode_models(self) -> None:
+        from core.ai.model_catalog import OpenCodeModelInfo
+
+        discovered = [
+            OpenCodeModelInfo("opencode", "claude-sonnet-4", name="Claude Sonnet 4"),
+            OpenCodeModelInfo("anthropic", "claude-opus-4-6", name="Claude Opus 4.6"),
+        ]
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            with mock.patch(
+                "core.runtime.web.discover_opencode_models",
+                return_value=discovered,
+            ):
+                models = app._available_models(current_model="fake-opencode-model")
+
+        self.assertIn("fake-opencode-model", models)
+        self.assertIn("opencode/claude-sonnet-4", models)
+        self.assertIn("anthropic/claude-opus-4-6", models)
+
     def test_health_payload_exposes_model_catalog_by_backend(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             app = DevenvWebApp(

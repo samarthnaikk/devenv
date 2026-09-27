@@ -16,6 +16,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from core.ai.model_catalog import discover_opencode_models
 from core.ai.models import AIExecutedToolStep, AIResponse, ToolCallRequest
 from core.logging_utils import configure_logging
 
@@ -331,8 +332,15 @@ class DevenvWebApp:
         configured_models = [
             item.strip() for item in configured.split(",") if item.strip()
         ]
+        discovered = [
+            model.full_id
+            for model in discover_opencode_models(
+                cache_only=True,
+                fallback=DEFAULT_WEB_MODELS,
+            )
+        ]
         ordered: list[str] = []
-        for model_name in [current_model, *configured_models, *DEFAULT_WEB_MODELS]:
+        for model_name in [current_model, *configured_models, *discovered]:
             if model_name and model_name not in ordered:
                 ordered.append(model_name)
         return ordered
