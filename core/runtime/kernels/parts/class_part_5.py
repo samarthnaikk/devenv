@@ -543,7 +543,11 @@ class KernelPlanningMixin:
             return memory_context, metadata
         external_query = _compose_external_memory_query(user_prompt, self.ephemeral_history)
         try:
-            external_context, session_ids, selection_metadata = external_builder.build_runtime_memory_context(external_query)
+            orchestrator = self._session_selection_orchestrator()
+            if orchestrator is not None and orchestrator.uses_selector:
+                external_context, session_ids, selection_metadata = orchestrator.select(external_query)
+            else:
+                external_context, session_ids, selection_metadata = external_builder.build_runtime_memory_context(external_query)
             metadata.update(
                 {
                     "external_context_state": selection_metadata.get("context_match_state", metadata["external_context_state"]),
@@ -561,6 +565,31 @@ class KernelPlanningMixin:
         if not memory_context.strip():
             return external_context, metadata
         return f"{memory_context.rstrip()}\n\n{external_context}", metadata
+
+    def _session_selection_orchestrator(self):
+        model = str(getattr(self, "session_selector_model", "") or "")
+        cached = getattr(self, "_session_orchestrator_cache", None)
+        if cached is not None and cached[0] == model:
+            return cached[1]
+        context_builder = getattr(self, "context_builder", None)
+        if context_builder is None:
+            return None
+        try:
+            from core.runtime.session_selection import build_session_orchestrator
+
+            orchestrator = build_session_orchestrator(
+                context_builder,
+                self.ai,
+                self.workspace_path,
+                selector_model=model,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Session selector setup failed; using the engine directly: error=%s", exc
+            )
+            return None
+        self._session_orchestrator_cache = (model, orchestrator)
+        return orchestrator
 
     def _should_skip_current_workspace_memory_lookup(self, user_prompt: str) -> bool:
         if not _should_skip_current_workspace_memory_lookup(user_prompt):

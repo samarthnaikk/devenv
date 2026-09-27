@@ -100,10 +100,16 @@ class SessionSelectionOrchestrator:
         max_candidates: int = 12,
         max_attempts: int | None = None,
         min_confidence: float | None = None,
+        shadow: bool | None = None,
     ) -> None:
         self.context_builder = context_builder
         self.selector = selector
         self.enabled = session_selector_enabled() if enabled is None else bool(enabled)
+        self.shadow = (
+            os.getenv("DEVENV_SESSION_SELECTOR_SHADOW", "").strip().lower() in _ENABLED_VALUES
+            if shadow is None
+            else bool(shadow)
+        )
         self.max_candidates = max_candidates
         self.max_attempts = max(
             1,
@@ -120,6 +126,11 @@ class SessionSelectionOrchestrator:
     @property
     def active(self) -> bool:
         return bool(self.enabled and self.selector is not None)
+
+    @property
+    def uses_selector(self) -> bool:
+        """True when calling ``select`` will actually run the selector or shadow it."""
+        return self.active or (self.shadow and self.selector is not None)
 
     def collect_candidates(self, task: str) -> list[SessionCandidate]:
         """Return the engine's fused candidates (read-only) with project metadata."""
@@ -176,11 +187,39 @@ class SessionSelectionOrchestrator:
         With no active selector this is an exact passthrough of the engine. The
         selector path is added in a later phase; for now it also delegates.
         """
+        if self.shadow and self.selector is not None:
+            return self._select_shadow(task, max_lines=max_lines)
         if not self.active:
             return self.context_builder.build_runtime_memory_context(
                 task, max_lines=max_lines
             )
         return self._select_with_selector(task, max_lines=max_lines)
+
+    def _select_shadow(
+        self,
+        task: str,
+        *,
+        max_lines: int,
+    ) -> tuple[str, tuple[str, ...], dict[str, Any]]:
+        context, session_ids, metadata = self.context_builder.build_runtime_memory_context(
+            task, max_lines=max_lines
+        )
+        result, _fused, attempts, final_query = self._run_selector(task)
+        shadow_metadata = dict(metadata)
+        shadow_metadata["selector_shadow"] = True
+        if result is not None and not result.degraded:
+            shadow_metadata["selector_session_ids"] = list(result.session_ids)
+            shadow_metadata["selector_confidence"] = result.confidence
+            shadow_metadata["selector_engine_ids"] = list(session_ids)
+            shadow_metadata["selector_attempts"] = attempts
+            shadow_metadata["selector_final_query"] = final_query
+            logger.info(
+                "Session selector shadow: engine=%s selector=%s confidence=%s",
+                list(session_ids),
+                list(result.session_ids),
+                result.confidence,
+            )
+        return context, session_ids, shadow_metadata
 
     def _select_with_selector(
         self,
@@ -324,3 +363,76 @@ class SessionSelectionOrchestrator:
             seen.add(session_id)
             merged.append((match, provider))
         return merged[: self.max_candidates * 2]
+
+
+def _make_chat_selector(
+    ai: Any,
+    workspace_path: str,
+    model: str,
+    *,
+    permutations: int,
+) -> Any:
+    from .session_selector_llm import LLMSessionSelector
+
+    core = None
+    if model:
+        try:
+            from core.ai.routing import OpenCodeAICore
+
+            core = OpenCodeAICore(workspace_path=workspace_path, model=model)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Could not create selector model core (%s): %s", model, exc)
+            core = None
+
+    def chat(messages: list[dict[str, str]]) -> str:
+        response = core.chat(messages) if core is not None else ai.chat(messages)
+        return getattr(response, "content", "") or ""
+
+    return LLMSessionSelector(chat, model=model, permutations=permutations)
+
+
+def build_session_orchestrator(
+    context_builder: ContextBuilderService,
+    ai: Any,
+    workspace_path: str,
+    *,
+    selector_model: str | None = None,
+    permutations: int | None = None,
+    shadow: bool | None = None,
+    max_candidates: int = 12,
+) -> SessionSelectionOrchestrator:
+    """Build an orchestrator for the chosen model, honoring the env flags.
+
+    ``DEVENV_SESSION_SELECTOR`` enables the selector; ``DEVENV_SESSION_SELECTOR_SHADOW``
+    runs it in observation-only mode; ``DEVENV_SESSION_SELECTOR_MODEL`` (or the caller's
+    ``selector_model``) picks the model. With no flags set this returns a disabled
+    orchestrator that is a pure engine passthrough.
+    """
+    enabled = session_selector_enabled()
+    shadow_mode = (
+        os.getenv("DEVENV_SESSION_SELECTOR_SHADOW", "").strip().lower() in _ENABLED_VALUES
+        if shadow is None
+        else bool(shadow)
+    )
+    if not enabled and not shadow_mode:
+        return SessionSelectionOrchestrator(
+            context_builder, enabled=False, max_candidates=max_candidates
+        )
+    model = (
+        selector_model or os.getenv("DEVENV_SESSION_SELECTOR_MODEL", "") or ""
+    ).strip()
+    resolved_permutations = (
+        permutations
+        if permutations is not None
+        else _env_int("DEVENV_SESSION_SELECTOR_PERMUTATIONS", 1)
+    )
+    selector = _make_chat_selector(
+        ai, workspace_path, model, permutations=max(1, resolved_permutations)
+    )
+    return SessionSelectionOrchestrator(
+        context_builder,
+        selector=selector,
+        enabled=enabled,
+        shadow=shadow_mode,
+        max_candidates=max_candidates,
+    )

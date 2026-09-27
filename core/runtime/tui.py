@@ -442,6 +442,7 @@ class DevenvTUIController:
             if allowed
         }
         self.context_builder.set_runtime_allowed_providers(allowed_providers)
+        self.kernel.session_selector_model = self.selector_model
         if hasattr(self.kernel.ai, "set_backend_preference"):
             self.kernel.ai.set_backend_preference(
                 self.preferred_backend,
@@ -736,6 +737,8 @@ class DevenvTUIController:
         if not model:
             return "Model name cannot be empty."
         self.selector_model = model
+        self._session_orchestrator_cache = None
+        self.kernel.session_selector_model = model
         self._persist_state()
         return f"Retrieval-selector model set to `{model}`."
 
@@ -1152,10 +1155,14 @@ class DevenvTUIController:
                 metadata=card_metadata,
                 elapsed_ms=elapsed_ms,
             )
-        context, session_ids, metadata = self.context_builder.build_runtime_memory_context(
-            query,
-            max_lines=max_lines,
-        )
+        orchestrator = self._session_orchestrator()
+        if orchestrator.uses_selector:
+            context, session_ids, metadata = orchestrator.select(query, max_lines=max_lines)
+        else:
+            context, session_ids, metadata = self.context_builder.build_runtime_memory_context(
+                query,
+                max_lines=max_lines,
+            )
         self.last_retrieval_text = context
         elapsed_ms = int(round((time.perf_counter() - started) * 1000))
         return RetrievalOutcome(
@@ -1165,6 +1172,21 @@ class DevenvTUIController:
             metadata=dict(metadata),
             elapsed_ms=elapsed_ms,
         )
+
+    def _session_orchestrator(self):
+        cache = getattr(self, "_session_orchestrator_cache", None)
+        if cache is not None and cache[0] == self.selector_model:
+            return cache[1]
+        from .session_selection import build_session_orchestrator
+
+        orchestrator = build_session_orchestrator(
+            self.context_builder,
+            self.kernel.ai,
+            self.config.workspace_path,
+            selector_model=self.selector_model,
+        )
+        self._session_orchestrator_cache = (self.selector_model, orchestrator)
+        return orchestrator
 
     def _retrieve_card_context(self, query: str) -> tuple[str, dict[str, Any]]:
         memory = getattr(self.kernel, "memory", None)

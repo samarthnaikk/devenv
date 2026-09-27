@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import os
 import unittest
 from dataclasses import dataclass
 from typing import Any
+from unittest import mock
 
 from core.runtime.session_selection import (
     SessionCandidate,
     SessionSelectionOrchestrator,
     SelectionResult,
+    build_session_orchestrator,
     session_selector_enabled,
 )
 
@@ -255,6 +258,56 @@ class EnvFlagTest(unittest.TestCase):
             self.assertFalse(session_selector_enabled())
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertFalse(session_selector_enabled())
+
+
+class FakeChatAI:
+    def __init__(self, content: str) -> None:
+        self._content = content
+        self.calls: list[Any] = []
+
+    def chat(self, messages, **kwargs):
+        self.calls.append(messages)
+        return type("Response", (), {"content": self._content})()
+
+
+class FactoryTest(unittest.TestCase):
+    def test_disabled_without_flags(self) -> None:
+        builder = FakeContextBuilder({"codex": [_match("c1")]})
+        with mock.patch.dict(os.environ, {}, clear=True):
+            orchestrator = build_session_orchestrator(builder, FakeChatAI("{}"), "/ws/app")
+        self.assertFalse(orchestrator.uses_selector)
+
+    def test_enabled_via_env_uses_selector(self) -> None:
+        builder = FakeContextBuilder({"codex": [_match("c1")]})
+        ai = FakeChatAI('{"selected": ["c1"], "confidence": 0.8}')
+        with mock.patch.dict(
+            os.environ,
+            {"DEVENV_SESSION_SELECTOR": "1", "DEVENV_SESSION_SELECTOR_MODEL": ""},
+            clear=True,
+        ):
+            orchestrator = build_session_orchestrator(builder, ai, "/ws/app")
+            self.assertTrue(orchestrator.uses_selector)
+            context, session_ids, metadata = orchestrator.select("query")
+        self.assertEqual(session_ids, ("c1",))
+        self.assertTrue(metadata["selector_applied"])
+        self.assertIn("title c1", context)
+
+    def test_shadow_mode_returns_engine_context(self) -> None:
+        class Stub:
+            def select(self, task, candidates, *, workspace_path):
+                return SelectionResult(session_ids=("c1",), confidence=0.9)
+
+        builder = FakeContextBuilder({"codex": [_match("c1")]})
+        orchestrator = SessionSelectionOrchestrator(
+            builder, selector=Stub(), enabled=False, shadow=True
+        )
+        self.assertTrue(orchestrator.uses_selector)
+        context, session_ids, metadata = orchestrator.select("query")
+        self.assertEqual(context, "CONTEXT")
+        self.assertEqual(session_ids, ("s1",))
+        self.assertTrue(metadata["selector_shadow"])
+        self.assertEqual(metadata["selector_session_ids"], ["c1"])
+        self.assertEqual(metadata["selector_engine_ids"], ["s1"])
 
 
 if __name__ == "__main__":
