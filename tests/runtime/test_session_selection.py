@@ -173,6 +173,77 @@ class PassthroughTest(unittest.TestCase):
         self.assertTrue(metadata["selector_evidence_used"])
 
 
+class TaskAwareContextBuilder(FakeContextBuilder):
+    def __init__(self, task_matches: dict[str, list[dict[str, Any]]]) -> None:
+        super().__init__({"codex": []})
+        self.task_matches = task_matches
+
+    def _select_runtime_matches_for_provider(self, task: str, *, provider_name: str):
+        matches: list[dict[str, Any]] = []
+        for marker, marker_matches in self.task_matches.items():
+            if marker.lower() in task.lower():
+                matches = marker_matches
+        return matches, FakeProvider(provider_name), {"index_ready": True}
+
+
+class RequeryTest(unittest.TestCase):
+    def test_requery_merges_new_candidates(self) -> None:
+        calls: list[tuple[str, list[str]]] = []
+
+        class Requerying:
+            def select(self, task, candidates, *, workspace_path):
+                calls.append((task, [c.session_id for c in candidates]))
+                if len(calls) == 1:
+                    return SelectionResult(
+                        session_ids=(),
+                        need_more=True,
+                        confidence=0.1,
+                        refined_query="opencode server",
+                    )
+                return SelectionResult(session_ids=("n1",), confidence=0.9)
+
+        builder = TaskAwareContextBuilder(
+            {
+                "base query": [_match("b1")],
+                "opencode server": [_match("n1")],
+            }
+        )
+        orchestrator = SessionSelectionOrchestrator(
+            builder, enabled=True, selector=Requerying(), max_attempts=2
+        )
+        context, session_ids, metadata = orchestrator.select("base query")
+
+        self.assertEqual(len(calls), 2)
+        self.assertIn("n1", calls[1][1])
+        self.assertEqual(session_ids, ("n1",))
+        self.assertEqual(metadata["selector_attempts"], 2)
+        self.assertEqual(metadata["selector_final_query"], "opencode server app")
+        self.assertIn("n1", context)
+
+    def test_max_attempts_bounds_requeries(self) -> None:
+        calls: list[str] = []
+
+        class AlwaysNeedMore:
+            def select(self, task, candidates, *, workspace_path):
+                calls.append(task)
+                return SelectionResult(session_ids=(), need_more=True, refined_query="more")
+
+        builder = TaskAwareContextBuilder({"base": [_match("b1")], "more": [_match("n1")]})
+        orchestrator = SessionSelectionOrchestrator(
+            builder, enabled=True, selector=AlwaysNeedMore(), max_attempts=1
+        )
+        orchestrator.select("base")
+        self.assertEqual(len(calls), 1)
+
+    def test_refine_query_appends_project(self) -> None:
+        from core.runtime.session_selection import SelectionResult
+
+        refined = SessionSelectionOrchestrator._refine_query(
+            "base", SelectionResult(session_ids=(), refined_query="opencode server"), "/ws/facepred"
+        )
+        self.assertEqual(refined, "opencode server facepred")
+
+
 class EnvFlagTest(unittest.TestCase):
     def test_env_flag_parsing(self) -> None:
         import os

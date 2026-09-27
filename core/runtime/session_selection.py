@@ -14,6 +14,7 @@ import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 from .context_builder import (
@@ -28,6 +29,26 @@ _ENABLED_VALUES = {"1", "true", "yes", "on"}
 
 def session_selector_enabled() -> bool:
     return os.getenv("DEVENV_SESSION_SELECTOR", "").strip().lower() in _ENABLED_VALUES
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
 
 
 def _normalize_evidence(text: str) -> str:
@@ -77,11 +98,24 @@ class SessionSelectionOrchestrator:
         selector: SessionSelector | None = None,
         enabled: bool | None = None,
         max_candidates: int = 12,
+        max_attempts: int | None = None,
+        min_confidence: float | None = None,
     ) -> None:
         self.context_builder = context_builder
         self.selector = selector
         self.enabled = session_selector_enabled() if enabled is None else bool(enabled)
         self.max_candidates = max_candidates
+        self.max_attempts = max(
+            1,
+            max_attempts
+            if max_attempts is not None
+            else _env_int("DEVENV_SESSION_SELECTOR_MAX_ATTEMPTS", 2),
+        )
+        self.min_confidence = (
+            min_confidence
+            if min_confidence is not None
+            else _env_float("DEVENV_SESSION_SELECTOR_MIN_CONFIDENCE", 0.4)
+        )
 
     @property
     def active(self) -> bool:
@@ -154,25 +188,16 @@ class SessionSelectionOrchestrator:
         *,
         max_lines: int,
     ) -> tuple[str, tuple[str, ...], dict[str, Any]]:
-        fused = self._collect_fused(task)
+        result, fused, attempts, final_query = self._run_selector(task)
+        if result is None or result.degraded:
+            return self.context_builder.build_runtime_memory_context(
+                task, max_lines=max_lines
+            )
         if not fused:
             return self.context_builder.build_runtime_memory_context(
                 task, max_lines=max_lines
             )
         candidates = [self._to_candidate(match) for match, _provider in fused]
-        workspace_path = getattr(self.context_builder, "workspace_path", "") or ""
-        try:
-            result = self.selector.select(  # type: ignore[union-attr]
-                task, candidates, workspace_path=workspace_path
-            )
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Session selector failed; falling back to engine: error=%s", exc)
-            result = None
-
-        if result is None or result.degraded:
-            return self.context_builder.build_runtime_memory_context(
-                task, max_lines=max_lines
-            )
 
         by_id: dict[str, tuple[dict[str, Any], Any]] = {}
         for match, provider in fused:
@@ -193,6 +218,8 @@ class SessionSelectionOrchestrator:
             "selector_candidate_count": len(candidates),
             "selector_session_ids": list(result.session_ids),
             "selector_evidence": {key: list(value) for key, value in result.evidence.items()},
+            "selector_attempts": attempts,
+            "selector_final_query": final_query,
             "index_ready": True,
         }
         if not selected_fused:
@@ -229,3 +256,71 @@ class SessionSelectionOrchestrator:
             return "", selected_ids, metadata
         context = "\n".join(["## External Session Context", *(f"- {line}" for line in lines)])
         return context, selected_ids, metadata
+
+    def _run_selector(
+        self,
+        task: str,
+    ) -> tuple[SelectionResult | None, list[tuple[dict[str, Any], Any]], int, str]:
+        """Run the selector, with at most ``max_attempts - 1`` project-anchored re-queries."""
+        fused = self._collect_fused(task)
+        if not fused or self.selector is None:
+            return None, fused, 0, task
+        workspace_path = getattr(self.context_builder, "workspace_path", "") or ""
+        query = task
+        result: SelectionResult | None = None
+        attempts = 0
+        while True:
+            attempts += 1
+            candidates = [self._to_candidate(match) for match, _provider in fused]
+            try:
+                result = self.selector.select(query, candidates, workspace_path=workspace_path)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("Session selector failed: error=%s", exc)
+                return None, fused, attempts, query
+            if result.degraded:
+                return result, fused, attempts, query
+            if attempts >= self.max_attempts or not self._should_requery(result):
+                break
+            refined = self._refine_query(query, result, workspace_path)
+            if refined.strip().lower() == query.strip().lower():
+                break
+            new_fused = self._collect_fused(refined)
+            if not new_fused:
+                break
+            fused = self._merge_fused(fused, new_fused)
+            query = refined
+        return result, fused, attempts, query
+
+    def _should_requery(self, result: SelectionResult) -> bool:
+        return (
+            bool(result.need_more)
+            or not result.session_ids
+            or result.confidence < self.min_confidence
+        )
+
+    @staticmethod
+    def _refine_query(
+        query: str,
+        result: SelectionResult,
+        workspace_path: str,
+    ) -> str:
+        base = (result.refined_query or query).strip() or query
+        project = Path(workspace_path).name if workspace_path else ""
+        if project and project.lower() not in base.lower():
+            base = f"{base} {project}"
+        return base
+
+    def _merge_fused(
+        self,
+        base: list[tuple[dict[str, Any], Any]],
+        extra: list[tuple[dict[str, Any], Any]],
+    ) -> list[tuple[dict[str, Any], Any]]:
+        seen: set[str] = set()
+        merged: list[tuple[dict[str, Any], Any]] = []
+        for match, provider in [*base, *extra]:
+            session_id = getattr(match.get("summary"), "session_id", "")
+            if not session_id or session_id in seen:
+                continue
+            seen.add(session_id)
+            merged.append((match, provider))
+        return merged[: self.max_candidates * 2]
