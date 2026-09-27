@@ -163,20 +163,34 @@ class PassthroughTest(unittest.TestCase):
         self.assertEqual(context, "CONTEXT")
         self.assertEqual(len(builder.build_calls), 1)
 
-    def test_abstaining_selector_returns_empty_context(self) -> None:
+    def test_abstaining_selector_returns_empty_context_when_floor_off(self) -> None:
         class Empty:
             def select(self, task, candidates, *, workspace_path):
                 return SelectionResult(session_ids=(), reason="nothing relevant")
 
         builder = FakeContextBuilder({"codex": [_match("c1")]})
         orchestrator = SessionSelectionOrchestrator(
-            builder, enabled=True, selector=Empty()
+            builder, enabled=True, selector=Empty(), recall_floor="off"
         )
         context, session_ids, metadata = orchestrator.select("query")
         self.assertEqual(context, "")
         self.assertEqual(session_ids, ())
         self.assertEqual(metadata["context_match_state"], "new_context")
         self.assertTrue(metadata["selector_abstained"])
+
+    def test_abstaining_selector_falls_back_to_engine_on_hard_floor(self) -> None:
+        class Empty:
+            def select(self, task, candidates, *, workspace_path):
+                return SelectionResult(session_ids=(), reason="nothing relevant")
+
+        builder = FakeContextBuilder({"codex": [_match("c1"), _match("c2")]})
+        orchestrator = SessionSelectionOrchestrator(
+            builder, enabled=True, selector=Empty(), recall_floor="hard", recall_floor_k=2
+        )
+        context, session_ids, metadata = orchestrator.select("query")
+        self.assertEqual(session_ids, ("c1", "c2"))
+        self.assertTrue(metadata["selector_abstained_fallback"])
+        self.assertIn("title c1", context)
 
     def test_selector_evidence_is_used_for_context(self) -> None:
         class Evidenced:

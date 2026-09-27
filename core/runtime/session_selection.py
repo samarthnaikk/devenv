@@ -424,6 +424,35 @@ class SessionSelectionOrchestrator:
         if not selected_fused:
             metadata["selector_abstained"] = True
             metadata["selector_evidence_used"] = False
+            # On a hard floor, never drop below the engine's own top-K: an
+            # abstaining selector must not silently reduce recall.
+            if self.recall_floor == "hard" and self.recall_floor_k > 0 and fused:
+                fallback = fused[: min(self.recall_floor_k, self.max_selected)]
+                fallback_ids = tuple(
+                    getattr(match.get("summary"), "session_id", "")
+                    for match, _provider in fallback
+                )
+                metadata["selector_floor_applied"] = True
+                metadata["selector_floor_ids"] = list(fallback_ids)
+                metadata["selector_floor_mode"] = "hard"
+                metadata["selector_abstained_fallback"] = True
+                drill_lines = self._drill_evidence(
+                    task, fallback, max_lines=max_lines
+                )
+                lines = self.context_builder._context_lines_for_fused_matches(
+                    task, fallback, max_lines=max_lines
+                )
+                combined: list[str] = []
+                for line in [*drill_lines, *(lines or ())]:
+                    normalized = _normalize_evidence(line)
+                    if normalized and normalized not in combined:
+                        combined.append(normalized)
+                if not combined:
+                    return "", fallback_ids, metadata
+                context = "\n".join(
+                    ["## External Session Context", *(f"- {line}" for line in combined[:max_lines])]
+                )
+                return context, fallback_ids, metadata
             return "", (), metadata
 
         selected_fused, floor_ids = self._apply_recall_floor(fused, selected_fused, result)
