@@ -164,10 +164,16 @@ class SessionSelectionOrchestrator:
         recall_floor: str | None = None,
         recall_floor_k: int | None = None,
         max_selected: int | None = None,
+        drill_char_budget: int | None = None,
     ) -> None:
         self.context_builder = context_builder
         self.selector = selector
         self.enabled = session_selector_enabled() if enabled is None else bool(enabled)
+        self.drill_char_budget = (
+            drill_char_budget
+            if drill_char_budget is not None
+            else _env_int("DEVENV_SESSION_SELECTOR_DRILL_CHARS", 2_000_000)
+        )
         self.shadow = (
             os.getenv("DEVENV_SESSION_SELECTOR_SHADOW", "").strip().lower() in _ENABLED_VALUES
             if shadow is None
@@ -486,6 +492,35 @@ class SessionSelectionOrchestrator:
                 merged.append(entry)
         return merged[: self.max_selected], floor_ids
 
+    def _session_texts(self, provider: Any, session_id: str) -> list[str]:
+        """Return every text block in a session, bypassing the detail window.
+
+        ``provider.get_session`` truncates to the last ``MAX_SESSION_MESSAGES``;
+        the drill-down needs the whole session, so we prefer the provider's full
+        message stream and fall back to the JSONL/raw source when unavailable.
+        """
+        texts: list[str] = []
+        full = getattr(provider, "_session_messages", None)
+        if callable(full):
+            try:
+                for message in full(session_id) or ():
+                    content = str(getattr(message, "content", "") or "")
+                    if content.strip():
+                        texts.append(content)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("Full-session read failed (%s): %s", session_id, exc)
+        if texts:
+            return texts
+        try:
+            detail = provider.get_session(session_id)
+        except Exception:  # pragma: no cover - defensive
+            return texts
+        for message in getattr(detail, "messages", ()) or ():
+            content = str(getattr(message, "content", "") or "")
+            if content.strip():
+                texts.append(content)
+        return texts
+
     def _drill_evidence(
         self,
         task: str,
@@ -493,36 +528,42 @@ class SessionSelectionOrchestrator:
         *,
         max_lines: int,
     ) -> list[str]:
-        """Lexically scan the selected sessions' messages for the query's terms.
+        """Lexically scan the *whole* session for the query's terms.
 
         This recovers exact answering lines from very large sessions whose
-        retriever-matched chunks do not contain the answer.
+        retriever-matched chunks (and the truncated detail window) do not contain
+        the answer. Runs only for the selected sessions and is bounded by a char
+        budget so a huge session cannot stall retrieval.
         """
         if not selected_fused or max_lines <= 0:
             return []
         try:
-            from .context_builder import _focus_tokens, _normalize_whitespace, _tokenize
+            from .context_builder import (
+                CONTEXT_LINE_WINDOW_CHARS,
+                _focus_tokens,
+                _normalize_whitespace,
+                _tokenize,
+                _window_context_line,
+            )
         except Exception:  # pragma: no cover - defensive
             return []
         tokens = _tokenize(task)
         if not tokens:
             return []
         focus = _focus_tokens(task)
+        budget = self.drill_char_budget
         collected: list[str] = []
         per_session = max(1, max_lines // max(1, len(selected_fused)))
         for match, provider in selected_fused:
             session_id = getattr(match.get("summary"), "session_id", "")
             if not session_id:
                 continue
-            try:
-                detail = provider.get_session(session_id)
-            except Exception:  # pragma: no cover - defensive
-                continue
             scored: list[tuple[int, str]] = []
-            for message in getattr(detail, "messages", ()) or ():
-                content = str(getattr(message, "content", "") or "")
-                if not content.strip():
-                    continue
+            consumed = 0
+            for content in self._session_texts(provider, session_id):
+                if consumed >= budget:
+                    break
+                consumed += len(content)
                 for raw_line in re.split(r"(?<=[.!?])\s+|\n+", content):
                     line = _normalize_whitespace(raw_line)
                     if len(line) < 24:
@@ -532,7 +573,8 @@ class SessionSelectionOrchestrator:
                     focus_hits = sum(1 for token in focus if token in lowered)
                     score = hits + (3 * focus_hits)
                     if score:
-                        scored.append((score, line[:400]))
+                        windowed = _window_context_line(line, tokens, CONTEXT_LINE_WINDOW_CHARS)
+                        scored.append((score, windowed))
             if not scored:
                 continue
             scored.sort(key=lambda item: item[0], reverse=True)

@@ -407,6 +407,57 @@ class DrillEvidenceTest(unittest.TestCase):
         )
         self.assertTrue(any("matQ5" in line for line in lines))
 
+    def test_drill_uses_full_stream_over_detail_window(self) -> None:
+        class Message:
+            def __init__(self, content: str) -> None:
+                self.content = content
+
+        class Provider:
+            def _session_messages(self, _session_id):
+                return [
+                    Message("early unrelated setup chatter"),
+                    Message("LINE 55: `...matQ5.` boundary bug where the marker runs together"),
+                ]
+
+            def get_session(self, _session_id):
+                # The truncated window does NOT contain the answering line.
+                return type("Detail", (), {"messages": (Message("only the tail"),)})()
+
+        class Builder:
+            workspace_path = "/ws/app"
+
+        orchestrator = SessionSelectionOrchestrator(Builder(), enabled=True)
+        match = {"summary": FakeSummary("s1"), "score": 5}
+        lines = orchestrator._drill_evidence(
+            "why did the parser miss the matQ5 boundary bug?",
+            [(match, Provider())],
+            max_lines=4,
+        )
+        self.assertTrue(any("matQ5" in line for line in lines))
+
+    def test_drill_respects_char_budget(self) -> None:
+        class Message:
+            def __init__(self, content: str) -> None:
+                self.content = content
+
+        class Provider:
+            def _session_messages(self, _session_id):
+                return [Message("x" * 5000), Message("matQ5 boundary bug detail here")]
+
+        class Builder:
+            workspace_path = "/ws/app"
+
+        orchestrator = SessionSelectionOrchestrator(
+            Builder(), enabled=True, drill_char_budget=100
+        )
+        match = {"summary": FakeSummary("s1"), "score": 5}
+        lines = orchestrator._drill_evidence(
+            "why did the parser miss the matQ5 boundary bug?",
+            [(match, Provider())],
+            max_lines=4,
+        )
+        self.assertEqual(lines, [])
+
 
 class RecallFloorTest(unittest.TestCase):
     def test_hard_floor_keeps_engine_top_k(self) -> None:
