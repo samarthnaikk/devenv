@@ -276,6 +276,23 @@ def run_question(
 
     record["per_provider"] = per_provider
     record["candidates"] = candidates
+
+    relevant_ids: set[str] = set(record.get("runtime", {}).get("session_ids", []))
+    for provider_name in providers:
+        for candidate in candidates.get(provider_name, []):
+            session_id = candidate.get("session_id")
+            if session_id:
+                relevant_ids.add(session_id)
+    workspace_by_session: dict[str, str | None] = {}
+    try:
+        for provider_name in providers:
+            provider = service._get_provider(provider_name)
+            for summary in provider.list_sessions():
+                if summary.session_id in relevant_ids:
+                    workspace_by_session[summary.session_id] = summary.workspace_path
+    except Exception:  # pragma: no cover - workspace capture is best effort
+        pass
+    record["workspace_by_session"] = workspace_by_session
     return record
 
 
@@ -289,6 +306,69 @@ def position(ground_truth: set[str], sequence: list[str]) -> int | None:
     return None
 
 
+def precision_at_k(ground_truth: set[str], sequence: list[str], k: int) -> float:
+    if not ground_truth or k <= 0:
+        return 0.0
+    window = sequence[:k]
+    if not window:
+        return 0.0
+    hits = sum(1 for item in window if item in ground_truth)
+    return round(hits / len(window), 3)
+
+
+def ndcg_at_k(ground_truth: set[str], sequence: list[str], k: int) -> float:
+    import math
+
+    if not ground_truth or k <= 0:
+        return 0.0
+    dcg = 0.0
+    for index, item in enumerate(sequence[:k], start=1):
+        if item in ground_truth:
+            dcg += 1.0 / math.log2(index + 1)
+    ideal_hits = min(len(ground_truth), k)
+    idcg = sum(1.0 / math.log2(index + 1) for index in range(1, ideal_hits + 1))
+    if idcg == 0:
+        return 0.0
+    return round(dcg / idcg, 3)
+
+
+def _normalize_workspace(path: str | None) -> str:
+    if not path:
+        return ""
+    return os.path.normpath(str(path).strip()).replace("\\", "/").rstrip("/").lower()
+
+
+def same_project_precision(
+    sequence: list[str],
+    workspace_by_session: dict[str, str | None],
+    workspace_path: str | None,
+    k: int,
+) -> float:
+    target = _normalize_workspace(workspace_path)
+    if not target:
+        return 0.0
+    window = sequence[:k]
+    if not window:
+        return 0.0
+    matches = sum(
+        1
+        for session_id in window
+        if _normalize_workspace(workspace_by_session.get(session_id)) == target
+    )
+    return round(matches / len(window), 3)
+
+
+def ground_truth_project(
+    ground_truth: set[str],
+    workspace_by_session: dict[str, str | None],
+) -> str | None:
+    for session_id in sorted(ground_truth):
+        workspace = workspace_by_session.get(session_id)
+        if workspace:
+            return workspace
+    return None
+
+
 def _normalize_for_match(text: str) -> str:
     cleaned = re.sub(r"[`*_#]+", "", text.lower())
     return re.sub(r"\s+", " ", cleaned).strip()
@@ -299,10 +379,13 @@ def score_question(
     truth: dict[str, Any],
     providers: list[str],
     meta_ids: set[str],
+    *,
+    workspace_path: str | None = None,
 ) -> dict[str, Any]:
     ground_truth = set(truth.get("session_ids", []))
     runtime = record.get("runtime", {})
     runtime_ids = list(runtime.get("session_ids", []))
+    workspace_by_session = dict(record.get("workspace_by_session", {}) or {})
 
     provider_ids: list[str] = []
     for provider_name in providers:
@@ -323,6 +406,10 @@ def score_question(
     context_coverage = round(len(covered) / len(keywords), 2) if keywords else 0.0
     proof = _normalize_for_match(str(truth.get("proof", "")))
     proof_present = bool(proof) and proof in _normalize_for_match(context_text)
+    selector_record = record.get("selector", {}) or {}
+    selector_ids = list(selector_record.get("session_ids", []) or [])
+    truth_project = ground_truth_project(ground_truth, workspace_by_session)
+    target_workspace = _normalize_workspace(workspace_path)
 
     return {
         "id": record["id"],
@@ -338,6 +425,21 @@ def score_question(
         "keywords_covered": covered,
         "context_coverage": context_coverage,
         "proof_present": proof_present,
+        "precision_at_1": precision_at_k(ground_truth, runtime_ids, 1),
+        "ndcg_at_4": ndcg_at_k(ground_truth, runtime_ids, 4),
+        "same_project_precision_at_3": same_project_precision(
+            runtime_ids, workspace_by_session, workspace_path, 3
+        ),
+        "same_project_precision_at_12": same_project_precision(
+            runtime_ids, workspace_by_session, workspace_path, 12
+        ),
+        "ground_truth_project": truth_project,
+        "ground_truth_same_project": bool(
+            target_workspace
+            and _normalize_workspace(truth_project) == target_workspace
+        ),
+        "selector_ids": selector_ids,
+        "selector_rank": position(ground_truth, selector_ids) if selector_ids else None,
     }
 
 
@@ -364,25 +466,49 @@ def write_report(
         "`rank` = position of the ground-truth session in that ranked list (blank = not present).\n"
     )
     lines.append(
-        "| Q | Runtime rank | Per-provider rank | Candidate rank | Context fact coverage | Proof present | Notes |"
+        "| Q | Runtime rank | Per-provider rank | Candidate rank | Project P@3 | P@1 | nDCG@4 | Sel. rank | Context fact coverage | Proof present | Notes |"
     )
-    lines.append("|---|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
     for score in scores:
         notes = []
         if score["runtime_used_meta"]:
             notes.append("meta/leakage in runtime result")
+        if score.get("ground_truth_project") and not score.get("ground_truth_same_project"):
+            notes.append("truth in another project")
         notes.append(", ".join(score["keywords_covered"][:3]))
         lines.append(
-            "| {id} | {rr} | {pr} | {cr} | {cov} | {proof} | {notes} |".format(
+            "| {id} | {rr} | {pr} | {cr} | {sp3} | {p1} | {ndcg} | {sr} | {cov} | {proof} | {notes} |".format(
                 id=score["id"],
                 rr=score["runtime_rank"] or "—",
                 pr=score["provider_rank"] or "—",
                 cr=score["candidate_rank"] or "—",
+                sp3=score.get("same_project_precision_at_3", 0.0),
+                p1=score.get("precision_at_1", 0.0),
+                ndcg=score.get("ndcg_at_4", 0.0),
+                sr=score.get("selector_rank") or "—",
                 cov=score["context_coverage"],
                 proof="yes" if score.get("proof_present") else "no",
                 notes="; ".join(notes),
             )
         )
+
+    lines.append("\n## Aggregate\n")
+    total = len(scores) or 1
+    runtime_recall = sum(1 for score in scores if score["runtime_rank"])
+    same_project_truth = sum(1 for score in scores if score.get("ground_truth_same_project"))
+    selector_ranked = sum(1 for score in scores if score.get("selector_rank"))
+    lines.append(
+        f"- Runtime-result recall: {runtime_recall}/{len(scores)}\n"
+        f"- Ground-truth same-project: {same_project_truth}/{len(scores)}"
+        f" (other-project questions: {len(scores) - same_project_truth})\n"
+        f"- Same-project precision@3 (mean): "
+        f"{round(sum(s.get('same_project_precision_at_3', 0.0) for s in scores) / total, 3)}\n"
+        f"- Same-project precision@12 (mean): "
+        f"{round(sum(s.get('same_project_precision_at_12', 0.0) for s in scores) / total, 3)}\n"
+        f"- P@1 (mean): {round(sum(s.get('precision_at_1', 0.0) for s in scores) / total, 3)}\n"
+        f"- nDCG@4 (mean): {round(sum(s.get('ndcg_at_4', 0.0) for s in scores) / total, 3)}\n"
+        f"- Selector rank available: {selector_ranked}/{len(scores)}\n"
+    )
 
     lines.append("\n## Per-question detail\n")
     by_id = {question["id"]: question for question in questions}
@@ -524,7 +650,15 @@ def main() -> int:
             run_records[question["id"]] = record
             truth = answer_key.get(question["id"])
             if truth:
-                run_scores.append(score_question(record, truth, providers, meta_ids))
+                run_scores.append(
+                    score_question(
+                        record,
+                        truth,
+                        providers,
+                        meta_ids,
+                        workspace_path=service.workspace_path,
+                    )
+                )
             if repeat == 0:
                 print(
                     f"  {question['id']} runtime_rank={run_scores[-1]['runtime_rank'] if truth else '?'} "
@@ -576,6 +710,18 @@ def main() -> int:
         f"Candidate recall: {candidate_hits}/{len(scores)} · "
         f"saved {output_dir / 'results.json'} and {output_dir / 'report.md'}"
     )
+    if scores:
+        total = len(scores)
+        same_project_truth = sum(
+            1 for score in scores if score.get("ground_truth_same_project")
+        )
+        print(
+            f"Same-project precision@3: "
+            f"{sum(s.get('same_project_precision_at_3', 0.0) for s in scores) / total:.3f} · "
+            f"P@1: {sum(s.get('precision_at_1', 0.0) for s in scores) / total:.3f} · "
+            f"nDCG@4: {sum(s.get('ndcg_at_4', 0.0) for s in scores) / total:.3f} · "
+            f"truth-in-project: {same_project_truth}/{total}"
+        )
     return 0
 
 
