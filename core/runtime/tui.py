@@ -386,6 +386,7 @@ class DevenvTUIController:
             "backend_access": dict(self.access_policy.backend_access),
             "session_access": dict(self.access_policy.session_access),
             "backend_models": self._persisted_backend_models(),
+            "selector_model": self.selector_model,
         }
         state_path = self._state_file_path()
         state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -430,6 +431,9 @@ class DevenvTUIController:
                     self.kernel.ai.set_backend_model(backend, model_name)
                 elif backend == self.preferred_backend and hasattr(self.kernel.ai, "set_model"):
                     self.kernel.ai.set_model(model_name)
+        selector_model = str(payload.get("selector_model", "") or "").strip()
+        if selector_model:
+            self.selector_model = selector_model
 
     def _apply_runtime_preferences(self) -> None:
         allowed_providers = {

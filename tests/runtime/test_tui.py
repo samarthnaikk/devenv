@@ -433,6 +433,22 @@ class DevenvTUITest(unittest.TestCase):
         self.assertIn("Retrieval engine work", command_result.message)
         self.assertIn("fuses lexical and semantic recall", command_result.message)
 
+    def test_selector_model_persists_across_controller_instances(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            first = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            first.handle_command("/model selector opencode/claude-haiku-4-5")
+            first.close()
+
+            second = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+        self.assertEqual(second.get_selector_model(), "opencode/claude-haiku-4-5")
+
     def test_mode_command_switches_and_persists(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             first = DevenvTUIController(
