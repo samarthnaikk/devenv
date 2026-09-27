@@ -247,7 +247,7 @@ class SessionSelectionOrchestrator:
         """
         snippets: list[str] = []
         seen: set[str] = set()
-        for chunk in list(match.get("chunks") or [])[:3]:
+        for chunk in list(match.get("chunks") or [])[:5]:
             text = cls._chunk_text(chunk)
             if text and text not in seen:
                 seen.add(text)
@@ -255,13 +255,13 @@ class SessionSelectionOrchestrator:
         semantic_chunks = list(match.get("semantic_chunks") or [])
         if not semantic_chunks and match.get("semantic_chunk") is not None:
             semantic_chunks = [match["semantic_chunk"]]
-        for chunk in semantic_chunks[:2]:
+        for chunk in semantic_chunks[:3]:
             text = cls._chunk_text(chunk)
             if text and text not in seen:
                 seen.add(text)
                 snippets.append(text[:300])
         if snippets:
-            return "\n    ".join(snippets)[:1200]
+            return "\n    ".join(snippets)[:1500]
         return str(getattr(match.get("summary"), "preview", "") or "")[:400]
 
     @classmethod
@@ -397,18 +397,85 @@ class SessionSelectionOrchestrator:
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Engine context-line build failed: error=%s", exc)
 
+        drill_lines = self._drill_evidence(task, selected_fused, max_lines=max_lines)
+
         combined: list[str] = []
-        for line in [*body, *engine_lines]:
+        for line in [*body, *drill_lines, *engine_lines]:
             if line and line not in combined:
                 combined.append(line)
         metadata["selector_evidence_used"] = bool(body)
         metadata["selector_engine_lines_used"] = bool(engine_lines)
+        metadata["selector_drill_line_count"] = len(drill_lines)
         if not combined:
             return "", selected_ids, metadata
         context = "\n".join(
             ["## External Session Context", *(f"- {line}" for line in combined[:max_lines])]
         )
         return context, selected_ids, metadata
+
+    def _drill_evidence(
+        self,
+        task: str,
+        selected_fused: list[tuple[dict[str, Any], Any]],
+        *,
+        max_lines: int,
+    ) -> list[str]:
+        """Lexically scan the selected sessions' messages for the query's terms.
+
+        This recovers exact answering lines from very large sessions whose
+        retriever-matched chunks do not contain the answer.
+        """
+        if not selected_fused or max_lines <= 0:
+            return []
+        try:
+            from .context_builder import _focus_tokens, _normalize_whitespace, _tokenize
+        except Exception:  # pragma: no cover - defensive
+            return []
+        tokens = _tokenize(task)
+        if not tokens:
+            return []
+        focus = _focus_tokens(task)
+        collected: list[str] = []
+        per_session = max(1, max_lines // max(1, len(selected_fused)))
+        for match, provider in selected_fused:
+            session_id = getattr(match.get("summary"), "session_id", "")
+            if not session_id:
+                continue
+            try:
+                detail = provider.get_session(session_id)
+            except Exception:  # pragma: no cover - defensive
+                continue
+            scored: list[tuple[int, str]] = []
+            for message in getattr(detail, "messages", ()) or ():
+                content = str(getattr(message, "content", "") or "")
+                if not content.strip():
+                    continue
+                for raw_line in re.split(r"(?<=[.!?])\s+|\n+", content):
+                    line = _normalize_whitespace(raw_line)
+                    if len(line) < 24:
+                        continue
+                    lowered = line.lower()
+                    hits = sum(1 for token in tokens if token in lowered)
+                    focus_hits = sum(1 for token in focus if token in lowered)
+                    score = hits + (3 * focus_hits)
+                    if score:
+                        scored.append((score, line[:400]))
+            if not scored:
+                continue
+            scored.sort(key=lambda item: item[0], reverse=True)
+            best = scored[0][0]
+            taken = 0
+            for score, line in scored:
+                if score < best:
+                    break
+                if line not in collected:
+                    collected.append(line)
+                    taken += 1
+                if taken >= per_session:
+                    break
+            if len(collected) >= max_lines:
+                break
+        return collected[:max_lines]
 
     def _run_selector(
         self,

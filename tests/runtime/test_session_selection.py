@@ -341,6 +341,55 @@ class ProjectGateTest(unittest.TestCase):
         self.assertEqual([c.session_id for c in candidates], ["c1", "f1"])
 
 
+class DrillEvidenceTest(unittest.TestCase):
+    def test_snippet_uses_up_to_five_chunks(self) -> None:
+        class Chunk:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+        match = {
+            "summary": FakeSummary("s1"),
+            "chunks": [Chunk(f"passage-{i}") for i in range(6)],
+            "score": 5,
+        }
+        candidate = SessionSelectionOrchestrator._to_candidate(match)
+        self.assertIn("passage-4", candidate.snippet)
+        self.assertNotIn("passage-5", candidate.snippet)
+
+    def test_drill_evidence_finds_query_line(self) -> None:
+        class Message:
+            def __init__(self, content: str) -> None:
+                self.content = content
+
+        class Detail:
+            def __init__(self, messages) -> None:
+                self.messages = messages
+
+        class Provider:
+            def get_session(self, _session_id):
+                return Detail(
+                    [
+                        Message("generic unrelated chatter about deployment"),
+                        Message(
+                            "Found it! Look at line 55: `...matQ5.` — Q4's answer key "
+                            "and Q5 marker run together on the same line."
+                        ),
+                    ]
+                )
+
+        class Builder:
+            workspace_path = "/ws/app"
+
+        orchestrator = SessionSelectionOrchestrator(Builder(), enabled=True)
+        match = {"summary": FakeSummary("s1"), "score": 5}
+        lines = orchestrator._drill_evidence(
+            "Why did the vaxo1a parser miss the matQ5 boundary and the regex fix?",
+            [(match, Provider())],
+            max_lines=4,
+        )
+        self.assertTrue(any("matQ5" in line for line in lines))
+
+
 class EnvFlagTest(unittest.TestCase):
     def test_env_flag_parsing(self) -> None:
         import os
