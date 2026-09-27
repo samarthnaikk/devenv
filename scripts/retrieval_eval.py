@@ -402,6 +402,8 @@ def build_custom_score(
         "selector_attempts": selector_metadata.get("selector_attempts"),
         "selector_evidence_used": selector_metadata.get("selector_evidence_used"),
         "selector_abstained": selector_metadata.get("selector_abstained"),
+        "selector_drill_line_count": selector_metadata.get("selector_drill_line_count"),
+        "selector_engine_lines_used": selector_metadata.get("selector_engine_lines_used"),
         "selector_seconds": record.get("selector", {}).get("seconds"),
         "answer": answer,
     }
@@ -442,6 +444,11 @@ def run_custom_queries(
         print(f"  candidates: {[c.get('session_id') for cs in record.get('candidates', {}).values() for c in cs][:12]}")
         print(f"  engine_context_covered={score['engine_context_coverage']}")
         print(f"  selector_context_covered={score['selector_context_coverage']}")
+        print(
+            f"  drill_lines={score.get('selector_drill_line_count')} "
+            f"evidence_used={score.get('selector_evidence_used')} "
+            f"engine_lines_used={score.get('selector_engine_lines_used')}"
+        )
         if answer_core is not None:
             print(f"  answer_covered={score['answer_coverage']}")
             print("  ---- answer ----")

@@ -463,7 +463,8 @@ class SessionSelectionOrchestrator:
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Engine context-line build failed: error=%s", exc)
 
-        drill_lines = self._drill_evidence(task, selected_fused, max_lines=max_lines)
+        drill_query = self._build_drill_query(task, result)
+        drill_lines = self._drill_evidence(drill_query, selected_fused, max_lines=max_lines)
 
         combined: list[str] = []
         for line in [*body, *drill_lines, *engine_lines]:
@@ -518,6 +519,20 @@ class SessionSelectionOrchestrator:
             if entry is not None:
                 merged.append(entry)
         return merged[: self.max_selected], floor_ids
+
+    @staticmethod
+    def _build_drill_query(task: str, result: SelectionResult) -> str:
+        """Augment the drill query with the selector's refined query and the
+        sub-questions it enumerated, so evidence extraction targets every part
+        of a multi-component question (two-stage selection)."""
+        parts = [task]
+        if result.refined_query:
+            parts.append(result.refined_query)
+        for entry in result.coverage:
+            subquestion = str(entry.get("subquestion") or "").strip()
+            if subquestion:
+                parts.append(subquestion)
+        return "\n".join(dict.fromkeys(part for part in parts if part.strip()))
 
     def _session_texts(self, provider: Any, session_id: str) -> list[str]:
         """Return every text block in a session, bypassing the detail window.

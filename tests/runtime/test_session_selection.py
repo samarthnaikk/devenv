@@ -532,6 +532,25 @@ class RecallFloorTest(unittest.TestCase):
         self.assertEqual(orchestrator.selector.model, DEFAULT_SELECTOR_MODEL)
 
 
+    def test_drill_query_includes_coverage_subquestions(self) -> None:
+        result = SelectionResult(
+            session_ids=("c1",),
+            refined_query="opencode server",
+            coverage=(
+                {"subquestion": "what was the threshold", "session_id": "c1", "evidence": []},
+            ),
+        )
+        query = SessionSelectionOrchestrator._build_drill_query("original question", result)
+        self.assertIn("original question", query)
+        self.assertIn("opencode server", query)
+        self.assertIn("what was the threshold", query)
+
+    def test_drill_query_deduplicates(self) -> None:
+        result = SelectionResult(session_ids=("c1",), refined_query="original question")
+        query = SessionSelectionOrchestrator._build_drill_query("original question", result)
+        self.assertEqual(query, "original question")
+
+
 class EnvFlagTest(unittest.TestCase):
     def test_env_flag_parsing(self) -> None:
         import os
