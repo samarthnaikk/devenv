@@ -63,11 +63,17 @@ def _normalize_project_path(path: str | None) -> str:
 
 
 _PROJECT_GATE_MODES = {"off", "demote", "filter"}
+_RECALL_FLOOR_MODES = {"off", "soft", "hard"}
 
 
 def project_gate_mode() -> str:
     mode = os.getenv("DEVENV_SESSION_PROJECT_GATE", "off").strip().lower()
     return mode if mode in _PROJECT_GATE_MODES else "off"
+
+
+def recall_floor_mode() -> str:
+    mode = os.getenv("DEVENV_SESSION_SELECTOR_RECALL_FLOOR", "hard").strip().lower()
+    return mode if mode in _RECALL_FLOOR_MODES else "hard"
 
 
 def apply_project_gate(
@@ -154,6 +160,9 @@ class SessionSelectionOrchestrator:
         max_attempts: int | None = None,
         min_confidence: float | None = None,
         shadow: bool | None = None,
+        recall_floor: str | None = None,
+        recall_floor_k: int | None = None,
+        max_selected: int | None = None,
     ) -> None:
         self.context_builder = context_builder
         self.selector = selector
@@ -162,6 +171,21 @@ class SessionSelectionOrchestrator:
             os.getenv("DEVENV_SESSION_SELECTOR_SHADOW", "").strip().lower() in _ENABLED_VALUES
             if shadow is None
             else bool(shadow)
+        )
+        self.recall_floor = (
+            recall_floor if recall_floor is not None else recall_floor_mode()
+        )
+        self.recall_floor_k = max(
+            0,
+            recall_floor_k
+            if recall_floor_k is not None
+            else _env_int("DEVENV_SESSION_SELECTOR_RECALL_FLOOR_K", 3),
+        )
+        self.max_selected = max(
+            1,
+            max_selected
+            if max_selected is not None
+            else _env_int("DEVENV_SESSION_SELECTOR_MAX_SELECTED", 5),
         )
         self.max_candidates = max_candidates
         self.max_attempts = max(
@@ -368,6 +392,11 @@ class SessionSelectionOrchestrator:
             metadata["selector_evidence_used"] = False
             return "", (), metadata
 
+        selected_fused, floor_ids = self._apply_recall_floor(fused, selected_fused, result)
+        metadata["selector_floor_mode"] = self.recall_floor
+        metadata["selector_floor_ids"] = list(floor_ids)
+        metadata["selector_floor_applied"] = bool(floor_ids)
+
         selected_ids = tuple(
             getattr(match.get("summary"), "session_id", "")
             for match, _provider in selected_fused
@@ -416,6 +445,45 @@ class SessionSelectionOrchestrator:
             ["## External Session Context", *(f"- {line}" for line in combined[:max_lines])]
         )
         return context, selected_ids, metadata
+
+    def _apply_recall_floor(
+        self,
+        fused: list[tuple[dict[str, Any], Any]],
+        selected_fused: list[tuple[dict[str, Any], Any]],
+        result: SelectionResult,
+    ) -> tuple[list[tuple[dict[str, Any], Any]], list[str]]:
+        """Keep the engine's top-K sessions selected unless the floor is off.
+
+        Guarantees the selector cannot silently drop the correct session that the
+        engine already ranked highly (the Q6/Q7 failure mode).
+        """
+        mode = self.recall_floor
+        if mode == "off" or self.recall_floor_k <= 0 or not fused:
+            return selected_fused[: self.max_selected], []
+        if mode == "soft" and result.confidence >= self.min_confidence:
+            return selected_fused[: self.max_selected], []
+
+        top_ids = [
+            getattr(match.get("summary"), "session_id", "")
+            for match, _provider in fused[: self.recall_floor_k]
+        ]
+        selected_ids = {
+            getattr(match.get("summary"), "session_id", "")
+            for match, _provider in selected_fused
+        }
+        by_id: dict[str, tuple[dict[str, Any], Any]] = {}
+        for match, provider in fused:
+            session_id = getattr(match.get("summary"), "session_id", "")
+            if session_id:
+                by_id.setdefault(session_id, (match, provider))
+
+        floor_ids = [session_id for session_id in top_ids if session_id and session_id not in selected_ids]
+        merged = list(selected_fused)
+        for session_id in floor_ids:
+            entry = by_id.get(session_id)
+            if entry is not None:
+                merged.append(entry)
+        return merged[: self.max_selected], floor_ids
 
     def _drill_evidence(
         self,

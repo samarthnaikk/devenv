@@ -140,7 +140,7 @@ class PassthroughTest(unittest.TestCase):
 
         builder = FakeContextBuilder({"codex": [_match("c1"), _match("c2")]})
         orchestrator = SessionSelectionOrchestrator(
-            builder, enabled=True, selector=StubSelector()
+            builder, enabled=True, selector=StubSelector(), recall_floor="off"
         )
         self.assertTrue(orchestrator.active)
         context, session_ids, metadata = orchestrator.select("query", max_lines=4)
@@ -266,7 +266,7 @@ class RequeryTest(unittest.TestCase):
             }
         )
         orchestrator = SessionSelectionOrchestrator(
-            builder, enabled=True, selector=Requerying(), max_attempts=2
+            builder, enabled=True, selector=Requerying(), max_attempts=2, recall_floor="off"
         )
         context, session_ids, metadata = orchestrator.select("base query")
 
@@ -406,6 +406,67 @@ class DrillEvidenceTest(unittest.TestCase):
             max_lines=4,
         )
         self.assertTrue(any("matQ5" in line for line in lines))
+
+
+class RecallFloorTest(unittest.TestCase):
+    def test_hard_floor_keeps_engine_top_k(self) -> None:
+        class PicksOther:
+            def select(self, task, candidates, *, workspace_path):
+                return SelectionResult(session_ids=("c3",), confidence=0.9)
+
+        builder = FakeContextBuilder(
+            {"codex": [_match("c1"), _match("c2"), _match("c3")]}
+        )
+        orchestrator = SessionSelectionOrchestrator(
+            builder, enabled=True, selector=PicksOther(), recall_floor="hard", recall_floor_k=2
+        )
+        _context, session_ids, metadata = orchestrator.select("query")
+        self.assertIn("c3", session_ids)
+        self.assertIn("c1", session_ids)
+        self.assertIn("c2", session_ids)
+        self.assertEqual(metadata["selector_floor_ids"], ["c1", "c2"])
+
+    def test_floor_off_does_not_widen_selection(self) -> None:
+        class PicksOther:
+            def select(self, task, candidates, *, workspace_path):
+                return SelectionResult(session_ids=("c3",), confidence=0.9)
+
+        builder = FakeContextBuilder(
+            {"codex": [_match("c1"), _match("c2"), _match("c3")]}
+        )
+        orchestrator = SessionSelectionOrchestrator(
+            builder, enabled=True, selector=PicksOther(), recall_floor="off"
+        )
+        _context, session_ids, _meta = orchestrator.select("query")
+        self.assertEqual(session_ids, ("c3",))
+
+    def test_soft_floor_skipped_on_high_confidence(self) -> None:
+        class ConfidentOther:
+            def select(self, task, candidates, *, workspace_path):
+                return SelectionResult(session_ids=("c3",), confidence=0.9)
+
+        builder = FakeContextBuilder(
+            {"codex": [_match("c1"), _match("c2"), _match("c3")]}
+        )
+        orchestrator = SessionSelectionOrchestrator(
+            builder,
+            enabled=True,
+            selector=ConfidentOther(),
+            recall_floor="soft",
+            recall_floor_k=2,
+            min_confidence=0.4,
+        )
+        _context, session_ids, metadata = orchestrator.select("query")
+        self.assertEqual(session_ids, ("c3",))
+        self.assertEqual(metadata["selector_floor_ids"], [])
+
+    def test_recall_floor_mode_default_hard(self) -> None:
+        from core.runtime.session_selection import recall_floor_mode
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(recall_floor_mode(), "hard")
+        with mock.patch.dict(os.environ, {"DEVENV_SESSION_SELECTOR_RECALL_FLOOR": "off"}, clear=True):
+            self.assertEqual(recall_floor_mode(), "off")
 
 
 class EnvFlagTest(unittest.TestCase):
