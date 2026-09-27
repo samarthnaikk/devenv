@@ -32,6 +32,7 @@ class FakeContextBuilder:
         self._provider_matches = provider_matches or {}
         self.build_calls: list[tuple[str, int]] = []
         self.runtime = ("CONTEXT", ("s1",), {"index_ready": True})
+        self.workspace_path = "/ws/app"
 
     def _candidate_provider_names(self) -> list[str]:
         return list(self._provider_matches)
@@ -39,6 +40,9 @@ class FakeContextBuilder:
     def _select_runtime_matches_for_provider(self, task: str, *, provider_name: str):
         matches = self._provider_matches.get(provider_name, [])
         return matches, FakeProvider(provider_name), {"index_ready": True}
+
+    def _context_lines_for_fused_matches(self, task: str, fused, *, max_lines: int = 6):
+        return tuple(getattr(match.get("summary"), "title", "") for match, _provider in fused)
 
     def build_runtime_memory_context(self, task: str, *, provider_name=None, max_lines: int = 6):
         self.build_calls.append((task, max_lines))
@@ -105,18 +109,49 @@ class PassthroughTest(unittest.TestCase):
         orchestrator.select("query")
         self.assertEqual(len(builder.build_calls), 1)
 
-    def test_enabled_with_selector_currently_passthrough(self) -> None:
+    def test_enabled_with_selector_builds_context_from_selection(self) -> None:
         class StubSelector:
             def select(self, task, candidates, *, workspace_path):
-                return SelectionResult(session_ids=("c1",))
+                return SelectionResult(session_ids=("c1",), confidence=0.9, reason="ok")
 
-        builder = FakeContextBuilder({"codex": [_match("c1")]})
+        builder = FakeContextBuilder({"codex": [_match("c1"), _match("c2")]})
         orchestrator = SessionSelectionOrchestrator(
             builder, enabled=True, selector=StubSelector()
         )
         self.assertTrue(orchestrator.active)
+        context, session_ids, metadata = orchestrator.select("query", max_lines=4)
+        self.assertEqual(session_ids, ("c1",))
+        self.assertIn("title c1", context)
+        self.assertTrue(metadata["selector_applied"])
+        self.assertEqual(metadata["selector_confidence"], 0.9)
+        self.assertEqual(builder.build_calls, [])
+
+    def test_degraded_selector_falls_back_to_engine(self) -> None:
+        class Degraded:
+            def select(self, task, candidates, *, workspace_path):
+                return SelectionResult(session_ids=(), reason="boom", degraded=True)
+
+        builder = FakeContextBuilder({"codex": [_match("c1")]})
+        orchestrator = SessionSelectionOrchestrator(
+            builder, enabled=True, selector=Degraded()
+        )
         context, _ids, _meta = orchestrator.select("query")
         self.assertEqual(context, "CONTEXT")
+        self.assertEqual(len(builder.build_calls), 1)
+
+    def test_abstaining_selector_returns_empty_context(self) -> None:
+        class Empty:
+            def select(self, task, candidates, *, workspace_path):
+                return SelectionResult(session_ids=(), reason="nothing relevant")
+
+        builder = FakeContextBuilder({"codex": [_match("c1")]})
+        orchestrator = SessionSelectionOrchestrator(
+            builder, enabled=True, selector=Empty()
+        )
+        context, session_ids, metadata = orchestrator.select("query")
+        self.assertEqual(context, "")
+        self.assertEqual(session_ids, ())
+        self.assertEqual(metadata["context_match_state"], "new_context")
 
 
 class EnvFlagTest(unittest.TestCase):

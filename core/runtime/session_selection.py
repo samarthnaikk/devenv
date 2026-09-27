@@ -48,6 +48,7 @@ class SelectionResult:
     refined_query: str | None = None
     reason: str = ""
     evidence: dict[str, list[str]] = field(default_factory=dict)
+    degraded: bool = False
 
 
 class SessionSelector(Protocol):
@@ -82,6 +83,9 @@ class SessionSelectionOrchestrator:
 
     def collect_candidates(self, task: str) -> list[SessionCandidate]:
         """Return the engine's fused candidates (read-only) with project metadata."""
+        return [self._to_candidate(match) for match, _provider in self._collect_fused(task)]
+
+    def _collect_fused(self, task: str) -> list[tuple[dict[str, Any], Any]]:
         builder = self.context_builder
         try:
             provider_names = builder._candidate_provider_names()
@@ -106,25 +110,20 @@ class SessionSelectionOrchestrator:
 
         if not provider_matches:
             return []
+        return _fuse_provider_session_matches(provider_matches)[: self.max_candidates]
 
-        fused = _fuse_provider_session_matches(provider_matches)[: self.max_candidates]
-        candidates: list[SessionCandidate] = []
-        for match, _provider in fused:
-            summary = match.get("summary")
-            if summary is None:
-                continue
-            candidates.append(
-                SessionCandidate(
-                    session_id=getattr(summary, "session_id", ""),
-                    provider=str(getattr(summary, "provider", "") or ""),
-                    title=str(getattr(summary, "title", "") or ""),
-                    workspace_path=getattr(summary, "workspace_path", None),
-                    score=int(match.get("score") or 0),
-                    updated_at=str(getattr(summary, "updated_at", "") or ""),
-                    snippet=str(getattr(summary, "preview", "") or "")[:400],
-                )
-            )
-        return candidates
+    @staticmethod
+    def _to_candidate(match: dict[str, Any]) -> SessionCandidate:
+        summary = match.get("summary")
+        return SessionCandidate(
+            session_id=getattr(summary, "session_id", ""),
+            provider=str(getattr(summary, "provider", "") or ""),
+            title=str(getattr(summary, "title", "") or ""),
+            workspace_path=getattr(summary, "workspace_path", None),
+            score=int(match.get("score") or 0),
+            updated_at=str(getattr(summary, "updated_at", "") or ""),
+            snippet=str(getattr(summary, "preview", "") or "")[:400],
+        )
 
     def select(
         self,
@@ -149,7 +148,58 @@ class SessionSelectionOrchestrator:
         *,
         max_lines: int,
     ) -> tuple[str, tuple[str, ...], dict[str, Any]]:
-        # Placeholder: implemented alongside the selector prompt (phase B2).
-        return self.context_builder.build_runtime_memory_context(
-            task, max_lines=max_lines
+        fused = self._collect_fused(task)
+        if not fused:
+            return self.context_builder.build_runtime_memory_context(
+                task, max_lines=max_lines
+            )
+        candidates = [self._to_candidate(match) for match, _provider in fused]
+        workspace_path = getattr(self.context_builder, "workspace_path", "") or ""
+        try:
+            result = self.selector.select(  # type: ignore[union-attr]
+                task, candidates, workspace_path=workspace_path
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Session selector failed; falling back to engine: error=%s", exc)
+            result = None
+
+        if result is None or result.degraded:
+            return self.context_builder.build_runtime_memory_context(
+                task, max_lines=max_lines
+            )
+
+        by_id: dict[str, tuple[dict[str, Any], Any]] = {}
+        for match, provider in fused:
+            session_id = getattr(match.get("summary"), "session_id", "")
+            if session_id:
+                by_id.setdefault(session_id, (match, provider))
+        selected_fused = [by_id[sid] for sid in result.session_ids if sid in by_id]
+
+        metadata: dict[str, Any] = {
+            "context_match_state": "reused_prior_sessions" if selected_fused else "new_context",
+            "context_match_reason": result.reason
+            or ("selector selected prior sessions" if selected_fused else "selector found no matching session"),
+            "context_match_score": 0,
+            "selector_applied": True,
+            "selector_confidence": result.confidence,
+            "selector_need_more": result.need_more,
+            "selector_refined_query": result.refined_query or "",
+            "selector_candidate_count": len(candidates),
+            "selector_session_ids": list(result.session_ids),
+            "selector_evidence": {key: list(value) for key, value in result.evidence.items()},
+            "index_ready": True,
+        }
+        if not selected_fused:
+            return "", (), metadata
+
+        selected_ids = tuple(
+            getattr(match.get("summary"), "session_id", "")
+            for match, _provider in selected_fused
         )
+        lines = self.context_builder._context_lines_for_fused_matches(
+            task, selected_fused, max_lines=max_lines
+        )
+        if not lines:
+            return "", selected_ids, metadata
+        context = "\n".join(["## External Session Context", *(f"- {line}" for line in lines)])
+        return context, selected_ids, metadata
