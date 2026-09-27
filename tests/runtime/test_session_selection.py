@@ -86,6 +86,25 @@ class CollectCandidatesTest(unittest.TestCase):
         self.assertEqual(by_id["c1"].workspace_path, "/ws/app")
         self.assertEqual(by_id["c1"].snippet, "preview c1")
 
+    def test_candidate_snippet_prefers_matched_chunks(self) -> None:
+        class Chunk:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+        match = {
+            "summary": FakeSummary("s1", preview="unrelated preview"),
+            "chunks": [Chunk("the matched passage")],
+            "score": 5,
+        }
+        candidate = SessionSelectionOrchestrator._to_candidate(match)
+        self.assertIn("the matched passage", candidate.snippet)
+        self.assertNotIn("unrelated preview", candidate.snippet)
+
+    def test_candidate_snippet_falls_back_to_preview(self) -> None:
+        match = {"summary": FakeSummary("s1", preview="only preview"), "score": 5}
+        candidate = SessionSelectionOrchestrator._to_candidate(match)
+        self.assertEqual(candidate.snippet, "only preview")
+
     def test_empty_when_no_providers(self) -> None:
         orchestrator = SessionSelectionOrchestrator(FakeContextBuilder(), enabled=True)
         self.assertEqual(orchestrator.collect_candidates("query"), [])
@@ -176,6 +195,21 @@ class PassthroughTest(unittest.TestCase):
         self.assertIn("the exact proof line", context)
         self.assertEqual(session_ids, ("c1",))
         self.assertTrue(metadata["selector_evidence_used"])
+
+    def test_context_merges_selector_evidence_and_engine_lines(self) -> None:
+        class Evidenced:
+            def select(self, task, candidates, *, workspace_path):
+                return SelectionResult(session_ids=("c1",), evidence={"c1": ["selector proof line"]})
+
+        builder = FakeContextBuilder({"codex": [_match("c1")]})
+        orchestrator = SessionSelectionOrchestrator(
+            builder, enabled=True, selector=Evidenced()
+        )
+        context, _ids, metadata = orchestrator.select("query", max_lines=6)
+        self.assertIn("selector proof line", context)
+        self.assertIn("title c1", context)  # engine line is kept too
+        self.assertTrue(metadata["selector_evidence_used"])
+        self.assertTrue(metadata["selector_engine_lines_used"])
 
 
 class TaskAwareContextBuilder(FakeContextBuilder):

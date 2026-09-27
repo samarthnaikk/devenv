@@ -230,7 +230,41 @@ class SessionSelectionOrchestrator:
         return fused[: self.max_candidates]
 
     @staticmethod
-    def _to_candidate(match: dict[str, Any]) -> SessionCandidate:
+    def _chunk_text(chunk: Any) -> str:
+        text = getattr(chunk, "text", None)
+        if text is None and isinstance(chunk, dict):
+            text = chunk.get("text")
+        return re.sub(r"\s+", " ", str(text)).strip() if text else ""
+
+    @classmethod
+    def _candidate_snippet(cls, match: dict[str, Any]) -> str:
+        """Prefer the engine's matched chunk text over the short session preview.
+
+        The preview is often unrelated to the query; the ranked chunks are the
+        exact passages the engine matched, so they are what the selector needs to
+        quote evidence from.
+        """
+        snippets: list[str] = []
+        seen: set[str] = set()
+        for chunk in list(match.get("chunks") or [])[:3]:
+            text = cls._chunk_text(chunk)
+            if text and text not in seen:
+                seen.add(text)
+                snippets.append(text[:300])
+        semantic_chunks = list(match.get("semantic_chunks") or [])
+        if not semantic_chunks and match.get("semantic_chunk") is not None:
+            semantic_chunks = [match["semantic_chunk"]]
+        for chunk in semantic_chunks[:2]:
+            text = cls._chunk_text(chunk)
+            if text and text not in seen:
+                seen.add(text)
+                snippets.append(text[:300])
+        if snippets:
+            return "\n    ".join(snippets)[:1200]
+        return str(getattr(match.get("summary"), "preview", "") or "")[:400]
+
+    @classmethod
+    def _to_candidate(cls, match: dict[str, Any]) -> SessionCandidate:
         summary = match.get("summary")
         return SessionCandidate(
             session_id=getattr(summary, "session_id", ""),
@@ -239,7 +273,7 @@ class SessionSelectionOrchestrator:
             workspace_path=getattr(summary, "workspace_path", None),
             score=int(match.get("score") or 0),
             updated_at=str(getattr(summary, "updated_at", "") or ""),
-            snippet=str(getattr(summary, "preview", "") or "")[:400],
+            snippet=cls._candidate_snippet(match),
         )
 
     def select(
@@ -346,20 +380,33 @@ class SessionSelectionOrchestrator:
             for normalized in (_normalize_evidence(line) for line in evidence_lines)
             if normalized
         ]
-        if body:
-            metadata["selector_evidence_used"] = True
-            context = "\n".join(
-                ["## External Session Context", *(f"- {line}" for line in body[:max_lines])]
-            )
-            return context, selected_ids, metadata
 
-        metadata["selector_evidence_used"] = False
-        lines = self.context_builder._context_lines_for_fused_matches(
-            task, selected_fused, max_lines=max_lines
-        )
-        if not lines:
+        engine_lines: list[str] = []
+        try:
+            engine_lines = [
+                normalized
+                for normalized in (
+                    _normalize_evidence(line)
+                    for line in self.context_builder._context_lines_for_fused_matches(
+                        task, selected_fused, max_lines=max_lines * 2
+                    )
+                )
+                if normalized
+            ]
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Engine context-line build failed: error=%s", exc)
+
+        combined: list[str] = []
+        for line in [*body, *engine_lines]:
+            if line and line not in combined:
+                combined.append(line)
+        metadata["selector_evidence_used"] = bool(body)
+        metadata["selector_engine_lines_used"] = bool(engine_lines)
+        if not combined:
             return "", selected_ids, metadata
-        context = "\n".join(["## External Session Context", *(f"- {line}" for line in lines)])
+        context = "\n".join(
+            ["## External Session Context", *(f"- {line}" for line in combined[:max_lines])]
+        )
         return context, selected_ids, metadata
 
     def _run_selector(

@@ -26,6 +26,10 @@ Rules:
 - Only choose a different project when the user's query explicitly names that
   project, or no current-project candidate contains the answer.
 - For every cross-project choice, give a short reason (under 12 words).
+- The snippet lines shown for each candidate are the passages the retriever
+  matched; base your decision and evidence on them, not on the title alone.
+- If the query has several parts, make sure the chosen session(s) and evidence
+  cover every part; quote the exact lines for each part.
 - Select only sessions that genuinely contain the answer. If none do, return an
   empty "selected" list.
 - Never invent session ids; use only the ids listed in CANDIDATES.
