@@ -26,6 +26,7 @@ from .context_builder import (
 logger = logging.getLogger(__name__)
 
 _ENABLED_VALUES = {"1", "true", "yes", "on"}
+DEFAULT_SELECTOR_MODEL = "opencode/longcat-2.5-preview-free"
 
 
 def session_selector_enabled() -> bool:
@@ -638,19 +639,31 @@ def _make_chat_selector(
             core = None
 
     def chat(messages: list[dict[str, str]], schema: dict | None = None) -> str:
-        engine = core if core is not None else ai
-        try:
-            response = (
-                engine.chat(messages, output_schema=schema)
-                if schema is not None
-                else engine.chat(messages)
-            )
-        except TypeError:  # pragma: no cover - callable without schema support
-            response = engine.chat(messages)
-        structured = dict(getattr(response, "metadata", {}) or {}).get("structured")
-        if isinstance(structured, dict) and "selected" in structured:
-            return json.dumps(structured)
-        return getattr(response, "content", "") or ""
+        engines = [core, ai] if core is not None else [ai]
+        last_error: Exception | None = None
+        for engine in engines:
+            try:
+                response = (
+                    engine.chat(messages, output_schema=schema)
+                    if schema is not None
+                    else engine.chat(messages)
+                )
+            except TypeError:  # pragma: no cover - callable without schema support
+                try:
+                    response = engine.chat(messages)
+                except Exception as exc:  # pragma: no cover - backend failure
+                    last_error = exc
+                    continue
+            except Exception as exc:
+                last_error = exc
+                continue
+            structured = dict(getattr(response, "metadata", {}) or {}).get("structured")
+            if isinstance(structured, dict) and "selected" in structured:
+                return json.dumps(structured)
+            return getattr(response, "content", "") or ""
+        if last_error is not None:
+            raise last_error
+        return ""
 
     return LLMSessionSelector(chat, model=model, permutations=permutations)
 
@@ -683,7 +696,9 @@ def build_session_orchestrator(
             context_builder, enabled=False, max_candidates=max_candidates
         )
     model = (
-        selector_model or os.getenv("DEVENV_SESSION_SELECTOR_MODEL", "") or ""
+        selector_model
+        or os.getenv("DEVENV_SESSION_SELECTOR_MODEL", "")
+        or DEFAULT_SELECTOR_MODEL
     ).strip()
     resolved_permutations = (
         permutations

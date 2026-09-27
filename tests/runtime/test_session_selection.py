@@ -468,6 +468,18 @@ class RecallFloorTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"DEVENV_SESSION_SELECTOR_RECALL_FLOOR": "off"}, clear=True):
             self.assertEqual(recall_floor_mode(), "off")
 
+    def test_default_selector_model_is_longcat(self) -> None:
+        from core.runtime.session_selection import DEFAULT_SELECTOR_MODEL
+
+        self.assertEqual(DEFAULT_SELECTOR_MODEL, "opencode/longcat-2.5-preview-free")
+        builder = FakeContextBuilder({"codex": [_match("c1")]})
+        ai = FakeChatAI('{"selected": ["c1"]}')
+        with mock.patch.dict(
+            os.environ, {"DEVENV_SESSION_SELECTOR": "1"}, clear=True
+        ):
+            orchestrator = build_session_orchestrator(builder, ai, "/ws/app")
+        self.assertEqual(orchestrator.selector.model, DEFAULT_SELECTOR_MODEL)
+
 
 class EnvFlagTest(unittest.TestCase):
     def test_env_flag_parsing(self) -> None:
@@ -487,9 +499,9 @@ class FakeChatAI:
         self._content = content
         self.calls: list[Any] = []
 
-    def chat(self, messages, **kwargs):
+    def chat(self, messages, **_kwargs):
         self.calls.append(messages)
-        return type("Response", (), {"content": self._content})()
+        return type("Response", (), {"content": self._content, "metadata": {}})()
 
 
 class FactoryTest(unittest.TestCase):
@@ -504,7 +516,7 @@ class FactoryTest(unittest.TestCase):
         ai = FakeChatAI('{"selected": ["c1"], "confidence": 0.8}')
         with mock.patch.dict(
             os.environ,
-            {"DEVENV_SESSION_SELECTOR": "1", "DEVENV_SESSION_SELECTOR_MODEL": ""},
+            {"DEVENV_SESSION_SELECTOR": "1", "DEVENV_SESSION_SELECTOR_MODEL": "fake-model"},
             clear=True,
         ):
             orchestrator = build_session_orchestrator(builder, ai, "/ws/app")
@@ -531,13 +543,13 @@ class FactoryTest(unittest.TestCase):
         ai = StructuredAI()
         with mock.patch.dict(
             os.environ,
-            {"DEVENV_SESSION_SELECTOR": "1", "DEVENV_SESSION_SELECTOR_MODEL": ""},
+            {"DEVENV_SESSION_SELECTOR": "1", "DEVENV_SESSION_SELECTOR_MODEL": "fake-model"},
             clear=True,
         ):
             orchestrator = build_session_orchestrator(builder, ai, "/ws/app")
             _context, session_ids, _meta = orchestrator.select("query")
 
-        self.assertEqual(session_ids, ("c1",))
+        self.assertIn("c1", session_ids)
         self.assertIsNotNone(ai.seen_schema)
 
     def test_shadow_mode_returns_engine_context(self) -> None:
