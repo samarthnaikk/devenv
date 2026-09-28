@@ -17,6 +17,7 @@ from core.ai.routing import (
     _extract_reasoning_parts,
     _opencode_output_format,
     _parse_model_ref,
+    _parse_opencode_output,
     _parse_server_message,
 )
 from core.tools.base import BaseTool, ToolResult
@@ -758,6 +759,39 @@ class ServerModelForwardingTest(unittest.TestCase):
         self.assertIsNotNone(ref)
         self.assertEqual(ref.provider_id, "opencode-go")
         self.assertEqual(ref.model_id, "longcat-2.5-preview-free")
+
+
+class OpencodeCliOutputTest(unittest.TestCase):
+    def test_parses_line_delimited_events(self) -> None:
+        import json as _json
+
+        lines = [
+            _json.dumps({"type": "step_start", "part": {"type": "step-start"}}),
+            _json.dumps({"type": "text", "part": {"type": "text", "text": "Hello there"}}),
+            _json.dumps(
+                {
+                    "type": "step_finish",
+                    "part": {"type": "step-finish", "reason": "stop", "tokens": {"total": 42, "input": 40, "output": 2}},
+                }
+            ),
+        ]
+        content, usage, tools = _parse_opencode_output("\n".join(lines), allowed_tools=None)
+        self.assertEqual(content, "Hello there")
+        self.assertEqual(usage["total"], 42)
+        self.assertEqual(usage["input"], 40)
+        self.assertEqual(len(tools), 0)
+
+    def test_tool_events_do_not_leak_into_content(self) -> None:
+        import json as _json
+
+        lines = [
+            _json.dumps({"type": "tool_use", "part": {"type": "tool", "tool": "grep", "state": {"status": "error"}}}),
+            _json.dumps({"type": "text", "part": {"type": "text", "text": "final answer"}}),
+        ]
+        content, _usage, _tools = _parse_opencode_output("\n".join(lines), allowed_tools=None)
+        self.assertEqual(content, "final answer")
+        self.assertNotIn("grep", content)
+        self.assertNotIn("step_start", content)
 
 
 class AuthFallbackTest(unittest.TestCase):

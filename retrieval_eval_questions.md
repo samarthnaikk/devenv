@@ -258,6 +258,7 @@ Do not feed this section to the agent under test.
   "Rendered more hooks than during the previous render". Fixed by moving the derived dashboard logic
   (including `useMemo`) above the conditional returns.
 - **Proof:** `useMemo was declared after early returns for showSettings and initialLoading`
+- **Resolution:** Fixed by reordering RecruiterDashboard.tsx — all hooks including useMemo now execute before any conditional early returns, ensuring consistent hook call order across renders.
 
 
 ## Q15 — cd1 sem_init on macOS

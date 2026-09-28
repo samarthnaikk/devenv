@@ -960,9 +960,25 @@ def _extract_tool_call_from_payload(
 
 def _extract_opencode_content(payload: Any) -> str:
     if isinstance(payload, dict):
+        # `opencode run --format json` emits line-delimited events whose real
+        # content is nested under "part". Handle that shape first so raw event
+        # JSON never leaks into the answer.
+        part = payload.get("part")
+        if isinstance(part, dict):
+            event_type = str(payload.get("type") or part.get("type") or "").strip().lower()
+            if event_type == "text":
+                text = part.get("text")
+                if isinstance(text, str) and text.strip():
+                    return text.strip()
+                return ""
+            if event_type in {"reasoning", "step-start", "step_finish", "step-finish", "tool", "tool_use", "tool-call"}:
+                return ""
+            nested = part.get("text")
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip()
         # Skip reasoning/step/tool payloads so they never become answer text.
         payload_type = str(payload.get("type") or "").strip().lower()
-        if payload_type in {"reasoning", "step-start", "step-finish", "tool"}:
+        if payload_type in {"reasoning", "step-start", "step_finish", "step-finish", "tool", "tool_use"}:
             return ""
         for key in ("content", "text", "message", "output", "response"):
             value = payload.get(key)
@@ -990,11 +1006,23 @@ def _extract_opencode_content(payload: Any) -> str:
 def _extract_opencode_usage(payload: Any) -> dict[str, int]:
     if not isinstance(payload, dict):
         return {}
-    raw_usage = payload.get("usage")
+    # `opencode run --format json` nests usage under part.tokens on step_finish.
+    part = payload.get("part")
+    raw_usage = None
+    if isinstance(part, dict) and isinstance(part.get("tokens"), dict):
+        raw_usage = part.get("tokens")
+    elif isinstance(payload.get("usage"), dict):
+        raw_usage = payload.get("usage")
     if not isinstance(raw_usage, dict):
         return {}
     usage: dict[str, int] = {}
     for key, value in raw_usage.items():
+        if isinstance(value, bool):
+            continue
         if isinstance(value, int):
             usage[str(key)] = value
+        elif isinstance(value, dict):
+            for sub_key, sub_value in value.items():
+                if isinstance(sub_value, int) and not isinstance(sub_value, bool):
+                    usage[f"{key}_{sub_key}"] = sub_value
     return usage
