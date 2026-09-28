@@ -213,6 +213,9 @@ class OpenCodeAICore:
         }
         if structured_output is not None:
             metadata["structured"] = structured_output
+        reasoning = _extract_reasoning_parts(response)
+        if reasoning:
+            metadata["reasoning"] = reasoning
         return AIResponse(
             content=content,
             tool_calls=tool_calls,
@@ -766,6 +769,11 @@ def _parse_server_message(
     for part in getattr(message, "parts", ()) or ():
         if not isinstance(part, dict):
             continue
+        # Only surface answer text. Reasoning/step/tool parts are isolated from the
+        # visible answer (they are captured separately on metadata["reasoning"]).
+        part_type = str(part.get("type") or "text").strip().lower()
+        if part_type not in {"text", ""}:
+            continue
         text = part.get("text")
         if isinstance(text, str) and text.strip():
             part_lines.append(text.strip())
@@ -775,6 +783,21 @@ def _parse_server_message(
         if parsed_tool_call is not None:
             return "", usage, (parsed_tool_call,)
     return content, usage, ()
+
+
+def _extract_reasoning_parts(message: Any) -> str:
+    """Collect reasoning-only text so it can be retained in metadata, not the answer."""
+    parts = getattr(message, "parts", ()) or ()
+    reasoning_lines: list[str] = []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        if str(part.get("type") or "").strip().lower() != "reasoning":
+            continue
+        text = part.get("text")
+        if isinstance(text, str) and text.strip():
+            reasoning_lines.append(text.strip())
+    return "\n".join(reasoning_lines).strip()
 
 
 def _parse_opencode_output(
@@ -858,6 +881,10 @@ def _extract_tool_call_from_payload(
 
 def _extract_opencode_content(payload: Any) -> str:
     if isinstance(payload, dict):
+        # Skip reasoning/step/tool payloads so they never become answer text.
+        payload_type = str(payload.get("type") or "").strip().lower()
+        if payload_type in {"reasoning", "step-start", "step-finish", "tool"}:
+            return ""
         for key in ("content", "text", "message", "output", "response"):
             value = payload.get(key)
             if isinstance(value, str) and value.strip():
@@ -868,6 +895,9 @@ def _extract_opencode_content(payload: Any) -> str:
                 parts = []
                 for item in content:
                     if isinstance(item, dict):
+                        item_type = str(item.get("type") or "text").strip().lower()
+                        if item_type not in {"text", ""}:
+                            continue
                         text = item.get("text") or item.get("content")
                         if isinstance(text, str) and text.strip():
                             parts.append(text.strip())

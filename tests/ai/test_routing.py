@@ -10,7 +10,14 @@ from unittest.mock import Mock, patch
 
 from core.ai.models import AIResponse, ToolCallRequest
 from core.ai.opencode_client import OpenCodeClientError
-from core.ai.routing import DEFAULT_OPENCODE_MODEL, OpenCodeAICore, RoutingAICore, _opencode_output_format
+from core.ai.routing import (
+    DEFAULT_OPENCODE_MODEL,
+    OpenCodeAICore,
+    RoutingAICore,
+    _extract_reasoning_parts,
+    _opencode_output_format,
+    _parse_server_message,
+)
 from core.tools.base import BaseTool, ToolResult
 
 
@@ -705,6 +712,45 @@ class OpenCodeOutputSchemaTest(unittest.TestCase):
         core._structured_output_supported = True
         core._send_server_message("session", prompt="prompt", resolved_tool_names=[])
         self.assertEqual(captured["output_format"], _opencode_output_format([]))
+
+
+class ReasoningIsolationTest(unittest.TestCase):
+    def _message(self, parts):
+        return type(
+            "Message",
+            (),
+            {"raw": {"info": {}}, "parts": tuple(parts), "structured_output": None},
+        )()
+
+    def test_reasoning_excluded_from_content(self) -> None:
+        message = self._message(
+            [
+                {"type": "reasoning", "text": "The user is asking... let me analyze."},
+                {"type": "text", "text": "Final answer with facts."},
+            ]
+        )
+        content, _usage, _tools = _parse_server_message(message, allowed_tools=[])
+        self.assertIn("Final answer with facts.", content)
+        self.assertNotIn("let me analyze", content)
+
+    def test_reasoning_captured_separately(self) -> None:
+        message = self._message(
+            [
+                {"type": "reasoning", "text": "step one reasoning"},
+                {"type": "text", "text": "answer"},
+                {"type": "step-start"},
+                {"type": "tool", "text": "tool noise"},
+            ]
+        )
+        reasoning = _extract_reasoning_parts(message)
+        self.assertEqual(reasoning, "step one reasoning")
+        content, _usage, _tools = _parse_server_message(message, allowed_tools=[])
+        self.assertEqual(content, "answer")
+
+    def test_tool_part_not_in_content(self) -> None:
+        message = self._message([{"type": "tool", "text": "raw tool output"}])
+        content, _usage, _tools = _parse_server_message(message, allowed_tools=[])
+        self.assertEqual(content, "")
 
 
 if __name__ == "__main__":
