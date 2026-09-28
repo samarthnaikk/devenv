@@ -20,12 +20,19 @@ dependencies = [
     "agent-client-protocol>=0.12.0",
     "lancedb>=0.16.0",
     "mcp[cli]>=1.28.0",
+    "rapidfuzz>=3.0.0",
     "sentence-transformers>=3.0.0",
     "textual>=8.2.8",
+    "textual-autocomplete>=4.0.0",
 ]
 
 [project.optional-dependencies]
 spacy = ["spacy>=3.7"]
+dev = [
+    "pytest>=8.0",
+    "pytest-textual-snapshot>=1.0.0",
+    "textual-dev>=1.7.0",
+]
 
 [project.scripts]
 devenv-run = "core.runtime.tui:main"
