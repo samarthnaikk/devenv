@@ -707,13 +707,59 @@ def _is_structured_output_retryable(exc: OpenCodeClientError) -> bool:
 
 def _should_fallback_to_legacy_cli(exc: OpenCodeClientError) -> bool:
     explicit = os.getenv("DEVENV_OPENCODE_ALLOW_CLI_FALLBACK", "").strip().lower()
-    if explicit == "0" or explicit == "false" or explicit == "off":
+    if explicit in {"0", "false", "off"}:
         return False
-    if exc.status_code in {401, 403}:
-        return False
-    if exc.status_code is None:
+    # Auth/model problems on the server (e.g. the wrong provider account, an
+    # unknown model, or a dead key) are best handled by the CLI transport, which
+    # honors the concrete provider/model from the signed-in account.
+    if _is_auth_or_model_error(exc):
         return True
+    if exc.status_code is None:
+        # No HTTP status: only fall back when it looks like a transport problem,
+        # not an arbitrary application error.
+        return _looks_like_transport_error(exc)
     return exc.status_code >= 400
+
+
+def _looks_like_transport_error(exc: OpenCodeClientError) -> bool:
+    detail = str(exc).lower()
+    return any(
+        token in detail
+        for token in (
+            "unable to reach opencode server",
+            "timed out",
+            "connection refused",
+            "connection reset",
+            "operation not permitted",
+            "network is unreachable",
+            "temporary failure in name resolution",
+            "server failed",
+        )
+    )
+
+
+def _is_auth_or_model_error(exc: OpenCodeClientError) -> bool:
+    if exc.status_code in {401, 403}:
+        return True
+    detail = str(exc).lower()
+    payload = exc.payload
+    if isinstance(payload, dict):
+        detail = f"{detail} {json.dumps(payload, sort_keys=True).lower()}".strip()
+    return any(
+        token in detail
+        for token in (
+            "invalid credential",
+            "unauthorized",
+            "authentication",
+            "invalid api key",
+            "api key",
+            "no such model",
+            "unknown model",
+            "model not found",
+            "provider not found",
+            "not authenticated",
+        )
+    )
 
 
 def _transport_backoff_seconds() -> float:

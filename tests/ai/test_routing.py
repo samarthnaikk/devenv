@@ -760,6 +760,33 @@ class ServerModelForwardingTest(unittest.TestCase):
         self.assertEqual(ref.model_id, "longcat-2.5-preview-free")
 
 
+class AuthFallbackTest(unittest.TestCase):
+    def test_auth_error_falls_back_to_cli(self) -> None:
+        from core.ai.routing import _should_fallback_to_legacy_cli
+
+        exc = OpenCodeClientError(
+            "Upstream request failed: Invalid credential",
+            status_code=401,
+        )
+        self.assertTrue(_should_fallback_to_legacy_cli(exc))
+
+    def test_unknown_model_falls_back_to_cli(self) -> None:
+        from core.ai.routing import _should_fallback_to_legacy_cli
+
+        exc = OpenCodeClientError("No such model: foo", status_code=400)
+        self.assertTrue(_should_fallback_to_legacy_cli(exc))
+
+    def test_model_not_found_payload_falls_back(self) -> None:
+        from core.ai.routing import _should_fallback_to_legacy_cli
+
+        exc = OpenCodeClientError(
+            "server error",
+            status_code=400,
+            payload={"message": "model not found"},
+        )
+        self.assertTrue(_should_fallback_to_legacy_cli(exc))
+
+
 class ReasoningIsolationTest(unittest.TestCase):
     def _message(self, parts):
         return type(
