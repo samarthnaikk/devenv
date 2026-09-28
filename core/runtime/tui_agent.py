@@ -36,7 +36,7 @@ from core.ai.acp_agent import ACPAgentError, ACPAgentSession
 from core.ai.agents import AgentAvailability
 
 from .tui_theme import BLUE, ERROR as ERROR_COLOR, TEAL, TEXT, TEXT_MUTED, WARN
-from .tui_widgets import Choice, SelectionScreen
+from .tui_widgets import Choice, DiffView, SelectionScreen, ToolTrace
 
 try:  # pragma: no cover - rich ships with textual
     from rich.markup import escape as _rich_escape
@@ -130,7 +130,7 @@ class AgentScreen(Screen[None]):
         self._live_widget: Static | None = None
         self._thought_parts: list[str] = []
         self._thought_widget: Static | None = None
-        self._tool_widgets: dict[str, Static] = {}
+        self._tool_widgets: dict[str, Any] = {}
         self._busy = False
         self._connected = False
         self._placeholder: Static | None = None
@@ -298,11 +298,10 @@ class AgentScreen(Screen[None]):
         return ""
 
     def _handle_tool_start(self, update: ToolCallStart) -> None:
-        markup = (
-            f"[b {WARN}]tool[/] [{TEXT}]{_rich_escape(update.title or update.tool_call_id)}[/] "
-            f"[{TEXT_MUTED}]{_rich_escape(update.kind or '')}·{update.status}[/]"
-        )
-        widget = Static(markup, classes="agent-tool", markup=True)
+        title = update.title or update.tool_call_id
+        kind = update.kind or ""
+        label = f"tool · {title}" + (f" ({kind})" if kind else "")
+        widget = ToolTrace(label, collapsed=True)
         self._tool_widgets[update.tool_call_id] = widget
         self._mount(widget)
 
@@ -312,12 +311,26 @@ class AgentScreen(Screen[None]):
             return
         title = update.title or update.tool_call_id
         status = update.status or "in_progress"
-        color = TEAL if status == "completed" else (ERROR_COLOR if status == "failed" else WARN)
-        widget.update(
-            f"[b {WARN}]tool[/] [{TEXT}]{_rich_escape(title)}[/] "
-            f"[{color}]{status}[/]"
-        )
+        widget.set_status(f"tool · {title} · {status}", self._tool_content_text(update))
+        self._mount_tool_diffs(update)
         self._scroll_end()
+
+    @staticmethod
+    def _tool_content_text(update: Any) -> str:
+        parts: list[str] = []
+        for item in getattr(update, "content", None) or []:
+            text = getattr(item, "text", None)
+            if text:
+                parts.append(str(text))
+        return "\n".join(parts)
+
+    def _mount_tool_diffs(self, update: Any) -> None:
+        for item in getattr(update, "content", None) or []:
+            path = getattr(item, "path", None)
+            old_text = getattr(item, "old_text", None)
+            new_text = getattr(item, "new_text", None)
+            if path is not None and (old_text is not None or new_text is not None):
+                self._mount(DiffView(str(path), old_text, new_text))
 
     def _handle_plan(self, update: AgentPlanUpdate) -> None:
         lines = [f"[b {BLUE}]plan[/]"]
@@ -383,7 +396,7 @@ class AgentScreen(Screen[None]):
             )
         )
 
-    def _mount(self, widget: Static) -> None:
+    def _mount(self, widget: Any) -> None:
         if not self.is_mounted:
             return
         if self._placeholder is not None and self._placeholder.is_mounted:

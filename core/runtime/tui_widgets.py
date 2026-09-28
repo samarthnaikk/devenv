@@ -12,9 +12,9 @@ from typing import Any, Generic, Iterable, Sequence, TypeVar
 
 from textual import on
 from textual.app import ComposeResult
-from textual.containers import VerticalScroll
+from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Input, OptionList, Static
+from textual.widgets import Collapsible, Input, Markdown, OptionList, Static
 from textual.widgets.option_list import Option
 
 from .tui_theme import BLUE, PANEL, TEAL, TEXT, TEXT_MUTED, WARN
@@ -33,7 +33,15 @@ except Exception:  # pragma: no cover
     _fuzz = None
 
 
-__all__ = ["StatusBar", "HelpOverlay", "Choice", "SelectionScreen"]
+__all__ = [
+    "StatusBar",
+    "HelpOverlay",
+    "Choice",
+    "SelectionScreen",
+    "ResultCard",
+    "ToolTrace",
+    "DiffView",
+]
 
 T = TypeVar("T")
 
@@ -428,3 +436,98 @@ class HelpOverlay(ModalScreen[None]):
 
     def action_close_overlay(self) -> None:
         self.dismiss(None)
+
+
+class ResultCard(Vertical):
+    """A result card: optional title plus a Markdown, Rich, or plain body."""
+
+    DEFAULT_CSS = """
+    ResultCard {
+        background: $surface;
+        border: round $border;
+        padding: 0 1;
+        margin: 1 0;
+        height: auto;
+    }
+
+    ResultCard > .result-card-title {
+        color: $primary;
+        text-style: bold;
+    }
+
+    ResultCard > Markdown {
+        height: auto;
+        background: transparent;
+    }
+    """
+
+    def __init__(self, body: str, *, title: str = "", mode: str = "markdown") -> None:
+        super().__init__()
+        self._body = body
+        self._title = title
+        self._mode = mode
+
+    def compose(self) -> ComposeResult:
+        if self._title:
+            yield Static(self._title, classes="result-card-title", markup=False)
+        if self._mode == "markdown":
+            yield Markdown(self._body)
+        elif self._mode == "rich":
+            yield Static(self._body, markup=True)
+        else:
+            yield Static(self._body, markup=False)
+
+
+class ToolTrace(Collapsible):
+    """Collapsible per-tool trace used in the live agent transcript."""
+
+    DEFAULT_CSS = """
+    ToolTrace {
+        background: $surface;
+        border-left: thick $warning;
+        margin: 0 0 1 0;
+        height: auto;
+    }
+
+    ToolTrace > Contents {
+        background: transparent;
+    }
+    """
+
+    def __init__(self, title: str, body: str = "", *, collapsed: bool = True) -> None:
+        self._body_static = Static(body, markup=False)
+        super().__init__(self._body_static, title=title, collapsed=collapsed)
+
+    def set_status(self, title: str, body: str | None = None) -> None:
+        self.title = title
+        if body is not None:
+            self._body_static.update(body)
+
+
+class DiffView(Static):
+    """Read-only unified diff rendered with syntax highlighting."""
+
+    def __init__(self, path: str, old_text: str | None, new_text: str | None) -> None:
+        self.path = path
+        self.old_text = old_text or ""
+        self.new_text = new_text or ""
+        super().__init__(self._render_diff(), markup=False)
+
+    def _render_diff(self) -> Any:
+        import difflib
+
+        from rich.syntax import Syntax
+        from rich.text import Text
+
+        diff = "\n".join(
+            difflib.unified_diff(
+                self.old_text.splitlines(),
+                self.new_text.splitlines(),
+                fromfile=f"a/{self.path}",
+                tofile=f"b/{self.path}",
+                lineterm="",
+            )
+        )
+        if not diff.strip():
+            return Text("(no changes)", style="dim")
+        return Syntax(diff, "diff", line_numbers=False, word_wrap=False, background_color="default")

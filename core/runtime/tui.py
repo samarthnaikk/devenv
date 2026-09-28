@@ -59,7 +59,15 @@ try:
     )
 
     from .tui_commands import DevenvCommandProvider, build_command_registry
-    from .tui_widgets import Choice, HelpOverlay, SelectionScreen, StatusBar
+    from .tui_widgets import (
+        Choice,
+        DiffView,
+        HelpOverlay,
+        ResultCard,
+        SelectionScreen,
+        StatusBar,
+        ToolTrace,
+    )
 
     try:
         from textual_autocomplete import AutoComplete, DropdownItem
@@ -1471,7 +1479,7 @@ if TEXTUAL_AVAILABLE:
             self._busy = False
             self._last_outcome: RetrievalOutcome | None = None
             self._pending_assistant_answer: str = ""
-            self._result_cards: list[Static] = []
+            self._result_cards: list[Any] = []
             self._log_queue: "queue.Queue[tuple[float, int, str, str]]" = queue.Queue()
             self._bridge = TUILogBridge(self._log_queue)
             self._saved_handlers: list[logging.Handler] = []
@@ -2000,15 +2008,15 @@ if TEXTUAL_AVAILABLE:
                 oldest.remove()
 
         def _mount_plain_card(self, lines: list[str]) -> None:
-            """Mount a card whose text is never parsed as Rich markup.
+            """Mount a result card whose text must not be parsed as Rich markup.
 
-            Used for retrieval output, which embeds raw session/tool text that can
-            contain bracketed sequences capable of breaking markup parsing.
+            The body is rendered with the Markdown parser, which treats bracketed
+            session/tool text as literal content and cannot raise ``MarkupError``.
             """
             if not lines:
                 lines = ["(empty)"]
             container = self.query_one("#results-list", VerticalScroll)
-            card = Static("\n".join(lines), markup=False, classes="result-card")
+            card = ResultCard("\n".join(lines), mode="markdown")
             container.mount(card, before=0)
             self._result_cards.insert(0, card)
             while len(self._result_cards) > self.MAX_RESULT_CARDS:
