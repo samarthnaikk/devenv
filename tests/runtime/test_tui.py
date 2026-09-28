@@ -1071,6 +1071,27 @@ class DevenvTextualAppTest(unittest.IsolatedAsyncioTestCase):
                 await pilot.pause()
                 self.assertIsInstance(app.screen, TextOverlay)
 
+    async def test_help_overlay_escape_dismisses_without_crashing(self) -> None:
+        from core.runtime.tui_widgets import HelpOverlay
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            app = DevenvTextualApp(controller)
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.run_command_line("/help")
+                await pilot.pause()
+                self.assertIsInstance(app.screen, HelpOverlay)
+                # Any keypress must resolve bindings without crashing.
+                await pilot.press("a")
+                await pilot.pause()
+                await pilot.press("escape")
+                await pilot.pause()
+                self.assertNotIsInstance(app.screen, HelpOverlay)
+
     def test_style_honors_no_color(self) -> None:
         from core.runtime.tui import Ansi, _style
 

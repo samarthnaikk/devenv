@@ -412,7 +412,9 @@ class HelpOverlay(ModalScreen[None]):
     ) -> None:
         super().__init__()
         self._commands = list(commands)
-        self._bindings = list(bindings)
+        # NOTE: do not use ``self._bindings`` -- that name is reserved by Textual's
+        # Widget base class for its compiled ``Bindings`` object.
+        self._binding_rows = list(bindings)
 
     def compose(self) -> ComposeResult:
         from .tui_commands import group_by_category
@@ -420,11 +422,11 @@ class HelpOverlay(ModalScreen[None]):
         with VerticalScroll(id="help-box"):
             yield Static("Keyboard & Commands", id="help-title")
             yield Static("Press ? or Esc to close.", classes="help-hint")
-            if self._bindings:
+            if self._binding_rows:
                 yield Static("Keys", classes="help-heading")
                 key_lines = "   ".join(
                     f"[b {TEAL}]{_escape(key)}[/] {_escape(label or action)}"
-                    for key, action, label in self._bindings
+                    for key, action, label in self._binding_rows
                 )
                 yield Static(key_lines, classes="help-body", markup=True)
             for category, specs in group_by_category(self._commands):
