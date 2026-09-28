@@ -520,6 +520,8 @@ class DevenvTUIController:
             return TUICommandResult(self._handle_model_command(args))
         if command == "/models":
             return TUICommandResult(self._handle_models_command(args))
+        if command in {"/assistant-model", "/assistant"}:
+            return TUICommandResult(self._handle_assistant_model_command(args))
         if command == "/ai":
             return self._handle_ai_command(args)
         if command == "/providers":
@@ -573,6 +575,7 @@ class DevenvTUIController:
                 "/model selector <name>  Set the retrieval-selector model",
                 "/model refresh          Refresh the OpenCode model list",
                 "/models [provider]      List all models OpenCode reports",
+                "/assistant-model        Pick the answer model, then the selector model",
                 "/ai                     List available AI agents",
                 "/ai <agent>             Connect to a native agent (opencode|gemini|claude|codex)",
                 "/providers              Show session-source health",
@@ -783,6 +786,73 @@ class DevenvTUIController:
         self.kernel.session_selector_model = model
         self._persist_state()
         return f"Retrieval-selector model set to `{model}`."
+
+    def _handle_assistant_model_command(self, args: list[str]) -> str:
+        """Set the answer model and the retrieval-selector model together.
+
+        Usage:
+            /assistant-model <answer> [selector]
+            /assistant-model show
+        """
+        if args and args[0].lower() in {"show", "status"}:
+            answer = self.current_answer_model() or "(default)"
+            selector = self.get_selector_model() or "(unset)"
+            return (
+                "Assistant models:\n"
+                f"  answer model   : {answer}\n"
+                f"  selector model : {selector}\n\n"
+                "Use /assistant-model <answer> [selector] to set them."
+            )
+        if not args:
+            return self._interactive_assistant_model_picker() or "Model selection cancelled."
+        answer_model = args[0].strip()
+        if not answer_model:
+            return "Answer model cannot be empty."
+        selector_model = " ".join(args[1:]).strip()
+        answer_message = self._handle_model_command([answer_model])
+        if selector_model:
+            selector_message = self._handle_selector_model_command([selector_model])
+            return f"{answer_message}\n{selector_message}"
+        return answer_message
+
+    def _interactive_assistant_model_picker(self) -> str | None:
+        if not self.prompt_input:
+            return None
+        models = self.available_models()
+        if not models:
+            return "No OpenCode models available."
+        options = [model.full_id for model in models]
+        answer_index = self._prompt_choice("Assistant Answer Model", [*options, "Enter custom model…"])
+        if answer_index is None:
+            return None
+        if answer_index == len(options):
+            answer_model = self._prompt_text("Custom answer model name\n> ")
+            if answer_model is None:
+                return None
+        else:
+            answer_model = options[answer_index]
+        selector_current = self.get_selector_model()
+        selector_options = list(options)
+        if selector_current and selector_current not in selector_options:
+            selector_options.insert(0, selector_current)
+        selector_index = self._prompt_choice(
+            "Assistant Selector Model", [*selector_options, "Keep current / skip", "Enter custom model…"]
+        )
+        if selector_index is None:
+            return None
+        if selector_index == len(selector_options):
+            selector_model = selector_current
+        elif selector_index == len(selector_options) + 1:
+            selector_model = self._prompt_text("Custom selector model name\n> ")
+            if selector_model is None:
+                return None
+        else:
+            selector_model = selector_options[selector_index]
+        answer_message = self._handle_model_command([answer_model])
+        if selector_model and selector_model.strip():
+            selector_message = self._handle_selector_model_command([selector_model.strip()])
+            return f"{answer_message}\n{selector_message}"
+        return answer_message
 
     def _handle_models_command(self, args: list[str]) -> str:
         provider = args[0].strip().lower() if args else None
@@ -1152,6 +1222,14 @@ class DevenvTUIController:
                 "model refresh reload opencode models",
             )
         )
+        entries.append(
+            PaletteEntry(
+                "assistant_model_pick",
+                "Set assistant answer + selector models",
+                "/assistant-model",
+                "assistant model answer selector both pick open",
+            )
+        )
         for provider in SESSION_PROVIDERS:
             state = "on" if self.access_policy.can_access_provider(provider) else "off"
             entries.append(
@@ -1332,6 +1410,7 @@ if TEXTUAL_AVAILABLE:
             self.controller = controller
             self._busy = False
             self._last_outcome: RetrievalOutcome | None = None
+            self._pending_assistant_answer: str = ""
             self._result_cards: list[Static] = []
             self._log_queue: "queue.Queue[tuple[float, int, str, str]]" = queue.Queue()
             self._bridge = TUILogBridge(self._log_queue)
@@ -1529,6 +1608,13 @@ if TEXTUAL_AVAILABLE:
                     self._activity(f"command: {value}")
                     self._handle_model_input(value)
                     return
+                if command_name in {"/assistant-model", "/assistant"}:
+                    self._activity(f"command: {value}")
+                    if len(value.split()) == 1:
+                        self._open_assistant_model_picker()
+                    else:
+                        self._run_model_command(value)
+                    return
                 result = self.controller.handle_command(value)
                 self._activity(f"command: {value}")
                 if result.message:
@@ -1629,6 +1715,77 @@ if TEXTUAL_AVAILABLE:
             self._mount_command_card(f"/model {role}", message)
             self._refresh_header()
             self.notify(message)
+
+        def _open_assistant_model_picker(self) -> None:
+            self._activity("loading models for the assistant picker…")
+            self._load_and_open_assistant_model_picker()
+
+        @work(thread=True)
+        def _load_and_open_assistant_model_picker(self) -> None:
+            try:
+                models = self.controller.available_models()
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self.call_from_thread(self.notify, f"Could not load models: {exc}", severity="error")
+                return
+            self.call_from_thread(self._push_assistant_answer_picker, models)
+
+        def _push_assistant_answer_picker(self, models: Any) -> None:
+            from .tui_model import ModelPickerScreen
+
+            if not models:
+                self.notify("No OpenCode models available.", severity="warning")
+                return
+            self.push_screen(
+                ModelPickerScreen(
+                    models,
+                    current=self.controller.current_answer_model(),
+                    title="Assistant · step 1/2 — answer model (Enter to continue)",
+                ),
+                self._on_assistant_answer_picked,
+            )
+
+        def _on_assistant_answer_picked(self, model: str | None) -> None:
+            if not model:
+                return
+            self._pending_assistant_answer = model
+            self._open_assistant_selector_picker()
+
+        @work(thread=True)
+        def _open_assistant_selector_picker(self) -> None:
+            try:
+                models = self.controller.available_models()
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self.call_from_thread(self.notify, f"Could not load models: {exc}", severity="error")
+                return
+            self.call_from_thread(self._push_assistant_selector_picker, models)
+
+        def _push_assistant_selector_picker(self, models: Any) -> None:
+            from .tui_model import ModelPickerScreen
+
+            if not models:
+                self.notify("No OpenCode models available.", severity="warning")
+                return
+            self.push_screen(
+                ModelPickerScreen(
+                    models,
+                    current=self.controller.get_selector_model(),
+                    title="Assistant · step 2/2 — selector model (ESC to answer-only)",
+                ),
+                self._on_assistant_selector_picked,
+            )
+
+        def _on_assistant_selector_picked(self, model: str | None) -> None:
+            answer_model = getattr(self, "_pending_assistant_answer", "") or ""
+            self._pending_assistant_answer = ""
+            if not answer_model:
+                return
+            answer_message = self.controller.set_answer_model(answer_model)
+            messages = [answer_message]
+            if model:
+                messages.append(self.controller.set_selector_model(model))
+            self._mount_command_card("/assistant-model", "\n".join(messages))
+            self._refresh_header()
+            self.notify(messages[-1])
 
         @work(thread=True)
         def _warm_model_cache(self) -> None:

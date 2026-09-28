@@ -285,6 +285,62 @@ class DevenvTUITest(unittest.TestCase):
         self.assertIn("Retrieval-selector model set", result.message)
         self.assertEqual(controller.get_selector_model(), "opencode/claude-haiku-4-5")
 
+    def test_assistant_model_command_sets_both_models(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+            result = controller.handle_command(
+                "/assistant-model opencode/longcat-2.5-preview-free opencode/deepseek-v4.1-flash"
+            )
+
+        self.assertIn("opencode/longcat-2.5-preview-free", result.message)
+        self.assertIn("Retrieval-selector model set", result.message)
+        self.assertEqual(
+            controller.kernel.ai.backend_models["opencode"], "opencode/longcat-2.5-preview-free"
+        )
+        self.assertEqual(controller.get_selector_model(), "opencode/deepseek-v4.1-flash")
+
+    def test_assistant_model_command_answer_only_keeps_selector(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            controller.handle_command("/model selector opencode/claude-haiku-4-5")
+
+            result = controller.handle_command("/assistant-model opencode/claude-sonnet-4")
+
+        self.assertIn("opencode/claude-sonnet-4", result.message)
+        self.assertEqual(controller.get_selector_model(), "opencode/claude-haiku-4-5")
+
+    def test_assistant_model_show_reports_both(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            controller.handle_command("/assistant-model opencode/claude-sonnet-4 opencode/claude-haiku-4-5")
+
+            result = controller.handle_command("/assistant-model show")
+
+        self.assertIn("answer model", result.message)
+        self.assertIn("selector model", result.message)
+        self.assertIn("opencode/claude-haiku-4-5", result.message)
+
+    def test_assistant_model_palette_entry_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            entries = controller.palette_entries("assistant")
+
+        commands = [entry.command for entry in entries]
+        self.assertIn("/assistant-model", commands)
+
     def test_models_command_lists_models(self) -> None:
         models = [
             OpenCodeModelInfo("opencode", "claude-sonnet-4", name="Claude Sonnet 4", cost_input=3.0),
