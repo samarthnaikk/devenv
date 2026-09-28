@@ -11,9 +11,9 @@ import logging
 from typing import Any
 
 from textual.app import ComposeResult
-from textual.containers import Vertical, VerticalScroll
-from textual.screen import ModalScreen, Screen
-from textual.widgets import Footer, Input, Label, ListItem, ListView, Static
+from textual.containers import VerticalScroll
+from textual.screen import Screen
+from textual.widgets import Footer, Input, Static
 
 from acp.schema import (
     AgentMessageChunk,
@@ -36,6 +36,7 @@ from core.ai.acp_agent import ACPAgentError, ACPAgentSession
 from core.ai.agents import AgentAvailability
 
 from .tui_theme import BLUE, ERROR as ERROR_COLOR, TEAL, TEXT, TEXT_MUTED, WARN
+from .tui_widgets import Choice, SelectionScreen
 
 try:  # pragma: no cover - rich ships with textual
     from rich.markup import escape as _rich_escape
@@ -108,148 +109,6 @@ _AGENT_CSS = f"""
     border: round {TEAL};
 }}
 """
-
-
-class AgentPickerScreen(ModalScreen[str | None]):
-    """Dropdown of available agents; dismisses with the chosen agent name."""
-
-    CSS = """
-    AgentPickerScreen {
-        align: center middle;
-    }
-
-    #agent-picker-box {
-        width: 64;
-        height: auto;
-        max-height: 80%;
-        background: #16191e;
-        border: round #2d333b;
-        padding: 1 2;
-    }
-
-    #agent-picker-title {
-        text-style: bold;
-        color: #4fdbc8;
-        margin-bottom: 1;
-    }
-
-    ListItem {
-        padding: 0 1;
-    }
-
-    ListItem.--highlight {
-        background: #4fdbc8;
-        color: #003731;
-    }
-    """
-
-    BINDINGS = [("escape", "cancel", "Cancel")]
-
-    def __init__(self, options: list[AgentAvailability]) -> None:
-        super().__init__()
-        self._options = options
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="agent-picker-box"):
-            yield Static("Connect to an AI agent", id="agent-picker-title")
-            yield ListView(
-                *[
-                    ListItem(Label(self._label(option)), id=f"agent-{index}")
-                    for index, option in enumerate(self._options)
-                ],
-                id="agent-picker-list",
-            )
-
-    @staticmethod
-    def _label(option: AgentAvailability) -> str:
-        if option.available:
-            label = f"{option.spec.title}  ·  {option.spec.description}"
-            if option.launch is not None and option.launch.label:
-                label = f"{label}  ·  {option.launch.label}"
-            return label
-        return f"{option.spec.title}  ·  unavailable: {option.detail}"
-
-    def on_mount(self) -> None:
-        self.query_one("#agent-picker-list", ListView).focus()
-
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        option = self._options[event.index]
-        if not option.available:
-            self.notify(option.detail, title=option.spec.title, severity="warning")
-            return
-        self.dismiss(option.spec.name)
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
-
-
-class PermissionModal(ModalScreen[str | None]):
-    """Ask the user to answer an ACP ``session/request_permission`` call."""
-
-    CSS = """
-    PermissionModal {
-        align: center middle;
-    }
-
-    #permission-box {
-        width: 70;
-        height: auto;
-        max-height: 80%;
-        background: #16191e;
-        border: round #f0b26b;
-        padding: 1 2;
-    }
-
-    #permission-title {
-        text-style: bold;
-        color: #f0b26b;
-        margin-bottom: 1;
-    }
-
-    #permission-detail {
-        color: #859490;
-        margin-bottom: 1;
-    }
-
-    ListItem {
-        padding: 0 1;
-    }
-
-    ListItem.--highlight {
-        background: #f0b26b;
-        color: #0d0f12;
-    }
-    """
-
-    BINDINGS = [("escape", "deny", "Deny")]
-
-    def __init__(self, tool_call: ToolCallUpdate, options: list[PermissionOption]) -> None:
-        super().__init__()
-        self._tool_call = tool_call
-        self._options = options
-
-    def compose(self) -> ComposeResult:
-        title = getattr(self._tool_call, "title", None) or "Tool call"
-        kind = getattr(self._tool_call, "kind", None) or "tool"
-        with Vertical(id="permission-box"):
-            yield Static("Permission required", id="permission-title")
-            yield Static(f"{title}  ({kind})", id="permission-detail")
-            yield ListView(
-                *[
-                    ListItem(Label(option.name or option.option_id), id=f"option-{index}")
-                    for index, option in enumerate(self._options)
-                ],
-                id="permission-list",
-            )
-
-    def on_mount(self) -> None:
-        self.query_one("#permission-list", ListView).focus()
-
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        self.dismiss(self._options[event.index].option_id)
-
-    def action_deny(self) -> None:
-        self.dismiss(None)
 
 
 class AgentScreen(Screen[None]):
@@ -387,7 +246,23 @@ class AgentScreen(Screen[None]):
     ) -> RequestPermissionResponse:
         if not options:
             return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
-        choice = await self.app.push_screen_wait(PermissionModal(tool_call, options))
+        title = getattr(tool_call, "title", None) or "Tool call"
+        kind = getattr(tool_call, "kind", None) or "tool"
+        choices = [
+            Choice(
+                value=option.option_id,
+                label=option.name or option.option_id,
+                detail=str(getattr(option, "kind", "") or ""),
+            )
+            for option in options
+        ]
+        choice = await self.app.push_screen_wait(
+            SelectionScreen(
+                choices,
+                title="Permission required",
+                hint=f"{title} ({kind})",
+            )
+        )
         if choice is None:
             return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
         return RequestPermissionResponse(
@@ -547,4 +422,4 @@ class AgentScreen(Screen[None]):
             pass
 
 
-__all__ = ["AgentPickerScreen", "AgentScreen", "PermissionModal"]
+__all__ = ["AgentScreen"]

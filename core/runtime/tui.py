@@ -57,7 +57,7 @@ try:
     )
 
     from .tui_commands import DevenvCommandProvider, build_command_registry
-    from .tui_widgets import HelpOverlay, StatusBar
+    from .tui_widgets import Choice, HelpOverlay, SelectionScreen, StatusBar
 
     try:
         from textual_autocomplete import AutoComplete, DropdownItem
@@ -1783,9 +1783,15 @@ if TEXTUAL_AVAILABLE:
                 return
             self.call_from_thread(self._push_model_picker, role, models)
 
-        def _push_model_picker(self, role: str, models: Any) -> None:
-            from .tui_model import ModelPickerScreen
+        def _model_choices(self, models: Any) -> list[Any]:
+            from .tui_model import format_model_detail
 
+            return [
+                Choice(value=model.full_id, label=model.full_id, detail=format_model_detail(model))
+                for model in models
+            ]
+
+        def _push_model_picker(self, role: str, models: Any) -> None:
             if not models:
                 self.notify("No OpenCode models available.", severity="warning")
                 return
@@ -1796,7 +1802,13 @@ if TEXTUAL_AVAILABLE:
                 current = self.controller.current_answer_model()
                 title = "Select the answer model"
             self.push_screen(
-                ModelPickerScreen(models, current=current, title=title),
+                SelectionScreen(
+                    self._model_choices(models),
+                    title=title,
+                    current=current,
+                    allow_custom=True,
+                    custom_placeholder="Type a model id (provider/model) and press Enter",
+                ),
                 lambda choice: self._on_model_picked(role, choice),
             )
 
@@ -1825,16 +1837,16 @@ if TEXTUAL_AVAILABLE:
             self.call_from_thread(self._push_assistant_answer_picker, models)
 
         def _push_assistant_answer_picker(self, models: Any) -> None:
-            from .tui_model import ModelPickerScreen
-
             if not models:
                 self.notify("No OpenCode models available.", severity="warning")
                 return
             self.push_screen(
-                ModelPickerScreen(
-                    models,
-                    current=self.controller.current_answer_model(),
+                SelectionScreen(
+                    self._model_choices(models),
                     title="Assistant · step 1/2 — answer model (Enter to continue)",
+                    current=self.controller.current_answer_model(),
+                    allow_custom=True,
+                    custom_placeholder="Type an answer model id and press Enter",
                 ),
                 self._on_assistant_answer_picked,
             )
@@ -1855,16 +1867,16 @@ if TEXTUAL_AVAILABLE:
             self.call_from_thread(self._push_assistant_selector_picker, models)
 
         def _push_assistant_selector_picker(self, models: Any) -> None:
-            from .tui_model import ModelPickerScreen
-
             if not models:
                 self.notify("No OpenCode models available.", severity="warning")
                 return
             self.push_screen(
-                ModelPickerScreen(
-                    models,
-                    current=self.controller.get_selector_model(),
+                SelectionScreen(
+                    self._model_choices(models),
                     title="Assistant · step 2/2 — selector model (ESC to answer-only)",
+                    current=self.controller.get_selector_model(),
+                    allow_custom=True,
+                    custom_placeholder="Type a selector model id and press Enter",
                 ),
                 self._on_assistant_selector_picked,
             )
@@ -1890,10 +1902,30 @@ if TEXTUAL_AVAILABLE:
                 return
 
         def _open_agent_picker(self) -> None:
-            from .tui_agent import AgentPickerScreen
-
-            options = self.controller.available_agent_options()
-            self.push_screen(AgentPickerScreen(options), self._on_agent_picked)
+            choices: list[Any] = []
+            for option in self.controller.available_agent_options():
+                if option.available:
+                    detail = option.spec.description or ""
+                    if option.launch is not None and option.launch.label:
+                        detail = f"{detail}  ·  {option.launch.label}" if detail else option.launch.label
+                else:
+                    detail = f"unavailable: {option.detail}"
+                choices.append(
+                    Choice(
+                        value=option.spec.name,
+                        label=option.spec.title,
+                        detail=detail,
+                        disabled=not option.available,
+                    )
+                )
+            self.push_screen(
+                SelectionScreen(
+                    choices,
+                    title="Connect to an AI agent",
+                    hint="Enter to connect · Esc to cancel",
+                ),
+                self._on_agent_picked,
+            )
 
         def _on_agent_picked(self, name: str | None) -> None:
             if name:

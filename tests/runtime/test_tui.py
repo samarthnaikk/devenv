@@ -885,7 +885,7 @@ class DevenvTextualAppTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn(name, rendered)
 
     async def test_open_agents_action_pushes_picker(self) -> None:
-        from core.runtime.tui_agent import AgentPickerScreen
+        from core.runtime.tui_widgets import SelectionScreen
 
         with tempfile.TemporaryDirectory() as tempdir:
             controller = DevenvTUIController(
@@ -897,7 +897,7 @@ class DevenvTextualAppTest(unittest.IsolatedAsyncioTestCase):
                 await pilot.pause()
                 app.action_open_agents()
                 await pilot.pause()
-                self.assertIsInstance(app.screen, AgentPickerScreen)
+                self.assertIsInstance(app.screen, SelectionScreen)
 
     async def test_agents_binding_is_registered(self) -> None:
         bindings = {}
