@@ -304,8 +304,8 @@ class DevenvTUITest(unittest.TestCase):
             controller.kernel.ai.backend_models["opencode"], DEFAULT_ASSISTANT_MODEL
         )
         self.assertEqual(controller.get_selector_model(), DEFAULT_TUI_SELECTOR_MODEL)
-        self.assertEqual(DEFAULT_ASSISTANT_MODEL, "opencode/longcat-2.5-preview-free")
-        self.assertEqual(DEFAULT_TUI_SELECTOR_MODEL, "opencode/longcat-2.5-preview-free")
+        self.assertEqual(DEFAULT_ASSISTANT_MODEL, "opencode-go/longcat-2.5-preview-free")
+        self.assertEqual(DEFAULT_TUI_SELECTOR_MODEL, "opencode-go/longcat-2.5-preview-free")
 
     def test_defaults_do_not_override_persisted_selector(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

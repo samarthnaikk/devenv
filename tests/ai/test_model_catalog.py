@@ -73,6 +73,32 @@ class ParseModelListTest(unittest.TestCase):
         self.assertEqual(OpenCodeModelInfo("opencode", "x").label, "x")
 
 
+class ProviderPreferenceTest(unittest.TestCase):
+    def test_preferred_provider_sorts_first(self) -> None:
+        from core.ai.model_catalog import _filter_provider, OpenCodeModelInfo
+
+        models = [
+            OpenCodeModelInfo("anthropic", "x"),
+            OpenCodeModelInfo("opencode", "y"),
+            OpenCodeModelInfo("opencode-go", "z"),
+        ]
+        ordered = _filter_provider(models, None)
+        self.assertEqual(ordered[0].provider_id, "opencode-go")
+        self.assertEqual(ordered[1].provider_id, "opencode")
+
+    def test_explicit_provider_filter_still_works(self) -> None:
+        from core.ai.model_catalog import _filter_provider, OpenCodeModelInfo
+
+        models = [OpenCodeModelInfo("opencode", "y"), OpenCodeModelInfo("opencode-go", "z")]
+        filtered = _filter_provider(models, "opencode-go")
+        self.assertEqual([m.provider_id for m in filtered], ["opencode-go"])
+
+    def test_default_fallback_is_go_longcat(self) -> None:
+        from core.ai.model_catalog import DEFAULT_FALLBACK_MODELS
+
+        self.assertEqual(DEFAULT_FALLBACK_MODELS[0], "opencode-go/longcat-2.5-preview-free")
+
+
 class DiscoverModelsTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()

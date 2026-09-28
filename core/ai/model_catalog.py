@@ -12,9 +12,11 @@ from typing import Any
 
 DEFAULT_TTL_SECONDS = 6 * 60 * 60
 DEFAULT_TIMEOUT_SECONDS = 30.0
+# Providers whose signed-in account should be surfaced first in pickers.
+PREFERRED_PROVIDER_ORDER = ("opencode-go", "opencode")
 DEFAULT_FALLBACK_MODELS: tuple[str, ...] = (
+    "opencode-go/longcat-2.5-preview-free",
     "opencode/claude-sonnet-4",
-    "opencode/claude-haiku-4-5",
     "opencode/gpt-5-codex",
 )
 
@@ -153,12 +155,22 @@ def _decode_leading_json(blob: str, decoder: json.JSONDecoder) -> tuple[Any, int
     return payload, blob[:end].count("\n")
 
 
+def _provider_rank(provider_id: str) -> int:
+    lowered = provider_id.lower()
+    for index, preferred in enumerate(PREFERRED_PROVIDER_ORDER):
+        if lowered == preferred:
+            return index
+    return len(PREFERRED_PROVIDER_ORDER)
+
+
 def _filter_provider(
     models: Sequence[OpenCodeModelInfo],
     provider: str | None,
 ) -> list[OpenCodeModelInfo]:
     if not provider:
-        return list(models)
+        # Surface the signed-in provider's models first while keeping every
+        # authenticated provider available.
+        return sorted(models, key=lambda model: _provider_rank(model.provider_id))
     cleaned = provider.strip().lower()
     return [model for model in models if model.provider_id.lower() == cleaned]
 

@@ -138,7 +138,7 @@ def backend_locality(backend: str) -> str:
 # Default TUI setup, matching the tested two-layer configuration:
 # LongCat for both the answer model and the retrieval selector, with retrieval
 # selection enabled. These apply only when no persisted state overrides them.
-DEFAULT_ASSISTANT_MODEL = "opencode/longcat-2.5-preview-free"
+DEFAULT_ASSISTANT_MODEL = "opencode-go/longcat-2.5-preview-free"
 DEFAULT_TUI_SELECTOR_MODEL = DEFAULT_SELECTOR_MODEL
 DEFAULT_TUI_BACKEND = "opencode"
 DEFAULT_SELECTOR_ENABLED = True

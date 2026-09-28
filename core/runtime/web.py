@@ -38,11 +38,11 @@ from .workspace import WorkspaceBrowser
 
 logger = logging.getLogger(__name__)
 DEFAULT_WEB_MODELS = (
+    "opencode-go/longcat-2.5-preview-free",
+    "opencode-go/deepseek-v4.1-flash",
+    "opencode-go/kimi-k2.7-code",
     "opencode/claude-sonnet-4",
-    "opencode/deepseek-v4-flash-free",
-    "opencode/claude-sonnet-5",
     "opencode/claude-haiku-4-5",
-    "opencode/north-mini-code-free",
 )
 DEFAULT_OLLAMA_MODELS: tuple[str, ...] = ()
 DEFAULT_LLAMACPP_MODELS: tuple[str, ...] = ()

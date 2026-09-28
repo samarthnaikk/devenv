@@ -24,7 +24,7 @@ from core.ai.opencode_client import (
 )
 from core.tools.base import BaseTool
 
-DEFAULT_OPENCODE_MODEL = "opencode/claude-sonnet-4"
+DEFAULT_OPENCODE_MODEL = "opencode-go/longcat-2.5-preview-free"
 
 
 def _parse_model_ref(model: str | None) -> OpenCodeModelRef | None:

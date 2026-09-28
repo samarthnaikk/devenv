@@ -559,7 +559,7 @@ class RecallFloorTest(unittest.TestCase):
     def test_default_selector_model_is_longcat(self) -> None:
         from core.runtime.session_selection import DEFAULT_SELECTOR_MODEL
 
-        self.assertEqual(DEFAULT_SELECTOR_MODEL, "opencode/longcat-2.5-preview-free")
+        self.assertEqual(DEFAULT_SELECTOR_MODEL, "opencode-go/longcat-2.5-preview-free")
         builder = FakeContextBuilder({"codex": [_match("c1")]})
         ai = FakeChatAI('{"selected": ["c1"]}')
         with mock.patch.dict(

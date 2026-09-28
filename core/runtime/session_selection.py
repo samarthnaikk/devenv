@@ -26,7 +26,7 @@ from .context_builder import (
 logger = logging.getLogger(__name__)
 
 _ENABLED_VALUES = {"1", "true", "yes", "on"}
-DEFAULT_SELECTOR_MODEL = "opencode/longcat-2.5-preview-free"
+DEFAULT_SELECTOR_MODEL = "opencode-go/longcat-2.5-preview-free"
 
 
 def session_selector_enabled() -> bool:
