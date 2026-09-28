@@ -447,14 +447,15 @@ class SessionSelectionOrchestrator:
             )
             if not metadata.get("retrieval_evidence"):
                 metadata = dict(metadata)
-                metadata["retrieval_evidence"] = self._engine_evidence_bundle(
-                    task, context, session_ids
+                metadata["retrieval_evidence"] = self.engine_evidence_bundle(
+                    task=task, context=context, session_ids=session_ids
                 )
             return context, session_ids, metadata
         return self._select_with_selector(task, max_lines=max_lines)
 
-    def _engine_evidence_bundle(
+    def engine_evidence_bundle(
         self,
+        *,
         task: str,
         context: str,
         session_ids: Sequence[str],

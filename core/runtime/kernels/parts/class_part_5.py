@@ -557,6 +557,15 @@ class KernelPlanningMixin:
                     "external_context_query": external_query,
                 }
             )
+            evidence_bundle = selection_metadata.get("retrieval_evidence")
+            if not isinstance(evidence_bundle, dict) and orchestrator is not None:
+                evidence_bundle = orchestrator.engine_evidence_bundle(
+                    task=external_query,
+                    context=external_context,
+                    session_ids=session_ids,
+                )
+            if isinstance(evidence_bundle, dict):
+                metadata["retrieval_evidence"] = evidence_bundle
         except Exception as exc:
             logger.warning("External session retrieval failed; continuing without session context: error=%s", exc)
             return memory_context, metadata
