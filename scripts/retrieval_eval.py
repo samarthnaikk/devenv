@@ -59,7 +59,6 @@ META_TITLE_PATTERNS = (
     "Mine ",
     "sessions (@explore subagent)",
     "Devenv: devenv",
-    "New session -",
     "OpenCode as reasoning layer",
 )
 STOPWORDS = {
