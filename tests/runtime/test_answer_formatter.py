@@ -96,5 +96,44 @@ class FormatterFlagTest(unittest.TestCase):
             self.assertFalse(formatter_enabled())
 
 
+class FormatterIntegrationTest(unittest.TestCase):
+    def test_raw_evidence_is_not_leaked_into_output(self) -> None:
+        """The formatter receives raw evidence but must only emit the answer."""
+        raw_context = "\n".join(
+            [
+                "- Assistant reported: Added `qualifly_track` column to `jobs` table (engineering, design, management)",
+                "- Tool output: backend-1 | AttributeError: module 'sqlalchemy' has no attribute 'JSONB'",
+                "- Assistant reported: up to 6 external resource links per application",
+            ]
+        )
+        bundle = {
+            "source": "selector",
+            "sessions": [{"session_id": "ses_x", "title": "", "workspace_path": "/w/hirex"}],
+            "lines": [
+                ln[2:].strip() if ln.startswith("- ") else ln
+                for ln in raw_context.splitlines()
+                if ln.strip()
+            ],
+        }
+        captured: dict = {}
+
+        def chat(messages):
+            captured["user"] = messages[1]["content"]
+            return (
+                "- **Tracks:** engineering, design, management\n"
+                "- **External links:** up to 6 per application"
+            )
+
+        formatter = AnswerFormatter(chat)
+        out = formatter.format("What are the qualifly tracks?", bundle)
+
+        # Evidence is passed raw (formatter's job to strip), so the prompt contains noise...
+        self.assertIn("Assistant reported", captured["user"])
+        # ...but the output must be clean.
+        self.assertNotIn("Assistant reported", out)
+        self.assertNotIn("Tool output", out)
+        self.assertIn("engineering, design, management", out)
+
+
 if __name__ == "__main__":
     unittest.main()
