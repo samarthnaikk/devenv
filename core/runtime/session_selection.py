@@ -442,10 +442,48 @@ class SessionSelectionOrchestrator:
         if self.shadow and self.selector is not None:
             return self._select_shadow(task, max_lines=max_lines)
         if not self.active:
-            return self.context_builder.build_runtime_memory_context(
+            context, session_ids, metadata = self.context_builder.build_runtime_memory_context(
                 task, max_lines=max_lines
             )
+            if not metadata.get("retrieval_evidence"):
+                metadata = dict(metadata)
+                metadata["retrieval_evidence"] = self._engine_evidence_bundle(
+                    task, context, session_ids
+                )
+            return context, session_ids, metadata
         return self._select_with_selector(task, max_lines=max_lines)
+
+    def _engine_evidence_bundle(
+        self,
+        task: str,
+        context: str,
+        session_ids: Sequence[str],
+    ) -> dict[str, Any]:
+        """Structured evidence from the plain engine path (no selector).
+
+        Used so the formatter layer always receives a bundle even when the
+        selection layer is disabled. Lines are raw/un-cleaned on purpose.
+        """
+        lines: list[str] = []
+        for raw_line in (context or "").splitlines():
+            stripped = raw_line.strip()
+            if not stripped or stripped.startswith("##"):
+                continue
+            lines.append(stripped[2:].strip() if stripped.startswith("- ") else stripped)
+        return {
+            "source": "engine",
+            "sessions": [
+                {
+                    "session_id": session_id,
+                    "provider": "",
+                    "title": "",
+                    "workspace_path": None,
+                    "updated_at": "",
+                }
+                for session_id in session_ids
+            ],
+            "lines": lines,
+        }
 
     def _select_shadow(
         self,
@@ -542,6 +580,9 @@ class SessionSelectionOrchestrator:
                     normalized = _normalize_evidence(line)
                     if normalized and normalized not in combined:
                         combined.append(normalized)
+                metadata["retrieval_evidence"] = self._evidence_bundle(
+                    fallback, combined, source="engine_fallback"
+                )
                 if not combined:
                     return "", fallback_ids, metadata
                 context = "\n".join(
@@ -600,12 +641,45 @@ class SessionSelectionOrchestrator:
         metadata["selector_engine_lines_used"] = bool(engine_lines)
         metadata["selector_drill_line_count"] = len(drill_lines)
         metadata["selector_coverage_subquestions"] = len(result.coverage)
+        metadata["retrieval_evidence"] = self._evidence_bundle(
+            selected_fused, combined, source="selector"
+        )
         if not combined:
             return "", selected_ids, metadata
         context = "\n".join(
             ["## External Session Context", *(f"- {line}" for line in combined[:max_lines])]
         )
         return context, selected_ids, metadata
+
+    @staticmethod
+    def _evidence_bundle(
+        selected_fused: list[tuple[dict[str, Any], Any]],
+        lines: list[str],
+        *,
+        source: str,
+    ) -> dict[str, Any]:
+        """Structured, un-cleaned evidence for the downstream formatter layer.
+
+        The bundle keeps raw evidence lines verbatim (no prefix stripping here —
+        that is the formatter model's job) plus the selected session identities.
+        """
+        sessions = []
+        for match, _provider in selected_fused:
+            summary = match.get("summary")
+            sessions.append(
+                {
+                    "session_id": getattr(summary, "session_id", ""),
+                    "provider": str(getattr(summary, "provider", "") or ""),
+                    "title": str(getattr(summary, "title", "") or ""),
+                    "workspace_path": getattr(summary, "workspace_path", None),
+                    "updated_at": str(getattr(summary, "updated_at", "") or ""),
+                }
+            )
+        return {
+            "source": source,
+            "sessions": sessions,
+            "lines": [line for line in lines if line],
+        }
 
     def _apply_recall_floor(
         self,

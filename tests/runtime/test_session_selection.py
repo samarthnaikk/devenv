@@ -139,7 +139,10 @@ class PassthroughTest(unittest.TestCase):
         orchestrator = SessionSelectionOrchestrator(builder, enabled=False)
         context, session_ids, metadata = orchestrator.select("query", max_lines=4)
         self.assertEqual((context, session_ids), ("CONTEXT", ("s1",)))
-        self.assertEqual(metadata, {"index_ready": True})
+        self.assertEqual(metadata["index_ready"], True)
+        # The formatter layer receives a structured, raw evidence bundle.
+        self.assertEqual(metadata["retrieval_evidence"]["source"], "engine")
+        self.assertEqual(metadata["retrieval_evidence"]["lines"], ["CONTEXT"])
         self.assertEqual(builder.build_calls, [("query", 4)])
 
     def test_enabled_without_selector_is_passthrough(self) -> None:
@@ -225,6 +228,10 @@ class PassthroughTest(unittest.TestCase):
         self.assertIn("the exact proof line", context)
         self.assertEqual(session_ids, ("c1",))
         self.assertTrue(metadata["selector_evidence_used"])
+        bundle = metadata["retrieval_evidence"]
+        self.assertEqual(bundle["source"], "selector")
+        self.assertEqual(bundle["sessions"][0]["session_id"], "c1")
+        self.assertIn("the exact proof line", bundle["lines"])
 
     def test_coverage_evidence_reaches_context(self) -> None:
         class Covered:
