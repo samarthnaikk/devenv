@@ -3,9 +3,15 @@
 Palette and layout follow ``stitch_devenv_ui_structural_blueprint/DESIGN.md``:
 a "Void-to-Surface" deep-dark workspace with a teal primary accent, corporate
 blue secondary, and monospace log wells.
+
+The module keeps a set of plain color constants for Rich markup (which cannot
+read Textual's ``$variables``) and exposes :func:`build_themes` for registering
+the ``devenv`` / ``devenv-light`` Textual themes.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 CANVAS = "#0d0f12"
 PANEL = "#16191e"
@@ -20,6 +26,9 @@ TEXT_MUTED = "#859490"
 WARN = "#f0b26b"
 ERROR = "#ffb4ab"
 
+DEFAULT_THEME_NAME = "devenv"
+LIGHT_THEME_NAME = "devenv-light"
+
 # Rich markup colors for role-tagged retrieval context lines.
 ROLE_COLORS = {
     "user": BLUE,
@@ -29,128 +38,178 @@ ROLE_COLORS = {
     "context": TEXT_MUTED,
 }
 
-
-CSS = f"""
-Screen {{
+# Structural CSS. Uses Textual theme variables so it follows the active theme.
+CSS = """
+Screen {
     layout: vertical;
-    background: {CANVAS};
-    color: {TEXT};
-}}
+    background: $background;
+    color: $foreground;
+}
 
-#header {{
+#header {
     height: 1;
-    background: {PANEL};
-    color: {TEXT};
+    background: $surface;
+    color: $foreground;
     padding: 0 1;
-}}
+}
 
-#body {{
+#body {
     height: 1fr;
-}}
+}
 
-#sidebar {{
+#sidebar {
     width: 30;
-    background: {PANEL};
-    border-right: solid {BORDER};
+    background: $surface;
+    border-right: solid $border;
     padding: 0 1;
-}}
+}
 
-#mode-pills {{
+#mode-pills {
     height: auto;
     padding: 1 0 0 0;
-}}
+}
 
-.section-title {{
-    color: {TEXT_MUTED};
+.section-title {
+    color: $text-muted;
     text-style: bold;
     margin: 1 0 0 0;
-}}
+}
 
-#sources-list {{
+#sources-list {
     height: auto;
-}}
+}
 
-#agents-list {{
+#agents-list {
     height: auto;
-}}
+}
 
-#index-bar {{
+#index-bar {
     margin: 0;
-}}
+}
 
-#index-info {{
-    color: {TEXT_MUTED};
+#index-info {
+    color: $text-muted;
     height: auto;
-}}
+}
 
-#results-pane {{
+#results-pane {
     width: 1fr;
-}}
+}
 
-#result-bar {{
+#result-bar {
     height: 1;
     padding: 0 1;
-    background: {CANVAS};
-}}
+    background: $background;
+}
 
-#result-title {{
+#result-title {
     width: 1fr;
-    color: {TEAL};
+    color: $primary;
     text-style: bold;
-}}
+}
 
-#spinner {{
+#spinner {
     width: auto;
-}}
+}
 
-#results-list {{
+#results-list {
     height: 1fr;
-    background: {CANVAS};
+    background: $background;
     padding: 0 1;
-}}
+}
 
-.result-card {{
-    background: {PANEL};
-    border: round {BORDER};
+.result-card {
+    background: $surface;
+    border: round $border;
     padding: 0 1;
     margin: 1 0;
     height: auto;
-}}
+}
 
-#log-panel {{
+#log-panel {
     height: 9;
-    background: {PANEL};
-    border-top: solid {BORDER};
-}}
+    background: $surface;
+    border-top: solid $border;
+}
 
-#log-panel.hidden {{
+#log-panel.hidden {
     display: none;
-}}
+}
 
-#log-title {{
+#log-title {
     height: 1;
-    background: {PANEL};
-    color: {TEXT_MUTED};
+    background: $surface;
+    color: $text-muted;
     text-style: bold;
     padding: 0 1;
-}}
+}
 
-#log {{
+#log {
     height: 1fr;
-    background: {WELL};
+    background: $background;
     padding: 0 1;
-}}
+}
 
-#composer {{
-    background: {WELL};
-    border: round {BORDER};
-    color: {TEXT};
-}}
+#composer {
+    background: $background;
+    border: round $border;
+    color: $foreground;
+}
 
-#composer:focus {{
-    border: round {TEAL};
-}}
+#composer:focus {
+    border: round $primary;
+}
 """
+
+
+def build_themes() -> list[Any]:
+    """Build the Devenv Textual themes (dark + light).
+
+    Imported lazily so this module stays importable without Textual installed.
+    """
+    from textual.theme import Theme
+
+    dark = Theme(
+        name=DEFAULT_THEME_NAME,
+        primary=TEAL,
+        secondary=BLUE,
+        accent="#71f8e4",
+        foreground=TEXT,
+        background=CANVAS,
+        surface=PANEL,
+        panel=PANEL_ALT,
+        warning=WARN,
+        error=ERROR,
+        success=TEAL,
+        dark=True,
+        variables={
+            "footer-key-foreground": TEAL,
+            "block-cursor-background": TEAL,
+            "block-cursor-foreground": ON_TEAL,
+            "input-selection-background": f"{TEAL} 40%",
+        },
+    )
+    light = Theme(
+        name=LIGHT_THEME_NAME,
+        primary="#006b5f",
+        secondary="#004395",
+        accent="#14b8a6",
+        foreground="#1a1c1f",
+        background="#f5f6f8",
+        surface="#ffffff",
+        panel="#eef0f3",
+        warning="#a15c00",
+        error="#ba1a1a",
+        success="#006b5f",
+        dark=False,
+        variables={
+            "footer-key-foreground": "#006b5f",
+            "block-cursor-background": "#006b5f",
+            "block-cursor-foreground": "#ffffff",
+            "input-selection-background": "#006b5f 30%",
+        },
+    )
+    return [dark, light]
 
 
 __all__ = [
@@ -168,4 +227,7 @@ __all__ = [
     "ERROR",
     "ROLE_COLORS",
     "CSS",
+    "DEFAULT_THEME_NAME",
+    "LIGHT_THEME_NAME",
+    "build_themes",
 ]

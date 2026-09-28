@@ -973,6 +973,28 @@ class DevenvTextualAppTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(app._slash_candidates(state), [])
 
+    def test_themes_are_registered(self) -> None:
+        from core.runtime.tui_theme import LIGHT_THEME_NAME, build_themes
+
+        names = {theme.name for theme in build_themes()}
+        self.assertEqual(names, {"devenv", LIGHT_THEME_NAME})
+
+    async def test_app_uses_devenv_theme_and_can_switch(self) -> None:
+        from core.runtime.tui_theme import LIGHT_THEME_NAME
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            app = DevenvTextualApp(controller)
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                self.assertEqual(app.theme, "devenv")
+                app.theme = LIGHT_THEME_NAME
+                await pilot.pause()
+                self.assertEqual(app.theme, LIGHT_THEME_NAME)
+
 
 if __name__ == "__main__":
     unittest.main()

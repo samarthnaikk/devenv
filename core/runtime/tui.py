@@ -24,6 +24,7 @@ from .models import DEFAULT_MAX_CONSECUTIVE_TOOLS, RunConfig, RuntimeTurnResult
 from .tooling import build_runtime_tools
 from .tui_theme import (
     BLUE,
+    DEFAULT_THEME_NAME,
     ERROR as ERROR_COLOR,
     ON_TEAL,
     ROLE_COLORS,
@@ -31,6 +32,7 @@ from .tui_theme import (
     TEXT,
     TEXT_MUTED,
     WARN,
+    build_themes,
     CSS as TUI_CSS,
 )
 from .web import AccessPolicy, DEFAULT_LLAMACPP_MODELS, DEFAULT_OLLAMA_MODELS, DEFAULT_WEB_MODELS
@@ -1502,6 +1504,9 @@ if TEXTUAL_AVAILABLE:
         def on_mount(self) -> None:
             self.title = "DEVENV"
             self.sub_title = self.controller.config.workspace_path
+            for theme in build_themes():
+                self.register_theme(theme)
+            self.theme = DEFAULT_THEME_NAME
             self._install_logging()
             self.query_one("#spinner", LoadingIndicator).display = False
             self._activity(f"TUI ready · workspace {self.controller.config.workspace_path}")

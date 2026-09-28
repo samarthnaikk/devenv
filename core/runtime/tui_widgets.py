@@ -82,58 +82,58 @@ class SelectionScreen(ModalScreen[Any]):
         ("ctrl+p", "cursor_up", ""),
     ]
 
-    DEFAULT_CSS = f"""
-    SelectionScreen {{
+    DEFAULT_CSS = """
+    SelectionScreen {
         align: center middle;
-    }}
+    }
 
-    #selection-box {{
+    #selection-box {
         width: 84;
         height: auto;
         max-height: 85%;
-        background: #16191e;
-        border: round #2d333b;
+        background: $surface;
+        border: round $border;
         padding: 1 2;
-    }}
+    }
 
-    #selection-title {{
+    #selection-title {
         text-style: bold;
-        color: {TEAL};
+        color: $primary;
         margin-bottom: 1;
-    }}
+    }
 
-    #selection-hint {{
-        color: {TEXT_MUTED};
+    #selection-hint {
+        color: $text-muted;
         margin-bottom: 1;
-    }}
+    }
 
-    #selection-filter {{
-        background: #0a0c0e;
-        border: round #2d333b;
-        color: {TEXT};
-    }}
+    #selection-filter {
+        background: $background;
+        border: round $border;
+        color: $foreground;
+    }
 
-    #selection-filter:focus {{
-        border: round {TEAL};
-    }}
+    #selection-filter:focus {
+        border: round $primary;
+    }
 
-    #selection-list {{
+    #selection-list {
         height: auto;
         max-height: 22;
         margin-top: 1;
         background: transparent;
-    }}
+    }
 
-    #selection-list > .option-list--option {{
+    #selection-list > .option-list--option {
         padding: 0 1;
-        color: {TEXT};
-    }}
+        color: $foreground;
+    }
 
-    #selection-list > .option-list--option-highlighted {{
-        background: {TEAL};
-        color: #003731;
+    #selection-list > .option-list--option-highlighted {
+        background: $primary;
+        color: $text;
         text-style: bold;
-    }}
+    }
     """
 
     def __init__(
@@ -318,8 +318,8 @@ class StatusBar(Static):
     DEFAULT_CSS = """
     StatusBar {
         height: 1;
-        background: #16191e;
-        color: #e2e2e6;
+        background: $surface;
+        color: $foreground;
         padding: 0 1;
         text-overflow: ellipsis;
     }
@@ -369,29 +369,29 @@ class HelpOverlay(ModalScreen[None]):
         width: 92;
         height: auto;
         max-height: 85%;
-        background: #16191e;
-        border: round #2d333b;
+        background: $surface;
+        border: round $border;
         padding: 1 2;
     }
 
     #help-title {
         text-style: bold;
-        color: #4fdbc8;
+        color: $primary;
         margin-bottom: 1;
     }
 
     .help-heading {
         text-style: bold;
-        color: #adc6ff;
+        color: $secondary;
         margin-top: 1;
     }
 
     .help-body {
-        color: #e2e2e6;
+        color: $foreground;
     }
 
     .help-hint {
-        color: #859490;
+        color: $text-muted;
         margin-bottom: 1;
     }
     """
