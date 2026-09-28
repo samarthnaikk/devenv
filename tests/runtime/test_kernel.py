@@ -30,6 +30,7 @@ from core.runtime.kernel import (
     _prefer_reference_results_over_empty_summary,
     _sanitize_logged_answer,
     _sanitize_model_generated_path,
+    _should_skip_answer_formatting,
     _should_trust_memory_answer_for_prompt,
     _should_try_direct_memory_answer,
     _summarize_local_text_file,
@@ -5900,6 +5901,22 @@ def _disabled_router():
             )
         },
     )()
+
+
+class AnswerFormattingGateTest(unittest.TestCase):
+    def test_fact_questions_are_formatted(self) -> None:
+        self.assertFalse(_should_skip_answer_formatting("What are the three track values?"))
+        self.assertFalse(
+            _should_skip_answer_formatting("On get-drip, why did the schema validation fail?")
+        )
+
+    def test_change_and_greeting_prompts_are_skipped(self) -> None:
+        self.assertTrue(_should_skip_answer_formatting("implement the feature"))
+        self.assertTrue(_should_skip_answer_formatting("hi"))
+        self.assertTrue(_should_skip_answer_formatting("create a plan for X"))
+
+    def test_exact_output_contract_is_skipped(self) -> None:
+        self.assertTrue(_should_skip_answer_formatting('return exactly "ok"'))
 
 
 if __name__ == "__main__":

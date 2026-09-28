@@ -733,6 +733,9 @@ class KernelLifecycleMixin:
             self.state = AgentState.EXECUTING
 
         final_response = _prefer_reference_results_over_empty_summary(final_response, steps, user_prompt)
+        final_response = self._format_answer_from_evidence(
+            user_prompt, final_response, turn_metadata, ai_logs, system_logs
+        )
         final_response = _enforce_exact_output_contract(user_prompt, final_response)
 
         logger.info("Finishing runtime turn: final_response_present=%s total_steps=%s", final_response is not None, len(steps))
@@ -772,6 +775,44 @@ class KernelLifecycleMixin:
             started_at=turn_started_at,
             tool_policy_events=tool_policy_events,
         )
+
+    def _format_answer_from_evidence(
+        self,
+        user_prompt: str,
+        final_response: str | None,
+        turn_metadata: dict[str, Any],
+        ai_logs: list[str],
+        system_logs: list[str],
+    ) -> str | None:
+        """Format the answer from retrieved evidence (formatter layer, no thinking).
+
+        The retrieval-selection layer exposes a structured evidence bundle. When
+        present and formatting is enabled, a dedicated formatter model rewrites the
+        raw evidence into a clean, structured answer. The retrieval engine itself
+        is never asked to clean or strip anything.
+        """
+        try:
+            from core.runtime.answer_formatter import (
+                build_answer_formatter,
+                formatter_enabled,
+            )
+        except Exception:  # pragma: no cover - defensive
+            return final_response
+        if not formatter_enabled():
+            return final_response
+        evidence = turn_metadata.get("retrieval_evidence")
+        if not isinstance(evidence, dict) or not (evidence.get("lines") or []):
+            return final_response
+        if _should_skip_answer_formatting(user_prompt):
+            return final_response
+        formatter = build_answer_formatter(self.ai)
+        formatted = formatter.format(user_prompt, evidence)
+        if not formatted:
+            ai_logs.append("Answer formatter skipped; kept model response")
+            return final_response
+        ai_logs.append("Answer formatter produced the final structured response")
+        system_logs.append(f"Answer formatter chars: {len(formatted)}")
+        return formatted
 
     def _execution_mode_value(self) -> str:
         if self.state is AgentState.VERIFYING:

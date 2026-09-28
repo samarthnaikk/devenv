@@ -1149,6 +1149,39 @@ def _prompt_keywords(text: str) -> list[str]:
     return [token for token in re.findall(r"[a-z0-9]+", text.lower()) if len(token) > 2]
 
 
+def _should_skip_answer_formatting(user_prompt: str) -> bool:
+    """Skip the formatter for prompts that are not fact questions.
+
+    Planning/change requests, greetings, and prompts demanding an exact literal
+    reply should not be rewritten by the formatter layer.
+    """
+    lowered = str(user_prompt or "").strip().lower()
+    if not lowered:
+        return True
+    if _extract_exact_output_contract(user_prompt):
+        return True
+    skip_markers = (
+        "create a plan",
+        "make a plan",
+        "write a plan",
+        "implement",
+        "refactor",
+        "add a feature",
+        "fix the",
+        "edit the",
+        "update the",
+        "delete the",
+        "hello",
+        "hi ",
+        "hey ",
+        "thanks",
+        "thank you",
+    )
+    if lowered in {"hi", "hey", "hello", "thanks", "thank you"}:
+        return True
+    return any(marker in lowered for marker in skip_markers)
+
+
 def _enforce_exact_output_contract(user_prompt: str, final_response: str | None) -> str | None:
     expected = _extract_exact_output_contract(user_prompt)
     if not expected:
