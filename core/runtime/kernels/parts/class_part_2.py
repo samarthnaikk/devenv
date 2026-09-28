@@ -551,6 +551,14 @@ class KernelCheckpointMixin:
     ) -> str | None:
         direct_memory = _focus_memory_context_for_direct_answers(memory_context, DIRECT_MEMORY_CHAR_LIMIT)
         tool_scope = self._resolve_direct_tool_scope(user_prompt, selected_tools=selected_tools)
+        # When this is a recall/follow-up question and retrieval already surfaced
+        # evidence, answer strictly from that evidence. Otherwise the model may
+        # inspect the *current* workspace, fail to find another project's file,
+        # and wrongly conclude the evidence does not exist.
+        if direct_memory.strip() and _should_try_direct_memory_answer(user_prompt):
+            if tool_scope:
+                ai_logs.append("Direct turn grounded in retrieved evidence; tools disabled")
+            tool_scope = []
         system_logs.append(f"Direct memory chars sent: {len(direct_memory)}")
         system_logs.append(f"Direct tool scope size: {len(tool_scope)}")
         structured_answer = self._answer_known_project_question_local(user_prompt, direct_memory)

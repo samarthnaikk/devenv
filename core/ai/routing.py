@@ -861,7 +861,29 @@ def _parse_server_message(
         parsed_tool_call = _extract_tool_call_from_text(content, allowed_tools)
         if parsed_tool_call is not None:
             return "", usage, (parsed_tool_call,)
-    return content, usage, ()
+    return _unwrap_final_content(content), usage, ()
+
+
+def _unwrap_final_content(content: str) -> str:
+    """Unwrap a ``{"type":"final","content":"..."}`` envelope if present.
+
+    The model is sometimes asked to answer in the Devenv response schema even
+    when no structured output channel is available, so the finished answer can
+    arrive as JSON text. Surface only the inner content.
+    """
+    text = str(content or "").strip()
+    if not text.startswith("{"):
+        return content
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return content
+    if not isinstance(payload, dict) or payload.get("type") != "final":
+        return content
+    inner = payload.get("content")
+    if isinstance(inner, str):
+        return inner
+    return content
 
 
 def _extract_reasoning_parts(message: Any) -> str:
@@ -915,7 +937,7 @@ def _parse_opencode_output(
             content = ""
     if tool_calls:
         content = ""
-    return content, usage, tuple(tool_calls[:1])
+    return _unwrap_final_content(content), usage, tuple(tool_calls[:1])
 
 
 def _extract_tool_call_from_text(
