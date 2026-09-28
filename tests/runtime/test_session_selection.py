@@ -105,6 +105,22 @@ class CollectCandidatesTest(unittest.TestCase):
         candidate = SessionSelectionOrchestrator._to_candidate(match)
         self.assertEqual(candidate.snippet, "only preview")
 
+    def test_chunkless_candidate_snippet_uses_session_text(self) -> None:
+        class Message:
+            def __init__(self, content: str) -> None:
+                self.content = content
+
+        class Provider:
+            def _session_messages(self, _session_id):
+                return [Message("the JSONB startup error was sa.JSONB() and the fix was sa.JSON()")]
+
+        match = {"summary": FakeSummary("s1", preview="unrelated preview"), "score": 5}
+        candidate = SessionSelectionOrchestrator._to_candidate(
+            match, task="what caused the JSONB startup error and the fix?", provider=Provider()
+        )
+        self.assertIn("JSONB", candidate.snippet)
+        self.assertNotIn("unrelated preview", candidate.snippet)
+
     def test_empty_when_no_providers(self) -> None:
         orchestrator = SessionSelectionOrchestrator(FakeContextBuilder(), enabled=True)
         self.assertEqual(orchestrator.collect_candidates("query"), [])

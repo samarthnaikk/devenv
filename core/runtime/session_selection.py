@@ -245,7 +245,10 @@ class SessionSelectionOrchestrator:
 
     def collect_candidates(self, task: str) -> list[SessionCandidate]:
         """Return the engine's fused candidates (read-only) with project metadata."""
-        return [self._to_candidate(match) for match, _provider in self._collect_fused(task)]
+        return [
+            self._to_candidate(match, task=task, provider=provider)
+            for match, provider in self._collect_fused(task)
+        ]
 
     def _collect_fused(self, task: str) -> list[tuple[dict[str, Any], Any]]:
         builder = self.context_builder
@@ -276,7 +279,10 @@ class SessionSelectionOrchestrator:
         gate_mode = project_gate_mode()
         if gate_mode != "off":
             workspace_path = getattr(self.context_builder, "workspace_path", "") or ""
-            candidates = [self._to_candidate(match) for match, _provider in fused]
+            candidates = [
+                self._to_candidate(match, task=task, provider=provider)
+                for match, provider in fused
+            ]
             gated = apply_project_gate(
                 candidates, workspace_path=workspace_path, query=task, mode=gate_mode
             )
@@ -297,12 +303,21 @@ class SessionSelectionOrchestrator:
         return re.sub(r"\s+", " ", str(text)).strip() if text else ""
 
     @classmethod
-    def _candidate_snippet(cls, match: dict[str, Any]) -> str:
+    def _candidate_snippet(
+        cls,
+        match: dict[str, Any],
+        *,
+        task: str = "",
+        provider: Any | None = None,
+    ) -> str:
         """Prefer the engine's matched chunk text over the short session preview.
 
         The preview is often unrelated to the query; the ranked chunks are the
         exact passages the engine matched, so they are what the selector needs to
-        quote evidence from.
+        quote evidence from. When the engine returns no chunks (which happens for
+        candidate sessions whose best text was not surfaced), fall back to a
+        token-scored slice of the session's own text so the selector is not blind
+        to a session that may hold the answer.
         """
         snippets: list[str] = []
         seen: set[str] = set()
@@ -321,10 +336,83 @@ class SessionSelectionOrchestrator:
                 snippets.append(text[:300])
         if snippets:
             return "\n    ".join(snippets)[:1500]
+        fallback = cls._fallback_snippet(match, task=task, provider=provider)
+        if fallback:
+            return fallback
         return str(getattr(match.get("summary"), "preview", "") or "")[:400]
 
     @classmethod
-    def _to_candidate(cls, match: dict[str, Any]) -> SessionCandidate:
+    def _fallback_snippet(
+        cls,
+        match: dict[str, Any],
+        *,
+        task: str,
+        provider: Any | None,
+    ) -> str:
+        summary = match.get("summary")
+        session_id = getattr(summary, "session_id", "")
+        if not provider or not session_id or not task:
+            return ""
+        try:
+            from .context_builder import _normalize_whitespace, _tokenize
+        except Exception:  # pragma: no cover - defensive
+            return ""
+        tokens = _tokenize(task)
+        if not tokens:
+            return ""
+        orchestrator_texts = getattr(provider, "_session_messages", None)
+        texts: list[str] = []
+        if callable(orchestrator_texts):
+            try:
+                texts = [
+                    str(getattr(message, "content", "") or "")
+                    for message in orchestrator_texts(session_id) or ()
+                ]
+            except Exception:  # pragma: no cover - defensive
+                texts = []
+        if not texts:
+            try:
+                detail = provider.get_session(session_id)
+                texts = [
+                    str(getattr(message, "content", "") or "")
+                    for message in getattr(detail, "messages", ()) or ()
+                ]
+            except Exception:  # pragma: no cover - defensive
+                return ""
+        scored: list[tuple[int, str]] = []
+        budget = 60_000
+        consumed = 0
+        for content in texts:
+            if consumed >= budget:
+                break
+            consumed += len(content)
+            for segment in _evidence_segments(content):
+                line = _normalize_whitespace(segment)
+                if len(line) < 40:
+                    continue
+                lowered = line.lower()
+                hits = sum(1 for token in tokens if token in lowered)
+                if hits:
+                    scored.append((hits, line[:300]))
+        if not scored:
+            # No token overlap: fall back to the first substantial block so the
+            # selector still sees real content rather than an empty snippet.
+            for content in texts:
+                line = _normalize_whitespace(content)
+                if len(line) >= 40:
+                    return line[:400]
+            return ""
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return "\n    ".join(line for _score, line in scored[:3])[:1500]
+
+    @classmethod
+    def _to_candidate(
+        cls,
+        match: dict[str, Any],
+        *,
+        task: str = "",
+        provider: Any | None = None,
+    ) -> SessionCandidate:
         summary = match.get("summary")
         return SessionCandidate(
             session_id=getattr(summary, "session_id", ""),
@@ -333,7 +421,7 @@ class SessionSelectionOrchestrator:
             workspace_path=getattr(summary, "workspace_path", None),
             score=int(match.get("score") or 0),
             updated_at=str(getattr(summary, "updated_at", "") or ""),
-            snippet=cls._candidate_snippet(match),
+            snippet=cls._candidate_snippet(match, task=task, provider=provider),
         )
 
     def select(
@@ -396,7 +484,10 @@ class SessionSelectionOrchestrator:
             return self.context_builder.build_runtime_memory_context(
                 task, max_lines=max_lines
             )
-        candidates = [self._to_candidate(match) for match, _provider in fused]
+        candidates = [
+            self._to_candidate(match, task=task, provider=provider)
+            for match, provider in fused
+        ]
 
         by_id: dict[str, tuple[dict[str, Any], Any]] = {}
         for match, provider in fused:
@@ -710,7 +801,10 @@ class SessionSelectionOrchestrator:
         attempts = 0
         while True:
             attempts += 1
-            candidates = [self._to_candidate(match) for match, _provider in fused]
+            candidates = [
+                self._to_candidate(match, task=query, provider=provider)
+                for match, provider in fused
+            ]
             try:
                 result = self.selector.select(query, candidates, workspace_path=workspace_path)
             except Exception as exc:  # pragma: no cover - defensive
