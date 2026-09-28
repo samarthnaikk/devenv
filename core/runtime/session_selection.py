@@ -213,7 +213,7 @@ class SessionSelectionOrchestrator:
             0,
             recall_floor_k
             if recall_floor_k is not None
-            else _env_int("DEVENV_SESSION_SELECTOR_RECALL_FLOOR_K", 3),
+            else _env_int("DEVENV_SESSION_SELECTOR_RECALL_FLOOR_K", 6),
         )
         self.max_selected = max(
             1,
