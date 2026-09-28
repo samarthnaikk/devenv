@@ -16,6 +16,7 @@ from core.ai.routing import (
     RoutingAICore,
     _extract_reasoning_parts,
     _opencode_output_format,
+    _parse_model_ref,
     _parse_server_message,
 )
 from core.tools.base import BaseTool, ToolResult
@@ -681,7 +682,7 @@ class OpenCodeOutputSchemaTest(unittest.TestCase):
         core = OpenCodeAICore(workspace_path=".", model="opencode/test-model")
         captured: dict = {}
 
-        def fake_once(session_id, *, prompt, output_format):
+        def fake_once(session_id, *, prompt, output_format, model=None):
             captured["output_format"] = output_format
             return type("Message", (), {"structured_output": {"selected": ["s1"]}, "raw": {}, "parts": ()})()
 
@@ -704,7 +705,7 @@ class OpenCodeOutputSchemaTest(unittest.TestCase):
         core = OpenCodeAICore(workspace_path=".", model="opencode/test-model")
         captured: dict = {}
 
-        def fake_once(session_id, *, prompt, output_format):
+        def fake_once(session_id, *, prompt, output_format, model=None):
             captured["output_format"] = output_format
             return type("Message", (), {"structured_output": None, "raw": {}, "parts": ()})()
 
@@ -712,6 +713,51 @@ class OpenCodeOutputSchemaTest(unittest.TestCase):
         core._structured_output_supported = True
         core._send_server_message("session", prompt="prompt", resolved_tool_names=[])
         self.assertEqual(captured["output_format"], _opencode_output_format([]))
+
+
+class ModelRefParsingTest(unittest.TestCase):
+    def test_splits_provider_and_model(self) -> None:
+        ref = _parse_model_ref("opencode-go/longcat-2.5-preview-free")
+        self.assertEqual(ref.provider_id, "opencode-go")
+        self.assertEqual(ref.model_id, "longcat-2.5-preview-free")
+
+    def test_model_only(self) -> None:
+        ref = _parse_model_ref("deepseek-v4.1-flash")
+        self.assertEqual(ref.provider_id, "")
+        self.assertEqual(ref.model_id, "deepseek-v4.1-flash")
+
+    def test_none_and_empty(self) -> None:
+        self.assertIsNone(_parse_model_ref(None))
+        self.assertIsNone(_parse_model_ref(""))
+
+    def test_payload_omits_empty_provider(self) -> None:
+        self.assertEqual(
+            _parse_model_ref("m").to_payload(), {"modelID": "m"}
+        )
+        self.assertEqual(
+            _parse_model_ref("p/m").to_payload(),
+            {"providerID": "p", "modelID": "m"},
+        )
+
+
+class ServerModelForwardingTest(unittest.TestCase):
+    def test_model_ref_is_sent_with_server_message(self) -> None:
+        core = OpenCodeAICore(
+            workspace_path=".", model="opencode-go/longcat-2.5-preview-free"
+        )
+        captured: dict = {}
+
+        def fake_once(session_id, *, prompt, output_format, model=None):
+            captured["model"] = model
+            return type("Message", (), {"structured_output": None, "raw": {}, "parts": ()})()
+
+        core._send_server_message_once = fake_once  # type: ignore[method-assign]
+        core._structured_output_supported = True
+        core._send_server_message("session", prompt="prompt", resolved_tool_names=[])
+        ref = captured["model"]
+        self.assertIsNotNone(ref)
+        self.assertEqual(ref.provider_id, "opencode-go")
+        self.assertEqual(ref.model_id, "longcat-2.5-preview-free")
 
 
 class ReasoningIsolationTest(unittest.TestCase):

@@ -18,12 +18,33 @@ from core.ai.ollama_backend import OllamaAICore
 from core.ai.opencode_client import (
     OpenCodeClient,
     OpenCodeClientError,
+    OpenCodeModelRef,
     OpenCodeServerManager,
     default_opencode_server_config,
 )
 from core.tools.base import BaseTool
 
 DEFAULT_OPENCODE_MODEL = "opencode/claude-sonnet-4"
+
+
+def _parse_model_ref(model: str | None) -> OpenCodeModelRef | None:
+    """Parse a ``provider/model`` string into an OpenCode model reference.
+
+    OpenCode routes a request to the provider named in the ref; without one it
+    falls back to its own default provider, which may not match the account the
+    user signed in with. Ids without a slash fall back to the model id alone.
+    """
+    cleaned = str(model or "").strip()
+    if not cleaned:
+        return None
+    if "/" not in cleaned:
+        return OpenCodeModelRef(provider_id="", model_id=cleaned)
+    provider_id, model_id = cleaned.split("/", 1)
+    provider_id = provider_id.strip()
+    model_id = model_id.strip()
+    if not model_id:
+        return None
+    return OpenCodeModelRef(provider_id=provider_id, model_id=model_id)
 
 
 class OpenCodeAICore:
@@ -323,11 +344,13 @@ class OpenCodeAICore:
             }
         else:
             output_format = _opencode_output_format(resolved_tool_names)
+        model_ref = _parse_model_ref(self.model)
         try:
             response = self._send_server_message_once(
                 session_id,
                 prompt=prompt,
                 output_format=output_format,
+                model=model_ref,
             )
             if output_format is not None:
                 self._structured_output_supported = True
@@ -340,6 +363,7 @@ class OpenCodeAICore:
                     session_id,
                     prompt=prompt,
                     output_format=None,
+                    model=model_ref,
                 )
             if not _is_recoverable_session_error(exc):
                 raise
@@ -350,6 +374,7 @@ class OpenCodeAICore:
                     recovered_session_id,
                     prompt=prompt,
                     output_format=output_format,
+                    model=model_ref,
                 )
                 if output_format is not None:
                     self._structured_output_supported = True
@@ -362,6 +387,7 @@ class OpenCodeAICore:
                         recovered_session_id,
                         prompt=prompt,
                         output_format=None,
+                        model=model_ref,
                     )
                 raise
 
@@ -379,11 +405,13 @@ class OpenCodeAICore:
         *,
         prompt: str,
         output_format: dict[str, Any] | None,
+        model: OpenCodeModelRef | None = None,
     ):
         return self.client.send_message(
             session_id,
             parts=[{"type": "text", "text": prompt}],
             output_format=output_format,
+            model=model,
         )
 
     def _compile_prompt(

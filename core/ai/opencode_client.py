@@ -64,7 +64,10 @@ class OpenCodeModelRef:
     model_id: str
 
     def to_payload(self) -> dict[str, str]:
-        return {"providerID": self.provider_id, "modelID": self.model_id}
+        payload = {"modelID": self.model_id}
+        if self.provider_id:
+            payload["providerID"] = self.provider_id
+        return payload
 
 
 @dataclass(frozen=True)
