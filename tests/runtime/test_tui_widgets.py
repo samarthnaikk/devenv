@@ -4,6 +4,7 @@ import unittest
 
 from textual.app import App, ComposeResult
 
+from core.runtime.tui_panes import MemoryPane, SessionsPane
 from core.runtime.tui_widgets import DiffView, ResultCard, ToolTrace
 
 
@@ -52,6 +53,42 @@ class ToolTraceTest(unittest.IsolatedAsyncioTestCase):
             trace.set_status("tool · read · completed", "output text")
             await pilot.pause()
             self.assertEqual(trace.title, "tool · read · completed")
+
+
+class SessionsPaneTest(unittest.IsolatedAsyncioTestCase):
+    async def test_set_sessions_populates_table(self) -> None:
+        app = _Host(SessionsPane())
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            pane = app.query_one(SessionsPane)
+            pane.set_sessions(
+                [
+                    ("opencode", "Fix auth flow", 12, "2026-09-01", "session preview text"),
+                    ("codex", "Add retrieval eval", 8, "2026-09-02", "another preview"),
+                ]
+            )
+            await pilot.pause()
+        self.assertEqual(len(pane._previews), 2)
+
+    async def test_empty_sessions_message(self) -> None:
+        app = _Host(SessionsPane())
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            pane = app.query_one(SessionsPane)
+            pane.set_sessions([])
+            await pilot.pause()
+        self.assertEqual(pane._previews, [])
+
+
+class MemoryPaneTest(unittest.IsolatedAsyncioTestCase):
+    async def test_set_trace_renders_markdown(self) -> None:
+        app = _Host(MemoryPane())
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            pane = app.query_one(MemoryPane)
+            pane.set_trace(type("Trace", (), {"markdown_context": "## Recall\n- item one"})())
+            await pilot.pause()
+            self.assertTrue(app.query("Markdown"))
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ except Exception:  # pragma: no cover - rich ships with textual, but stay defens
 AUTOCOMPLETE_AVAILABLE = False
 
 try:
-    from textual import work
+    from textual import on, work
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, Vertical, VerticalScroll
     from textual.widgets import (
@@ -56,9 +56,12 @@ try:
         ProgressBar,
         RichLog,
         Static,
+        TabbedContent,
+        TabPane,
     )
 
     from .tui_commands import DevenvCommandProvider, build_command_registry
+    from .tui_panes import MemoryPane, SessionsPane
     from .tui_widgets import (
         Choice,
         DiffView,
@@ -1500,10 +1503,15 @@ if TEXTUAL_AVAILABLE:
                     with Horizontal(id="result-bar"):
                         yield Static("Results", id="result-title")
                         yield LoadingIndicator(id="spinner")
-                    yield VerticalScroll(id="results-list")
-            with Vertical(id="log-panel"):
-                yield Static("Activity  ·  F5 to hide", id="log-title")
-                yield RichLog(id="log", markup=True, wrap=True)
+                    with TabbedContent(id="workspace-tabs", initial="tab-retrieve"):
+                        with TabPane("Retrieve", id="tab-retrieve"):
+                            yield VerticalScroll(id="results-list")
+                        with TabPane("Sessions", id="tab-sessions"):
+                            yield SessionsPane(id="sessions-pane")
+                        with TabPane("Memory", id="tab-memory"):
+                            yield MemoryPane(id="memory-pane")
+                        with TabPane("Logs", id="tab-logs"):
+                            yield RichLog(id="log", markup=True, wrap=True)
             yield Input(placeholder="Ask a retrieval question, or type / for commands…", id="composer")
             if AUTOCOMPLETE_AVAILABLE:
                 yield AutoComplete("#composer", candidates=self._slash_candidates)
@@ -1587,7 +1595,74 @@ if TEXTUAL_AVAILABLE:
             self._toggle_source("opencode")
 
         def action_toggle_logs(self) -> None:
-            self.query_one("#log-panel", Vertical).toggle_class("hidden")
+            tabs = self.query_one("#workspace-tabs", TabbedContent)
+            tabs.active = "tab-retrieve" if tabs.active == "tab-logs" else "tab-logs"
+
+        def _activate_tab(self, tab_id: str) -> None:
+            try:
+                self.query_one("#workspace-tabs", TabbedContent).active = tab_id
+            except Exception:  # pragma: no cover - tabs may be gone during shutdown
+                pass
+
+        def _activate_tab_arg(self, args: list[str]) -> None:
+            name = args[0].lower() if args else ""
+            mapping = {
+                "retrieve": "tab-retrieve",
+                "sessions": "tab-sessions",
+                "memory": "tab-memory",
+                "logs": "tab-logs",
+            }
+            if name in mapping:
+                self._activate_tab(mapping[name])
+            else:
+                self.notify("Usage: /tab retrieve|sessions|memory|logs", severity="warning")
+
+        @on(TabbedContent.TabActivated)
+        def _on_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+            pane_id = getattr(getattr(event, "pane", None), "id", "") or ""
+            if pane_id == "tab-sessions":
+                self._load_sessions()
+            elif pane_id == "tab-memory":
+                self._refresh_memory_pane()
+
+        @work(thread=True)
+        def _load_sessions(self) -> None:
+            rows: list[tuple[Any, ...]] = []
+            try:
+                for provider in SESSION_PROVIDERS:
+                    if not self.controller.access_policy.can_access_provider(provider):
+                        continue
+                    for summary in self.controller.context_builder.list_sessions(provider):
+                        rows.append(
+                            (
+                                provider,
+                                getattr(summary, "title", "") or getattr(summary, "session_id", ""),
+                                getattr(summary, "message_count", "") or "",
+                                getattr(summary, "updated_at", "") or "",
+                                getattr(summary, "preview", "") or "",
+                            )
+                        )
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self.call_from_thread(self.notify, f"Could not load sessions: {exc}", severity="error")
+                return
+            self.call_from_thread(self._set_sessions, rows)
+
+        def _set_sessions(self, rows: list[tuple[Any, ...]]) -> None:
+            try:
+                self.query_one("#sessions-pane", SessionsPane).set_sessions(rows)
+            except Exception:  # pragma: no cover - pane may be gone during shutdown
+                pass
+
+        def _refresh_memory_pane(self) -> None:
+            trace: Any = None
+            try:
+                trace = self.controller.kernel.memory.get_context_trace()
+            except Exception:  # pragma: no cover - memory may be unavailable in tests
+                trace = None
+            try:
+                self.query_one("#memory-pane", MemoryPane).set_trace(trace)
+            except Exception:  # pragma: no cover - pane may be gone during shutdown
+                pass
 
         def action_open_agents(self) -> None:
             self._open_agent_picker()
@@ -1704,6 +1779,9 @@ if TEXTUAL_AVAILABLE:
             try:
                 if command_name == "/help":
                     self.action_show_help()
+                    return
+                if command_name == "/tab":
+                    self._activate_tab_arg(value.split()[1:])
                     return
                 if command_name == "/ai":
                     self._handle_ai_input(value)

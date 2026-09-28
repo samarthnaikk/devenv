@@ -126,22 +126,17 @@ Screen {
     height: auto;
 }
 
-#log-panel {
-    height: 9;
-    background: $surface;
-    border-top: solid $border;
+#workspace-tabs {
+    height: 1fr;
 }
 
-#log-panel.hidden {
-    display: none;
+TabbedContent {
+    height: 1fr;
 }
 
-#log-title {
-    height: 1;
-    background: $surface;
-    color: $text-muted;
-    text-style: bold;
-    padding: 0 1;
+TabPane {
+    padding: 0;
+    background: $background;
 }
 
 #log {

@@ -995,6 +995,56 @@ class DevenvTextualAppTest(unittest.IsolatedAsyncioTestCase):
                 await pilot.pause()
                 self.assertEqual(app.theme, LIGHT_THEME_NAME)
 
+    async def test_workspace_tabs_present(self) -> None:
+        from textual.widgets import TabbedContent, TabPane
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            app = DevenvTextualApp(controller)
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                tab_ids = {pane.id for pane in app.query(TabPane)}
+                self.assertEqual(
+                    tab_ids, {"tab-retrieve", "tab-sessions", "tab-memory", "tab-logs"}
+                )
+                self.assertEqual(app.query_one("#workspace-tabs", TabbedContent).active, "tab-retrieve")
+
+    async def test_tab_command_switches_active_tab(self) -> None:
+        from textual.widgets import TabbedContent
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            app = DevenvTextualApp(controller)
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.run_command_line("/tab logs")
+                await pilot.pause()
+                self.assertEqual(app.query_one("#workspace-tabs", TabbedContent).active, "tab-logs")
+
+    async def test_toggle_logs_action_round_trips(self) -> None:
+        from textual.widgets import TabbedContent
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            app = DevenvTextualApp(controller)
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.action_toggle_logs()
+                await pilot.pause()
+                self.assertEqual(app.query_one("#workspace-tabs", TabbedContent).active, "tab-logs")
+                app.action_toggle_logs()
+                await pilot.pause()
+                self.assertEqual(app.query_one("#workspace-tabs", TabbedContent).active, "tab-retrieve")
+
 
 if __name__ == "__main__":
     unittest.main()
