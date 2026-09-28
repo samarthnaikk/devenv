@@ -865,9 +865,15 @@ def _make_chat_selector(
     model: str,
     *,
     permutations: int,
+    timeout_seconds: float | None = None,
 ) -> Any:
     from .session_selector_llm import LLMSessionSelector
 
+    timeout = (
+        timeout_seconds
+        if timeout_seconds is not None
+        else _env_float("DEVENV_SESSION_SELECTOR_TIMEOUT", 90.0)
+    )
     core = None
     if model:
         try:
@@ -878,22 +884,24 @@ def _make_chat_selector(
             logger.warning("Could not create selector model core (%s): %s", model, exc)
             core = None
 
+    def _invoke(engine: Any, messages: list[dict[str, str]], schema: dict | None) -> Any:
+        try:
+            return (
+                engine.chat(messages, output_schema=schema)
+                if schema is not None
+                else engine.chat(messages)
+            )
+        except TypeError:  # pragma: no cover - callable without schema support
+            return engine.chat(messages)
+
     def chat(messages: list[dict[str, str]], schema: dict | None = None) -> str:
         engines = [core, ai] if core is not None else [ai]
         last_error: Exception | None = None
         for engine in engines:
             try:
-                response = (
-                    engine.chat(messages, output_schema=schema)
-                    if schema is not None
-                    else engine.chat(messages)
+                response = _run_with_timeout(
+                    lambda: _invoke(engine, messages, schema), timeout
                 )
-            except TypeError:  # pragma: no cover - callable without schema support
-                try:
-                    response = engine.chat(messages)
-                except Exception as exc:  # pragma: no cover - backend failure
-                    last_error = exc
-                    continue
             except Exception as exc:
                 last_error = exc
                 continue
@@ -906,6 +914,28 @@ def _make_chat_selector(
         return ""
 
     return LLMSessionSelector(chat, model=model, permutations=permutations)
+
+
+def _run_with_timeout(call: Any, timeout_seconds: float) -> Any:
+    """Run a blocking selector call with a hard wall-clock cap.
+
+    The selector is a serial LLM round-trip that has been observed to overrun by
+    minutes on large candidate sets. On timeout we raise ``TimeoutError`` so the
+    caller degrades to the recall floor instead of hanging retrieval.
+    """
+    if not timeout_seconds or timeout_seconds <= 0:
+        return call()
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(call)
+        try:
+            return future.result(timeout=timeout_seconds)
+        except FuturesTimeoutError as exc:
+            future.cancel()
+            raise TimeoutError(
+                f"selector call exceeded {timeout_seconds:.0f}s"
+            ) from exc
 
 
 def build_session_orchestrator(

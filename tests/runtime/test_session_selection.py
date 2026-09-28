@@ -581,6 +581,26 @@ class RecallFloorTest(unittest.TestCase):
         self.assertEqual(query, "original question")
 
 
+class TimeoutGuardTest(unittest.TestCase):
+    def test_run_with_timeout_raises_on_overrun(self) -> None:
+        import time as _time
+
+        from core.runtime.session_selection import _run_with_timeout
+
+        with self.assertRaises(TimeoutError):
+            _run_with_timeout(lambda: _time.sleep(2), 0.1)
+
+    def test_run_with_timeout_returns_fast_result(self) -> None:
+        from core.runtime.session_selection import _run_with_timeout
+
+        self.assertEqual(_run_with_timeout(lambda: 42, 5), 42)
+
+    def test_run_with_timeout_disabled_is_direct(self) -> None:
+        from core.runtime.session_selection import _run_with_timeout
+
+        self.assertEqual(_run_with_timeout(lambda: "x", 0), "x")
+
+
 class EnvFlagTest(unittest.TestCase):
     def test_env_flag_parsing(self) -> None:
         import os
