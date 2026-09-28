@@ -178,6 +178,8 @@ _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _style(text: str, *codes: str) -> str:
+    if os.getenv("NO_COLOR"):
+        return text
     return "".join(codes) + text + Ansi.RESET
 
 
@@ -2291,12 +2293,17 @@ if TEXTUAL_AVAILABLE:
                 info.update(f"[{TEXT_MUTED}]{message}[/]")
 
 
-def run_tui(config: RunConfig) -> int:
+def run_tui(config: RunConfig, *, inline: bool = False, mouse: bool = True) -> int:
     controller = DevenvTUIController(config)
     if TEXTUAL_AVAILABLE:
         try:
             app = DevenvTextualApp(controller)
-            app.run()
+            run_kwargs: dict[str, Any] = {"mouse": mouse}
+            if inline and sys.platform != "win32":
+                # Inline mode preserves the terminal's native scrollback instead of
+                # taking over the alternate screen (best effort; not on Windows).
+                run_kwargs.update({"inline": True, "inline_no_clear": True})
+            app.run(**run_kwargs)
             controller.close()
             return 0
         except KeyboardInterrupt:
@@ -2349,6 +2356,12 @@ def main() -> int:
     )
     parser.add_argument("--performance-mode", default="medium", choices=("low", "medium", "high"))
     parser.add_argument("--log-level", default=None)
+    parser.add_argument(
+        "--no-alt-screen",
+        action="store_true",
+        help="Run inline and preserve native terminal scrollback instead of the alternate screen.",
+    )
+    parser.add_argument("--no-mouse", action="store_true", help="Disable mouse support.")
     args = parser.parse_args()
 
     configure_logging(args.log_level)
@@ -2359,7 +2372,7 @@ def main() -> int:
         max_consecutive_tools=args.max_consecutive_tools,
         performance_mode=args.performance_mode,
     )
-    return run_tui(config)
+    return run_tui(config, inline=args.no_alt_screen, mouse=not args.no_mouse)
 
 
 if __name__ == "__main__":

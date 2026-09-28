@@ -4,6 +4,7 @@ import importlib.util
 import logging
 import os
 import queue
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -1069,6 +1070,25 @@ class DevenvTextualAppTest(unittest.IsolatedAsyncioTestCase):
                 app.run_command_line("/receipts")
                 await pilot.pause()
                 self.assertIsInstance(app.screen, TextOverlay)
+
+    def test_style_honors_no_color(self) -> None:
+        from core.runtime.tui import Ansi, _style
+
+        with mock.patch.dict(os.environ, {"NO_COLOR": "1"}):
+            self.assertEqual(_style("hi", Ansi.BOLD), "hi")
+        with mock.patch.dict(os.environ, {"NO_COLOR": ""}):
+            self.assertIn(Ansi.BOLD, _style("hi", Ansi.BOLD))
+
+    def test_cli_flags_forward_to_run_tui(self) -> None:
+        from core.runtime import tui as tui_module
+
+        with mock.patch.object(tui_module, "run_tui", return_value=0) as run_tui_mock:
+            with mock.patch.object(sys, "argv", ["devenv-run", ".", "--no-alt-screen", "--no-mouse"]):
+                tui_module.main()
+
+        _, kwargs = run_tui_mock.call_args
+        self.assertTrue(kwargs["inline"])
+        self.assertFalse(kwargs["mouse"])
 
 
 if __name__ == "__main__":

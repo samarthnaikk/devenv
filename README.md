@@ -124,11 +124,20 @@ devenv-setup . --apply --warm-model-cache
 
 ## Terminal Runtime (TUI)
 
-`devenv-run` launches a Textual-based three-pane workspace instead of a plain prompt loop:
+`devenv-run` launches a Textual workspace instead of a plain prompt loop:
 
-- left sidebar: mode pills, session-source status (Codex / OpenCode), and a live indexing progress bar
-- center results pane: retrieved sessions and chunks rendered as result cards
-- bottom activity log: color-coded runtime logging with third-party noise suppressed
+- top status bar: workspace, mode, active backend, model, permission summary, and a `LOCAL`/`REMOTE` indicator
+- left sidebar: mode pills, session-source status (Codex / OpenCode), native agent readiness, and a live indexing progress bar
+- center workspace with tabs: **Retrieve** (result cards), **Sessions** (browsable index), **Memory** (retrieval provenance), and **Logs** (color-coded activity)
+- bottom composer with inline slash-command completion
+
+Discoverability is built in:
+
+- `Ctrl+P` opens a fuzzy **command palette** listing every command with its shortcut
+- `?` (or `/help`) opens a keyboard-and-command reference generated from the live bindings
+- typing `/` in the composer shows a dropdown of matching commands
+- `/tab retrieve|sessions|memory|logs` (or the tab bar) switches panes; `F5` toggles the Logs tab
+- `/receipts` shows whether each backend routes locally or remotely; retrieval and memory always run on this machine
 
 The TUI currently exposes two modes:
 
@@ -145,7 +154,16 @@ Useful commands (also available from the command palette via `Ctrl+P` or the foo
 - `/model` — open the model picker or set with `/model [backend] <name>`
 - `/permissions` — open the permission picker
 - `/ai` — open the AI agent picker, `/ai <agent>` to connect (e.g. `/ai opencode`, `/ai claude`, `/ai codex`), `/ai list` to list
+- `/tab retrieve|sessions|memory|logs` — switch workspace tabs
+- `/receipts` — show local vs. remote backend routing
 - `/status`, `/providers`, `/clear`, `/exit`
+
+### Terminal options
+
+- `--no-alt-screen` — run inline and preserve native terminal scrollback (fallback when copy/paste or scrollback matters more than the full-screen layout)
+- `--no-mouse` — disable mouse support
+
+The TUI ships a registered `devenv` theme (dark) plus a `devenv-light` variant; switch themes from the command palette (`Ctrl+P` → Theme). `NO_COLOR` is honored.
 
 Backend and model selections are persisted per workspace. If no session source is enabled, the sidebar prompts `/enable` (or `F3`/`F4`) before indexing begins.
 
