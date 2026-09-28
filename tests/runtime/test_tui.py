@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import os
 import queue
 import tempfile
 import unittest
@@ -284,6 +285,40 @@ class DevenvTUITest(unittest.TestCase):
 
         self.assertIn("Retrieval-selector model set", result.message)
         self.assertEqual(controller.get_selector_model(), "opencode/claude-haiku-4-5")
+
+    def test_defaults_use_longcat_for_both_models_and_enable_selector(self) -> None:
+        from core.runtime.tui import (
+            DEFAULT_ASSISTANT_MODEL,
+            DEFAULT_TUI_SELECTOR_MODEL,
+        )
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with tempfile.TemporaryDirectory() as tempdir:
+                controller = DevenvTUIController(
+                    RunConfig(workspace_path=tempdir),
+                    kernel=FakeKernel(),
+                )
+
+        self.assertEqual(
+            controller.kernel.ai.backend_models["opencode"], DEFAULT_ASSISTANT_MODEL
+        )
+        self.assertEqual(controller.get_selector_model(), DEFAULT_TUI_SELECTOR_MODEL)
+        self.assertEqual(DEFAULT_ASSISTANT_MODEL, "opencode/longcat-2.5-preview-free")
+        self.assertEqual(DEFAULT_TUI_SELECTOR_MODEL, "opencode/longcat-2.5-preview-free")
+
+    def test_defaults_do_not_override_persisted_selector(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            first = DevenvTUIController(
+                RunConfig(workspace_path=tempdir), kernel=FakeKernel()
+            )
+            first.handle_command("/model selector opencode/claude-haiku-4-5")
+            first.close()
+
+            second = DevenvTUIController(
+                RunConfig(workspace_path=tempdir), kernel=FakeKernel()
+            )
+
+        self.assertEqual(second.get_selector_model(), "opencode/claude-haiku-4-5")
 
     def test_assistant_model_command_sets_both_models(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from core.ai.model_catalog import OpenCodeModelInfo, discover_opencode_models
+from core.runtime.session_selection import DEFAULT_SELECTOR_MODEL
 from core.logging_utils import configure_logging
 
 from .context_builder import ContextBuilderService
@@ -71,6 +72,14 @@ except Exception:  # pragma: no cover - fallback path for environments without t
 
 BACKENDS = ("opencode", "ollama", "llama_cpp", "codex")
 SESSION_PROVIDERS = ("codex", "opencode")
+
+# Default TUI setup, matching the tested two-layer configuration:
+# LongCat for both the answer model and the retrieval selector, with retrieval
+# selection enabled. These apply only when no persisted state overrides them.
+DEFAULT_ASSISTANT_MODEL = "opencode/longcat-2.5-preview-free"
+DEFAULT_TUI_SELECTOR_MODEL = DEFAULT_SELECTOR_MODEL
+DEFAULT_TUI_BACKEND = "opencode"
+DEFAULT_SELECTOR_ENABLED = True
 LOG_LEVEL_COLORS = {
     logging.DEBUG: TEXT_MUTED,
     logging.INFO: TEAL,
@@ -398,10 +407,31 @@ class DevenvTUIController:
         self.access_policy = AccessPolicy()
         self.mode = "retrieve"
         self.preferred_backend = getattr(self.kernel.ai, "preferred_backend", "opencode") or "opencode"
-        self.selector_model: str = ""
+        self.selector_model: str = DEFAULT_TUI_SELECTOR_MODEL
         self.preferred_agent: str | None = None
+        self._apply_tui_defaults()
         self._load_persisted_state()
         self._apply_runtime_preferences()
+
+    def _apply_tui_defaults(self) -> None:
+        """Apply the tested default setup when the user has not chosen otherwise.
+
+        Answer model and retrieval-selector model both default to LongCat, and the
+        retrieval-selection layer is enabled, unless a persisted state file or an
+        explicit environment variable overrides them.
+        """
+        if DEFAULT_SELECTOR_ENABLED:
+            os.environ.setdefault("DEVENV_SESSION_SELECTOR", "1")
+        if not self.selector_model:
+            self.selector_model = DEFAULT_TUI_SELECTOR_MODEL
+        if not os.getenv("OPENCODE_MODEL", "").strip():
+            os.environ["OPENCODE_MODEL"] = DEFAULT_ASSISTANT_MODEL
+        setter = getattr(self.kernel.ai, "set_backend_model", None)
+        if callable(setter):
+            try:
+                setter(DEFAULT_TUI_BACKEND, DEFAULT_ASSISTANT_MODEL)
+            except Exception:  # pragma: no cover - backend may reject the id
+                pass
 
     def close(self) -> None:
         self.kernel.close()
@@ -476,7 +506,6 @@ class DevenvTUIController:
         selector_model = str(payload.get("selector_model", "") or "").strip()
         if selector_model:
             self.selector_model = selector_model
-
     def _apply_runtime_preferences(self) -> None:
         allowed_providers = {
             name
