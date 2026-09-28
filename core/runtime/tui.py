@@ -1293,8 +1293,12 @@ class DevenvTUIController:
     def run_retrieval(self, query: str, *, max_lines: int = 12) -> RetrievalOutcome:
         self._apply_runtime_preferences()
         started = time.perf_counter()
+        orchestrator = self._session_orchestrator()
+        selector_active = orchestrator.uses_selector
         card_context, card_metadata = self._retrieve_card_context(query)
-        if card_context:
+        # Cards are supplementary: when the session-selection layer is active it
+        # owns retrieval, so cards must not short-circuit it.
+        if card_context and not selector_active:
             self.last_retrieval_text = card_context
             elapsed_ms = int(round((time.perf_counter() - started) * 1000))
             return RetrievalOutcome(
@@ -1304,14 +1308,16 @@ class DevenvTUIController:
                 metadata=card_metadata,
                 elapsed_ms=elapsed_ms,
             )
-        orchestrator = self._session_orchestrator()
-        if orchestrator.uses_selector:
+        if selector_active:
             context, session_ids, metadata = orchestrator.select(query, max_lines=max_lines)
         else:
             context, session_ids, metadata = self.context_builder.build_runtime_memory_context(
                 query,
                 max_lines=max_lines,
             )
+        if card_context and not context.strip():
+            context = card_context
+            metadata = {**metadata, **card_metadata}
         self.last_retrieval_text = context
         elapsed_ms = int(round((time.perf_counter() - started) * 1000))
         return RetrievalOutcome(

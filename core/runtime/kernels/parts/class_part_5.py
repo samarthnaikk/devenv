@@ -490,6 +490,39 @@ class KernelPlanningMixin:
             )
         return "\n".join(lines), matches
 
+    def _card_evidence_bundle(self, card_matches: list[Any]) -> dict[str, Any] | None:
+        """Convert interaction-card matches into the shared evidence bundle shape."""
+        if not card_matches:
+            return None
+        sessions: list[dict[str, Any]] = []
+        lines: list[str] = []
+        seen_sessions: set[str] = set()
+        for match in card_matches:
+            card = getattr(match, "card", None)
+            if card is None:
+                continue
+            session_id = getattr(card, "session_id", "") or ""
+            if session_id and session_id not in seen_sessions:
+                seen_sessions.add(session_id)
+                sessions.append(
+                    {
+                        "session_id": session_id,
+                        "provider": str(getattr(card, "provider", "") or ""),
+                        "title": "",
+                        "workspace_path": getattr(card, "project", None),
+                        "updated_at": "",
+                    }
+                )
+            intent = " ".join(str(getattr(card, "intent_text", "") or "").split())[:200]
+            answer = " ".join(str(getattr(card, "answer_text", "") or "").split())[:300]
+            if intent:
+                lines.append(intent)
+            if answer and answer != intent:
+                lines.append(answer)
+        if not lines and not sessions:
+            return None
+        return {"source": "cards", "sessions": sessions, "lines": lines}
+
     def _retrieve_memory_context(self, user_prompt: str, *, local_only: bool = False) -> tuple[str, dict[str, Any]]:
         memory_context = ""
         metadata: dict[str, Any] = {
@@ -524,7 +557,14 @@ class KernelPlanningMixin:
             except Exception as exc:
                 logger.warning("Memory retrieval failed; continuing without memory context: error=%s", exc)
         card_context, card_matches = self._retrieve_card_memory_context(user_prompt)
-        if card_context:
+        card_evidence = self._card_evidence_bundle(card_matches) if card_matches else None
+        selector_active = False
+        orchestrator = self._session_selection_orchestrator()
+        if orchestrator is not None and orchestrator.uses_selector:
+            selector_active = True
+        # When the session-selection layer is active it owns retrieval: cards are
+        # supplementary evidence, never a short-circuit that bypasses the selector.
+        if card_context and not selector_active:
             combined = card_context if not memory_context.strip() else f"{memory_context.rstrip()}\n\n{card_context}"
             metadata.update(
                 {
@@ -533,6 +573,8 @@ class KernelPlanningMixin:
                     "card_context_sources": [match.card.session_id for match in card_matches],
                 }
             )
+            if card_evidence is not None:
+                metadata["retrieval_evidence"] = card_evidence
             self._persist_last_retrieval_trace(RetrievalTrace(markdown_context=combined))
             return combined, metadata
         if _should_skip_external_session_context(user_prompt):
@@ -565,9 +607,15 @@ class KernelPlanningMixin:
                     session_ids=session_ids,
                 )
             if isinstance(evidence_bundle, dict):
+                if card_evidence is not None:
+                    evidence_bundle = _merge_evidence_bundles(evidence_bundle, card_evidence)
                 metadata["retrieval_evidence"] = evidence_bundle
+            elif card_evidence is not None:
+                metadata["retrieval_evidence"] = card_evidence
         except Exception as exc:
             logger.warning("External session retrieval failed; continuing without session context: error=%s", exc)
+            if card_evidence is not None:
+                metadata["retrieval_evidence"] = card_evidence
             return memory_context, metadata
         if not external_context.strip():
             return memory_context, metadata
@@ -690,3 +738,32 @@ class KernelPlanningMixin:
             if retrieved_answer is not None and _memory_answer_matches_question(user_prompt, [retrieved_answer]):
                 return candidate_context
         return ""
+
+
+def _merge_evidence_bundles(
+    primary: dict[str, Any],
+    extra: dict[str, Any],
+) -> dict[str, Any]:
+    """Merge two evidence bundles, keeping primary first and de-duplicating."""
+    sessions: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for bundle in (primary, extra):
+        for session in bundle.get("sessions") or []:
+            session_id = str(session.get("session_id") or "")
+            if session_id and session_id in seen:
+                continue
+            if session_id:
+                seen.add(session_id)
+            sessions.append(session)
+    lines: list[str] = []
+    for bundle in (primary, extra):
+        for line in bundle.get("lines") or []:
+            normalized = " ".join(str(line).split())
+            if normalized and normalized not in lines:
+                lines.append(normalized)
+    sources = [str(b.get("source") or "") for b in (primary, extra) if b.get("source")]
+    return {
+        "source": "+".join(dict.fromkeys(sources)) or primary.get("source", ""),
+        "sessions": sessions,
+        "lines": lines,
+    }
