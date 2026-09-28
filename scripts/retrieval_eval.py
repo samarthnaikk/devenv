@@ -58,6 +58,9 @@ META_TITLE_PATTERNS = (
     "Explore retrieval engine code",
     "Mine ",
     "sessions (@explore subagent)",
+    "Devenv: devenv",
+    "New session -",
+    "OpenCode as reasoning layer",
 )
 STOPWORDS = {
     "with",
@@ -180,19 +183,46 @@ def load_meta_session_ids(cutoff_iso: str) -> set[str]:
     return meta
 
 
+def load_live_opencode_ids() -> set[str]:
+    if not OPENCODE_DB.exists():
+        return set()
+    connection = sqlite3.connect(OPENCODE_DB)
+    try:
+        return {str(row[0]) for row in connection.execute("select id from session")}
+    finally:
+        connection.close()
+
+
 def install_meta_filter(service: ContextBuilderService, meta_ids: set[str]) -> None:
-    if not meta_ids:
-        return
-    for provider in service.providers.values():
+    """Install the benchmark meta filter and drop stale/dead sessions.
+
+    The engine indexes whatever ``provider.list_sessions()`` returns, so a session
+    deleted from the source store keeps scoring until it is filtered here. Live
+    OpenCode ids are read once and any indexed session not present is treated as
+    stale (this is where deleted ``ses_...`` sessions and eval-only sessions leak).
+    """
+    live_opencode_ids = load_live_opencode_ids()
+    for provider_name, provider in service.providers.items():
         original = provider.list_sessions
 
-        def make_filtered(original_list_sessions=original):
+        def make_filtered(
+            original_list_sessions=original,
+            provider_name=provider_name,
+            live_ids=live_opencode_ids,
+        ):
             def filtered() -> list[Any]:
-                return [
-                    summary
-                    for summary in original_list_sessions()
-                    if summary.session_id not in meta_ids
-                ]
+                kept: list[Any] = []
+                for summary in original_list_sessions():
+                    session_id = getattr(summary, "session_id", "")
+                    if session_id in meta_ids:
+                        continue
+                    if provider_name == "opencode" and live_ids and session_id not in live_ids:
+                        continue
+                    source_path = getattr(summary, "source_path", "")
+                    if source_path and not Path(source_path).exists():
+                        continue
+                    kept.append(summary)
+                return kept
 
             return filtered
 
