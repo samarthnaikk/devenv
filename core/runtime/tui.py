@@ -69,6 +69,7 @@ try:
         ResultCard,
         SelectionScreen,
         StatusBar,
+        TextOverlay,
         ToolTrace,
     )
 
@@ -98,6 +99,41 @@ except Exception:  # pragma: no cover - fallback path for environments without t
 
 BACKENDS = ("opencode", "ollama", "llama_cpp", "codex")
 SESSION_PROVIDERS = ("codex", "opencode")
+_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
+
+
+def _url_host(url: str) -> str:
+    from urllib.parse import urlparse
+
+    if not url:
+        return ""
+    try:
+        parsed = urlparse(url if "://" in url else f"http://{url}")
+        return (parsed.hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def backend_locality(backend: str) -> str:
+    """Classify a backend as local or remote based on its configured endpoint.
+
+    This is a presentation-only heuristic used by the status bar and the network
+    receipt; it does not change where requests are actually sent.
+    """
+    endpoints = {
+        "opencode": os.getenv("OPENCODE_SERVER_URL", "http://127.0.0.1:4096"),
+        "ollama": os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"),
+        "llama_cpp": (
+            os.getenv("DEVENV_LLAMACPP_BASE_URL")
+            or os.getenv("LLAMA_CPP_BASE_URL")
+            or "http://127.0.0.1:8080"
+        ),
+        "codex": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+    }
+    host = _url_host(endpoints.get(backend, ""))
+    if not host:
+        return "unknown"
+    return "local" if host in _LOCAL_HOSTS else "remote"
 
 # Default TUI setup, matching the tested two-layer configuration:
 # LongCat for both the answer model and the retrieval selector, with retrieval
@@ -1675,6 +1711,23 @@ if TEXTUAL_AVAILABLE:
             ]
             self.push_screen(HelpOverlay(build_command_registry(self.controller), bindings))
 
+        def action_show_receipts(self) -> None:
+            lines = ["Backend routing for this session:", ""]
+            for backend in BACKENDS:
+                allowed = self.controller.access_policy.can_use_backend(backend)
+                lines.append(
+                    f"  {backend:<10} {backend_locality(backend):<8} "
+                    f"{'allowed' if allowed else 'blocked'}"
+                )
+            lines.extend(
+                [
+                    "",
+                    "Retrieval, memory, and indexing run on this machine.",
+                    "Remote backends send prompts to their provider; local backends do not.",
+                ]
+            )
+            self.push_screen(TextOverlay("Network receipts", "\n".join(lines)))
+
         def action_clear_results(self) -> None:
             for card in self._result_cards:
                 card.remove()
@@ -1782,6 +1835,9 @@ if TEXTUAL_AVAILABLE:
                     return
                 if command_name == "/tab":
                     self._activate_tab_arg(value.split()[1:])
+                    return
+                if command_name == "/receipts":
+                    self.action_show_receipts()
                     return
                 if command_name == "/ai":
                     self._handle_ai_input(value)
@@ -2132,6 +2188,7 @@ if TEXTUAL_AVAILABLE:
             model = controller._backend_model(statuses, backend)
             allowed = [name for name in BACKENDS if controller.access_policy.can_use_backend(name)]
             permission = ", ".join(allowed) if allowed else "none"
+            remote = [name for name in allowed if backend_locality(name) == "remote"]
             last = ""
             if self._last_outcome is not None:
                 last = (
@@ -2144,7 +2201,7 @@ if TEXTUAL_AVAILABLE:
                 backend=backend,
                 model=model,
                 permission=permission,
-                local_only=True,
+                local_only=not remote,
                 index=controller.index_status_text(),
                 last_summary=last,
             )

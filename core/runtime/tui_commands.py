@@ -36,6 +36,7 @@ _EXTRA_COMMANDS: tuple[tuple[str, str, str, str, str], ...] = (
     ("tab_sessions", "View · Sessions tab", "/tab sessions", "tab view sessions history browse", "App"),
     ("tab_memory", "View · Memory tab", "/tab memory", "tab view memory context provenance", "App"),
     ("tab_logs", "View · Activity logs tab", "/tab logs", "tab view logs activity", "App"),
+    ("receipts", "Show network receipts", "/receipts", "receipts network local remote privacy", "App"),
 )
 
 

@@ -41,6 +41,7 @@ __all__ = [
     "ResultCard",
     "ToolTrace",
     "DiffView",
+    "TextOverlay",
 ]
 
 T = TypeVar("T")
@@ -531,3 +532,50 @@ class DiffView(Static):
         if not diff.strip():
             return Text("(no changes)", style="dim")
         return Syntax(diff, "diff", line_numbers=False, word_wrap=False, background_color="default")
+
+
+class TextOverlay(ModalScreen[None]):
+    """Read-only modal for informational text such as the network receipt."""
+
+    BINDINGS = [
+        ("escape", "close_overlay", "Close"),
+        ("question_mark", "close_overlay", "Close"),
+    ]
+
+    DEFAULT_CSS = """
+    TextOverlay {
+        align: center middle;
+    }
+
+    #text-overlay-box {
+        width: 84;
+        height: auto;
+        max-height: 85%;
+        background: $surface;
+        border: round $border;
+        padding: 1 2;
+    }
+
+    #text-overlay-title {
+        text-style: bold;
+        color: $primary;
+        margin-bottom: 1;
+    }
+
+    #text-overlay-body {
+        color: $foreground;
+    }
+    """
+
+    def __init__(self, title: str, body: str) -> None:
+        super().__init__()
+        self._title = title
+        self._body = body
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(id="text-overlay-box"):
+            yield Static(self._title, id="text-overlay-title")
+            yield Static(self._body, id="text-overlay-body", markup=False)
+
+    def action_close_overlay(self) -> None:
+        self.dismiss(None)

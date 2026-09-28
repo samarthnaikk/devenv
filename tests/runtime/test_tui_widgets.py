@@ -90,6 +90,24 @@ class MemoryPaneTest(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertTrue(app.query("Markdown"))
 
+    async def test_set_trace_includes_provenance_counts(self) -> None:
+        trace = type(
+            "Trace",
+            (),
+            {
+                "markdown_context": "body",
+                "matched_nodes": [1, 2, 3],
+                "expanded_candidates": [1, 2],
+                "selected_nodes": [1],
+            },
+        )()
+        app = _Host(MemoryPane())
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.query_one(MemoryPane).set_trace(trace)
+            await pilot.pause()
+            self.assertTrue(app.query("#memory-body"))
+
 
 if __name__ == "__main__":
     unittest.main()

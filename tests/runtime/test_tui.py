@@ -1045,6 +1045,31 @@ class DevenvTextualAppTest(unittest.IsolatedAsyncioTestCase):
                 await pilot.pause()
                 self.assertEqual(app.query_one("#workspace-tabs", TabbedContent).active, "tab-retrieve")
 
+    def test_backend_locality_classification(self) -> None:
+        from core.runtime.tui import backend_locality
+
+        with mock.patch.dict(os.environ, {"OPENCODE_SERVER_URL": "http://127.0.0.1:4096"}):
+            self.assertEqual(backend_locality("opencode"), "local")
+        with mock.patch.dict(os.environ, {"OPENCODE_SERVER_URL": "https://opencode.example.com"}):
+            self.assertEqual(backend_locality("opencode"), "remote")
+        with mock.patch.dict(os.environ, {"OPENAI_BASE_URL": "https://api.openai.com/v1"}):
+            self.assertEqual(backend_locality("codex"), "remote")
+
+    async def test_receipts_command_pushes_overlay(self) -> None:
+        from core.runtime.tui_widgets import TextOverlay
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            app = DevenvTextualApp(controller)
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.run_command_line("/receipts")
+                await pilot.pause()
+                self.assertIsInstance(app.screen, TextOverlay)
+
 
 if __name__ == "__main__":
     unittest.main()

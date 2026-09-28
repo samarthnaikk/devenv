@@ -119,12 +119,30 @@ class MemoryPane(Vertical):
         )
 
     def set_trace(self, trace: Any) -> None:
-        body = str(getattr(trace, "markdown_context", "") or "")
         markdown = self.query_one("#memory-body", Markdown)
+        provenance: list[str] = []
+        for label, attr in (
+            ("Matched nodes", "matched_nodes"),
+            ("Expanded candidates", "expanded_candidates"),
+            ("Selected nodes", "selected_nodes"),
+        ):
+            value = getattr(trace, attr, None)
+            if value is None:
+                continue
+            try:
+                provenance.append(f"- {label}: {len(value)}")
+            except TypeError:
+                continue
+        body = str(getattr(trace, "markdown_context", "") or "")
+        sections: list[str] = []
+        if provenance:
+            sections.append("## Retrieval provenance\n" + "\n".join(provenance))
         if body.strip():
-            markdown.update(body)
-        else:
+            sections.append(body)
+        if not sections:
             markdown.update("_No retrieval context captured yet._")
+            return
+        markdown.update("\n\n".join(sections))
 
 
 __all__ = ["SessionsPane", "MemoryPane"]
