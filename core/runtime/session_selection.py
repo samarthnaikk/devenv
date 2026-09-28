@@ -213,7 +213,11 @@ class SessionSelectionOrchestrator:
             0,
             recall_floor_k
             if recall_floor_k is not None
-            else _env_int("DEVENV_SESSION_SELECTOR_RECALL_FLOOR_K", 6),
+            else _env_int("DEVENV_SESSION_SELECTOR_RECALL_FLOOR_K", 3),
+        )
+        self.recall_floor_wide_k = max(
+            self.recall_floor_k,
+            _env_int("DEVENV_SESSION_SELECTOR_RECALL_FLOOR_WIDE_K", 6),
         )
         self.max_selected = max(
             1,
@@ -518,7 +522,7 @@ class SessionSelectionOrchestrator:
             # On a hard floor, never drop below the engine's own top-K: an
             # abstaining selector must not silently reduce recall.
             if self.recall_floor == "hard" and self.recall_floor_k > 0 and fused:
-                fallback = fused[: min(self.recall_floor_k, self.max_selected)]
+                fallback = fused[: min(self.recall_floor_wide_k, self.max_selected)]
                 fallback_ids = tuple(
                     getattr(match.get("summary"), "session_id", "")
                     for match, _provider in fallback
@@ -548,6 +552,8 @@ class SessionSelectionOrchestrator:
 
         selected_fused, floor_ids = self._apply_recall_floor(fused, selected_fused, result)
         metadata["selector_floor_mode"] = self.recall_floor
+        metadata["selector_floor_k"] = self.recall_floor_k
+        metadata["selector_floor_wide_k"] = self.recall_floor_wide_k
         metadata["selector_floor_ids"] = list(floor_ids)
         metadata["selector_floor_applied"] = bool(floor_ids)
 
@@ -618,9 +624,16 @@ class SessionSelectionOrchestrator:
         if mode == "soft" and result.confidence >= self.min_confidence:
             return selected_fused[: self.max_selected], []
 
+        # Widen the floor when the selector is unsure, so a correct session ranked
+        # below the narrow K is not silently dropped (the T1 hirex failure mode).
+        low_confidence = (
+            result.confidence < self.min_confidence
+            or len(result.session_ids) == 0
+        )
+        floor_k = self.recall_floor_wide_k if low_confidence else self.recall_floor_k
         top_ids = [
             getattr(match.get("summary"), "session_id", "")
-            for match, _provider in fused[: self.recall_floor_k]
+            for match, _provider in fused[:floor_k]
         ]
         selected_ids = {
             getattr(match.get("summary"), "session_id", "")
