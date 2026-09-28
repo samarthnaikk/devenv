@@ -162,30 +162,33 @@ def _format_turn_result_lines(result: RuntimeTurnResult) -> list[str]:
         checkpoint_label = f" checkpoint={trace.checkpoint_id}" if trace.checkpoint_id is not None else ""
         state = "ok" if trace.success else "failed"
         color = "green" if trace.success else "red"
-        lines.append(f"[dim]stage[/] {trace.stage}{checkpoint_label} -> [{color}]{state}[/]. {trace.summary}")
+        lines.append(
+            f"[dim]stage[/] {trace.stage}{checkpoint_label} -> [{color}]{state}[/]. "
+            f"{_rich_escape(str(trace.summary or ''))}"
+        )
         for log_line in trace.logs:
             cleaned_log = str(log_line or "").strip()
             if cleaned_log:
-                lines.append(f"[dim]  {cleaned_log}[/]")
+                lines.append(f"[dim]  {_rich_escape(cleaned_log)}[/]")
     for log_line in result.system_logs:
         cleaned_log = str(log_line or "").strip()
         if cleaned_log:
-            lines.append(f"[dim]system[/] {cleaned_log}")
+            lines.append(f"[dim]system[/] {_rich_escape(cleaned_log)}")
     for log_line in result.ai_logs:
         cleaned_log = str(log_line or "").strip()
         if cleaned_log:
-            lines.append(f"[dim]thinking[/] {cleaned_log}")
+            lines.append(f"[dim]thinking[/] {_rich_escape(cleaned_log)}")
     for step in result.steps:
         if step.is_sandboxed_violation:
-            lines.append(f"[yellow]sandbox[/] {step.output}")
+            lines.append(f"[yellow]sandbox[/] {_rich_escape(str(step.output or ''))}")
         else:
             state = "success" if step.success else "failure"
             color = "green" if step.success else "red"
-            lines.append(f"[dim]tool[/] {step.tool_name} -> [{color}]{state}[/]")
+            lines.append(f"[dim]tool[/] {_rich_escape(step.tool_name)} -> [{color}]{state}[/]")
     if result.error_message:
-        lines.append(f"[red]error[/] {result.error_message}")
+        lines.append(f"[red]error[/] {_rich_escape(str(result.error_message))}")
     if result.final_response:
-        lines.append(f"[bold cyan]Assistant[/] {result.final_response}")
+        lines.append(f"[bold cyan]Assistant[/] {_rich_escape(str(result.final_response))}")
     elif not lines:
         lines.append("[yellow]Assistant[/] The runtime completed without producing a visible response.")
     return lines
@@ -241,6 +244,45 @@ def _retrieval_metrics(outcome: RetrievalOutcome) -> str:
         parts.append(f"{outcome.elapsed_ms} ms")
     parts.append(f"index: {'ready' if outcome.metadata.get('index_ready') else 'building'}")
     return "  ·  ".join(parts)
+
+
+def _format_retrieval_result_lines_plain(outcome: RetrievalOutcome) -> list[str]:
+    """Plain-text rendering of a retrieval outcome (no Rich markup).
+
+    Session tool output routinely contains bracketed text (``[SQL: ...]``,
+    ``[TEXT]``, LaTeX ``\\[...\\]``) that would be parsed as Rich markup and can
+    crash the app. This formatter emits unstyled text so raw evidence can never
+    be interpreted as markup.
+    """
+    lines = [f"Query  {outcome.query or ''}"]
+    lines.append(_retrieval_metrics(outcome))
+    body_lines = _context_body_lines(outcome.context)
+    if not body_lines:
+        reason = str(outcome.metadata.get("context_match_reason") or "No prior sessions matched.")
+        lines.append("")
+        lines.append(f"no matches  {reason}")
+        if outcome.session_ids:
+            lines.append("")
+            lines.append("Sessions")
+            for session_id in outcome.session_ids:
+                lines.append(f"  - {session_id}")
+        return lines
+    if outcome.session_ids:
+        lines.append("")
+        lines.append("Sessions")
+        for session_id in outcome.session_ids:
+            lines.append(f"  - {session_id}")
+    lines.append("")
+    for text in body_lines:
+        label, _color, body = _split_context_line(text)
+        collapsed = _collapse_text(body)
+        if label == "Session":
+            lines.append(f"    {collapsed}")
+        elif label:
+            lines.append(f"{label:>16} | {collapsed}")
+        else:
+            lines.append(f"    {collapsed}")
+    return lines
 
 
 def _format_retrieval_result_lines(outcome: RetrievalOutcome) -> list[str]:
@@ -1628,7 +1670,7 @@ if TEXTUAL_AVAILABLE:
 
         def _render_result(self, outcome: RetrievalOutcome) -> None:
             self._last_outcome = outcome
-            self._mount_card(_format_retrieval_result_lines(outcome))
+            self._mount_plain_card(_format_retrieval_result_lines_plain(outcome))
             self._set_busy(False)
             providers = ", ".join(outcome.metadata.get("context_match_providers", []) or []) or "—"
             self._activity(
@@ -1656,7 +1698,28 @@ if TEXTUAL_AVAILABLE:
             if not lines:
                 lines = [f"[{TEXT_MUTED}](empty)[/]"]
             container = self.query_one("#results-list", VerticalScroll)
-            card = Static("\n".join(lines), markup=True, classes="result-card")
+            try:
+                card = Static("\n".join(lines), markup=True, classes="result-card")
+                container.mount(card, before=0)
+            except Exception:  # pragma: no cover - defensive: bad markup in dynamic text
+                plain = Static("\n".join(_rich_escape(line) for line in lines), markup=False, classes="result-card")
+                container.mount(plain, before=0)
+                card = plain
+            self._result_cards.insert(0, card)
+            while len(self._result_cards) > self.MAX_RESULT_CARDS:
+                oldest = self._result_cards.pop()
+                oldest.remove()
+
+        def _mount_plain_card(self, lines: list[str]) -> None:
+            """Mount a card whose text is never parsed as Rich markup.
+
+            Used for retrieval output, which embeds raw session/tool text that can
+            contain bracketed sequences capable of breaking markup parsing.
+            """
+            if not lines:
+                lines = ["(empty)"]
+            container = self.query_one("#results-list", VerticalScroll)
+            card = Static("\n".join(lines), markup=False, classes="result-card")
             container.mount(card, before=0)
             self._result_cards.insert(0, card)
             while len(self._result_cards) > self.MAX_RESULT_CARDS:

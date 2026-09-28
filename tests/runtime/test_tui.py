@@ -16,6 +16,7 @@ from core.runtime.tui import (
     TUILogBridge,
     _format_log_line,
     _format_retrieval_result_lines,
+    _format_retrieval_result_lines_plain,
     _format_turn_result_lines,
     _retrieval_plain_text,
 )
@@ -534,6 +535,59 @@ class DevenvTUITest(unittest.TestCase):
         self.assertIn("providers: codex", joined)
         self.assertIn("42 ms", joined)
         self.assertIn("index: ready", joined)
+
+    def test_plain_retrieval_lines_contain_no_markup(self) -> None:
+        outcome = RetrievalOutcome(
+            query="q",
+            context="\n".join(
+                [
+                    "## External Session Context",
+                    "- Tool output: backend-1 | [SQL: UPDATE alembic_version ... = '0011_add_qualifly_track']",
+                    "- Assistant reported: use [bold]carefully[/] and [/]",
+                ]
+            ),
+            session_ids=("session-1",),
+            metadata={},
+        )
+
+        joined = "\n".join(_format_retrieval_result_lines_plain(outcome))
+
+        # Plain output carries no escape backslashes, so markup parsing never runs.
+        self.assertNotIn("\\[", joined)
+        self.assertIn("[SQL:", joined)
+        self.assertIn("session-1", joined)
+
+    def test_plain_retrieval_lines_render_without_markup_errors(self) -> None:
+        import io
+
+        from rich.console import Console
+
+        context = "\n".join(
+            ["## External Session Context"]
+            + [f"- Tool output: line {i} [SQL: x = '0011_add_qualifly_track'] [/]" for i in range(30)]
+        )
+        outcome = RetrievalOutcome(query="q", context=context, session_ids=("s",), metadata={})
+        joined = "\n".join(_format_retrieval_result_lines_plain(outcome))
+
+        console = Console(file=io.StringIO(), markup=False)
+        console.print(joined)  # must not raise
+
+    def test_format_turn_result_lines_escapes_markup(self) -> None:
+        import io
+
+        from rich.console import Console
+
+        result = RuntimeTurnResult(
+            final_response="answer with [bold]tags[/] and orphan [/] and [red]x",
+            system_logs=["log with [red] markup"],
+        )
+
+        joined = "\n".join(_format_turn_result_lines(result))
+
+        # Must render as markup without raising on adversarial content.
+        Console(file=io.StringIO(), markup=True).print(joined)
+        self.assertIn("\\[bold]", joined)
+        self.assertIn("\\[/]", joined)
 
     def test_retrieval_plain_text_lists_sessions(self) -> None:
         text = _retrieval_plain_text(_sample_outcome())
