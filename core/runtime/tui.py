@@ -41,6 +41,8 @@ except Exception:  # pragma: no cover - rich ships with textual, but stay defens
     def _rich_escape(text: str) -> str:  # type: ignore[misc]
         return text
 
+AUTOCOMPLETE_AVAILABLE = False
+
 try:
     from textual import work
     from textual.app import App, ComposeResult
@@ -53,6 +55,17 @@ try:
         RichLog,
         Static,
     )
+
+    from .tui_commands import DevenvCommandProvider, build_command_registry
+    from .tui_widgets import HelpOverlay, StatusBar
+
+    try:
+        from textual_autocomplete import AutoComplete, DropdownItem
+
+        AUTOCOMPLETE_AVAILABLE = True
+    except Exception:  # pragma: no cover - optional enhancement
+        AutoComplete = None  # type: ignore[assignment]
+        DropdownItem = None  # type: ignore[assignment]
 
     TEXTUAL_AVAILABLE = True
 except Exception:  # pragma: no cover - fallback path for environments without textual
@@ -1061,6 +1074,8 @@ class DevenvTUIController:
         return self._handle_permission_command(["provider", SESSION_PROVIDERS[provider_index], ("on", "off")[value_index]])
 
     def _interactive_backend_picker(self) -> str | None:
+        if not self.prompt_input:
+            return None
         statuses = getattr(self.kernel.ai, "status", lambda: {})()
         options = []
         for backend in BACKENDS:
@@ -1074,6 +1089,8 @@ class DevenvTUIController:
         return self._handle_backend_command([BACKENDS[backend_index]])
 
     def _interactive_model_picker(self, *, role: str = "answer") -> str | None:
+        if not self.prompt_input:
+            return None
         if role == "selector":
             models = self.available_models()
             if not models:
@@ -1426,6 +1443,7 @@ if TEXTUAL_AVAILABLE:
     class DevenvTextualApp(App[None]):
         CSS = TUI_CSS
         MAX_RESULT_CARDS = 12
+        COMMANDS = App.COMMANDS | {DevenvCommandProvider}
 
         BINDINGS = [
             ("f1", "mode_retrieve", "Retrieve"),
@@ -1434,6 +1452,7 @@ if TEXTUAL_AVAILABLE:
             ("f4", "toggle_opencode", "OpenCode"),
             ("f5", "toggle_logs", "Logs"),
             ("f6", "open_agents", "Agents"),
+            ("question_mark", "show_help", "Help"),
             ("ctrl+y", "copy_result", "Copy"),
             ("ctrl+e", "export_result", "Export"),
             ("ctrl+l", "clear_results", "Clear"),
@@ -1443,6 +1462,10 @@ if TEXTUAL_AVAILABLE:
         def __init__(self, controller: DevenvTUIController) -> None:
             super().__init__()
             self.controller = controller
+            # The Textual app renders its own modal pickers, so disable the
+            # controller's blocking plain-input fallback (which would call the
+            # builtin ``input()`` inside the running event loop).
+            self.controller.prompt_input = None
             self._busy = False
             self._last_outcome: RetrievalOutcome | None = None
             self._pending_assistant_answer: str = ""
@@ -1452,7 +1475,7 @@ if TEXTUAL_AVAILABLE:
             self._saved_handlers: list[logging.Handler] = []
 
         def compose(self) -> ComposeResult:
-            yield Static("", id="header")
+            yield StatusBar(id="header")
             with Horizontal(id="body"):
                 with Vertical(id="sidebar"):
                     yield Static("", id="mode-pills")
@@ -1471,7 +1494,9 @@ if TEXTUAL_AVAILABLE:
             with Vertical(id="log-panel"):
                 yield Static("Activity  ·  F5 to hide", id="log-title")
                 yield RichLog(id="log", markup=True, wrap=True)
-            yield Input(placeholder="Ask a retrieval question and press Enter…", id="composer")
+            yield Input(placeholder="Ask a retrieval question, or type / for commands…", id="composer")
+            if AUTOCOMPLETE_AVAILABLE:
+                yield AutoComplete("#composer", candidates=self._slash_candidates)
             yield Footer()
 
         def on_mount(self) -> None:
@@ -1554,6 +1579,14 @@ if TEXTUAL_AVAILABLE:
         def action_open_agents(self) -> None:
             self._open_agent_picker()
 
+        def action_show_help(self) -> None:
+            bindings = [
+                (binding[0], binding[1], binding[2] if len(binding) > 2 else "")
+                for binding in self.BINDINGS
+                if isinstance(binding, tuple)
+            ]
+            self.push_screen(HelpOverlay(build_command_registry(self.controller), bindings))
+
         def action_clear_results(self) -> None:
             for card in self._result_cards:
                 card.remove()
@@ -1631,37 +1664,15 @@ if TEXTUAL_AVAILABLE:
                 return
             value = event.value.strip()
             event.input.value = ""
+            self.run_command_line(value)
+
+        def run_command_line(self, value: str) -> None:
+            """Single entry point for the composer, the palette, and help."""
+            value = (value or "").strip()
             if not value:
                 return
             if value.startswith("/"):
-                command_name = value.split()[0].lower()
-                if command_name == "/ai":
-                    self._activity(f"command: {value}")
-                    self._handle_ai_input(value)
-                    return
-                if command_name in {"/model", "/models"}:
-                    self._activity(f"command: {value}")
-                    self._handle_model_input(value)
-                    return
-                if command_name in {"/assistant-model", "/assistant"}:
-                    self._activity(f"command: {value}")
-                    if len(value.split()) == 1:
-                        self._open_assistant_model_picker()
-                    else:
-                        self._run_model_command(value)
-                    return
-                result = self.controller.handle_command(value)
-                self._activity(f"command: {value}")
-                if result.message:
-                    self._mount_command_card(value, result.message)
-                if command_name in {"/enable", "/permission", "/permissions"}:
-                    self._refresh_sources()
-                    self._refresh_index()
-                if command_name == "/mode":
-                    self._refresh_header()
-                    self._refresh_sidebar()
-                if result.should_exit:
-                    self.exit()
+                self._dispatch_command(value)
                 return
             if self._busy:
                 self.notify("A retrieval is already running.", severity="warning")
@@ -1673,6 +1684,55 @@ if TEXTUAL_AVAILABLE:
             self._set_busy(True)
             self._activity(f"retrieving: {value}")
             self._run_retrieval(value)
+
+        def _dispatch_command(self, value: str) -> None:
+            command_name = value.split()[0].lower()
+            self._activity(f"command: {value}")
+            try:
+                if command_name == "/help":
+                    self.action_show_help()
+                    return
+                if command_name == "/ai":
+                    self._handle_ai_input(value)
+                    return
+                if command_name in {"/model", "/models"}:
+                    self._handle_model_input(value)
+                    return
+                if command_name in {"/assistant-model", "/assistant"}:
+                    if len(value.split()) == 1:
+                        self._open_assistant_model_picker()
+                    else:
+                        self._run_model_command(value)
+                    return
+                result = self.controller.handle_command(value)
+                if result.message:
+                    self._mount_command_card(value, result.message)
+                if command_name in {"/enable", "/permission", "/permissions"}:
+                    self._refresh_sources()
+                    self._refresh_index()
+                if command_name == "/mode":
+                    self._refresh_sidebar()
+                if result.should_exit:
+                    self.exit()
+            finally:
+                self._refresh_header()
+
+        def _slash_candidates(self, state: Any) -> list[Any]:
+            """Inline dropdown of slash commands for the composer."""
+            if not AUTOCOMPLETE_AVAILABLE:
+                return []
+            text = state.text[: state.cursor_position]
+            token_start = max(text.rfind(" "), text.rfind("\n"))
+            token = text[token_start + 1 :]
+            if not token.startswith("/") or " " in token:
+                return []
+            query = token[1:].lower()
+            items: list[Any] = []
+            for spec in build_command_registry(self.controller):
+                if query and query not in spec.command.lower():
+                    continue
+                items.append(DropdownItem(main=spec.command, prefix=f"{spec.title}  "))
+            return items[:12]
 
         def _handle_ai_input(self, value: str) -> None:
             tokens = value.split()[1:]
@@ -1936,23 +1996,35 @@ if TEXTUAL_AVAILABLE:
                 pass
 
         def _refresh_header(self) -> None:
-            if self.controller.mode == "retrieve":
-                pill = f"[{ON_TEAL} on {TEAL}] RETRIEVE [/]"
-            else:
-                pill = f"[#2e3036 on {WARN}] SOLVE (WIP) [/]"
-            summary = ""
-            if self._last_outcome is not None:
-                summary = (
-                    f"   [{TEXT_MUTED}]last:[/] [{TEXT}]"
-                    f"{len(self._last_outcome.session_ids)} sessions · "
-                    f"{self._last_outcome.elapsed_ms} ms[/]"
-                )
-            workspace = _rich_escape(self.controller.config.workspace_path)
-            text = f"[b {TEAL}]DEVENV[/]  [{TEXT_MUTED}]{workspace}[/]   {pill}{summary}"
             try:
-                self.query_one("#header", Static).update(text)
-            except Exception:  # pragma: no cover
-                pass
+                bar = self.query_one("#header", StatusBar)
+            except Exception:  # pragma: no cover - widget may be gone during shutdown
+                return
+            controller = self.controller
+            statuses = getattr(controller.kernel.ai, "status", lambda: {})()
+            backend = (
+                getattr(controller.kernel.ai, "preferred_backend", controller.preferred_backend)
+                or controller.preferred_backend
+            )
+            model = controller._backend_model(statuses, backend)
+            allowed = [name for name in BACKENDS if controller.access_policy.can_use_backend(name)]
+            permission = ", ".join(allowed) if allowed else "none"
+            last = ""
+            if self._last_outcome is not None:
+                last = (
+                    f"{len(self._last_outcome.session_ids)} sessions · "
+                    f"{self._last_outcome.elapsed_ms} ms"
+                )
+            bar.set_state(
+                workspace=controller.config.workspace_path,
+                mode=controller.mode,
+                backend=backend,
+                model=model,
+                permission=permission,
+                local_only=True,
+                index=controller.index_status_text(),
+                last_summary=last,
+            )
 
         def _refresh_sidebar(self) -> None:
             if self.controller.mode == "retrieve":

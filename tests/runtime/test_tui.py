@@ -908,6 +908,71 @@ class DevenvTextualAppTest(unittest.IsolatedAsyncioTestCase):
                 bindings[binding.key] = binding.action
         self.assertEqual(bindings.get("f6"), "open_agents")
 
+    def test_question_mark_binding_is_registered(self) -> None:
+        bindings = {
+            binding[0]: binding[1]
+            for binding in DevenvTextualApp.BINDINGS
+            if isinstance(binding, tuple)
+        }
+        self.assertEqual(bindings.get("question_mark"), "show_help")
+
+    def test_command_palette_provider_registered(self) -> None:
+        from core.runtime.tui_commands import DevenvCommandProvider
+
+        self.assertIn(DevenvCommandProvider, DevenvTextualApp.COMMANDS)
+
+    async def test_help_command_pushes_overlay(self) -> None:
+        from core.runtime.tui_widgets import HelpOverlay
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            app = DevenvTextualApp(controller)
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.run_command_line("/help")
+                await pilot.pause()
+                self.assertIsInstance(app.screen, HelpOverlay)
+
+    async def test_backend_command_without_args_does_not_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            app = DevenvTextualApp(controller)
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.run_command_line("/backend")
+                await pilot.pause()
+                self.assertEqual(controller.preferred_backend, "opencode")
+
+    def test_slash_candidates_filter_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            app = DevenvTextualApp(controller)
+            state = type("State", (), {"text": "/mode", "cursor_position": 5})()
+            values = [item.value for item in app._slash_candidates(state)]
+
+        self.assertTrue(values)
+        self.assertTrue(all(value.startswith("/") for value in values))
+
+    def test_slash_candidates_ignore_plain_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            app = DevenvTextualApp(controller)
+            state = type("State", (), {"text": "how does retrieval work", "cursor_position": 23})()
+
+        self.assertEqual(app._slash_candidates(state), [])
+
 
 if __name__ == "__main__":
     unittest.main()
