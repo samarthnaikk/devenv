@@ -885,7 +885,7 @@ def _make_chat_selector(
     timeout = (
         timeout_seconds
         if timeout_seconds is not None
-        else _env_float("DEVENV_SESSION_SELECTOR_TIMEOUT", 90.0)
+        else _env_float("DEVENV_SESSION_SELECTOR_TIMEOUT", 300.0)
     )
     core = None
     if model:
