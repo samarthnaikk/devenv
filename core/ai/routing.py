@@ -89,6 +89,9 @@ class OpenCodeAICore:
         detail = "Installed" if executable_path else "CLI not found on PATH"
         if self.last_error:
             detail = self.last_error
+        model_ref = _parse_model_ref(self.model)
+        provider = model_ref.provider_id if model_ref else ""
+        model_id = model_ref.model_id if model_ref else ""
         server_status = self.server_manager.inspect()
         return AIBackendStatus(
             name="opencode",
@@ -108,6 +111,8 @@ class OpenCodeAICore:
                 "transport_backoff_active": self._transport_backoff_until
                 > time.monotonic(),
                 "last_error": self.last_error,
+                "model_provider": provider,
+                "model_id": model_id,
             },
         )
 
