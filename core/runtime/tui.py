@@ -1916,7 +1916,7 @@ if TEXTUAL_AVAILABLE:
                     if self._busy:
                         self.notify("A retrieval is already running.", severity="warning")
                         return
-                    self._set_busy(True)
+                    self._set_busy(True, "Planning…")
                     self._activity(f"planning: {query}")
                     self._run_plan(query)
                     return
@@ -2263,12 +2263,12 @@ if TEXTUAL_AVAILABLE:
                 lines.append(f"[{TEXT_MUTED}](no output)[/]")
             self._mount_card(lines)
 
-        def _set_busy(self, busy: bool) -> None:
+        def _set_busy(self, busy: bool, label: str = "Retrieving…") -> None:
             self._busy = busy
             try:
                 self.query_one("#spinner", LoadingIndicator).display = busy
                 self.query_one("#composer", Input).disabled = busy
-                self.query_one("#result-title", Static).update("Retrieving…" if busy else "Results")
+                self.query_one("#result-title", Static).update(label if busy else "Results")
             except Exception:  # pragma: no cover - widget may be gone during shutdown
                 pass
 
