@@ -113,10 +113,17 @@ class OllamaAICore:
     def abort(self) -> bool:
         return False
 
+    def _probe_timeout_seconds(self) -> float:
+        raw = os.getenv("DEVENV_BACKEND_PROBE_TIMEOUT", "1.5").strip()
+        try:
+            return max(0.1, float(raw))
+        except ValueError:
+            return 1.5
+
     def status(self) -> AIBackendStatus:
         profile = self._performance_profile()
         try:
-            models = self.list_models()
+            models = self._list_models(timeout=self._probe_timeout_seconds())
         except RuntimeError as exc:
             detail = str(exc).strip() or f"Ollama is not running at {self.base_url}."
             if self.last_error:
@@ -178,7 +185,10 @@ class OllamaAICore:
         )
 
     def list_models(self) -> list[str]:
-        payload = self._request_json("GET", "/api/tags")
+        return self._list_models(timeout=self.timeout_seconds)
+
+    def _list_models(self, *, timeout: float) -> list[str]:
+        payload = self._request_json("GET", "/api/tags", timeout=timeout)
         models: list[str] = []
         for item in payload.get("models", []) or []:
             name = str((item or {}).get("name") or "").strip()
@@ -342,7 +352,10 @@ class OllamaAICore:
         method: str,
         path: str,
         payload: dict[str, Any] | None = None,
+        *,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
+        resolved_timeout = self.timeout_seconds if timeout is None else timeout
         url = f"{self.base_url}{path}"
         data = None
         headers = {"Accept": "application/json"}
@@ -351,7 +364,7 @@ class OllamaAICore:
             headers["Content-Type"] = "application/json"
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            with urllib.request.urlopen(request, timeout=resolved_timeout) as response:
                 raw = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace").strip()

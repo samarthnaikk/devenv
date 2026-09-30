@@ -68,9 +68,16 @@ class LlamaCppAICore:
     def abort(self) -> bool:
         return False
 
+    def _probe_timeout_seconds(self) -> float:
+        raw = os.getenv("DEVENV_BACKEND_PROBE_TIMEOUT", "1.5").strip()
+        try:
+            return max(0.1, float(raw))
+        except ValueError:
+            return 1.5
+
     def status(self) -> AIBackendStatus:
         try:
-            models = self.list_models()
+            models = self._list_models(timeout=self._probe_timeout_seconds())
         except RuntimeError as exc:
             detail = str(exc).strip() or f"llama.cpp server is not running at {self.base_url}."
             if self.last_error:
@@ -125,7 +132,10 @@ class LlamaCppAICore:
         )
 
     def list_models(self) -> list[str]:
-        payload = self._request_json("GET", "/v1/models")
+        return self._list_models(timeout=self.timeout_seconds)
+
+    def _list_models(self, *, timeout: float) -> list[str]:
+        payload = self._request_json("GET", "/v1/models", timeout=timeout)
         models: list[str] = []
         for item in payload.get("data", []) or []:
             name = str((item or {}).get("id") or "").strip()
@@ -291,7 +301,10 @@ class LlamaCppAICore:
         method: str,
         path: str,
         body: dict[str, Any] | None = None,
+        *,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
+        resolved_timeout = self.timeout_seconds if timeout is None else timeout
         payload = None if body is None else json.dumps(body).encode("utf-8")
         request = urllib.request.Request(
             f"{self.base_url}{path}",
@@ -303,7 +316,7 @@ class LlamaCppAICore:
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            with urllib.request.urlopen(request, timeout=resolved_timeout) as response:
                 raw = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace").strip()

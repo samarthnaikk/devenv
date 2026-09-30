@@ -7,6 +7,7 @@ import subprocess
 import time
 import uuid
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -515,6 +516,9 @@ class RoutingAICore:
         self.last_backend_used = "opencode"
         self.last_backend_reason = "OpenCode handled the turn."
         self.last_backend_fallback = ""
+        self._status_cache: dict[str, AIBackendStatus] | None = None
+        self._status_cached_at = 0.0
+        self._status_cache_enabled_only = False
 
     def register_tool(self, tool: BaseTool) -> None:
         self.opencode_ai.register_tool(tool)
@@ -523,16 +527,89 @@ class RoutingAICore:
         if self.codex_ai is not None and hasattr(self.codex_ai, "register_tool"):
             self.codex_ai.register_tool(tool)
 
-    def status(self) -> dict[str, AIBackendStatus]:
-        opencode_status = self.opencode_ai.status()
-        statuses = {
-            "opencode": opencode_status,
-            "ollama": self.ollama_ai.status(),
-            "llama_cpp": self.llama_cpp_ai.status(),
+    def status(self, *, only_enabled: bool = False) -> dict[str, AIBackendStatus]:
+        """Probe every backend and return their status.
+
+        When ``only_enabled`` is set, disabled backends are skipped so callers
+        that only care about the active backend avoid unnecessary network probes.
+        """
+
+        enabled = {
+            "opencode": self.opencode_enabled,
+            "ollama": self.ollama_enabled,
+            "llama_cpp": self.llama_cpp_enabled,
+            "codex": self.codex_enabled,
         }
-        if self.codex_ai is not None and hasattr(self.codex_ai, "status"):
-            statuses["codex"] = self.codex_ai.status()
+        if only_enabled and not any(enabled.values()):
+            enabled = {name: True for name in enabled}
+
+        probes: dict[str, Any] = {}
+        if not only_enabled or enabled.get("opencode"):
+            probes["opencode"] = self.opencode_ai.status
+        if not only_enabled or enabled.get("ollama"):
+            probes["ollama"] = self.ollama_ai.status
+        if not only_enabled or enabled.get("llama_cpp"):
+            probes["llama_cpp"] = self.llama_cpp_ai.status
+        if (not only_enabled or enabled.get("codex")) and self.codex_ai is not None and hasattr(self.codex_ai, "status"):
+            probes["codex"] = self.codex_ai.status
+
+        return self._probe_statuses(probes)
+
+    @staticmethod
+    def _probe_statuses(probes: dict[str, Any]) -> dict[str, AIBackendStatus]:
+        """Probe backends concurrently so one slow/unreachable backend cannot stall status."""
+
+        if len(probes) <= 1:
+            return {name: probe() for name, probe in probes.items()}
+        statuses: dict[str, AIBackendStatus] = {}
+        with ThreadPoolExecutor(max_workers=len(probes)) as executor:
+            futures = {name: executor.submit(probe) for name, probe in probes.items()}
+            for name, future in futures.items():
+                try:
+                    statuses[name] = future.result()
+                except Exception:  # pragma: no cover - defensive; status must never raise
+                    continue
         return statuses
+
+    @staticmethod
+    def _status_ttl_seconds() -> float:
+        raw = os.getenv("DEVENV_STATUS_CACHE_SECONDS", "30").strip()
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            return 30.0
+
+    def cached_status(
+        self,
+        *,
+        refresh: bool = False,
+        only_enabled: bool = False,
+        ttl: float | None = None,
+    ) -> dict[str, AIBackendStatus]:
+        """Return a TTL-cached backend status snapshot.
+
+        The TUI reads status on every header refresh and autocomplete pass; the
+        cache keeps that from re-probing every backend each time.
+        """
+
+        resolved_ttl = self._status_ttl_seconds() if ttl is None else max(0.0, float(ttl))
+        now = time.monotonic()
+        if (
+            not refresh
+            and self._status_cache is not None
+            and self._status_cache_enabled_only == only_enabled
+            and (now - self._status_cached_at) < resolved_ttl
+        ):
+            return self._status_cache
+        statuses = self.status(only_enabled=only_enabled)
+        self._status_cache = statuses
+        self._status_cached_at = now
+        self._status_cache_enabled_only = only_enabled
+        return statuses
+
+    def invalidate_status_cache(self) -> None:
+        self._status_cache = None
+        self._status_cached_at = 0.0
 
     def set_model(self, model: str) -> None:
         cleaned = model.strip()

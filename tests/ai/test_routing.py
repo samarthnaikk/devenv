@@ -860,5 +860,101 @@ class ReasoningIsolationTest(unittest.TestCase):
         self.assertEqual(content, "")
 
 
+class _CountingBackend:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.model = "test-model"
+        self.last_backend_reason = ""
+
+    def register_tool(self, tool: BaseTool) -> None:
+        return None
+
+    def status(self):
+        from core.ai.models import AIBackendStatus
+
+        self.calls += 1
+        return AIBackendStatus(name="opencode", available=True, enabled=True, model=self.model, detail="ok")
+
+
+class StatusCacheTest(unittest.TestCase):
+    def _core(self) -> RoutingAICore:
+        opencode = _CountingBackend()
+        ollama = _CountingBackend()
+        llama = _CountingBackend()
+        codex = _CountingBackend()
+        core = RoutingAICore(
+            workspace_path=".",
+            opencode_ai=opencode,
+            ollama_ai=ollama,
+            llama_cpp_ai=llama,
+            codex_ai=codex,
+        )
+        core._opencode = opencode
+        core._ollama = ollama
+        core._llama = llama
+        core._codex = codex
+        return core
+
+    def test_cached_status_avoids_repeated_probes(self) -> None:
+        core = self._core()
+        first = core.cached_status(refresh=True)
+        second = core.cached_status()
+        self.assertEqual(core._opencode.calls, 1)
+        self.assertEqual(set(first), set(second))
+
+    def test_cached_status_refresh_forces_probe(self) -> None:
+        core = self._core()
+        core.cached_status()
+        core.cached_status(refresh=True)
+        self.assertEqual(core._opencode.calls, 2)
+
+    def test_only_enabled_skips_disabled_backends(self) -> None:
+        core = self._core()
+        core.opencode_enabled = True
+        core.ollama_enabled = False
+        core.llama_cpp_enabled = False
+        core.codex_enabled = False
+        statuses = core.status(only_enabled=True)
+        self.assertEqual(list(statuses), ["opencode"])
+        self.assertEqual(core._ollama.calls, 0)
+        self.assertEqual(core._llama.calls, 0)
+        self.assertEqual(core._codex.calls, 0)
+
+    def test_probe_failure_does_not_raise(self) -> None:
+        class Boom:
+            def status(self):
+                raise RuntimeError("boom")
+
+        statuses = RoutingAICore._probe_statuses({"a": _CountingBackend().status, "b": Boom().status})
+        self.assertIn("a", statuses)
+        self.assertNotIn("b", statuses)
+
+
+class LazyEmbedderTest(unittest.TestCase):
+    def test_lazy_embedder_defers_model_load(self) -> None:
+        from core.memory import embeddings
+
+        with patch.dict(os.environ, {"DEVENV_EMBEDDER_LAZY": "1"}):
+            with patch.object(embeddings, "_DEFAULT_EMBEDDER", None):
+                embedder = embeddings.build_default_embedder()
+                self.assertEqual(type(embedder).__name__, "LazyFallbackEmbedder")
+                self.assertEqual(embedder.dimension, 384)
+                # The identifier must stay stable (no class-name drift) so content
+                # hashes computed while lazy match those computed after warm-up.
+                self.assertEqual(embedder.identifier, "SentenceTransformerEmbedder:all-MiniLM-L6-v2:384")
+
+    def test_warm_default_embedder_falls_back_when_model_unavailable(self) -> None:
+        from core.memory import embeddings
+
+        def boom(self) -> None:
+            raise RuntimeError("no model")
+
+        with patch.object(embeddings.SentenceTransformerEmbedder, "warm", boom):
+            embedder = embeddings.LazyFallbackEmbedder()
+            embeddings.warm_default_embedder(embedder)
+            self.assertEqual(type(embedder._resolved).__name__, "HashingEmbedder")
+            self.assertEqual(len(embedder.embed("hello")), 384)
+
+
 if __name__ == "__main__":
     unittest.main()

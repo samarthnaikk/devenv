@@ -3023,6 +3023,9 @@ def _session_embedding_document_from_chunks(summary: ExternalSessionSummary, chu
 
 
 def _embedder_identifier(embedder: Any) -> str:
+    identifier = getattr(embedder, "identifier", "")
+    if identifier:
+        return str(identifier)
     model_name = getattr(embedder, "model_name", "") or ""
     dimension = getattr(embedder, "dimension", 0)
     return f"{type(embedder).__name__}:{model_name}:{dimension}"

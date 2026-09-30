@@ -436,6 +436,10 @@ def _format_retrieval_result_lines(outcome: RetrievalOutcome) -> list[str]:
     return lines
 
 
+def _startup_trace_enabled() -> bool:
+    return os.getenv("DEVENV_TUI_STARTUP_TRACE", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _format_log_line(created: float, levelno: int, name: str, message: str) -> str:
     timestamp = datetime.fromtimestamp(created).strftime("%H:%M:%S")
     color = LOG_LEVEL_COLORS.get(levelno, TEXT_MUTED)
@@ -1298,8 +1302,20 @@ class DevenvTUIController:
     def model_options_for_backend(self, backend: str) -> list[str]:
         return list(self._model_catalog().get(backend, []))
 
+    def status_snapshot(self, *, refresh: bool = False, only_enabled: bool = False) -> dict[str, Any]:
+        """Return a cached backend-status snapshot without blocking on probes."""
+
+        cached = getattr(self.kernel.ai, "cached_status", None)
+        if callable(cached):
+            try:
+                return cached(refresh=refresh, only_enabled=only_enabled)
+            except Exception:  # pragma: no cover - defensive UI path
+                return {}
+        status = getattr(self.kernel.ai, "status", None)
+        return status() if callable(status) else {}
+
     def palette_entries(self, query: str = "") -> list[PaletteEntry]:
-        statuses = getattr(self.kernel.ai, "status", lambda: {})()
+        statuses = self.status_snapshot()
         entries: list[PaletteEntry] = [
             PaletteEntry("status", "Show status", "/status", "status summary permissions backend model"),
             PaletteEntry("providers", "Show session providers", "/providers", "providers sessions health codex opencode"),
@@ -1623,15 +1639,20 @@ if TEXTUAL_AVAILABLE:
                 self._activity(
                     "No session sources enabled. Run /enable or press F3/F4.", logging.WARNING
                 )
-            self._refresh_header()
+            # Paint immediately with cheap state, then load the slow surfaces
+            # (backend probes, session-archive scans, agent PATH scan) on a
+            # worker so the first frame is not blocked.
             self._refresh_sidebar()
-            self._refresh_sources()
+            self._refresh_header()
+            self._refresh_sources(loading=True)
             self._refresh_agents()
             self._refresh_index()
             self._warm_model_cache()
+            self._warm_embedder()
             self.query_one("#composer", Input).focus()
             self.set_interval(0.25, self._drain_logs)
             self.set_interval(0.75, self._refresh_index)
+            self._run_startup_refresh()
 
         def on_unmount(self) -> None:
             self._restore_logging()
@@ -2117,6 +2138,42 @@ if TEXTUAL_AVAILABLE:
             except Exception:  # pragma: no cover - best effort warm-up
                 return
 
+        @work(thread=True)
+        def _warm_embedder(self) -> None:
+            try:
+                from core.memory.embeddings import warm_default_embedder
+
+                memory = getattr(self.controller.kernel, "memory", None)
+                warm_default_embedder(getattr(memory, "embedder", None))
+            except Exception:  # pragma: no cover - best effort warm-up
+                return
+
+        @work(thread=True)
+        def _run_startup_refresh(self) -> None:
+            """Refresh slow surfaces off the UI thread after the first paint."""
+
+            trace = _startup_trace_enabled()
+            started = time.perf_counter()
+            statuses = self.controller.status_snapshot(refresh=True)
+            if trace:
+                self._activity(f"startup: backend probes in {int((time.perf_counter() - started) * 1000)} ms")
+            self.call_from_thread(self._apply_startup_header, statuses)
+
+            started = time.perf_counter()
+            try:
+                sources = self.controller.context_builder.list_sources()
+            except Exception:  # pragma: no cover - defensive
+                sources = []
+            if trace:
+                self._activity(f"startup: session sources in {int((time.perf_counter() - started) * 1000)} ms")
+            self.call_from_thread(self._apply_startup_sources, sources)
+
+        def _apply_startup_header(self, statuses: Any) -> None:
+            self._refresh_header()
+
+        def _apply_startup_sources(self, sources: Any) -> None:
+            self._refresh_sources(sources=sources)
+
         def _open_agent_picker(self) -> None:
             choices: list[Any] = []
             for option in self.controller.available_agent_options():
@@ -2278,7 +2335,7 @@ if TEXTUAL_AVAILABLE:
             except Exception:  # pragma: no cover - widget may be gone during shutdown
                 return
             controller = self.controller
-            statuses = getattr(controller.kernel.ai, "status", lambda: {})()
+            statuses = controller.status_snapshot(only_enabled=True)
             backend = (
                 getattr(controller.kernel.ai, "preferred_backend", controller.preferred_backend)
                 or controller.preferred_backend
@@ -2314,34 +2371,44 @@ if TEXTUAL_AVAILABLE:
             except Exception:  # pragma: no cover
                 pass
 
-        def _refresh_sources(self) -> None:
-            try:
-                sources = self.controller.context_builder.list_sources()
-            except Exception:  # pragma: no cover - defensive
-                sources = []
-            health = {source.provider: source for source in sources}
+        def _refresh_sources(self, *, sources: Any = None, loading: bool = False) -> None:
+            if sources is None and not loading:
+                try:
+                    sources = self.controller.context_builder.list_sources()
+                except Exception:  # pragma: no cover - defensive
+                    sources = []
+            health = {source.provider: source for source in sources or []}
             lines: list[str] = []
             for provider in SESSION_PROVIDERS:
                 allowed = self.controller.access_policy.can_access_provider(provider)
                 color = TEAL if allowed else TEXT_MUTED
                 pip = "●" if allowed else "○"
-                if allowed:
+                if not allowed:
+                    suffix = f"[{TEXT_MUTED}]off[/]"
+                elif sources is None and loading:
+                    suffix = f"[{TEXT_MUTED}]…[/]"
+                else:
                     count = getattr(health.get(provider), "session_count", 0) or 0
                     suffix = f"[{TEXT_MUTED}]{count}[/]"
-                else:
-                    suffix = f"[{TEXT_MUTED}]off[/]"
                 lines.append(f"[{color}]{pip}[/] [{TEXT}]{provider}[/]  {suffix}")
             try:
                 self.query_one("#sources-list", Static).update("\n".join(lines))
             except Exception:  # pragma: no cover
                 pass
 
-        def _refresh_agents(self) -> None:
-            try:
-                options = self.controller.available_agent_options()
-            except Exception:  # pragma: no cover - defensive
-                options = []
+        def _refresh_agents(self, *, options: Any = None, loading: bool = False) -> None:
+            if options is None and not loading:
+                try:
+                    options = self.controller.available_agent_options()
+                except Exception:  # pragma: no cover - defensive
+                    options = []
             lines: list[str] = []
+            if options is None and loading:
+                try:
+                    self.query_one("#agents-list", Static).update(f"[{TEXT_MUTED}]scanning…[/]")
+                except Exception:  # pragma: no cover
+                    pass
+                return
             for option in options:
                 color = TEAL if option.available else TEXT_MUTED
                 pip = "●" if option.available else "○"
