@@ -8,6 +8,7 @@ from core.tools import (
     EditFileTool,
     GeneratePDFTool,
     GeneratePromptTool,
+    InspectAuditTool,
     InspectSymbolsTool,
     InspectTraceTool,
     KnowledgeSearchTool,
@@ -51,6 +52,7 @@ def build_runtime_tools(memory: MemoryEngineInterface, *, context_builder=None) 
         AuditChangesTool(),
         ManageMemoryTool(memory),
         InspectTraceTool(memory),
+        InspectAuditTool(getattr(memory, "store", None)),
     ]
 
 

@@ -717,6 +717,8 @@ class DevenvTUIController:
         if command == "/clear":
             session_id = self.kernel.reset_conversation()
             return TUICommandResult(f"Started a fresh thread. Session id: {session_id}")
+        if command == "/audit":
+            return TUICommandResult(self.audit_text(args))
         if command == "/tag":
             return TUICommandResult(self._handle_tag_command(args))
         if command == "/untag":
@@ -797,6 +799,36 @@ class DevenvTUIController:
             "Applied to retrieval in this session. Persist with DEVENV_EXCLUDE_TAGS."
         )
 
+    def audit_text(self, args: list[str] | None = None) -> str:
+        store = getattr(getattr(self.kernel, "memory", None), "store", None)
+        if store is None or not hasattr(store, "list_runtime_events"):
+            return "Audit trail unavailable (no runtime store)."
+        args = args or []
+        sub = args[0].lower() if args else "tail"
+        if sub == "verify":
+            from core.runtime.audit import AuditRecorder
+
+            events = list(reversed(store.list_runtime_events(limit=1_000_000)))
+            ok, detail = AuditRecorder.verify_chain(events)
+            return f"Audit chain: {'OK' if ok else 'BROKEN'} ({detail}); events={len(events)}"
+        try:
+            limit = int(args[1]) if len(args) > 1 and args[0].lower() == "tail" else 20
+        except ValueError:
+            limit = 20
+        events = store.list_runtime_events(limit=limit)
+        if not events:
+            return "No audit events recorded yet."
+        lines = ["Runtime audit (newest first)", ""]
+        for event in events:
+            turn = str(event.get("turn_id") or "")[:8]
+            lines.append(
+                f"{str(event.get('event_type')):<20} turn={turn:<8} "
+                f"{str(event.get('backend') or '-')}  {str(event.get('payload_json'))[:80]}"
+            )
+        lines.append("")
+        lines.append("Usage: /audit [tail <n>|verify]")
+        return "\n".join(lines)
+
     def tags_text(self) -> str:
         excluded = sorted(_excluded_tags_from_env())
         lines = ["Session tags and filters", "", f"Excluded tags: {', '.join(excluded) or 'none'}", ""]
@@ -832,6 +864,7 @@ class DevenvTUIController:
                 "/tags                   List tagged sessions and active exclusions",
                 "/exclude-tag <tag>      Exclude tagged sessions from retrieval",
                 "/logs clear|level|filter|export  Filter, clear, or export the activity log",
+                "/audit [tail|verify]    Tail or verify the durable runtime audit trail",
                 "/copy                   Copy the last retrieval result to the clipboard",
                 "/enable                 Enable all session sources (codex + opencode)",
                 "/sources                Show session source status",

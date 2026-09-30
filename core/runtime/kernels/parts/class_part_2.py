@@ -313,6 +313,17 @@ class KernelCheckpointMixin:
                 "target_path": diagnostics_target if checkpoint.verification_mode != "chat" else None,
             },
         )
+        self._record_audit(
+            "verification.result",
+            {
+                "checkpoint_id": checkpoint.task_id,
+                "mode": checkpoint.verification_mode,
+                "success": bool(success),
+                "checks": [
+                    {"mode": result.mode, "success": bool(result.success)} for result in results
+                ],
+            },
+        )
         return success, trace, results
 
     def _resolve_verification_target_path(self, checkpoint: CheckpointTask, checkpoint_steps: list[ToolExecutionStep]) -> str:

@@ -268,6 +268,15 @@ class KernelLocalRuntimeMixin:
                             "Tool is not allowed in planning mode.",
                         )
                         tool_policy_events.append(denied_event)
+                        self._record_audit(
+                            "policy.decision",
+                            {
+                                "tool_name": tool_call.tool_name,
+                                "decision": "deny",
+                                "reason": "Tool is not allowed in planning mode.",
+                                "mode": ExecutionMode.PLAN_ONLY.value,
+                            },
+                        )
                         ai_logs.append(f"Planning tool denied by policy: {denied_event.to_dict()}")
                         conversation.append(_assistant_tool_call_message(ai_response, [tool_call]))
                         conversation.append(

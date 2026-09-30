@@ -121,6 +121,25 @@ SCHEMA_STATEMENTS = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_session_tags_tag ON session_tags(tag)",
     "CREATE INDEX IF NOT EXISTS idx_session_tags_source ON session_tags(source)",
+    """
+    CREATE TABLE IF NOT EXISTS runtime_events (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id TEXT NOT NULL UNIQUE,
+        ts REAL NOT NULL,
+        turn_id TEXT NOT NULL DEFAULT '',
+        session_id TEXT NOT NULL DEFAULT '',
+        workspace TEXT NOT NULL DEFAULT '',
+        event_type TEXT NOT NULL,
+        backend TEXT NOT NULL DEFAULT '',
+        model TEXT NOT NULL DEFAULT '',
+        payload_json TEXT NOT NULL DEFAULT '{}',
+        prev_hash TEXT NOT NULL DEFAULT '',
+        hash TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_runtime_events_type ON runtime_events(event_type)",
+    "CREATE INDEX IF NOT EXISTS idx_runtime_events_turn_id ON runtime_events(turn_id)",
+    "CREATE INDEX IF NOT EXISTS idx_runtime_events_ts ON runtime_events(ts)",
 )
 
 FTS_SCHEMA_STATEMENTS = (
@@ -417,6 +436,71 @@ class SQLiteMemoryStore:
                 "DELETE FROM session_tags WHERE unified_session_id = ?",
                 (unified_session_id,),
             )
+
+    def append_runtime_event(self, event: dict) -> None:
+        """Append one audit event row. ``event`` is a plain dict (see audit.py)."""
+
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO runtime_events (
+                    event_id, ts, turn_id, session_id, workspace, event_type,
+                    backend, model, payload_json, prev_hash, hash
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(event.get("event_id") or ""),
+                    float(event.get("ts") or 0.0),
+                    str(event.get("turn_id") or ""),
+                    str(event.get("session_id") or ""),
+                    str(event.get("workspace") or ""),
+                    str(event.get("event_type") or ""),
+                    str(event.get("backend") or ""),
+                    str(event.get("model") or ""),
+                    str(event.get("payload_json") or "{}"),
+                    str(event.get("prev_hash") or ""),
+                    str(event.get("hash") or ""),
+                ),
+            )
+
+    def list_runtime_events(
+        self,
+        *,
+        event_type: str | None = None,
+        turn_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        query = "SELECT * FROM runtime_events"
+        clauses: list[str] = []
+        params: list[object] = []
+        if event_type:
+            clauses.append("event_type = ?")
+            params.append(event_type)
+        if turn_id:
+            clauses.append("turn_id = ?")
+            params.append(turn_id)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY seq DESC LIMIT ?"
+        params.append(int(limit))
+        with self.transaction() as connection:
+            rows = connection.execute(query, tuple(params)).fetchall()
+        return [dict(row) for row in rows]
+
+    def last_runtime_event_hash(self) -> str:
+        with self.transaction() as connection:
+            row = connection.execute(
+                "SELECT hash FROM runtime_events ORDER BY seq DESC LIMIT 1"
+            ).fetchone()
+        return str(row["hash"]) if row is not None else ""
+
+    def prune_runtime_events(self, *, before_ts: float) -> int:
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                "DELETE FROM runtime_events WHERE ts < ?", (float(before_ts),)
+            )
+            return int(cursor.rowcount or 0)
 
     def delete_external_session_embedding(self, unified_session_id: str) -> None:
         """Remove a whole-session embedding and its chunk rows."""

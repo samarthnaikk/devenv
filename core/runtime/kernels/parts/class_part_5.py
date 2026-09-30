@@ -1,6 +1,10 @@
 class KernelPlanningMixin:
     def _execute_tool_call(self, tool_call: ToolCallRequest) -> ToolExecutionStep:
         logger.info("Intercepted tool call: tool=%s arguments=%s", tool_call.tool_name, tool_call.arguments)
+        self._record_audit(
+            "tool.call",
+            {"tool_name": tool_call.tool_name, "call_id": tool_call.call_id, "arguments": dict(tool_call.arguments or {})},
+        )
         normalized_arguments = self.sandbox.normalize_arguments(self._repair_tool_arguments(tool_call))
         explicit_path = self._active_checkpoint_explicit_path()
         active_task = None
@@ -47,6 +51,10 @@ class KernelPlanningMixin:
         if unsafe_argument is not None:
             _key, value = unsafe_argument
             logger.warning("Sandbox violation detected: tool=%s path=%s", tool_call.tool_name, value)
+            self._record_audit(
+                "sandbox.violation",
+                {"tool_name": tool_call.tool_name, "call_id": tool_call.call_id, "argument": str(value)},
+            )
             return ToolExecutionStep(
                 step_id=tool_call.call_id,
                 tool_name=tool_call.tool_name,
@@ -85,6 +93,15 @@ class KernelPlanningMixin:
         logger.info("Executing runtime tool: tool=%s normalized_arguments=%s", tool_call.tool_name, normalized_arguments)
         result = self.tool_client.call_tool(tool_call.tool_name, normalized_arguments)
         logger.info("Runtime tool finished: tool=%s success=%s is_error=%s", tool_call.tool_name, result.success, result.is_error)
+        self._record_audit(
+            "tool.result",
+            {
+                "tool_name": tool_call.tool_name,
+                "call_id": tool_call.call_id,
+                "success": bool(result.success and not result.is_error),
+                "output_chars": len(str(result.output or "")),
+            },
+        )
         return ToolExecutionStep(
             step_id=tool_call.call_id,
             tool_name=tool_call.tool_name,
@@ -663,6 +680,17 @@ class KernelPlanningMixin:
             store.set_state("last_retrieval_trace", json.dumps(asdict(trace), sort_keys=True))
         except Exception as exc:
             logger.warning("Failed to persist retrieval trace state: error=%s", exc)
+        try:
+            self._record_audit(
+                "retrieval.trace",
+                {
+                    "matched_nodes": len(getattr(trace, "matched_nodes", ()) or ()),
+                    "selected_nodes": len(getattr(trace, "selected_nodes", ()) or ()),
+                    "context_chars": len(str(getattr(trace, "markdown_context", "") or "")),
+                },
+            )
+        except Exception:  # pragma: no cover - auditing is best effort
+            pass
 
     def _retrieve_lexical_memory_context(self, user_prompt: str, *, search_query: str | None = None) -> str:
         if not _should_try_direct_memory_answer(user_prompt):

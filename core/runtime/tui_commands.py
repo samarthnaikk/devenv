@@ -41,6 +41,7 @@ _EXTRA_COMMANDS: tuple[tuple[str, str, str, str, str], ...] = (
     ("receipts", "Show network receipts", "/receipts", "receipts network local remote privacy", "App"),
     ("tags", "List session tags & filters", "/tags", "tags labels filter exclude session", "App"),
     ("logs", "Filter, clear, or export logs", "/logs filter <text>", "logs activity filter level clear export", "App"),
+    ("audit", "Tail or verify the audit trail", "/audit tail", "audit trail events verify decisions", "App"),
     ("exclude_tag", "Exclude tagged sessions", "/exclude-tag <tag>", "exclude tag filter session retrieval", "App"),
 )
 

@@ -81,6 +81,17 @@ class KernelLifecycleMixin:
         return self._ai
 
     @property
+    def audit(self):
+        recorder = getattr(self, "_audit_recorder", None)
+        if recorder is None:
+            from core.runtime.audit import build_recorder
+
+            store = getattr(self.memory, "store", None)
+            recorder = build_recorder(self.workspace_path, store=store)
+            self._audit_recorder = recorder
+        return recorder
+
+    @property
     def local_small_model(self):
         if self._local_small_model is _LOCAL_MODEL_SENTINEL:
             self._local_small_model = load_local_small_model()
@@ -123,17 +134,30 @@ class KernelLifecycleMixin:
         no_memory: bool = False,
         incognito: bool = False,
     ) -> RuntimeTurnResult:
+        turn_id = str(uuid.uuid4())
         try:
             from core.logging_utils import set_log_context
 
             set_log_context(
-                turn_id=str(uuid.uuid4()),
+                turn_id=turn_id,
                 session_id=self.session_id,
                 backend=backend_preference,
                 workspace=self.workspace_path,
             )
         except Exception:  # pragma: no cover - logging context is best effort
             pass
+        self._record_audit(
+            "turn.start",
+            {
+                "prompt_hash": hashlib.sha256(user_prompt.encode("utf-8")).hexdigest(),
+                "prompt_chars": len(user_prompt),
+                "planning_mode": str(getattr(planning_mode, "value", planning_mode)),
+                "plan_only": bool(plan_only),
+                "selected_tools": sorted(self._resolve_selected_tools(selected_tools)),
+            },
+            turn_id=turn_id,
+            backend=backend_preference,
+        )
         logger.info("Starting runtime turn: workspace=%s prompt=%s", self.workspace_path, user_prompt)
         max_consecutive_tools = self._effective_max_consecutive_tools(
             requested_limit=max_consecutive_tools,
@@ -788,6 +812,18 @@ class KernelLifecycleMixin:
                 "used": used,
                 "remaining": max(session_budget_tokens - used, 0),
             }
+        self._record_audit(
+            "turn.end",
+            {
+                "outcome": TurnOutcome.SUCCESS.value,
+                "execution_mode": self._execution_mode_value(),
+                "tool_steps": len(steps),
+                "usage": dict(total_usage),
+                "backend_used": turn_metadata.get("backend_used", ""),
+                "backend_fallback": turn_metadata.get("backend_fallback", ""),
+            },
+            backend=str(turn_metadata.get("backend_used", "")),
+        )
         return self._make_turn_result(
             final_response=final_response,
             steps=steps,
@@ -963,6 +999,41 @@ class KernelLifecycleMixin:
             state_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         except OSError:
             logger.warning("Failed to save runtime state: path=%s", state_path, exc_info=True)
+
+    def _record_audit(
+        self,
+        event_type: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        turn_id: str | None = None,
+        backend: str = "",
+        model: str = "",
+    ) -> None:
+        """Best-effort audit append; never let auditing break a turn."""
+
+        try:
+            from core.logging_utils import redact_text
+
+            def _redact(value: Any) -> Any:
+                if isinstance(value, str):
+                    return redact_text(value)
+                if isinstance(value, dict):
+                    return {str(key): _redact(item) for key, item in value.items()}
+                if isinstance(value, (list, tuple)):
+                    return [_redact(item) for item in value]
+                return value
+
+            recorder = self.audit
+            recorder.record(
+                event_type,
+                _redact(payload or {}),
+                turn_id=turn_id,
+                session_id=self.session_id,
+                backend=backend,
+                model=model,
+            )
+        except Exception as exc:  # pragma: no cover - auditing is best effort
+            logger.debug("Audit record failed: type=%s error=%s", event_type, exc)
 
     def _blueprint_from_dict(self, payload: dict[str, Any]) -> ExecutionBlueprint:
         tasks_payload = payload.get("tasks")

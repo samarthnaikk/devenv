@@ -2,6 +2,7 @@ from .audit_changes import AuditChangesTool
 from .edit_file import EditFileTool
 from .generate_pdf import GeneratePDFTool
 from .generate_prompt import GeneratePromptTool
+from .inspect_audit import InspectAuditTool
 from .inspect_symbols import InspectSymbolsTool
 from .inspect_trace import InspectTraceTool
 from .knowledge_search import KnowledgeSearchTool
@@ -24,6 +25,7 @@ __all__ = [
     "EditFileTool",
     "GeneratePDFTool",
     "GeneratePromptTool",
+    "InspectAuditTool",
     "InspectSymbolsTool",
     "InspectTraceTool",
     "KnowledgeSearchTool",

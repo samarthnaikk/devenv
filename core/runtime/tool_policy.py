@@ -37,6 +37,7 @@ TOOL_POLICY_REGISTRY: dict[str, ToolPolicySpec] = {
     "audit_changes": ToolPolicySpec("audit_changes", "diagnostic", plan_allowed=False, verification_allowed=True, retry_safe=True),
     "manage_memory": ToolPolicySpec("manage_memory", "memory", mutable=True, verification_allowed=False, retry_safe=False),
     "inspect_trace": ToolPolicySpec("inspect_trace", "memory", plan_allowed=True, verification_allowed=True, retry_safe=True),
+    "inspect_audit": ToolPolicySpec("inspect_audit", "audit", plan_allowed=True, verification_allowed=True, retry_safe=True),
 }
 
 
