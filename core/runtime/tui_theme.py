@@ -182,6 +182,12 @@ def build_themes() -> list[Any]:
             "block-cursor-background": TEAL,
             "block-cursor-foreground": ON_TEAL,
             "input-selection-background": f"{TEAL} 40%",
+            "markdown-h1-color": TEAL,
+            "markdown-h2-color": BLUE,
+            "markdown-h3-color": TEXT,
+            "markdown-h4-color": TEXT_MUTED,
+            "markdown-code-background": WELL,
+            "markdown-blockquote-color": TEAL,
         },
     )
     light = Theme(
@@ -202,6 +208,12 @@ def build_themes() -> list[Any]:
             "block-cursor-background": "#006b5f",
             "block-cursor-foreground": "#ffffff",
             "input-selection-background": "#006b5f 30%",
+            "markdown-h1-color": "#006b5f",
+            "markdown-h2-color": "#004395",
+            "markdown-h3-color": "#1a1c1f",
+            "markdown-h4-color": "#5a5d63",
+            "markdown-code-background": "#eef0f3",
+            "markdown-blockquote-color": "#006b5f",
         },
     )
     return [dark, light]

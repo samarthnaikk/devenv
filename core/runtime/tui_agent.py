@@ -36,7 +36,7 @@ from core.ai.acp_agent import ACPAgentError, ACPAgentSession
 from core.ai.agents import AgentAvailability
 
 from .tui_theme import BLUE, ERROR as ERROR_COLOR, TEAL, TEXT, TEXT_MUTED, WARN
-from .tui_widgets import Choice, DiffView, SelectionScreen, ToolTrace
+from .tui_widgets import Choice, DiffView, SelectionScreen, StreamingMarkdown, ToolTrace
 
 try:  # pragma: no cover - rich ships with textual
     from rich.markup import escape as _rich_escape
@@ -127,7 +127,7 @@ class AgentScreen(Screen[None]):
         self._consumer: asyncio.Task[None] | None = None
         self._close_task: asyncio.Task[None] | None = None
         self._live_parts: list[str] = []
-        self._live_widget: Static | None = None
+        self._live_widget: StreamingMarkdown | None = None
         self._thought_parts: list[str] = []
         self._thought_widget: Static | None = None
         self._tool_widgets: dict[str, Any] = {}
@@ -353,7 +353,9 @@ class AgentScreen(Screen[None]):
 
     def _begin_live_message(self) -> None:
         self._live_parts = []
-        self._live_widget = Static("", classes="agent-bubble agent-bubble-assistant", markup=True)
+        self._live_widget = StreamingMarkdown(
+            classes="agent-bubble agent-bubble-assistant"
+        )
         self._thought_parts = []
         self._thought_widget = None
         self._mount(self._live_widget)
@@ -365,7 +367,9 @@ class AgentScreen(Screen[None]):
             self._begin_live_message()
         self._live_parts.append(text)
         assert self._live_widget is not None
-        self._live_widget.update(_rich_escape("".join(self._live_parts)))
+        # Render the agent's Markdown as it streams instead of showing raw
+        # syntax. StreamingMarkdown coalesces fragments and re-renders.
+        self._live_widget.append(text)
         self._scroll_end()
 
     def _append_thought(self, text: str) -> None:

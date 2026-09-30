@@ -464,21 +464,113 @@ class ResultCard(Vertical):
     }
     """
 
-    def __init__(self, body: str, *, title: str = "", mode: str = "markdown") -> None:
+    def __init__(self, body: str = "", *, title: str = "", mode: str = "markdown", open_links: bool = False) -> None:
         super().__init__()
         self._body = body
         self._title = title
         self._mode = mode
+        self._open_links = open_links
 
     def compose(self) -> ComposeResult:
         if self._title:
             yield Static(self._title, classes="result-card-title", markup=False)
         if self._mode == "markdown":
-            yield Markdown(self._body)
+            # open_links=False keeps retrieved/model text from opening a browser
+            # without an explicit user action.
+            yield Markdown(self._body, open_links=self._open_links)
         elif self._mode == "rich":
             yield Static(self._body, markup=True)
         else:
             yield Static(self._body, markup=False)
+
+    def update_markdown(self, body: str) -> None:
+        """Replace the Markdown body in place (used by streaming)."""
+        self._body = body
+        try:
+            widget = self.query_one(Markdown)
+        except Exception:  # pragma: no cover - widget may not be mounted
+            return
+        widget.update(body)
+
+
+class EvidenceCard(Vertical):
+    """Renders retrieved evidence as literal, unparsed text.
+
+    Retrieved session/tool text is untrusted: it can contain Markdown or Rich
+    markup. This card never parses it, so stray ``#``, ``-``, ``[x](y)``, or
+    bracketed tokens can neither restyle the UI nor crash the app.
+    """
+
+    DEFAULT_CSS = """
+    EvidenceCard {
+        background: $surface;
+        border: round $border;
+        padding: 0 1;
+        margin: 1 0;
+        height: auto;
+    }
+
+    EvidenceCard > .result-card-title {
+        color: $primary;
+        text-style: bold;
+    }
+
+    EvidenceCard > .evidence-body {
+        background: transparent;
+        height: auto;
+    }
+    """
+
+    def __init__(self, body: str, *, title: str = "") -> None:
+        super().__init__()
+        self._body = body
+        self._title = title
+
+    def compose(self) -> ComposeResult:
+        if self._title:
+            yield Static(self._title, classes="result-card-title", markup=False)
+        yield Static(self._body, classes="evidence-body", markup=False)
+
+
+class StreamingMarkdown(Vertical):
+    """A Markdown widget that coalesces streamed fragments off the UI thread."""
+
+    DEFAULT_CSS = """
+    StreamingMarkdown {
+        height: auto;
+        background: transparent;
+    }
+
+    StreamingMarkdown Markdown {
+        height: auto;
+        background: transparent;
+    }
+    """
+
+    def __init__(self, *, classes: str = "") -> None:
+        super().__init__(classes=classes)
+        self._parts: list[str] = []
+
+    def compose(self) -> ComposeResult:
+        yield Markdown("", open_links=False)
+
+    def append(self, fragment: str) -> None:
+        """Append a streamed fragment and flush the accumulated text."""
+        if not fragment:
+            return
+        self._parts.append(fragment)
+        self.flush()
+
+    def flush(self) -> None:
+        try:
+            widget = self.query_one(Markdown)
+        except Exception:  # pragma: no cover - widget may not be mounted
+            return
+        widget.update("".join(self._parts))
+
+    @property
+    def text(self) -> str:
+        return "".join(self._parts)
 
 
 class ToolTrace(Collapsible):

@@ -65,10 +65,12 @@ try:
     from .tui_widgets import (
         Choice,
         DiffView,
+        EvidenceCard,
         HelpOverlay,
         ResultCard,
         SelectionScreen,
         StatusBar,
+        StreamingMarkdown,
         TextOverlay,
         ToolTrace,
     )
@@ -362,6 +364,24 @@ def _retrieval_metrics(outcome: RetrievalOutcome) -> str:
     return "  ·  ".join(parts)
 
 
+def _evidence_bundle_from_outcome(outcome: RetrievalOutcome) -> dict[str, Any]:
+    """Build a formatter evidence bundle from a plain retrieval outcome.
+
+    Used when the retrieval-selection layer did not already attach a structured
+    ``retrieval_evidence`` bundle (for example when the selector is disabled).
+    """
+
+    lines = [_collapse_text(line) for line in _context_body_lines(outcome.context)]
+    sessions: list[dict[str, Any]] = []
+    for session_id in outcome.session_ids:
+        sessions.append({"session_id": session_id})
+    return {
+        "source": "engine",
+        "sessions": sessions,
+        "lines": [line for line in lines if line],
+    }
+
+
 def _format_retrieval_result_lines_plain(outcome: RetrievalOutcome) -> list[str]:
     """Plain-text rendering of a retrieval outcome (no Rich markup).
 
@@ -502,6 +522,7 @@ class DevenvTUIController:
         )
         self.prompt_input = prompt_input or input
         self.last_retrieval_text = ""
+        self.last_answer_text = ""
         self.context_builder = ContextBuilderService(
             config.workspace_path,
             memory=self.kernel.memory,
@@ -670,6 +691,11 @@ class DevenvTUIController:
             if not args:
                 return TUICommandResult("Usage: /retrieve <query>")
             return TUICommandResult(_retrieval_plain_text(self.run_retrieval(" ".join(args))))
+        if command in {"/ask", "/answer"}:
+            if not args:
+                return TUICommandResult("Usage: /ask <query>")
+            answer = self.run_answer(" ".join(args))
+            return TUICommandResult(answer or "No answer could be formed from retrieved evidence.")
         if command == "/plan":
             if not args:
                 return TUICommandResult("Usage: /plan <query>")
@@ -1460,6 +1486,42 @@ class DevenvTUIController:
             elapsed_ms=elapsed_ms,
         )
 
+    def run_answer(self, query: str, *, max_lines: int = 20) -> str | None:
+        """Answer a query from retrieved evidence without executing any tools.
+
+        Retrieval runs first (read-only), then the answer formatter rewrites the
+        retrieved evidence into a clean Markdown answer. No checkpoints are
+        executed and nothing is written to the workspace, so this stays safe for
+        the read-only Retrieve mode.
+        """
+
+        outcome = self.run_retrieval(query, max_lines=max_lines)
+        return self.run_answer_from_outcome(query, outcome)
+
+    def run_answer_from_outcome(self, query: str, outcome: RetrievalOutcome) -> str | None:
+        """Format an already-computed retrieval outcome into a Markdown answer."""
+
+        try:
+            from core.runtime.answer_formatter import (
+                build_answer_formatter,
+                formatter_enabled,
+            )
+        except Exception:  # pragma: no cover - defensive
+            return None
+        if not formatter_enabled():
+            return None
+        evidence = outcome.metadata.get("retrieval_evidence")
+        if not isinstance(evidence, dict):
+            evidence = _evidence_bundle_from_outcome(outcome)
+        if not (evidence.get("lines") or []):
+            return None
+        formatter = build_answer_formatter(self.kernel.ai)
+        formatted = formatter.format(query, evidence)
+        if not formatted:
+            return None
+        self.last_answer_text = formatted
+        return formatted
+
     def _session_orchestrator(self):
         cache = getattr(self, "_session_orchestrator_cache", None)
         if cache is not None and cache[0] == self.selector_model:
@@ -1621,7 +1683,7 @@ if TEXTUAL_AVAILABLE:
                             yield MemoryPane(id="memory-pane")
                         with TabPane("Logs", id="tab-logs"):
                             yield RichLog(id="log", markup=True, wrap=True)
-            yield Input(placeholder="Ask a retrieval question, or type / for commands…", id="composer")
+            yield Input(placeholder="Ask a question (answer + evidence), or type / for commands…", id="composer")
             if AUTOCOMPLETE_AVAILABLE:
                 yield AutoComplete("#composer", candidates=self._slash_candidates)
             yield Footer()
@@ -1900,9 +1962,9 @@ if TEXTUAL_AVAILABLE:
                 self._activity("Solve mode is still in progress.", logging.WARNING)
                 self.notify("Solve mode is still in progress. Press F1 for retrieval.", severity="warning")
                 return
-            self._set_busy(True)
-            self._activity(f"retrieving: {value}")
-            self._run_retrieval(value)
+            self._set_busy(True, "Answering…")
+            self._activity(f"answering: {value} (retrieve + format, no tools)")
+            self._run_answer(value)
 
         def _dispatch_command(self, value: str) -> None:
             command_name = value.split()[0].lower()
@@ -1940,6 +2002,18 @@ if TEXTUAL_AVAILABLE:
                     self._set_busy(True, "Planning…")
                     self._activity(f"planning: {query}")
                     self._run_plan(query)
+                    return
+                if command_name in {"/ask", "/answer"}:
+                    query = value[len(command_name):].strip()
+                    if not query:
+                        self._mount_command_card(command_name, "Usage: /ask <query>")
+                        return
+                    if self._busy:
+                        self.notify("A retrieval is already running.", severity="warning")
+                        return
+                    self._set_busy(True, "Answering…")
+                    self._activity(f"answering: {query} (retrieve + format, no tools)")
+                    self._run_answer(query)
                     return
                 result = self.controller.handle_command(value)
                 if result.message:
@@ -2225,6 +2299,55 @@ if TEXTUAL_AVAILABLE:
                 return
             self.call_from_thread(self._render_result, outcome)
 
+        @work(thread=True)
+        def _run_answer(self, query: str) -> None:
+            try:
+                outcome = self.controller.run_retrieval(query, max_lines=20)
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self.call_from_thread(self._render_failure, str(exc))
+                return
+            answer: str | None
+            try:
+                answer = self.controller.run_answer_from_outcome(query, outcome)
+            except Exception:  # pragma: no cover - formatter failures degrade to evidence
+                answer = None
+            self.call_from_thread(self._render_answer, outcome, answer)
+
+        def _render_answer(self, outcome: RetrievalOutcome, answer: str | None) -> None:
+            self._last_outcome = outcome
+            if answer:
+                self._mount_result_widget(
+                    ResultCard(answer, mode="markdown", open_links=False)
+                )
+                sessions = ", ".join(outcome.session_ids) or "none"
+                self._mount_result_widget(
+                    EvidenceCard(
+                        "\n".join(_format_retrieval_result_lines_plain(outcome)) or "(empty)",
+                        title=f"Evidence · {len(outcome.session_ids)} session(s) · {sessions}",
+                    )
+                )
+                self._activity(
+                    f"answered from {len(outcome.session_ids)} session(s) in {outcome.elapsed_ms} ms",
+                    logging.INFO if outcome.session_ids else logging.WARNING,
+                )
+            else:
+                self._mount_plain_card(_format_retrieval_result_lines_plain(outcome))
+                self._activity(
+                    f"no formatted answer; showing evidence ({len(outcome.session_ids)} session(s))",
+                    logging.WARNING,
+                )
+            self._set_busy(False)
+            self.query_one("#composer", Input).focus()
+
+        def _mount_result_widget(self, card: Any) -> None:
+            """Mount a prebuilt result widget in newest-first order with a cap."""
+            container = self.query_one("#results-list", VerticalScroll)
+            container.mount(card, before=0)
+            self._result_cards.insert(0, card)
+            while len(self._result_cards) > self.MAX_RESULT_CARDS:
+                oldest = self._result_cards.pop()
+                oldest.remove()
+
         def _render_result(self, outcome: RetrievalOutcome) -> None:
             self._last_outcome = outcome
             self._mount_plain_card(_format_retrieval_result_lines_plain(outcome))
@@ -2260,7 +2383,9 @@ if TEXTUAL_AVAILABLE:
             self.call_from_thread(self._render_plan, result)
 
         def _render_plan(self, result: RuntimeTurnResult) -> None:
-            self._mount_plain_card(_format_plan_result_lines(result))
+            # Plan markdown is generated by the planning model under a bounded
+            # read-only scope, so it is rendered with the Markdown parser.
+            self._mount_markdown_card(_format_plan_result_lines(result))
             self._set_busy(False)
             checkpoints = len(result.blueprint.tasks) if result.blueprint is not None else 0
             self._activity(f"plan: {checkpoints} checkpoint(s), read-only")
@@ -2296,21 +2421,22 @@ if TEXTUAL_AVAILABLE:
                 oldest = self._result_cards.pop()
                 oldest.remove()
 
-        def _mount_plain_card(self, lines: list[str]) -> None:
-            """Mount a result card whose text must not be parsed as Rich markup.
+        def _mount_markdown_card(self, lines: list[str]) -> None:
+            """Mount a card whose body is trusted model-generated Markdown."""
+            if not lines:
+                lines = ["(empty)"]
+            self._mount_result_widget(ResultCard("\n".join(lines), mode="markdown", open_links=False))
 
-            The body is rendered with the Markdown parser, which treats bracketed
-            session/tool text as literal content and cannot raise ``MarkupError``.
+        def _mount_plain_card(self, lines: list[str]) -> None:
+            """Mount a result card for untrusted retrieval evidence.
+
+            Retrieved session/tool text is rendered as literal text so stray
+            Markdown (``#``, ``-``, links) or Rich markup in the evidence can
+            never restyle the UI or raise ``MarkupError``.
             """
             if not lines:
                 lines = ["(empty)"]
-            container = self.query_one("#results-list", VerticalScroll)
-            card = ResultCard("\n".join(lines), mode="markdown")
-            container.mount(card, before=0)
-            self._result_cards.insert(0, card)
-            while len(self._result_cards) > self.MAX_RESULT_CARDS:
-                oldest = self._result_cards.pop()
-                oldest.remove()
+            self._mount_result_widget(EvidenceCard("\n".join(lines), title="Evidence"))
 
         def _mount_command_card(self, command: str, message: str) -> None:
             lines = [f"[b {TEAL}]Command[/]  [{TEXT}]{_rich_escape(command)}[/]"]

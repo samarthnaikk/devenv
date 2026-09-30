@@ -77,6 +77,10 @@ class FakeAI:
         if backend == self.preferred_backend:
             self.model = model
 
+    def chat(self, messages=None, **kwargs):
+        self.chat_messages = messages
+        return type("Response", (), {"content": "**Answer**\n- formatted from evidence"})()
+
     def status(self):
         metadata_by_backend = {
             "opencode": {"models": ["opencode/claude-sonnet-4", "opencode/gpt-5-codex"]},
@@ -627,6 +631,69 @@ class DevenvTUITest(unittest.TestCase):
 
         self.assertIn("Retrieval engine work", command_result.message)
         self.assertIn("fuses lexical and semantic recall", command_result.message)
+
+    def test_run_answer_formats_retrieved_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            controller.context_builder = FakeContextBuilder(outcome=_sample_outcome())
+
+            answer = controller.run_answer("how does retrieval work?")
+
+        self.assertEqual(answer, "**Answer**\n- formatted from evidence")
+        self.assertEqual(controller.last_answer_text, answer)
+
+    def test_run_answer_returns_none_without_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            controller.context_builder = FakeContextBuilder(
+                outcome=RetrievalOutcome(query="empty", context="", session_ids=())
+            )
+
+            answer = controller.run_answer("anything?")
+
+        self.assertIsNone(answer)
+
+    def test_run_answer_from_outcome_reuses_outcome(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            outcome = _sample_outcome()
+
+            answer = controller.run_answer_from_outcome("how does retrieval work?", outcome)
+
+        self.assertIsNotNone(answer)
+        self.assertIn("formatted from evidence", answer or "")
+
+    def test_ask_command_returns_formatted_answer(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            controller.context_builder = FakeContextBuilder(outcome=_sample_outcome())
+
+            result = controller.handle_command("/ask how does retrieval work?")
+
+        self.assertIn("formatted from evidence", result.message)
+
+    def test_ask_command_requires_query(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+            result = controller.handle_command("/ask")
+
+        self.assertIn("Usage: /ask", result.message)
 
     def test_selector_model_persists_across_controller_instances(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

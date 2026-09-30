@@ -5,7 +5,13 @@ import unittest
 from textual.app import App, ComposeResult
 
 from core.runtime.tui_panes import MemoryPane, SessionsPane
-from core.runtime.tui_widgets import DiffView, ResultCard, ToolTrace
+from core.runtime.tui_widgets import (
+    DiffView,
+    EvidenceCard,
+    ResultCard,
+    StreamingMarkdown,
+    ToolTrace,
+)
 
 
 class _Host(App[None]):
@@ -26,6 +32,43 @@ class ResultCardTest(unittest.IsolatedAsyncioTestCase):
             cards = app.query(ResultCard)
             self.assertEqual(len(cards), 1)
             self.assertTrue(app.query("Markdown"))
+
+
+class EvidenceCardTest(unittest.IsolatedAsyncioTestCase):
+    async def test_evidence_is_rendered_as_literal_text(self) -> None:
+        body = "# not a heading\n- not a list\n[bold]not markup[/]\n[x](http://evil)"
+        app = _Host(EvidenceCard(body, title="Evidence"))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            card = app.query_one(EvidenceCard)
+            self.assertEqual(len(app.query(EvidenceCard)), 1)
+            # Evidence must never be handed to the Markdown parser.
+            self.assertFalse(card.query("Markdown"))
+            self.assertEqual(card._body, body)
+            static = card.query_one(".evidence-body")
+            self.assertFalse(static.has_class("markup"))
+
+
+class StreamingMarkdownTest(unittest.IsolatedAsyncioTestCase):
+    async def test_append_accumulates_and_renders_markdown(self) -> None:
+        app = _Host(StreamingMarkdown())
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            widget = app.query_one(StreamingMarkdown)
+            widget.append("## Title\n")
+            widget.append("hello **world**")
+            await pilot.pause()
+            self.assertEqual(widget.text, "## Title\nhello **world**")
+            self.assertTrue(widget.query("Markdown"))
+
+    async def test_append_ignores_empty_fragments(self) -> None:
+        app = _Host(StreamingMarkdown())
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            widget = app.query_one(StreamingMarkdown)
+            widget.append("")
+            await pilot.pause()
+            self.assertEqual(widget.text, "")
 
 
 class DiffViewTest(unittest.IsolatedAsyncioTestCase):
