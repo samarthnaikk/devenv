@@ -45,7 +45,12 @@ from ..models import (
 from ..response_sanitizer import normalize_response_text, sanitize_response_text
 from ..sandbox import PathSandbox
 from ..state import resolve_memory_paths
-from ..tool_policy import TOOL_POLICY_REGISTRY, allowed_tool_names_for_mode, build_tool_policy_event
+from ..tool_policy import (
+    TOOL_POLICY_REGISTRY,
+    allowed_tool_names_for_mode,
+    build_tool_policy_event,
+    plan_read_only_tools,
+)
 
 logger = logging.getLogger(__name__)
 MAX_EPHEMERAL_TURNS = 4

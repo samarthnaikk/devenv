@@ -33,6 +33,7 @@ from .models import (
 )
 from .response_sanitizer import sanitize_replay_text
 from .setup import inspect_setup
+from .tool_policy import PLAN_READ_ONLY_TOOLS
 from .tooling import build_runtime_tools
 from .workspace import WorkspaceBrowser
 
@@ -46,15 +47,8 @@ DEFAULT_WEB_MODELS = (
 )
 DEFAULT_OLLAMA_MODELS: tuple[str, ...] = ()
 DEFAULT_LLAMACPP_MODELS: tuple[str, ...] = ()
-READ_ONLY_PLAN_TOOLS = (
-    "list_directory",
-    "locate_files",
-    "read_file",
-    "peek_lines",
-    "inspect_symbols",
-    "search_text",
-    "track_symbol",
-)
+# Single source of truth for the plan-mode tool scope (shared with the kernel).
+READ_ONLY_PLAN_TOOLS = PLAN_READ_ONLY_TOOLS
 PLAN_MEMORY_CHAR_LIMIT = 2400
 PLAN_BLUEPRINT_REPAIR_LIMIT = 2
 PLAN_TEMPERATURE = 0.0
@@ -323,6 +317,26 @@ class DevenvWebApp:
                 name="generate_pdf",
                 ready="generate_pdf" in self.kernel.tools,
                 detail="LaTeX-backed PDF generation is available through the generate_pdf runtime tool.",
+            ),
+            "peek_lines": ToolReadiness(
+                name="peek_lines",
+                ready="peek_lines" in self.kernel.tools,
+                detail="Line-range inspection is available for reading specific slices of a file.",
+            ),
+            "retrieval_search": ToolReadiness(
+                name="retrieval_search",
+                ready="retrieval_search" in self.kernel.tools,
+                detail="Prior-session recall is available through the retrieval_search runtime tool.",
+            ),
+            "inspect_trace": ToolReadiness(
+                name="inspect_trace",
+                ready="inspect_trace" in self.kernel.tools,
+                detail="Retrieval-trace inspection is available for auditing what memory was used.",
+            ),
+            "inspect_audit": ToolReadiness(
+                name="inspect_audit",
+                ready="inspect_audit" in self.kernel.tools,
+                detail="Runtime audit-trail queries are available through the inspect_audit tool.",
             ),
         }
         return readiness

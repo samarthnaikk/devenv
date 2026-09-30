@@ -97,7 +97,9 @@ class KernelExecutionMixin:
         return allowed_tool_names_for_mode(mode, set(self.tools))
 
     def _planning_allowed_tool_names(self) -> set[str]:
-        return allowed_tool_names_for_mode(ExecutionMode.PLAN_ONLY, set(self.tools))
+        # Planning uses the shared read-only scope so the kernel and web planners
+        # expose exactly the same tools (see tool_policy.PLAN_READ_ONLY_TOOLS).
+        return plan_read_only_tools(set(self.tools))
 
     def _answer_tool_strategy_question(
         self,

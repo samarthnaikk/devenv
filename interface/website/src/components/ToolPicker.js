@@ -6,9 +6,13 @@ const TOOL_META = {
   list_directory: { icon: "folder_open", label: "Files", hint: "Map folders and top-level structure", category: "workspace" },
   locate_files: { icon: "find_in_page", label: "Locate", hint: "Find likely files before reading", category: "workspace" },
   read_file: { icon: "description", label: "Read", hint: "Open exact files and inspect content", category: "workspace" },
+  peek_lines: { icon: "visibility", label: "Peek", hint: "Inspect specific line ranges", category: "workspace" },
   search_text: { icon: "match_case", label: "Search", hint: "Search the repo for strings and usages", category: "workspace" },
   inspect_symbols: { icon: "route", label: "Symbols", hint: "Inspect definitions, exports, and structure", category: "workspace" },
   track_symbol: { icon: "conversion_path", label: "Trace", hint: "Follow a symbol through the codebase", category: "workspace" },
+  retrieval_search: { icon: "history", label: "Recall", hint: "Recall prior sessions and chunks", category: "memory" },
+  inspect_trace: { icon: "account_tree", label: "Trace", hint: "Inspect the last retrieval trace", category: "memory" },
+  inspect_audit: { icon: "receipt_long", label: "Audit", hint: "Query the runtime audit trail", category: "memory" },
   generate_pdf: { icon: "picture_as_pdf", label: "PDF", hint: "Generate polished PDFs", category: "artifacts" },
   generate_prompt: { icon: "auto_awesome", label: "Prompt", hint: "Prepare a strong prompt", category: "artifacts" },
   knowledge_search: { icon: "hub", label: "Knowledge", hint: "Pull repos and references", category: "research" },
@@ -23,6 +27,10 @@ const TOOL_CATEGORY_META = {
   research: {
     label: "Live Research",
     detail: "Pull current web facts or external references when memory is not enough.",
+  },
+  memory: {
+    label: "Memory & Audit",
+    detail: "Recall prior sessions and inspect the retrieval/audit trail.",
   },
   artifacts: {
     label: "Artifacts",
