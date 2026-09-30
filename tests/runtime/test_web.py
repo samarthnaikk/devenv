@@ -1004,6 +1004,32 @@ class DevenvWebAppTest(unittest.TestCase):
         self.assertEqual(result["blueprint"]["tasks"][0]["task_id"], "inspect-web")
         self.assertEqual(result["usage_sample"]["total_tokens"], 10)
 
+    def test_persist_plan_result_saves_and_lists(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            app = DevenvWebApp(
+                RunConfig(workspace_path=tempdir),
+                memory=FakeMemory(),
+                ai=FakeAI(),
+            )
+            result = app.persist_plan_result(
+                "plan a migration",
+                {
+                    "final_response": "# Plan\n\n- [ ] step one",
+                    "blueprint": {
+                        "objective": "plan a migration",
+                        "tasks": [{"task_id": 1, "description": "step one"}],
+                        "edges": [],
+                    },
+                    "metadata": {},
+                },
+            )
+            listing = app.build_plans_payload()
+            entry = app.build_plan_entry_payload(result["plan_id"])
+
+        self.assertIn("plan_id", result)
+        self.assertEqual(len(listing["plans"]), 1)
+        self.assertEqual(entry["tasks"][0]["task_id"], 1)
+
     def test_run_plan_uses_shared_default_max_consecutive_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             app = DevenvWebApp(

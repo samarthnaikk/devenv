@@ -1053,6 +1053,55 @@ class DevenvWebApp:
             "state": self.kernel.state.name,
         }
 
+    def persist_plan_result(self, prompt: str, result: dict[str, object]) -> dict[str, object]:
+        """Save a web plan result to the plan directory and annotate the payload."""
+
+        blueprint = result.get("blueprint")
+        if not isinstance(blueprint, dict):
+            return result
+        tasks = blueprint.get("tasks") if isinstance(blueprint.get("tasks"), list) else []
+        edges = blueprint.get("edges") if isinstance(blueprint.get("edges"), list) else []
+        markdown = ""
+        final = result.get("final_response")
+        if isinstance(final, str) and final.strip().startswith(("#", "-", "*")):
+            markdown = final
+        try:
+            from .plan_store import PlanStore
+
+            store = PlanStore(self.config.workspace_path)
+            entry = store.save(
+                objective=str(blueprint.get("objective") or prompt),
+                raw_plan_markdown=markdown,
+                tasks=[task for task in tasks if isinstance(task, dict)],
+                edges=[edge for edge in edges if isinstance(edge, dict)],
+                mode="plan_only",
+                source="web",
+            )
+            result = dict(result)
+            result["plan_id"] = entry.plan_id
+            metadata = dict(result.get("metadata") or {})
+            metadata["plan_id"] = entry.plan_id
+            metadata["plan_path"] = entry.path
+            result["metadata"] = metadata
+        except Exception as exc:  # pragma: no cover - best effort
+            logger.warning("Failed to persist web plan: error=%s", exc)
+        return result
+
+    def build_plans_payload(self) -> dict[str, object]:
+        from .plan_store import PlanStore
+
+        store = PlanStore(self.config.workspace_path)
+        return {"plans": [entry.to_dict() for entry in store.list(limit=100)]}
+
+    def build_plan_entry_payload(self, plan_id: str) -> dict[str, object]:
+        from .plan_store import PlanStore
+
+        store = PlanStore(self.config.workspace_path)
+        entry = store.load(plan_id)
+        if entry is None:
+            raise ValueError(f"Unknown plan: {plan_id}")
+        return entry.to_dict()
+
     def _require_provider_access(self, provider_name: str) -> None:
         if not self.access_policy.can_access_provider(provider_name):
             raise PermissionError(
@@ -1105,6 +1154,16 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
                     HTTPStatus.OK,
                     self.app.build_session_embeddings_payload(include_vectors=include_vectors),
                 )
+                return
+            if parsed.path == "/api/plans":
+                self._write_json(HTTPStatus.OK, self.app.build_plans_payload())
+                return
+            if parsed.path.startswith("/api/plans/"):
+                plan_id = parsed.path[len("/api/plans/"):]
+                try:
+                    self._write_json(HTTPStatus.OK, self.app.build_plan_entry_payload(plan_id))
+                except ValueError as exc:
+                    self._write_json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
                 return
             if parsed.path.startswith("/api/context-sources/"):
                 payload = self._match_context_source_path(parsed.path)
@@ -1349,6 +1408,7 @@ class DevenvRequestHandler(SimpleHTTPRequestHandler):
                     backend_preference=backend_preference,
                     local_only=local_only,
                 )
+                result = self.app.persist_plan_result(prompt, result)
             else:
                 result = self.app.run_turn(
                     prompt=prompt,

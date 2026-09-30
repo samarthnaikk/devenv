@@ -41,6 +41,7 @@ devenv-web = "core.runtime.web:main"
 devenv-mcp = "core.runtime.mcp_server:main"
 devenv-setup = "core.runtime.setup:main"
 devenv-audit = "core.runtime.audit_cli:main"
+devenv-plans = "core.runtime.plans_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["core*"]

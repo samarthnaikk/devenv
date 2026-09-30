@@ -26,6 +26,7 @@ from .tui_theme import (
     BLUE,
     DEFAULT_THEME_NAME,
     ERROR as ERROR_COLOR,
+    LIGHT_THEME_NAME,
     ON_TEAL,
     ROLE_COLORS,
     TEAL,
@@ -717,6 +718,8 @@ class DevenvTUIController:
         if command == "/clear":
             session_id = self.kernel.reset_conversation()
             return TUICommandResult(f"Started a fresh thread. Session id: {session_id}")
+        if command == "/plans":
+            return TUICommandResult(self._handle_plans_command(args))
         if command == "/audit":
             return TUICommandResult(self.audit_text(args))
         if command == "/tag":
@@ -799,6 +802,45 @@ class DevenvTUIController:
             "Applied to retrieval in this session. Persist with DEVENV_EXCLUDE_TAGS."
         )
 
+    def _handle_plans_command(self, args: list[str]) -> str:
+        store = self.plan_store()
+        sub = args[0].lower() if args else "list"
+        if sub == "list" or not args:
+            entries = store.list(limit=20)
+            if not entries:
+                return "No saved plans yet. Run /plan <query> to create one."
+            lines = ["Saved plans (newest first)", ""]
+            for entry in entries:
+                lines.append(f"  {entry.plan_id}  {entry.objective[:60]}")
+            lines.append("")
+            lines.append("Usage: /plans show <plan_id> | /plans export <plan_id> [path] | /plans delete <plan_id>")
+            return "\n".join(lines)
+        if sub == "show":
+            if len(args) < 2:
+                return "Usage: /plans show <plan_id>"
+            entry = store.load(args[1])
+            if entry is None:
+                return f"Plan not found: {args[1]}"
+            body = entry.raw_plan_markdown or "(no markdown body)"
+            return f"# Plan {entry.plan_id}\nObjective: {entry.objective}\n\n{body}"
+        if sub == "delete":
+            if len(args) < 2:
+                return "Usage: /plans delete <plan_id>"
+            removed = store.delete(args[1])
+            return f"Deleted plan {args[1]}." if removed else f"Plan not found: {args[1]}"
+        if sub == "export":
+            if len(args) < 2:
+                return "Usage: /plans export <plan_id> [path]"
+            plan_id = args[1]
+            destination = (
+                Path(args[2]).expanduser()
+                if len(args) > 2
+                else Path(self.config.workspace_path) / ".devenv" / "plans" / f"{plan_id}.md"
+            )
+            written = store.export_to(plan_id, destination)
+            return f"Exported {plan_id} to {written}" if written else f"Plan not found: {plan_id}"
+        return "Usage: /plans list | show <id> | export <id> [path] | delete <id>"
+
     def audit_text(self, args: list[str] | None = None) -> str:
         store = getattr(getattr(self.kernel, "memory", None), "store", None)
         if store is None or not hasattr(store, "list_runtime_events"):
@@ -859,6 +901,7 @@ class DevenvTUIController:
                 "/retrieve <query>       Retrieve prior sessions and chunks for a query",
                 "/ask <query>            Answer a query from retrieved evidence (no tools)",
                 "/plan <query>           Draft a read-only blueprint for a query (never executes)",
+                "/plans list|show|export|delete   Manage saved plans in .devenv/plans/",
                 "/tag <session> <tag>    Tag a session (session id or provider:id)",
                 "/untag <session> <tag>  Remove a tag from a session",
                 "/tags                   List tagged sessions and active exclusions",
@@ -1722,7 +1765,34 @@ class DevenvTUIController:
     def run_plan(self, query: str) -> RuntimeTurnResult:
         """Run a plan-only turn: produce a blueprint, never execute a checkpoint."""
 
-        return self.run_prompt(query, plan_only=True)
+        result = self.run_prompt(query, plan_only=True)
+        self._persist_plan(query, result)
+        return result
+
+    def _persist_plan(self, query: str, result: RuntimeTurnResult) -> None:
+        blueprint = getattr(result, "blueprint", None)
+        if blueprint is None:
+            return
+        try:
+            from .plan_store import PlanStore
+
+            store = PlanStore(self.config.workspace_path)
+            entry = store.save(
+                objective=str(getattr(blueprint, "original_objective", "") or query),
+                raw_plan_markdown=str(getattr(blueprint, "raw_plan_markdown", "") or ""),
+                tasks=[task.to_dict() for task in getattr(blueprint, "tasks", []) or []],
+                mode="plan_only",
+                source="tui",
+            )
+            result.metadata["plan_id"] = entry.plan_id
+            result.metadata["plan_path"] = entry.path
+        except Exception as exc:  # pragma: no cover - plan persistence is best effort
+            logger.debug("Plan persistence skipped: error=%s", exc)
+
+    def plan_store(self):
+        from .plan_store import PlanStore
+
+        return PlanStore(self.config.workspace_path)
 
 
 def render_banner(config: RunConfig) -> None:
@@ -1770,6 +1840,7 @@ if TEXTUAL_AVAILABLE:
             ("f4", "toggle_opencode", "OpenCode"),
             ("f5", "toggle_logs", "Logs"),
             ("f6", "open_agents", "Agents"),
+            ("f7", "toggle_theme", "Theme"),
             ("question_mark", "show_help", "Help"),
             ("ctrl+y", "copy_result", "Copy"),
             ("ctrl+e", "export_result", "Export"),
@@ -1934,6 +2005,9 @@ if TEXTUAL_AVAILABLE:
         def action_toggle_logs(self) -> None:
             tabs = self.query_one("#workspace-tabs", TabbedContent)
             tabs.active = "tab-retrieve" if tabs.active == "tab-logs" else "tab-logs"
+
+        def action_toggle_theme(self) -> None:
+            self.theme = LIGHT_THEME_NAME if self.theme == DEFAULT_THEME_NAME else DEFAULT_THEME_NAME
 
         def _activate_tab(self, tab_id: str) -> None:
             try:

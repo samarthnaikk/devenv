@@ -695,6 +695,43 @@ class DevenvTUITest(unittest.TestCase):
 
         self.assertIn("Usage: /ask", result.message)
 
+    def test_plan_is_persisted_and_listed(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=BlueprintKernel(),
+            )
+            result = controller.run_plan("add dark mode")
+            listing = controller.handle_command("/plans list")
+
+        self.assertIn("plan_id", result.metadata)
+        self.assertIn("Saved plans", listing.message)
+        self.assertIn("dark mode", listing.message)
+
+    def test_plans_show_and_export(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=BlueprintKernel(),
+            )
+            result = controller.run_plan("add dark mode")
+            plan_id = result.metadata["plan_id"]
+            shown = controller.handle_command(f"/plans show {plan_id}")
+            exported = controller.handle_command(f"/plans export {plan_id}")
+
+        self.assertIn("Inspect the theme module", shown.message)
+        self.assertIn("Exported", exported.message)
+
+    def test_plans_list_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            result = controller.handle_command("/plans")
+
+        self.assertIn("No saved plans", result.message)
+
     def test_tag_and_untag_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             controller = DevenvTUIController(

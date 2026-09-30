@@ -35,6 +35,7 @@ _EXTRA_COMMANDS: tuple[tuple[str, str, str, str, str], ...] = (
     ("help", "Show help & keyboard shortcuts", "/help", "help keys shortcuts bindings", "App"),
     ("ask", "Answer a query from evidence", "/ask <query>", "ask answer question evidence format markdown", "App"),
     ("plan", "Plan a query (read-only)", "/plan <query>", "plan planning blueprint read-only no edit", "App"),
+    ("plans", "List saved plans", "/plans list", "plans saved directory list export blueprint", "App"),
     ("tab_sessions", "View · Sessions tab", "/tab sessions", "tab view sessions history browse", "App"),
     ("tab_memory", "View · Memory tab", "/tab memory", "tab view memory context provenance", "App"),
     ("tab_logs", "View · Activity logs tab", "/tab logs", "tab view logs activity", "App"),
