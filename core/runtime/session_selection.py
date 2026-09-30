@@ -57,6 +57,35 @@ def _normalize_evidence(text: str) -> str:
     return re.sub(r"\s+", " ", str(text)).strip()
 
 
+# The selector model returns a structured JSON plan. Those keys must never leak
+# into the evidence bundle (the answer formatter would echo them verbatim).
+_SELECTOR_META_KEYS = (
+    '"ordered"',
+    '"selected"',
+    '"confidence"',
+    '"need_more"',
+    '"refined_query"',
+    '"needs_more"',
+    '"question_breakdown"',
+)
+
+
+def _looks_like_selector_meta(text: str) -> bool:
+    """True when a line is the selector's own structured plan rather than evidence."""
+
+    stripped = str(text or "").strip()
+    if not stripped:
+        return True
+    lowered = stripped.lower()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        if any(key in lowered for key in _SELECTOR_META_KEYS):
+            return True
+    # Even a fragment (the JSON may be split across segments) is not evidence.
+    if lowered.startswith('"evidence"') or lowered.startswith('"ordered"') or lowered.startswith('"selected"'):
+        return True
+    return False
+
+
 _MAX_EVIDENCE_SEGMENT_CHARS = 600
 
 
@@ -636,8 +665,9 @@ class SessionSelectionOrchestrator:
 
         combined: list[str] = []
         for line in [*body, *drill_lines, *engine_lines]:
-            if line and line not in combined:
-                combined.append(line)
+            if not line or _looks_like_selector_meta(line) or line in combined:
+                continue
+            combined.append(line)
         metadata["selector_evidence_used"] = bool(body)
         metadata["selector_engine_lines_used"] = bool(engine_lines)
         metadata["selector_drill_line_count"] = len(drill_lines)
@@ -679,7 +709,7 @@ class SessionSelectionOrchestrator:
         return {
             "source": source,
             "sessions": sessions,
-            "lines": [line for line in lines if line],
+            "lines": [line for line in lines if line and not _looks_like_selector_meta(line)],
         }
 
     def _apply_recall_floor(

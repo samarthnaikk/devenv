@@ -305,6 +305,57 @@ class SQLiteMemoryStore:
             rows = connection.execute(query, params).fetchall()
         return [_row_to_external_session_embedding_vector(row) for row in rows]
 
+    def delete_external_session_embedding(self, unified_session_id: str) -> None:
+        """Remove a whole-session embedding and its chunk rows."""
+
+        with self.transaction() as connection:
+            connection.execute(
+                "DELETE FROM external_session_embeddings WHERE unified_session_id = ?",
+                (unified_session_id,),
+            )
+            connection.execute(
+                "DELETE FROM external_session_chunk_embeddings WHERE unified_session_id = ?",
+                (unified_session_id,),
+            )
+
+    def prune_external_session_embeddings(
+        self,
+        live_unified_ids: set[str],
+        *,
+        provider: str | None = None,
+    ) -> int:
+        """Delete embeddings whose session is no longer present.
+
+        Returns the number of whole-session rows removed. Chunk rows for the
+        same ids are removed too so the index cannot keep scoring deleted or
+        archived sessions.
+        """
+
+        query = "SELECT unified_session_id FROM external_session_embeddings"
+        params: tuple[str, ...] = ()
+        if provider:
+            query += " WHERE provider = ?"
+            params = (provider,)
+        with self.transaction() as connection:
+            rows = connection.execute(query, params).fetchall()
+            stale = [
+                str(row["unified_session_id"])
+                for row in rows
+                if str(row["unified_session_id"]) not in live_unified_ids
+            ]
+            if not stale:
+                return 0
+            placeholders = ",".join("?" for _ in stale)
+            connection.execute(
+                f"DELETE FROM external_session_embeddings WHERE unified_session_id IN ({placeholders})",
+                tuple(stale),
+            )
+            connection.execute(
+                f"DELETE FROM external_session_chunk_embeddings WHERE unified_session_id IN ({placeholders})",
+                tuple(stale),
+            )
+        return len(stale)
+
     def replace_external_session_chunk_embeddings(
         self,
         unified_session_id: str,

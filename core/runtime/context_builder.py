@@ -48,13 +48,14 @@ SEMANTIC_STRONG_THRESHOLD = 0.35
 MAX_RUNTIME_SESSION_MATCHES = 12
 MAX_PROVIDER_SESSION_MATCHES = 6
 MAX_INDEX_CHUNK_CHARS = 720
-MAX_INDEX_CONTEXT_LINES = 12
 MAX_CONTEXT_LINES_PER_SESSION = 4
 MAX_SESSION_EMBEDDING_CACHE = 512
 MAX_SESSION_CHUNK_EMBEDDINGS = 96
 MAX_SESSION_CHUNK_HITS = 3
 CONTEXT_LINES_FIRST_PASS = 2
-CONTEXT_LINE_MAX_CHARS = 0
+# Per-line cap for context content. 0 disables truncation; default keeps monster
+# tool dumps from dominating a line before the windowing pass runs.
+CONTEXT_LINE_MAX_CHARS = 2000
 MAX_CONTEXT_CHARS = 8000
 PINNED_TOP_K_SESSIONS = 3
 CONTEXT_LINE_WINDOW_CHARS = 2000
@@ -1463,13 +1464,6 @@ class ContextBuilderService:
         self._session_vector_cache.pop(summary.provider, None)
         self._chunk_embedding_matrix_cache.pop(summary.provider, None)
 
-    def _session_embedding_document(
-        self,
-        provider: ExternalSessionProvider,
-        summary: ExternalSessionSummary,
-    ) -> str:
-        return _session_embedding_document_from_chunks(summary, provider.build_index_chunks(summary.session_id))
-
     def _session_embedding_vectors(self, provider_name: str) -> dict[str, tuple[float, ...]]:
         cached = self._session_vector_cache.get(provider_name)
         if cached is not None:
@@ -1564,10 +1558,14 @@ class ContextBuilderService:
                     ranked_chunks.sort(key=lambda item: (-item[0], item[1].chunk_index))
                     ranked_chunks = ranked_chunks[:MAX_SESSION_CHUNK_HITS]
                 best = ranked_chunks[0][0] if ranked_chunks else 0.0
-            else:
-                vector = vectors.get(summary.session_id)
-                if vector:
-                    best = max((_cosine_similarity(query, vector) for query in query_vectors), default=0.0)
+            # Always consult the whole-session vector. A session can have stored
+            # chunks that did not match yet still be a strong whole-session hit,
+            # so the chunk branch must not suppress the session-level fallback.
+            vector = vectors.get(summary.session_id)
+            if vector:
+                whole_score = max((_cosine_similarity(query, vector) for query in query_vectors), default=0.0)
+                if whole_score > best:
+                    best = whole_score
             if best > 0.0:
                 best_chunk = ranked_chunks[0][1] if ranked_chunks else None
                 hits[summary.session_id] = {"score": best, "chunk": best_chunk, "chunks": ranked_chunks}
@@ -1595,9 +1593,6 @@ class ContextBuilderService:
             if provider.health().available:
                 return provider_name
         return next(iter(self.providers), None)
-
-    def _select_relevant_session_ids(self, provider: ExternalSessionProvider, task: str) -> tuple[str, ...]:
-        return tuple(match["summary"].session_id for match in self._select_relevant_sessions(provider, task))
 
     def _select_relevant_sessions(
         self,
@@ -2385,9 +2380,46 @@ def _combine_indexed_and_semantic_matches(
     return [entries[session_id] for session_id in ordered][:MAX_PROVIDER_SESSION_MATCHES]
 
 
+_SELECTOR_META_MARKERS = (
+    '"ordered"',
+    '"selected"',
+    '"confidence"',
+    '"need_more"',
+    '"needs_more"',
+    '"refined_query"',
+    '"question_breakdown"',
+)
+
+
+def _looks_like_structured_meta(text: str) -> bool:
+    """True for JSON-ish model envelopes that are planning meta, not evidence.
+
+    The selector and tool/schema backends emit structured JSON. Those payloads
+    are decisions, not recalled facts, so they must never be indexed as evidence.
+    """
+
+    stripped = str(text or "").strip()
+    if not stripped:
+        return True
+    lowered = stripped.lower()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        if any(marker in lowered for marker in _SELECTOR_META_MARKERS):
+            return True
+        if '"type"' in lowered and '"content"' in lowered:
+            return True
+    return lowered.startswith('"ordered"') or lowered.startswith('"selected"') or lowered.startswith('"evidence"')
+
+
 def _is_noise_message_content(text: str) -> bool:
     lowered = text.strip().lower()
-    return lowered.startswith("<environment_context>") or lowered.startswith("<permissions instructions>") or lowered.startswith("<collaboration_mode>") or lowered.startswith("<skills_instructions>")
+    if (
+        lowered.startswith("<environment_context>")
+        or lowered.startswith("<permissions instructions>")
+        or lowered.startswith("<collaboration_mode>")
+        or lowered.startswith("<skills_instructions>")
+    ):
+        return True
+    return _looks_like_structured_meta(text)
 
 
 def _token_matches(token: str, haystack: str) -> bool:
@@ -2677,41 +2709,6 @@ def _collect_per_session_context_lines(
 ) -> tuple[str, ...]:
     per_session = _build_session_context_candidates(task, selected_matches, details_by_id)
     return select_context_lines(task, per_session, max_lines=max_lines).kept
-
-
-def _collect_indexed_context_lines(task: str, selected_matches: list[dict[str, Any]]) -> tuple[str, ...]:
-    if not selected_matches:
-        return ()
-    tokens = _tokenize(task)
-    prefer_tool_output = _is_tool_output_query(task)
-    candidates: list[tuple[int, str]] = []
-    seen: set[str] = set()
-    for match in selected_matches:
-        summary = match.get("summary")
-        if isinstance(summary, ExternalSessionSummary):
-            line = f"Session '{summary.title}' targeted workspace {summary.workspace_path or 'unknown workspace'}."
-            if line not in seen:
-                seen.add(line)
-                candidates.append((2, line))
-        for chunk in match.get("chunks", []) or ():
-            if not isinstance(chunk, ExternalSessionChunk):
-                continue
-            prefix = "User asked" if chunk.role == "user" else "Assistant reported" if chunk.role == "assistant" else "Tool output"
-            line = f"{prefix}: {_compact_context_content(chunk.role, chunk.text)}"
-            if not line or line in seen:
-                continue
-            seen.add(line)
-            lowered = line.lower()
-            score = sum(2 for token in tokens if _token_matches(token, lowered))
-            if chunk.source == "reasoning":
-                score += 1
-            if chunk.role in {"user", "assistant"}:
-                score += 1
-            if chunk.role == "tool":
-                score += 3 if prefer_tool_output else -3
-            candidates.append((score, line))
-    candidates.sort(key=lambda item: (-item[0], item[1]))
-    return tuple(line for score, line in candidates if score > 0)[:MAX_INDEX_CONTEXT_LINES]
 
 
 def _build_chunks_from_messages(

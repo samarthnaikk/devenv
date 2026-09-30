@@ -1631,6 +1631,68 @@ class ContextBuilderServiceTest(unittest.TestCase):
 
         self.assertGreater(scores.get("s1", 0.0), 0.9)
 
+    def test_semantic_falls_back_to_whole_session_vector_when_chunks_do_not_match(self) -> None:
+        from core.memory.models import ExternalSessionChunkEmbedding, ExternalSessionEmbedding
+        from core.runtime.models import ExternalSessionSummary
+
+        class _QueryEmbedder:
+            dimension = 2
+
+            def embed(self, text: str) -> list[float]:
+                return [1.0, 0.0] if "needle" in text.lower() else [0.0, 1.0]
+
+        class _FakeMemory:
+            def __init__(self, store: object, embedder: object) -> None:
+                self.store = store
+                self.embedder = embedder
+
+        class _Provider:
+            name = "codex"
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir) / "workspace"
+            workspace.mkdir()
+            store = SQLiteMemoryStore(str(workspace / "memory.db"))
+            # Whole-session vector matches the query; chunk vector does not.
+            store.upsert_external_session_embedding(
+                ExternalSessionEmbedding(
+                    unified_session_id="codex:s1",
+                    provider="codex",
+                    session_id="s1",
+                    content_hash="session-hash",
+                    embedding=(1.0, 0.0),
+                )
+            )
+            store.replace_external_session_chunk_embeddings(
+                "codex:s1",
+                [
+                    ExternalSessionChunkEmbedding(
+                        unified_session_id="codex:s1",
+                        provider="codex",
+                        session_id="s1",
+                        chunk_index=0,
+                        content_hash="chunk-hash",
+                        embedding=(0.0, 1.0),
+                    )
+                ],
+            )
+            service = ContextBuilderService(
+                str(workspace),
+                memory=_FakeMemory(store=store, embedder=_QueryEmbedder()),
+                provider_configs=(),
+            )
+            summary = ExternalSessionSummary(provider="codex", session_id="s1", title="S1", updated_at="")
+            scores = service._semantic_session_scores(_Provider(), [summary], ("find the needle",))
+
+        self.assertGreater(scores.get("s1", 0.0), 0.9)
+
+    def test_structured_meta_is_noise_not_evidence(self) -> None:
+        from core.runtime.context_builder import _is_noise_message_content
+
+        self.assertTrue(_is_noise_message_content('{"ordered": ["s1"], "selected": ["s1"], "confidence": 0.9}'))
+        self.assertTrue(_is_noise_message_content('{"type": "final", "content": "hi"}'))
+        self.assertFalse(_is_noise_message_content("The retrieval engine fuses lexical and semantic recall."))
+
     def test_codex_provider_dedupes_sessions_sharing_meta_id(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir) / "workspace"

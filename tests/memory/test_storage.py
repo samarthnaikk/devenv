@@ -121,6 +121,57 @@ class SQLiteMemoryStoreTest(unittest.TestCase):
         self.assertEqual(vectors[0].embedding, (0.1, 0.2, 0.3))
         self.assertEqual(vectors[0].content_text, "")
 
+    def test_prune_external_session_embeddings_removes_stale_rows(self) -> None:
+        from core.memory.models import ExternalSessionChunkEmbedding
+
+        for session_id in ("keep", "stale"):
+            self.store.upsert_external_session_embedding(
+                ExternalSessionEmbedding(
+                    unified_session_id=f"codex:{session_id}",
+                    provider="codex",
+                    session_id=session_id,
+                    content_hash="hash",
+                    embedding=(0.1, 0.2),
+                    indexed_at=1.0,
+                )
+            )
+            self.store.replace_external_session_chunk_embeddings(
+                f"codex:{session_id}",
+                [
+                    ExternalSessionChunkEmbedding(
+                        unified_session_id=f"codex:{session_id}",
+                        provider="codex",
+                        session_id=session_id,
+                        chunk_index=0,
+                        content_hash="hash",
+                        embedding=(0.1, 0.2),
+                        indexed_at=1.0,
+                    )
+                ],
+            )
+
+        removed = self.store.prune_external_session_embeddings({"codex:keep"}, provider="codex")
+
+        self.assertEqual(removed, 1)
+        self.assertIsNotNone(self.store.get_external_session_embedding("codex:keep"))
+        self.assertIsNone(self.store.get_external_session_embedding("codex:stale"))
+        remaining_chunks = self.store.list_external_session_chunk_embeddings("codex")
+        self.assertEqual([chunk.unified_session_id for chunk in remaining_chunks], ["codex:keep"])
+
+    def test_delete_external_session_embedding_removes_chunks(self) -> None:
+        self.store.upsert_external_session_embedding(
+            ExternalSessionEmbedding(
+                unified_session_id="codex:x",
+                provider="codex",
+                session_id="x",
+                content_hash="hash",
+                embedding=(0.1,),
+                indexed_at=1.0,
+            )
+        )
+        self.store.delete_external_session_embedding("codex:x")
+        self.assertIsNone(self.store.get_external_session_embedding("codex:x"))
+
     def test_fts_rebuild_is_gated_by_schema_version(self) -> None:
         from unittest import mock
 

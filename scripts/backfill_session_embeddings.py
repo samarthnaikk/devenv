@@ -18,6 +18,11 @@ def main() -> int:
     parser.add_argument("--codex-root", default=CODEX_ROOT)
     parser.add_argument("--opencode-db", default=OPENCODE_DB)
     parser.add_argument("--provider", choices=("codex", "opencode", "all"), default="all")
+    parser.add_argument(
+        "--prune",
+        action="store_true",
+        help="Delete embeddings for sessions no longer present in the archive.",
+    )
     args = parser.parse_args()
 
     workspace = Path(args.workspace).expanduser().resolve()
@@ -51,6 +56,13 @@ def main() -> int:
                 print(f"{provider_name}: failed on {summary.session_id}: {exc}", flush=True)
             if index % 20 == 0 or index == len(summaries):
                 print(f"{provider_name}: {index}/{len(summaries)}", flush=True)
+        if args.prune:
+            store = service._get_session_embedding_store()
+            live_ids = {
+                f"{summary.provider}:{summary.session_id}" for summary in summaries
+            }
+            removed = store.prune_external_session_embeddings(live_ids, provider=provider_name)
+            print(f"{provider_name}: pruned {removed} stale embedding(s)", flush=True)
     return 0
 
 

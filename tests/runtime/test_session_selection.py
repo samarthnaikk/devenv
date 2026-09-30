@@ -10,11 +10,22 @@ from core.runtime.session_selection import (
     SessionCandidate,
     SessionSelectionOrchestrator,
     SelectionResult,
+    _looks_like_selector_meta,
     apply_project_gate,
     build_session_orchestrator,
     project_gate_mode,
     session_selector_enabled,
 )
+
+
+class SelectorMetaFilterTest(unittest.TestCase):
+    def test_selector_json_is_meta_not_evidence(self) -> None:
+        self.assertTrue(_looks_like_selector_meta('{"ordered": ["s1"], "selected": ["s1"]}'))
+        self.assertTrue(_looks_like_selector_meta('"evidence": {"s1": ["x"]}'))
+        self.assertTrue(_looks_like_selector_meta(""))
+
+    def test_real_evidence_is_kept(self) -> None:
+        self.assertFalse(_looks_like_selector_meta("The retrieval engine fuses lexical and semantic recall with RRF."))
 
 
 @dataclass
