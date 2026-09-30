@@ -135,6 +135,20 @@ class KernelLifecycleMixin:
         incognito: bool = False,
     ) -> RuntimeTurnResult:
         turn_id = str(uuid.uuid4())
+        offline = False
+        offline_receipt: dict[str, Any] | None = None
+        try:
+            from core.runtime.connectivity import is_offline
+
+            offline = is_offline()
+            if offline:
+                local_only = True
+                apply_offline = getattr(self.ai, "apply_offline_mode", None)
+                if callable(apply_offline):
+                    offline_receipt = apply_offline(offline=True)
+                    backend_preference = getattr(self.ai, "preferred_backend", backend_preference)
+        except Exception:  # pragma: no cover - connectivity is best effort
+            offline = False
         try:
             from core.logging_utils import set_log_context
 
@@ -180,7 +194,16 @@ class KernelLifecycleMixin:
             "selected_tools": sorted(self._resolve_selected_tools(selected_tools)),
             "no_memory": no_memory,
             "incognito": incognito,
+            "offline": offline,
         }
+        if offline:
+            system_logs.append("Offline detected: running local-only (remote backends disabled).")
+            if offline_receipt:
+                system_logs.append(
+                    f"Offline routing: backend={offline_receipt.get('preferred_backend')} "
+                    f"local_available={offline_receipt.get('local_backend_available')}"
+                )
+            self._record_audit("backend.error", {"offline": True, "receipt": offline_receipt or {}})
         if hasattr(self.ai, "set_backend_preference"):
             self.ai.set_backend_preference(
                 backend_preference,

@@ -571,6 +571,42 @@ class RoutingAICore:
                     continue
         return statuses
 
+    def apply_offline_mode(self, *, offline: bool) -> dict[str, Any]:
+        """Force local-only routing when the machine is offline.
+
+        Remote backends (opencode, codex) are disabled and the preferred backend
+        is switched to the highest-priority *enabled* local backend. Returns a
+        small receipt describing the change so callers can surface it.
+        """
+
+        from core.runtime.connectivity import local_backend_priority
+
+        if not offline:
+            return {"offline": False, "changed": False}
+        previous = self.preferred_backend
+        local_order = local_backend_priority()
+        enabled_map = {
+            "ollama": self.ollama_enabled,
+            "llama_cpp": self.llama_cpp_enabled,
+        }
+        chosen = next((name for name in local_order if enabled_map.get(name)), None)
+        self.opencode_enabled = False
+        self.codex_enabled = False
+        if chosen:
+            self.preferred_backend = chosen
+            self.last_backend_reason = f"Offline: routed to local backend `{chosen}`."
+        else:
+            self.last_backend_reason = "Offline: no local backend is enabled."
+        self.last_backend_fallback = "offline: local-only"
+        self.invalidate_status_cache()
+        return {
+            "offline": True,
+            "changed": previous != self.preferred_backend or chosen is not None,
+            "previous_backend": previous,
+            "preferred_backend": self.preferred_backend,
+            "local_backend_available": chosen is not None,
+        }
+
     @staticmethod
     def _status_ttl_seconds() -> float:
         raw = os.getenv("DEVENV_STATUS_CACHE_SECONDS", "30").strip()

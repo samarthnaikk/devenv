@@ -352,6 +352,8 @@ class StatusBar(Static):
                 pieces.append(f"[{TEXT_MUTED}]{label}[/] [{TEXT}]{_escape(str(value))}[/]")
         local_only = bool(state.get("local_only", True))
         pieces.append(f"[{TEAL}]● LOCAL[/]" if local_only else f"[{WARN}]● REMOTE[/]")
+        if state.get("offline"):
+            pieces.append(f"[{WARN} on {PANEL}] OFFLINE [/]")
         index = state.get("index")
         if index:
             pieces.append(f"[{TEXT_MUTED}]{_escape(str(index))}[/]")

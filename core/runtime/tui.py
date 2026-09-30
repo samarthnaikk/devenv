@@ -718,6 +718,8 @@ class DevenvTUIController:
         if command == "/clear":
             session_id = self.kernel.reset_conversation()
             return TUICommandResult(f"Started a fresh thread. Session id: {session_id}")
+        if command == "/offline":
+            return TUICommandResult(self._handle_offline_command(args))
         if command == "/plans":
             return TUICommandResult(self._handle_plans_command(args))
         if command == "/audit":
@@ -800,6 +802,39 @@ class DevenvTUIController:
         return (
             f"Excluded tags: {', '.join(merged)}\n"
             "Applied to retrieval in this session. Persist with DEVENV_EXCLUDE_TAGS."
+        )
+
+    def _handle_offline_command(self, args: list[str]) -> str:
+        from core.runtime.connectivity import clear_cache, internet_available, is_offline
+
+        sub = args[0].lower() if args else "status"
+        if sub == "force":
+            os.environ["DEVENV_FORCE_OFFLINE"] = "1"
+            os.environ.pop("DEVENV_FORCE_ONLINE", None)
+            clear_cache()
+            receipt = None
+            apply_offline = getattr(self.kernel.ai, "apply_offline_mode", None)
+            if callable(apply_offline):
+                receipt = apply_offline(offline=True)
+            self._apply_runtime_preferences()
+            return f"Forced offline mode. {receipt or ''}".strip()
+        if sub == "online":
+            os.environ["DEVENV_FORCE_ONLINE"] = "1"
+            os.environ.pop("DEVENV_FORCE_OFFLINE", None)
+            clear_cache()
+            self._apply_runtime_preferences()
+            return "Cleared offline override (forcing online)."
+        if sub == "auto":
+            os.environ.pop("DEVENV_FORCE_OFFLINE", None)
+            os.environ.pop("DEVENV_FORCE_ONLINE", None)
+            clear_cache()
+            self._apply_runtime_preferences()
+            return f"Automatic connectivity detection restored. Internet available: {internet_available(refresh=True)}."
+        status = "OFFLINE" if is_offline(refresh=True) else "ONLINE"
+        forced = os.getenv("DEVENV_FORCE_OFFLINE") or os.getenv("DEVENV_FORCE_ONLINE") or "auto"
+        return (
+            f"Connectivity: {status} (mode: {forced})\n"
+            "Usage: /offline status | force | online | auto"
         )
 
     def _handle_plans_command(self, args: list[str]) -> str:
@@ -902,6 +937,7 @@ class DevenvTUIController:
                 "/ask <query>            Answer a query from retrieved evidence (no tools)",
                 "/plan <query>           Draft a read-only blueprint for a query (never executes)",
                 "/plans list|show|export|delete   Manage saved plans in .devenv/plans/",
+                "/offline status|force|online|auto  Connectivity and offline auto-mode",
                 "/tag <session> <tag>    Tag a session (session id or provider:id)",
                 "/untag <session> <tag>  Remove a tag from a session",
                 "/tags                   List tagged sessions and active exclusions",
@@ -2790,13 +2826,20 @@ if TEXTUAL_AVAILABLE:
                     f"{len(self._last_outcome.session_ids)} sessions · "
                     f"{self._last_outcome.elapsed_ms} ms"
                 )
+            try:
+                from core.runtime.connectivity import is_offline
+
+                offline = is_offline()
+            except Exception:  # pragma: no cover - defensive
+                offline = False
             bar.set_state(
                 workspace=controller.config.workspace_path,
                 mode=controller.mode,
                 backend=backend,
                 model=model,
                 permission=permission,
-                local_only=not remote,
+                local_only=not remote or offline,
+                offline=offline,
                 index=controller.index_status_text(),
                 last_summary=last,
             )
