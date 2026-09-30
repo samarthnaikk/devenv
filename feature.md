@@ -40,6 +40,19 @@ It focuses on what a user can do in the product, not the internal tool-call or i
 - Ask a question and get a clean Markdown answer, not just raw evidence.
 - See the supporting evidence rendered as plain text underneath, with links that never auto-open.
 - Watch native-agent Markdown stream live in the agent view.
+- When evidence spans several sessions, each top session is answered separately and the results are reconciled into one answer with per-source tags.
+
+## Plans
+
+- Every plan is saved under `.devenv/plans/` and can be listed, viewed, exported, or deleted.
+- Manage plans from the TUI (`/plans`), the `devenv-plans` CLI, or the web API.
+- Plan mode uses one shared read-only tool scope, so the terminal and web planners expose the same tools.
+
+## Offline Mode
+
+- Devenv detects when there is no internet and automatically runs local-only.
+- Remote backends are disabled and routing switches to a local backend (Ollama, then llama.cpp).
+- The terminal shows an `OFFLINE` indicator and `/offline` can force or clear the mode.
 
 ## Planning And Execution
 
@@ -129,6 +142,7 @@ It focuses on what a user can do in the product, not the internal tool-call or i
 - Single-turn smoke/runtime command for direct testing.
 - MCP server surface for exposing the local tool deck externally.
 - Audit CLI (`devenv-audit`) for querying and verifying runtime decisions.
+- Plans CLI (`devenv-plans`) for listing, showing, and exporting saved plans.
 
 ## Native AI Agents (ACP)
 

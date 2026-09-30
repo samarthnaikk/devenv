@@ -12,6 +12,8 @@ The project currently ships as an installable Python package and includes:
 - a memory engine with working, episodic, and associative memory layers
 - a cross-provider retrieval engine that fuses Codex and OpenCode session history with local memory
 - user and archive-derived session tags with a deterministic retrieval tag gate
+- a durable plan directory with per-session, cited multi-session answers
+- automatic offline detection that switches to local-only backends
 - rotating file logging with per-turn correlation IDs and secret redaction
 - a durable, hash-chained runtime audit trail (JSONL + queryable `runtime_events`)
 - a retrieval evaluation harness for scoring recall against a known question set
@@ -156,6 +158,8 @@ Useful commands (also available from the command palette via `Ctrl+P` or the foo
 - `/retrieve <query>` — retrieve prior sessions and chunks for a query
 - `/ask <query>` — retrieve evidence and format a clean Markdown answer (no tools run)
 - `/plan <query>` — draft a read-only blueprint (never executes)
+- `/plans list|show|export|delete` — manage plans saved under `.devenv/plans/`
+- `/offline status|force|online|auto` — connectivity and offline auto-mode
 - `/mode retrieve|solve` — switch modes
 - `/enable` — enable all session sources (Codex + OpenCode)
 - `/sources` — show session-source status and counts
@@ -339,6 +343,49 @@ export DEVENV_AUDIT_CHAIN=1    # hash chain on/off
 export DEVENV_AUDIT_TO_FILE=1  # JSONL files on/off
 ```
 
+## Plan Directory
+
+Every `/plan` turn is saved as a JSON document under
+`<workspace>/.devenv/plans/<epoch>-<slug>.json`, keeping both the markdown
+checklist (`raw_plan_markdown`) and the task/edge structure so the TUI and web
+planners round-trip the same artifact.
+
+- TUI: `/plans list`, `/plans show <id>`, `/plans export <id> [path]`, `/plans delete <id>`
+- CLI: `devenv-plans . list|show|export|delete`
+- Web: `GET /api/plans` and `GET /api/plans/<id>`
+
+Plan mode uses a single shared read-only tool scope
+(`tool_policy.PLAN_READ_ONLY_TOOLS`), so the web planner and the kernel planner
+expose exactly the same tools.
+
+## Multi-Session Answers
+
+`/ask` (and bare prompts) retrieve evidence across providers, then answer **each
+top session** from its own evidence and **reconcile** the per-session answers
+into one Markdown answer with per-source tags. When only one session has
+evidence, it falls back to the single-call formatter.
+
+```bash
+export DEVENV_MULTISESSION_ANSWERS=1       # on by default
+export DEVENV_MULTISESSION_MAX_SESSIONS=3  # per-session answers to run
+```
+
+## Offline Mode
+
+When no internet is detected, Devenv automatically runs local-only: remote
+backends (`opencode`, `codex`) are disabled, routing switches to the highest
+priority enabled local backend (`ollama`, then `llama.cpp`), and turns run in
+`local_only` mode. The status bar shows an `OFFLINE` tag and `/offline` reports
+the state.
+
+```bash
+export DEVENV_FORCE_OFFLINE=1        # always offline
+export DEVENV_FORCE_ONLINE=1         # always online (skip the probe)
+export DEVENV_CONNECTIVITY_TTL=60    # probe cache seconds
+export DEVENV_CONNECTIVITY_HOSTS=api.openai.com,github.com
+export DEVENV_OFFLINE_BACKENDS=ollama,llama_cpp   # local priority order
+```
+
 ## Screenshots
 
 ### Startup chunking
@@ -363,8 +410,28 @@ After installation, the package exposes these commands:
 - `devenv-mcp`
 - `devenv-setup`
 - `devenv-audit`
+- `devenv-plans`
 
 ## Version History
+
+### v0.1.8
+
+This release adds a plan directory, multi-session answers, offline auto-mode,
+and a consistent tool surface.
+
+- Added a durable plan directory: `/plan` output is saved under
+  `.devenv/plans/` and can be listed/loaded/exported from the TUI (`/plans`),
+  the `devenv-plans` CLI, and `GET /api/plans`.
+- Added per-session answers with reconciliation: `/ask` answers each top session
+  and merges the results into one cited answer.
+- Added offline auto-mode: connectivity is detected (cached, override-able) and
+  remote backends are disabled in favor of local ones, with an `OFFLINE` status
+  indicator and `/offline` command.
+- Unified the plan-mode tool scope behind a single registry-derived set
+  (`tool_policy.PLAN_READ_ONLY_TOOLS`) used by both the web and kernel planners,
+  and expanded web tool readiness/picker coverage.
+- Centralized the project-specific retrieval marker vocabulary into
+  `core.runtime.retrieval_markers` (env-extendable), behavior-preserving.
 
 ### v0.1.7
 
@@ -749,7 +816,7 @@ Run the current test suite with:
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-The current suite covers memory imports, persistence, retrieval behavior, vector ranking, manual correction, and consolidation flows, plus runtime coverage for the kernel, context builder, web runtime, MCP server, TUI, session tagging, logging, and the audit trail.
+The current suite covers memory imports, persistence, retrieval behavior, vector ranking, manual correction, and consolidation flows, plus runtime coverage for the kernel, context builder, web runtime, MCP server, TUI, session tagging, plans, multi-session answers, offline mode, logging, and the audit trail.
 
 ## Current Scope
 
@@ -758,7 +825,8 @@ This repository is still an early foundation, not a full end-user coding product
 Working today:
 
 - the terminal TUI `retrieve` mode and the web runtime
-- cross-provider session retrieval, session tagging, and the evaluation harness
+- cross-provider session retrieval, session tagging, plans, and the evaluation harness
+- per-session multi-session answers and offline auto-mode
 - rotating file logging and the hash-chained runtime audit trail
 
 Not implemented yet:
