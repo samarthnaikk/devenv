@@ -1692,12 +1692,39 @@ class DevenvTUIController:
             evidence = _evidence_bundle_from_outcome(outcome)
         if not (evidence.get("lines") or []):
             return None
-        formatter = build_answer_formatter(self.kernel.ai)
-        formatted = formatter.format(query, evidence)
+
+        formatted = self._format_multi_session(query, evidence)
+        if not formatted:
+            formatter = build_answer_formatter(self.kernel.ai)
+            formatted = formatter.format(query, evidence)
         if not formatted:
             return None
         self.last_answer_text = formatted
         return formatted
+
+    def _format_multi_session(self, query: str, evidence: dict[str, Any]) -> str | None:
+        """Answer each top session, then reconcile, when multi-session is on."""
+
+        try:
+            from core.runtime.answer_synthesis import (
+                build_multisession_answerer,
+                group_evidence_by_session,
+                multisession_enabled,
+            )
+        except Exception:  # pragma: no cover - defensive
+            return None
+        if not multisession_enabled():
+            return None
+        groups = group_evidence_by_session(evidence)
+        if len(groups) < 2:
+            return None
+
+        def chat(messages: list[dict[str, str]]) -> str:
+            response = self.kernel.ai.chat(messages)
+            return getattr(response, "content", "") or ""
+
+        answerer = build_multisession_answerer(chat)
+        return answerer.synthesize(query, evidence)
 
     def _session_orchestrator(self):
         cache = getattr(self, "_session_orchestrator_cache", None)

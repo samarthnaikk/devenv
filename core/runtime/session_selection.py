@@ -726,7 +726,13 @@ class SessionSelectionOrchestrator:
         metadata["selector_drill_line_count"] = len(drill_lines)
         metadata["selector_coverage_subquestions"] = len(result.coverage)
         metadata["retrieval_evidence"] = self._evidence_bundle(
-            selected_fused, combined, source="selector"
+            selected_fused,
+            combined,
+            source="selector",
+            by_session={
+                session_id: [normalized for raw in result.evidence.get(session_id, []) if (normalized := _normalize_evidence(raw))]
+                for session_id in selected_ids
+            },
         )
         if not combined:
             return "", selected_ids, metadata
@@ -741,11 +747,14 @@ class SessionSelectionOrchestrator:
         lines: list[str],
         *,
         source: str,
+        by_session: dict[str, list[str]] | None = None,
     ) -> dict[str, Any]:
         """Structured, un-cleaned evidence for the downstream formatter layer.
 
         The bundle keeps raw evidence lines verbatim (no prefix stripping here —
         that is the formatter model's job) plus the selected session identities.
+        ``by_session`` attributes lines to their source session so the
+        multi-session synthesizer can answer per session.
         """
         sessions = []
         for match, _provider in selected_fused:
@@ -759,10 +768,17 @@ class SessionSelectionOrchestrator:
                     "updated_at": str(getattr(summary, "updated_at", "") or ""),
                 }
             )
+        cleaned_by_session = None
+        if by_session:
+            cleaned_by_session = {
+                session_id: [line for line in session_lines if line and not _looks_like_selector_meta(line)]
+                for session_id, session_lines in by_session.items()
+            }
         return {
             "source": source,
             "sessions": sessions,
             "lines": [line for line in lines if line and not _looks_like_selector_meta(line)],
+            "by_session": cleaned_by_session or {},
         }
 
     def _apply_recall_floor(
