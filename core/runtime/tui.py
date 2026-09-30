@@ -831,6 +831,7 @@ class DevenvTUIController:
                 "/untag <session> <tag>  Remove a tag from a session",
                 "/tags                   List tagged sessions and active exclusions",
                 "/exclude-tag <tag>      Exclude tagged sessions from retrieval",
+                "/logs clear|level|filter|export  Filter, clear, or export the activity log",
                 "/copy                   Copy the last retrieval result to the clipboard",
                 "/enable                 Enable all session sources (codex + opencode)",
                 "/sources                Show session source status",
@@ -1757,6 +1758,9 @@ if TEXTUAL_AVAILABLE:
             self._log_queue: "queue.Queue[tuple[float, int, str, str]]" = queue.Queue()
             self._bridge = TUILogBridge(self._log_queue)
             self._saved_handlers: list[logging.Handler] = []
+            self._log_history: list[tuple[float, int, str, str]] = []
+            self._log_min_level: int = logging.DEBUG
+            self._log_filter: str = ""
 
         def compose(self) -> ComposeResult:
             yield StatusBar(id="header")
@@ -1843,6 +1847,15 @@ if TEXTUAL_AVAILABLE:
         def _activity(self, message: str, levelno: int = logging.INFO, name: str = "devenv") -> None:
             self._log_queue.put((time.time(), levelno, name, message))
 
+        def _passes_log_filter(self, levelno: int, name: str, message: str) -> bool:
+            if levelno < self._log_min_level:
+                return False
+            if self._log_filter:
+                needle = self._log_filter.lower()
+                if needle not in message.lower() and needle not in name.lower():
+                    return False
+            return True
+
         def _drain_logs(self) -> None:
             try:
                 log = self.query_one("#log", RichLog)
@@ -1854,8 +1867,23 @@ if TEXTUAL_AVAILABLE:
                     created, levelno, name, message = self._log_queue.get_nowait()
                 except queue.Empty:
                     break
+                self._log_history.append((created, levelno, name, message))
+                if len(self._log_history) > 5000:
+                    del self._log_history[:1000]
+                if not self._passes_log_filter(levelno, name, message):
+                    continue
                 log.write(_format_log_line(created, levelno, name, message))
                 written += 1
+
+        def _replay_logs(self) -> None:
+            try:
+                log = self.query_one("#log", RichLog)
+            except Exception:  # pragma: no cover - widget may be gone during shutdown
+                return
+            log.clear()
+            for created, levelno, name, message in self._log_history:
+                if self._passes_log_filter(levelno, name, message):
+                    log.write(_format_log_line(created, levelno, name, message))
 
         # ------------------------------------------------------------------ actions
         def action_mode_retrieve(self) -> None:
@@ -2084,6 +2112,9 @@ if TEXTUAL_AVAILABLE:
                 if command_name == "/ai":
                     self._handle_ai_input(value)
                     return
+                if command_name == "/logs":
+                    self._handle_logs_command(value.split()[1:])
+                    return
                 if command_name in {"/model", "/models"}:
                     self._handle_model_input(value)
                     return
@@ -2146,6 +2177,53 @@ if TEXTUAL_AVAILABLE:
                     continue
                 items.append(DropdownItem(main=spec.command, prefix=f"{spec.title}  "))
             return items[:12]
+
+        def _handle_logs_command(self, args: list[str]) -> None:
+            sub = args[0].lower() if args else ""
+            if sub == "clear":
+                self._log_history.clear()
+                try:
+                    self.query_one("#log", RichLog).clear()
+                except Exception:  # pragma: no cover
+                    pass
+                self.notify("Cleared the activity log view.")
+                return
+            if sub == "level":
+                if len(args) < 2:
+                    current = logging.getLevelName(self._log_min_level)
+                    self.notify(f"Log level filter: {current}. Usage: /logs level <DEBUG|INFO|WARNING|ERROR>")
+                    return
+                resolved = getattr(logging, args[1].upper(), None)
+                if not isinstance(resolved, int):
+                    self.notify(f"Unknown level: {args[1]}", severity="warning")
+                    return
+                self._log_min_level = resolved
+                self._replay_logs()
+                self.notify(f"Log level filter set to {logging.getLevelName(resolved)}.")
+                return
+            if sub == "filter":
+                self._log_filter = " ".join(args[1:]).strip()
+                self._replay_logs()
+                self.notify(f"Log filter: {self._log_filter or 'none'}")
+                return
+            if sub == "export":
+                path = Path(self.controller.config.workspace_path) / ".devenv" / "logs" / "logs-export.md"
+                try:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    lines = [
+                        _format_log_line(created, levelno, name, message)
+                        for created, levelno, name, message in self._log_history
+                    ]
+                    path.write_text("\n".join(_strip_ansi(line) for line in lines) + "\n", encoding="utf-8")
+                except OSError as exc:
+                    self.notify(f"Log export failed: {exc}", severity="error")
+                    return
+                self.notify(f"Exported {len(self._log_history)} log line(s) to {path}")
+                return
+            self._mount_command_card(
+                "/logs",
+                "Usage: /logs clear | /logs level <LEVEL> | /logs filter <text> | /logs export",
+            )
 
         def _handle_ai_input(self, value: str) -> None:
             tokens = value.split()[1:]
@@ -2755,9 +2833,10 @@ def main() -> int:
     parser.add_argument("--no-mouse", action="store_true", help="Disable mouse support.")
     args = parser.parse_args()
 
-    configure_logging(args.log_level)
+    resolved_workspace = str(Path(args.workspace).expanduser().resolve())
+    configure_logging(args.log_level, workspace=resolved_workspace)
     config = RunConfig(
-        workspace_path=str(Path(args.workspace).expanduser().resolve()),
+        workspace_path=resolved_workspace,
         db_path=args.db_path,
         vector_dir=args.vector_dir,
         max_consecutive_tools=args.max_consecutive_tools,

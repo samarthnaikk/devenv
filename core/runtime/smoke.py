@@ -37,8 +37,8 @@ def main() -> int:
     parser.add_argument("--log-level", default=None)
     args = parser.parse_args()
 
-    configure_logging(args.log_level)
     workspace_path = str(Path(args.workspace).expanduser().resolve())
+    configure_logging(args.log_level, workspace=workspace_path)
     kernel = DevenvKernel(
         workspace_path=workspace_path,
         db_path=args.db_path,

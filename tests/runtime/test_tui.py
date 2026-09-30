@@ -744,11 +744,9 @@ class DevenvTUITest(unittest.TestCase):
                 RunConfig(workspace_path=tempdir),
                 kernel=FakeKernel(),
             )
-            with mock.patch.dict("os.environ", {}, clear=False):
-                os.environ.pop("DEVENV_EXCLUDE_TAGS", None)
+            with mock.patch.dict(os.environ, {"DEVENV_EXCLUDE_TAGS": ""}):
                 result = controller.handle_command("/exclude-tag derived")
                 self.assertIn("derived", os.environ.get("DEVENV_EXCLUDE_TAGS", ""))
-                os.environ.pop("DEVENV_EXCLUDE_TAGS", None)
 
         self.assertIn("Excluded tags", result.message)
 

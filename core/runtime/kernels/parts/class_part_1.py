@@ -123,6 +123,17 @@ class KernelLifecycleMixin:
         no_memory: bool = False,
         incognito: bool = False,
     ) -> RuntimeTurnResult:
+        try:
+            from core.logging_utils import set_log_context
+
+            set_log_context(
+                turn_id=str(uuid.uuid4()),
+                session_id=self.session_id,
+                backend=backend_preference,
+                workspace=self.workspace_path,
+            )
+        except Exception:  # pragma: no cover - logging context is best effort
+            pass
         logger.info("Starting runtime turn: workspace=%s prompt=%s", self.workspace_path, user_prompt)
         max_consecutive_tools = self._effective_max_consecutive_tools(
             requested_limit=max_consecutive_tools,

@@ -127,9 +127,10 @@ def main() -> int:
     parser.add_argument("--log-level", default=None)
     args = parser.parse_args()
 
-    configure_logging(args.log_level)
+    resolved_workspace = str(Path(args.workspace).expanduser().resolve())
+    configure_logging(args.log_level, workspace=resolved_workspace)
     server = create_mcp_server(
-        workspace_path=str(Path(args.workspace).expanduser().resolve()),
+        workspace_path=resolved_workspace,
         db_path=args.db_path,
         vector_dir=args.vector_dir,
     )

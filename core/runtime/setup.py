@@ -99,10 +99,15 @@ def main() -> int:
     parser.add_argument("--include-optional", action="store_true", help="Include optional checks in the output.")
     parser.add_argument("--warm-model-cache", action="store_true", help="Warm the local model cache when supported.")
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
+    parser.add_argument("--log-level", default=None)
     args = parser.parse_args()
 
+    from core.logging_utils import configure_logging
+
+    resolved_workspace = str(Path(args.workspace).expanduser().resolve())
+    configure_logging(args.log_level, workspace=resolved_workspace)
     config = RunConfig(
-        workspace_path=str(Path(args.workspace).expanduser().resolve()),
+        workspace_path=resolved_workspace,
         db_path=args.db_path,
         vector_dir=args.vector_dir,
         performance_mode=args.performance_mode,
