@@ -18,6 +18,28 @@ It focuses on what a user can do in the product, not the internal tool-call or i
 - Uses working memory for the current flow and episodic memory for longer-term recall.
 - Consolidates past interaction history into reusable knowledge.
 - Filters out low-signal structural junk so poor directory-dump answers are less likely to come back as “memory.”
+- Keeps planning/selector meta output out of retrieved evidence, so answers are grounded in real facts.
+
+## Session Tagging
+
+- Label any session with your own tags and remove them later.
+- See archive-derived tags automatically: which agent owned an OpenCode session, whether it was a subagent (`derived`), and Codex source/originator/model.
+- Browse tags in the TUI Sessions tab and in the web session list.
+- Exclude tagged sessions (for example `derived` or `archived`) from retrieval so junk can never resurface.
+
+## Logging And Auditing
+
+- Rotating file logs under `.devenv/logs/` plus stderr, with per-turn correlation IDs.
+- Optional JSON log lines and automatic secret redaction with payload truncation.
+- Filter, clear, and export the activity log from the TUI.
+- A durable, tamper-evident audit trail of turns, tool calls, policy decisions, sandbox violations, retrieval traces, and verification results.
+- Query and verify the trail from the TUI, an `inspect_audit` tool, or the `devenv-audit` CLI.
+
+## Answer Rendering
+
+- Ask a question and get a clean Markdown answer, not just raw evidence.
+- See the supporting evidence rendered as plain text underneath, with links that never auto-open.
+- Watch native-agent Markdown stream live in the agent view.
 
 ## Planning And Execution
 
@@ -106,6 +128,7 @@ It focuses on what a user can do in the product, not the internal tool-call or i
 - TUI runtime for terminal-based interaction.
 - Single-turn smoke/runtime command for direct testing.
 - MCP server surface for exposing the local tool deck externally.
+- Audit CLI (`devenv-audit`) for querying and verifying runtime decisions.
 
 ## Native AI Agents (ACP)
 

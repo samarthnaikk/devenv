@@ -11,6 +11,9 @@ The project currently ships as an installable Python package and includes:
 - a setup/readiness inspector
 - a memory engine with working, episodic, and associative memory layers
 - a cross-provider retrieval engine that fuses Codex and OpenCode session history with local memory
+- user and archive-derived session tags with a deterministic retrieval tag gate
+- rotating file logging with per-turn correlation IDs and secret redaction
+- a durable, hash-chained runtime audit trail (JSONL + queryable `runtime_events`)
 - a retrieval evaluation harness for scoring recall against a known question set
 
 ## Installation
@@ -36,11 +39,15 @@ Point Devenv AI at the folder you want it to work inside.
 Devenv's OpenCode integration is server-backed by default. Install the `opencode` CLI and make sure `opencode serve` can run locally; Devenv will connect to the OpenCode HTTP server at `http://127.0.0.1:4096` by default. You can override this with:
 
 ```bash
-export OPENCODE_MODEL=openrouter/anthropic/claude-sonnet-4
+export OPENCODE_MODEL=opencode-go/longcat-2.5-preview-free
 export OPENCODE_SERVER_URL=http://127.0.0.1:4096
 export OPENCODE_SERVER_USERNAME=opencode
 export OPENCODE_SERVER_PASSWORD=your-password
 ```
+
+The model id must use the provider prefix that matches your signed-in OpenCode
+account (`opencode-go/<model>` for OpenCode Go, `opencode/<model>` for OpenCode
+Zen). The default is the free Go LongCat model.
 
 You can also enable Codex as a first-class backend. Codex does not use a CLI subprocess; it connects through the official OpenAI MCP path and Devenv's local MCP HTTP server. Configure it with:
 
@@ -147,6 +154,8 @@ The TUI currently exposes two modes:
 Useful commands (also available from the command palette via `Ctrl+P` or the footer keys):
 
 - `/retrieve <query>` — retrieve prior sessions and chunks for a query
+- `/ask <query>` — retrieve evidence and format a clean Markdown answer (no tools run)
+- `/plan <query>` — draft a read-only blueprint (never executes)
 - `/mode retrieve|solve` — switch modes
 - `/enable` — enable all session sources (Codex + OpenCode)
 - `/sources` — show session-source status and counts
@@ -155,8 +164,20 @@ Useful commands (also available from the command palette via `Ctrl+P` or the foo
 - `/permissions` — open the permission picker
 - `/ai` — open the AI agent picker, `/ai <agent>` to connect (e.g. `/ai opencode`, `/ai claude`, `/ai codex`), `/ai list` to list
 - `/tab retrieve|sessions|memory|logs` — switch workspace tabs
+- `/tag <session> <tag>` / `/untag <session> <tag>` — label a session
+- `/tags` — list tagged sessions and active exclusions
+- `/exclude-tag <tag>` — keep tagged sessions out of retrieval
+- `/logs clear|level|filter|export` — filter, clear, or export the activity log
+- `/audit [tail|verify]` — tail or verify the runtime audit trail
 - `/receipts` — show local vs. remote backend routing
 - `/status`, `/providers`, `/clear`, `/exit`
+
+### Answer rendering
+
+Bare prompts and `/ask` retrieve evidence, then run the answer formatter to produce
+a clean Markdown answer rendered in the results pane. Retrieved evidence is
+rendered as literal text below the answer (it is untrusted), and Markdown links
+never auto-open. In the ACP agent view, streamed agent Markdown renders live.
 
 ### Terminal options
 
@@ -251,6 +272,73 @@ python scripts/retrieval_eval.py --elimination on   # compare bounded context se
 
 Results are written to `.devenv/retrieval_eval/results.json` and `.devenv/retrieval_eval/report.md`.
 
+## Session Tagging
+
+Sessions can carry two kinds of tags:
+
+- **user tags** — added and removed from the TUI (`/tag`, `/untag`) and persisted in `memory.db`
+- **auto tags** — derived from the archive on read: OpenCode sessions get `agent:<name>`, `derived` (subagent/child), and `archived`; Codex sessions get `source:<x>`, `originator:<x>`, and `model:<x>`
+
+Tags are shown in the TUI Sessions tab and in the web session list. A
+deterministic tag gate keeps excluded sessions out of retrieval *before* the
+selector and recall floor run, so an excluded session cannot be reintroduced
+later:
+
+```bash
+export DEVENV_EXCLUDE_TAGS=derived,archived   # comma-separated tags to exclude
+export DEVENV_SESSION_TAG_GATE=filter          # off | demote | filter
+```
+
+`/exclude-tag <tag>` applies an exclusion for the current session.
+
+## Logging
+
+Runtime logs go to stderr and, when a workspace is known, to a rotating file at
+`<workspace>/.devenv/logs/devenv.log`. Each record is stamped with the active
+turn/session/backend so a single turn can be reconstructed across the
+`core.*` loggers, and secrets are redacted with long payloads truncated.
+
+```bash
+export DEVENV_LOG_LEVEL=INFO
+export DEVENV_LOG_JSON=1          # one JSON object per line
+export DEVENV_LOG_REDACT=1        # redact secrets + truncate payloads
+export DEVENV_LOG_TO_FILE=1
+export DEVENV_LOG_FILE=~/.cache/devenv/devenv.log   # override the path
+export DEVENV_LOG_MAX_BYTES=2097152
+export DEVENV_LOG_BACKUPS=3
+```
+
+The TUI Logs tab supports `/logs level <LEVEL>`, `/logs filter <text>`,
+`/logs clear`, and `/logs export`.
+
+## Auditing
+
+Every significant runtime decision is appended to a durable, tamper-evident
+audit trail: an append-only JSONL file under `<workspace>/.devenv/audit/` and a
+queryable `runtime_events` row in `memory.db`. Each event carries a `prev_hash`
+and `hash` (sha256 chain), so silent edits are detectable.
+
+Event types: `turn.start`, `turn.end`, `tool.call`, `tool.result`,
+`policy.decision`, `sandbox.violation`, `retrieval.trace`,
+`verification.result`, `backend.error`.
+
+```bash
+devenv-audit . query --limit 20      # tail recent events
+devenv-audit . query --type tool.call
+devenv-audit . verify                # verify the hash chain
+devenv-audit . export --out audit.jsonl
+devenv-audit . prune --days 30
+```
+
+The `inspect_audit` tool exposes `list`, `turn`, and `verify` modes to the model,
+and `/audit` in the TUI tails or verifies the chain.
+
+```bash
+export DEVENV_AUDIT=1          # master switch
+export DEVENV_AUDIT_CHAIN=1    # hash chain on/off
+export DEVENV_AUDIT_TO_FILE=1  # JSONL files on/off
+```
+
 ## Screenshots
 
 ### Startup chunking
@@ -274,8 +362,31 @@ After installation, the package exposes these commands:
 - `devenv-smoke`
 - `devenv-mcp`
 - `devenv-setup`
+- `devenv-audit`
 
 ## Version History
+
+### v0.1.7
+
+This release focuses on startup performance, answer quality, and operational
+visibility (tagging, logging, auditing).
+
+- Cut TUI startup cost: the `sentence-transformers` model loads lazily off the
+  first paint, backend status probes are TTL-cached and run in parallel with a
+  short probe timeout, and session-archive scans moved off the UI thread.
+- Added `/ask` (and bare prompts) that retrieve evidence and render a clean
+  Markdown answer without running tools; retrieved evidence is rendered as
+  literal text and Markdown links never auto-open. ACP agent Markdown now streams.
+- Added user and archive-derived session tags with a deterministic tag gate
+  (`DEVENV_EXCLUDE_TAGS`, `DEVENV_SESSION_TAG_GATE`).
+- Added rotating file logging with per-turn correlation IDs, JSON output, and
+  secret redaction, plus `/logs` filtering/export in the TUI.
+- Added a durable, hash-chained runtime audit trail (JSONL + `runtime_events`),
+  the `inspect_audit` tool, and the `devenv-audit` CLI.
+- Hardened retrieval filtering: selector/structured-output JSON is no longer
+  treated as evidence, the whole-session semantic fallback works even when
+  chunks exist, monster lines are capped, and stale session embeddings can be
+  pruned (`scripts/backfill_session_embeddings.py --prune`).
 
 ### v0.1.6
 
@@ -423,7 +534,7 @@ In the normal path:
 3. If the turn needs context, Devenv gathers memory context from working memory, episodic memory, and optional external session history.
 4. Devenv decides whether this is a direct answer turn, a planning turn, or a checkpoint execution turn.
 5. Devenv picks the backend the user selected.
-   OpenCode remains the default backend and default model is `openrouter/anthropic/claude-sonnet-4`.
+   OpenCode remains the default backend and default model is `opencode-go/longcat-2.5-preview-free`.
 6. The backend either:
    asks Devenv to execute a tool call, or
    executes MCP tools directly in the Codex path and returns the executed steps.
@@ -577,7 +688,7 @@ That result is what the web UI and terminal renderer display back to the user.
 
 Devenv keeps control of planning, memory retrieval, verification, transcript persistence, and tool execution. Users can choose between four backends:
 
-- OpenCode: server-backed session transport with default model `openrouter/anthropic/claude-sonnet-4`
+- OpenCode: server-backed session transport with default model `opencode-go/longcat-2.5-preview-free`
 - Ollama: local HTTP transport with discovered installed models such as `qwen2.5:3b`
 - llama.cpp: local OpenAI-compatible HTTP transport against `llama-server`
 - Codex: official OpenAI MCP integration against Devenv's local MCP HTTP server
@@ -638,7 +749,7 @@ Run the current test suite with:
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-The current suite covers memory imports, persistence, retrieval behavior, vector ranking, manual correction, and consolidation flows, plus runtime coverage for the kernel, context builder, web runtime, MCP server, and TUI.
+The current suite covers memory imports, persistence, retrieval behavior, vector ranking, manual correction, and consolidation flows, plus runtime coverage for the kernel, context builder, web runtime, MCP server, TUI, session tagging, logging, and the audit trail.
 
 ## Current Scope
 
@@ -647,7 +758,8 @@ This repository is still an early foundation, not a full end-user coding product
 Working today:
 
 - the terminal TUI `retrieve` mode and the web runtime
-- cross-provider session retrieval and the evaluation harness
+- cross-provider session retrieval, session tagging, and the evaluation harness
+- rotating file logging and the hash-chained runtime audit trail
 
 Not implemented yet:
 
@@ -660,4 +772,4 @@ Not implemented yet:
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](/Users/samarthnaik/Desktop/Projects/devenv/LICENSE:1).
+This project is licensed under the MIT License. See [LICENSE](LICENSE).

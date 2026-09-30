@@ -49,6 +49,23 @@ class MCPServerSchemaTest(unittest.TestCase):
 
 @unittest.skipIf(importlib.util.find_spec("mcp") is None, "Optional mcp dependency is not installed")
 class MCPRuntimeTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # The spawned MCP server writes logs/audit under its workspace. Point
+        # them at a temp dir so we never pollute the shared fixture tree.
+        self._env = patch.dict(
+            "os.environ",
+            {"DEVENV_LOG_TO_FILE": "0", "DEVENV_AUDIT_TO_FILE": "0", "DEVENV_AUDIT": "0"},
+        )
+        self._env.start()
+
+    def tearDown(self) -> None:
+        self._env.stop()
+        stray = FIXTURE_ROOT / ".devenv"
+        if stray.exists():
+            import shutil
+
+            shutil.rmtree(stray, ignore_errors=True)
+
     def test_list_tools_over_stdio_exposes_all_runtime_schemas(self) -> None:
         client = MCPToolClient(
             workspace_path=str(FIXTURE_ROOT),

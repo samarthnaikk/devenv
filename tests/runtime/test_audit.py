@@ -118,8 +118,13 @@ class AuditCliTest(unittest.TestCase):
             recorder = build_recorder(str(workspace), store=store)
             recorder.record("turn.start", {"a": 1}, turn_id="t1")
 
+            import io
+            import contextlib
+
+            buffer = io.StringIO()
             with mock.patch("sys.argv", ["devenv-audit", str(workspace), "verify"]):
-                code = audit_cli.main()
+                with contextlib.redirect_stdout(buffer):
+                    code = audit_cli.main()
 
         self.assertEqual(code, 0)
 

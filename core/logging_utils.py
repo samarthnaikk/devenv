@@ -143,7 +143,12 @@ def _log_file_path(workspace: str | None) -> Path | None:
         return Path(explicit).expanduser()
     if not _env_bool("DEVENV_LOG_TO_FILE", True):
         return None
-    resolved_workspace = workspace or os.getenv("DEVENV_WORKSPACE", "").strip() or os.getcwd()
+    # Only write a file when a workspace is actually known. Falling back to
+    # os.getcwd() would create stray .devenv/logs directories in fixture trees
+    # and library consumers that never configured a workspace.
+    resolved_workspace = workspace or os.getenv("DEVENV_WORKSPACE", "").strip()
+    if not resolved_workspace:
+        return None
     try:
         return Path(resolved_workspace).expanduser() / ".devenv" / "logs" / "devenv.log"
     except Exception:  # pragma: no cover - defensive
