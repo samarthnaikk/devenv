@@ -33,6 +33,7 @@ _CATEGORY_ORDER = ("App", "Backend", "Model", "Agents", "Sources")
 # Presentation-only commands that are not part of the controller palette.
 _EXTRA_COMMANDS: tuple[tuple[str, str, str, str, str], ...] = (
     ("help", "Show help & keyboard shortcuts", "/help", "help keys shortcuts bindings", "App"),
+    ("plan", "Plan a query (read-only)", "/plan <query>", "plan planning blueprint read-only no edit", "App"),
     ("tab_sessions", "View · Sessions tab", "/tab sessions", "tab view sessions history browse", "App"),
     ("tab_memory", "View · Memory tab", "/tab memory", "tab view memory context provenance", "App"),
     ("tab_logs", "View · Activity logs tab", "/tab logs", "tab view logs activity", "App"),
@@ -146,6 +147,7 @@ class DevenvCommandProvider(Provider):
     async def discover(self) -> AsyncIterator[DiscoveryHit]:
         preferred = (
             "help",
+            "plan",
             "status",
             "models_list",
             "model_selector_pick",

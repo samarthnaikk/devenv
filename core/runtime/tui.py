@@ -20,7 +20,7 @@ from core.logging_utils import configure_logging
 
 from .context_builder import ContextBuilderService
 from .kernel import DevenvKernel
-from .models import DEFAULT_MAX_CONSECUTIVE_TOOLS, RunConfig, RuntimeTurnResult
+from .models import DEFAULT_MAX_CONSECUTIVE_TOOLS, PlanningMode, RunConfig, RuntimeTurnResult
 from .tooling import build_runtime_tools
 from .tui_theme import (
     BLUE,
@@ -265,6 +265,49 @@ def _format_turn_result_lines(result: RuntimeTurnResult) -> list[str]:
     elif not lines:
         lines.append("[yellow]Assistant[/] The runtime completed without producing a visible response.")
     return lines
+
+
+def _plan_tool_scope_from_logs(system_logs: list[str]) -> str:
+    scope_size = ""
+    scope_list = ""
+    for raw in system_logs:
+        line = str(raw or "").strip()
+        if line.startswith("Planning tool scope size:"):
+            scope_size = line.split(":", 1)[1].strip()
+        elif line.startswith("Planning tool scope:"):
+            scope_list = line.split(":", 1)[1].strip()
+    if scope_list:
+        return f"Read-only tools  {scope_list}"
+    if scope_size:
+        return f"Read-only tools  {scope_size}"
+    return ""
+
+
+def _format_plan_result_lines(result: RuntimeTurnResult) -> list[str]:
+    """Render a plan-only turn as plain lines for the TUI result card."""
+
+    blueprint = result.blueprint
+    plan_markdown = ""
+    if blueprint is not None:
+        plan_markdown = str(blueprint.raw_plan_markdown or "").strip()
+    if not plan_markdown:
+        plan_markdown = str(result.final_response or "").strip()
+    if not plan_markdown:
+        plan_markdown = "Plan ready."
+
+    lines = ["Mode  plan-only (read-only, nothing executed)"]
+    if blueprint is not None:
+        lines.append(f"Checkpoints  {len(blueprint.tasks)}")
+    scope = _plan_tool_scope_from_logs(result.system_logs)
+    if scope:
+        lines.append(scope)
+    lines.append("")
+    lines.extend(plan_markdown.splitlines())
+    return lines
+
+
+def _plan_plain_text(result: RuntimeTurnResult) -> str:
+    return "\n".join(_format_plan_result_lines(result))
 
 
 def _collapse_text(text: str, *, limit: int = 500) -> str:
@@ -623,6 +666,10 @@ class DevenvTUIController:
             if not args:
                 return TUICommandResult("Usage: /retrieve <query>")
             return TUICommandResult(_retrieval_plain_text(self.run_retrieval(" ".join(args))))
+        if command == "/plan":
+            if not args:
+                return TUICommandResult("Usage: /plan <query>")
+            return TUICommandResult(_plan_plain_text(self.run_plan(" ".join(args))))
         if command == "/copy":
             if not self.last_retrieval_text:
                 return TUICommandResult("Nothing to copy yet. Run /retrieve first.")
@@ -653,6 +700,7 @@ class DevenvTUIController:
                 "/status                 Show active backend, model, and permissions",
                 "/mode retrieve|solve    Switch TUI mode (solve is still in progress)",
                 "/retrieve <query>       Retrieve prior sessions and chunks for a query",
+                "/plan <query>           Draft a read-only blueprint for a query (never executes)",
                 "/copy                   Copy the last retrieval result to the clipboard",
                 "/enable                 Enable all session sources (codex + opencode)",
                 "/sources                Show session source status",
@@ -1443,11 +1491,13 @@ class DevenvTUIController:
         }
         return "\n".join(lines), metadata
 
-    def run_prompt(self, prompt: str) -> RuntimeTurnResult:
+    def run_prompt(self, prompt: str, *, plan_only: bool = False) -> RuntimeTurnResult:
         self._apply_runtime_preferences()
         return self.kernel.execute_turn(
             prompt,
             max_consecutive_tools=self.config.max_consecutive_tools,
+            planning_mode=PlanningMode.FORCE_PLAN if plan_only else PlanningMode.AUTO,
+            plan_only=plan_only,
             backend_preference=self.preferred_backend,
             opencode_enabled=self.access_policy.can_use_backend("opencode"),
             ollama_enabled=self.access_policy.can_use_backend("ollama"),
@@ -1456,6 +1506,11 @@ class DevenvTUIController:
             no_memory=self.config.no_memory,
             incognito=self.config.incognito,
         )
+
+    def run_plan(self, query: str) -> RuntimeTurnResult:
+        """Run a plan-only turn: produce a blueprint, never execute a checkpoint."""
+
+        return self.run_prompt(query, plan_only=True)
 
 
 def render_banner(config: RunConfig) -> None:
@@ -1853,6 +1908,18 @@ if TEXTUAL_AVAILABLE:
                     else:
                         self._run_model_command(value)
                     return
+                if command_name == "/plan":
+                    query = value[len(command_name):].strip()
+                    if not query:
+                        self._mount_command_card(command_name, "Usage: /plan <query>")
+                        return
+                    if self._busy:
+                        self.notify("A retrieval is already running.", severity="warning")
+                        return
+                    self._set_busy(True)
+                    self._activity(f"planning: {query}")
+                    self._run_plan(query)
+                    return
                 result = self.controller.handle_command(value)
                 if result.message:
                     self._mount_command_card(value, result.message)
@@ -2124,6 +2191,35 @@ if TEXTUAL_AVAILABLE:
             )
             self._activity(f"retrieval failed: {error_message}", logging.ERROR)
             self.notify(f"Retrieval failed: {error_message}", severity="error")
+            self.query_one("#composer", Input).focus()
+
+        @work(thread=True)
+        def _run_plan(self, query: str) -> None:
+            try:
+                result = self.controller.run_plan(query)
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self.call_from_thread(self._render_plan_failure, str(exc))
+                return
+            self.call_from_thread(self._render_plan, result)
+
+        def _render_plan(self, result: RuntimeTurnResult) -> None:
+            self._mount_plain_card(_format_plan_result_lines(result))
+            self._set_busy(False)
+            checkpoints = len(result.blueprint.tasks) if result.blueprint is not None else 0
+            self._activity(f"plan: {checkpoints} checkpoint(s), read-only")
+            self._refresh_header()
+            self.query_one("#composer", Input).focus()
+
+        def _render_plan_failure(self, error_message: str) -> None:
+            self._set_busy(False)
+            self._mount_card(
+                [
+                    f"[b {ERROR_COLOR}]Planning failed[/]",
+                    f"[{TEXT_MUTED}]{_rich_escape(error_message)}[/]",
+                ]
+            )
+            self._activity(f"planning failed: {error_message}", logging.ERROR)
+            self.notify(f"Planning failed: {error_message}", severity="error")
             self.query_one("#composer", Input).focus()
 
         # ------------------------------------------------------------------ rendering

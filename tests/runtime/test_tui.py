@@ -11,15 +11,26 @@ from pathlib import Path
 from unittest import mock
 
 from core.ai.model_catalog import OpenCodeModelInfo
-from core.runtime.models import RunConfig, RuntimeTurnResult, StageTrace, ToolExecutionStep
+from core.runtime.models import (
+    CheckpointTask,
+    ExecutionBlueprint,
+    ExecutionMode,
+    PlanningMode,
+    RunConfig,
+    RuntimeTurnResult,
+    StageTrace,
+    ToolExecutionStep,
+)
 from core.runtime.tui import (
     DevenvTUIController,
     RetrievalOutcome,
     TUILogBridge,
     _format_log_line,
+    _format_plan_result_lines,
     _format_retrieval_result_lines,
     _format_retrieval_result_lines_plain,
     _format_turn_result_lines,
+    _plan_plain_text,
     _retrieval_plain_text,
 )
 
@@ -145,6 +156,35 @@ def _sample_outcome() -> RetrievalOutcome:
     )
 
 
+def _sample_blueprint() -> ExecutionBlueprint:
+    return ExecutionBlueprint(
+        raw_plan_markdown="# Plan\n\n- [ ] Inspect the theme module\n- [ ] Add a dark-mode toggle",
+        original_objective="add dark mode",
+        tasks=[
+            CheckpointTask(task_id=1, description="Inspect the theme module"),
+            CheckpointTask(task_id=2, description="Add a dark-mode toggle"),
+        ],
+    )
+
+
+class BlueprintKernel(FakeKernel):
+    def __init__(self, blueprint: ExecutionBlueprint | None = None) -> None:
+        super().__init__()
+        self.blueprint = blueprint or _sample_blueprint()
+
+    def execute_turn(self, prompt: str, **kwargs):
+        self.execute_turn_calls.append((prompt, kwargs))
+        return RuntimeTurnResult(
+            final_response=self.blueprint.raw_plan_markdown,
+            blueprint=self.blueprint,
+            execution_mode=ExecutionMode.PLAN_ONLY.value,
+            system_logs=[
+                "Planning tool scope size: 2",
+                "Planning tool scope: read_file, search_text",
+            ],
+        )
+
+
 class PromptFeeder:
     def __init__(self, answers: list[str]) -> None:
         self.answers = list(answers)
@@ -219,6 +259,68 @@ class DevenvTUITest(unittest.TestCase):
         self.assertFalse(kwargs["codex_enabled"])
         self.assertTrue(controller.context_builder.runtime_allowed_providers == {"opencode"})
         self.assertTrue(kwargs["no_memory"])
+
+    def test_plan_command_requires_query(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = FakeKernel()
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=kernel,
+            )
+
+            result = controller.handle_command("/plan")
+
+        self.assertEqual(result.message, "Usage: /plan <query>")
+        self.assertEqual(kernel.execute_turn_calls, [])
+
+    def test_plan_command_runs_plan_only_turn(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = FakeKernel()
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=kernel,
+            )
+
+            controller.handle_command("/plan add dark mode")
+
+        self.assertEqual(len(kernel.execute_turn_calls), 1)
+        prompt, kwargs = kernel.execute_turn_calls[0]
+        self.assertEqual(prompt, "add dark mode")
+        self.assertTrue(kwargs["plan_only"])
+        self.assertEqual(kwargs["planning_mode"], PlanningMode.FORCE_PLAN)
+
+    def test_plan_command_renders_blueprint_read_only_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=BlueprintKernel(),
+            )
+
+            result = controller.handle_command("/plan add dark mode")
+
+        self.assertIn("plan-only", result.message)
+        self.assertIn("Checkpoints  2", result.message)
+        self.assertIn("read_file, search_text", result.message)
+        self.assertIn("Add a dark-mode toggle", result.message)
+
+    def test_format_plan_result_lines_without_blueprint_falls_back_to_response(self) -> None:
+        result = RuntimeTurnResult(final_response="- [ ] do the thing", blueprint=None)
+
+        lines = _format_plan_result_lines(result)
+
+        self.assertIn("Mode  plan-only (read-only, nothing executed)", lines)
+        self.assertIn("- [ ] do the thing", lines)
+
+    def test_plan_plain_text_marks_read_only(self) -> None:
+        text = _plan_plain_text(
+            RuntimeTurnResult(
+                final_response="# Plan",
+                blueprint=_sample_blueprint(),
+            )
+        )
+
+        self.assertIn("plan-only", text)
+        self.assertIn("Checkpoints  2", text)
 
     def test_clear_command_resets_conversation(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
@@ -949,6 +1051,40 @@ class DevenvTextualAppTest(unittest.IsolatedAsyncioTestCase):
                 app.run_command_line("/backend")
                 await pilot.pause()
                 self.assertEqual(controller.preferred_backend, "opencode")
+
+    async def test_plan_command_without_query_shows_usage(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = FakeKernel()
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=kernel,
+            )
+            app = DevenvTextualApp(controller)
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.run_command_line("/plan")
+                await pilot.pause()
+
+        self.assertEqual(kernel.execute_turn_calls, [])
+
+    async def test_plan_command_dispatches_plan_only_turn_from_app(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = FakeKernel()
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=kernel,
+            )
+            app = DevenvTextualApp(controller)
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.run_command_line("/plan add dark mode")
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+
+        self.assertEqual(len(kernel.execute_turn_calls), 1)
+        prompt, kwargs = kernel.execute_turn_calls[0]
+        self.assertEqual(prompt, "add dark mode")
+        self.assertTrue(kwargs["plan_only"])
 
     def test_slash_candidates_filter_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

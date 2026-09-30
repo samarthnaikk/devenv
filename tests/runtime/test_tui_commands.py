@@ -45,6 +45,13 @@ class RegistryTest(unittest.TestCase):
         self.assertIn("/status", commands)
         self.assertIn("/backend opencode", commands)
 
+    def test_includes_plan_command(self) -> None:
+        specs = {spec.entry_id: spec for spec in build_command_registry(_FakeController())}
+
+        self.assertIn("plan", specs)
+        self.assertEqual(specs["plan"].command, "/plan <query>")
+        self.assertEqual(specs["plan"].category, "App")
+
     def test_categories_are_derived(self) -> None:
         specs = {spec.entry_id: spec for spec in build_command_registry(_FakeController())}
         self.assertEqual(specs["select_backend:opencode"].category, "Backend")
