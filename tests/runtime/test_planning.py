@@ -1062,5 +1062,222 @@ class PlanningKernelTest(unittest.TestCase):
         self.assertIn("FastAPI", focused)
 
 
+class RecordingAI:
+    """Fake AI that records the tool scope offered on each model call."""
+
+    def __init__(self, responses: list[AIResponse]) -> None:
+        self.responses = list(responses)
+        self.tool_scopes: list[tuple[str, ...]] = []
+
+    def register_tool(self, tool) -> None:
+        return None
+
+    def chat(
+        self,
+        messages: list[dict[str, Any]],
+        memory_context: str | None = None,
+        temperature: float = 0.2,
+        tool_names=None,
+    ) -> AIResponse:
+        self.tool_scopes.append(tuple(sorted(tool_names or ())))
+        return self.responses.pop(0)
+
+    def planning_scopes(self) -> list[tuple[str, ...]]:
+        """Scopes that carried at least one tool (i.e. the planning turn)."""
+
+        return [scope for scope in self.tool_scopes if scope]
+
+
+class RecordingMutatingTool(BaseTool):
+    """Mutating tool that records every execution attempt."""
+
+    name = "write_file"
+    description = "Recording writer used to prove plan-only turns never mutate."
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def input_schema(self) -> dict[str, object]:
+        return {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "content": {"type": "string"},
+                "mode": {"type": "string"},
+            },
+            "required": ["path", "content", "mode"],
+        }
+
+    def execute(self, **kwargs) -> ToolResult:
+        self.calls.append(dict(kwargs))
+        return ToolResult(success=True, output="wrote file", data=dict(kwargs))
+
+
+class PlanOnlyModeTest(unittest.TestCase):
+    """`/plan` semantics: an identifier that plans and never executes."""
+
+    PLAN = "- [ ] Inspect the calendar folder\n- [ ] Add main.py"
+
+    def _kernel(self, tempdir: str, ai: RecordingAI, *extra_tools: BaseTool) -> DevenvKernel:
+        kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=ai)
+        for tool in extra_tools:
+            kernel.register_tool(tool)
+        return kernel
+
+    def test_plan_only_returns_blueprint_without_executing_checkpoints(self) -> None:
+        ai = RecordingAI(
+            [AIResponse(content=self.PLAN, tool_calls=(), finish_reason="stop", usage={})]
+        )
+        writer = RecordingMutatingTool()
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = self._kernel(tempdir, ai, writer)
+            result = kernel.execute_turn(
+                "Create a calendar app",
+                planning_mode=PlanningMode.FORCE_PLAN,
+                plan_only=True,
+            )
+
+        self.assertEqual(result.execution_mode, ExecutionMode.PLAN_ONLY.value)
+        self.assertIsNotNone(result.blueprint)
+        self.assertEqual(
+            [task.description for task in result.blueprint.tasks],
+            ["Inspect the calendar folder", "Add main.py"],
+        )
+        self.assertEqual(result.final_response, self.PLAN)
+        self.assertEqual(writer.calls, [])
+        self.assertEqual(result.steps, [])
+
+    def test_force_plan_without_plan_only_still_executes(self) -> None:
+        ai = FakeAI(
+            [
+                AIResponse(content=self.PLAN, tool_calls=(), finish_reason="stop", usage={}),
+                AIResponse(content="Inspected.", tool_calls=(), finish_reason="stop", usage={}),
+                AIResponse(content="Added.", tool_calls=(), finish_reason="stop", usage={}),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = self._kernel(tempdir, ai)  # type: ignore[arg-type]
+            result = kernel.execute_turn("Create a calendar app", planning_mode=PlanningMode.FORCE_PLAN)
+
+        self.assertNotEqual(result.execution_mode, ExecutionMode.PLAN_ONLY.value)
+        self.assertEqual(result.final_response, "Added.")
+
+    def test_plan_only_offers_read_only_planning_tool_scope(self) -> None:
+        ai = RecordingAI(
+            [AIResponse(content=self.PLAN, tool_calls=(), finish_reason="stop", usage={})]
+        )
+        writer = RecordingMutatingTool()
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = self._kernel(tempdir, ai, ReadFileTool(), InspectSymbolsTool(), writer)
+            result = kernel.execute_turn("Plan the calendar app", plan_only=True)
+
+        scopes = ai.planning_scopes()
+        self.assertEqual(len(scopes), 1)
+        self.assertEqual(scopes[0], ("inspect_symbols", "read_file"))
+        self.assertNotIn("write_file", scopes[0])
+        self.assertEqual(result.execution_mode, ExecutionMode.PLAN_ONLY.value)
+
+    def test_planning_without_plan_only_offers_no_tools(self) -> None:
+        ai = RecordingAI(
+            [
+                AIResponse(content=self.PLAN, tool_calls=(), finish_reason="stop", usage={}),
+                AIResponse(content="Inspected.", tool_calls=(), finish_reason="stop", usage={}),
+                AIResponse(content="Added.", tool_calls=(), finish_reason="stop", usage={}),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = self._kernel(tempdir, ai)
+            kernel.execute_turn("Create a calendar app", planning_mode=PlanningMode.FORCE_PLAN)
+
+        self.assertEqual(ai.planning_scopes(), [])
+
+    def test_plan_only_denies_mutation_tool_calls(self) -> None:
+        ai = RecordingAI(
+            [
+                AIResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCallRequest(
+                            call_id="call-1",
+                            tool_name="write_file",
+                            arguments={"path": "a.txt", "content": "x", "mode": "fresh"},
+                        ),
+                    ),
+                    finish_reason="tool_calls",
+                    usage={},
+                ),
+                AIResponse(content=self.PLAN, tool_calls=(), finish_reason="stop", usage={}),
+            ]
+        )
+        writer = RecordingMutatingTool()
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = self._kernel(tempdir, ai, writer)
+            result = kernel.execute_turn("Plan the calendar app", plan_only=True)
+
+        self.assertEqual(writer.calls, [])
+        denied = [event for event in result.tool_policy_events if event.decision == "deny"]
+        self.assertEqual([event.tool_name for event in denied], ["write_file"])
+        self.assertEqual([step.tool_name for step in result.steps if step.tool_name == "write_file"], [])
+
+    def test_plan_only_bypasses_greeting_fast_path(self) -> None:
+        ai = RecordingAI(
+            [AIResponse(content=self.PLAN, tool_calls=(), finish_reason="stop", usage={})]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = self._kernel(tempdir, ai)
+            result = kernel.execute_turn("hi", plan_only=True)
+
+        self.assertEqual(result.final_response, self.PLAN)
+        self.assertNotIn("What would you like me to recall", result.final_response or "")
+
+    def test_plan_only_overrides_force_direct(self) -> None:
+        ai = RecordingAI(
+            [AIResponse(content=self.PLAN, tool_calls=(), finish_reason="stop", usage={})]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = self._kernel(tempdir, ai)
+            result = kernel.execute_turn(
+                "Plan the calendar app",
+                planning_mode=PlanningMode.FORCE_DIRECT,
+                plan_only=True,
+            )
+
+        self.assertEqual(result.execution_mode, ExecutionMode.PLAN_ONLY.value)
+        self.assertEqual(result.final_response, self.PLAN)
+
+    def test_plan_only_always_replans_instead_of_resuming_active_blueprint(self) -> None:
+        ai = RecordingAI(
+            [AIResponse(content=self.PLAN, tool_calls=(), finish_reason="stop", usage={})]
+        )
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = self._kernel(tempdir, ai, ReadFileTool())
+            kernel.active_plan_prompt = "Build the calendar frontend"
+            kernel.active_blueprint = ExecutionBlueprint(
+                raw_plan_markdown="- [ ] stale task",
+                tasks=[CheckpointTask(task_id=1, description="stale task")],
+                active_task_pointer=0,
+            )
+            result = kernel.execute_turn(
+                "continue with the calendar frontend plan",
+                planning_mode=PlanningMode.FORCE_PLAN,
+                plan_only=True,
+            )
+
+        self.assertEqual(len(ai.planning_scopes()), 1, "plan-only must run a fresh planning pass")
+        self.assertEqual(
+            [task.description for task in result.blueprint.tasks],
+            ["Inspect the calendar folder", "Add main.py"],
+        )
+        self.assertNotIn("stale task", result.blueprint.raw_plan_markdown)
+
+
 if __name__ == "__main__":
     unittest.main()

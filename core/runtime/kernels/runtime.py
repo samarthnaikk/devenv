@@ -112,6 +112,17 @@ DIRECT_SYSTEM_RULE = (
     "If a search request is ambiguous, ask one concise follow-up question instead of guessing. "
     "Keep the final answer brief unless the user asks for detail."
 )
+PLAN_ONLY_SYSTEM_RULE = (
+    "You are in plan-only mode. Produce a plan; never execute it. "
+    "Investigate before you plan: call the read-only inspection and retrieval tools first so the plan is grounded in "
+    "this workspace and in prior sessions, not in guesses. "
+    "You may only use read-only tools. Never invoke modification tools such as write_file, edit_file, remove_file, "
+    "run_shell, manage_memory, or generate_pdf. "
+    "When you have enough evidence, reply with a sequential markdown checklist using checkbox items like '- [ ] Task'. "
+    "Keep each item single-shot and concrete, and where a step is grounded in something you found, cite the evidence "
+    "inline (file path, symbol, session id, or source). "
+    "End with a short 'Open questions' list containing anything you could not resolve. Stop after the checklist."
+)
 DIRECT_MEMORY_CHAR_LIMIT = 900
 CONSOLIDATION_COOLDOWN_STATE_KEY = "runtime.last_consolidation_wall_time"
 DEFAULT_CONSOLIDATION_COOLDOWN_SECONDS = 900.0

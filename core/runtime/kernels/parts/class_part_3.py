@@ -223,12 +223,16 @@ class KernelLocalRuntimeMixin:
         system_logs: list[str],
         max_consecutive_tools: int,
         tool_policy_events: list[ToolPolicyEvent],
+        allow_tools: bool = False,
     ) -> tuple[str | None, list[dict[str, Any]]]:
         planning_memory = _trim_memory_context(memory_context, PLANNING_MEMORY_CHAR_LIMIT)
         system_logs.append(f"Planning memory chars sent: {len(planning_memory)}")
-        system_logs.append("Planning tool scope size: 0")
+        planning_tool_names = sorted(self._planning_allowed_tool_names()) if allow_tools else []
+        system_logs.append(f"Planning tool scope size: {len(planning_tool_names)}")
+        if planning_tool_names:
+            system_logs.append(f"Planning tool scope: {', '.join(planning_tool_names)}")
         conversation = [
-            {"role": "system", "content": PLANNING_SYSTEM_RULE},
+            {"role": "system", "content": PLAN_ONLY_SYSTEM_RULE if allow_tools else PLANNING_SYSTEM_RULE},
             {"role": "user", "content": user_prompt},
         ]
         planning_message_count = 0
@@ -236,7 +240,7 @@ class KernelLocalRuntimeMixin:
             ai_response = self.ai.chat(
                 messages=list(conversation),
                 memory_context=planning_memory,
-                tool_names=[],
+                tool_names=planning_tool_names,
             )
             _merge_usage(total_usage, ai_response.usage)
             ai_logs.append(

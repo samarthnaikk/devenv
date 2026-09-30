@@ -112,6 +112,7 @@ class KernelLifecycleMixin:
         planning_mode: PlanningMode = PlanningMode.AUTO,
         continue_plan: bool = False,
         local_only: bool = False,
+        plan_only: bool = False,
         selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
         backend_preference: str = "opencode",
         opencode_enabled: bool = False,
@@ -179,7 +180,9 @@ class KernelLifecycleMixin:
         conversation = list(self.ephemeral_history)
         conversation.append({"role": "user", "content": user_prompt})
 
-        if _is_brief_greeting_prompt(user_prompt):
+        # Plan-only turns bypass every local fast path so the query always reaches
+        # the planning stage instead of being absorbed by a greeting/recall shortcut.
+        if not plan_only and _is_brief_greeting_prompt(user_prompt):
             fast_response = "Hi. What would you like me to recall or inspect?"
             self._mark_local_backend_response()
             ai_logs.append("Handled greeting locally without running memory retrieval")
@@ -207,7 +210,11 @@ class KernelLifecycleMixin:
                 execution_mode=ExecutionMode.DIRECT_ANSWER.value,
             )
 
-        conversation_follow_up = _answer_from_recent_conversation_follow_up(user_prompt, self.ephemeral_history)
+        conversation_follow_up = (
+            None
+            if plan_only
+            else _answer_from_recent_conversation_follow_up(user_prompt, self.ephemeral_history)
+        )
         if conversation_follow_up is not None:
             self._mark_local_backend_response()
             ai_logs.append("Answered referential follow-up from recent conversation")
@@ -235,7 +242,11 @@ class KernelLifecycleMixin:
                 execution_mode=ExecutionMode.DIRECT_ANSWER.value,
             )
 
-        tool_strategy_response = self._answer_tool_strategy_question(user_prompt, selected_tools=turn_metadata["selected_tools"])
+        tool_strategy_response = (
+            None
+            if plan_only
+            else self._answer_tool_strategy_question(user_prompt, selected_tools=turn_metadata["selected_tools"])
+        )
         if tool_strategy_response is not None:
             self._mark_local_backend_response()
             ai_logs.append("Answered tool-strategy question locally from routing rules")
@@ -263,7 +274,7 @@ class KernelLifecycleMixin:
                 execution_mode=ExecutionMode.DIRECT_ANSWER.value,
             )
 
-        if _is_underspecified_troubleshooting_prompt(user_prompt):
+        if not plan_only and _is_underspecified_troubleshooting_prompt(user_prompt):
             fast_response = "What is failing? Share the command, error message, file, or step that is breaking so I can trace it accurately."
             ai_logs.append("Blocked underspecified troubleshooting prompt from broad retrieval and model usage")
             system_logs.append("Troubleshooting clarification fast path bypassed memory retrieval and model usage.")
@@ -291,7 +302,7 @@ class KernelLifecycleMixin:
                 turn_outcome=TurnOutcome.BLOCKED_BY_CLARIFICATION.value,
             )
 
-        if _is_ambiguous_memory_follow_up(user_prompt, conversation):
+        if not plan_only and _is_ambiguous_memory_follow_up(user_prompt, conversation):
             fast_response = "What should I explain? I don't have a clear prior subject in this thread yet."
             ai_logs.append("Blocked ambiguous follow-up from broad memory retrieval")
             system_logs.append("Ambiguous follow-up fast path bypassed memory retrieval and model usage.")
@@ -319,7 +330,7 @@ class KernelLifecycleMixin:
                 turn_outcome=TurnOutcome.BLOCKED_BY_CLARIFICATION.value,
             )
 
-        if _should_try_direct_memory_answer(user_prompt):
+        if not plan_only and _should_try_direct_memory_answer(user_prompt):
             fast_response = self._try_fast_direct_memory_answer(user_prompt)
             if fast_response is not None:
                 ai_logs.append("Direct memory answer returned from pre-retrieval fast path")
@@ -352,7 +363,7 @@ class KernelLifecycleMixin:
         live_search_request = _is_explicit_live_search_prompt(user_prompt)
         if no_memory or incognito:
             memory_context, retrieval_metadata = "", dict(PRIVACY_DISABLED_METADATA)
-        elif live_search_request:
+        elif live_search_request and not plan_only:
             memory_context, retrieval_metadata = "", {
                 "external_context_state": "live_search_only",
                 "external_context_reason": "Live fact request routed directly to web search without prior project memory.",
@@ -366,6 +377,7 @@ class KernelLifecycleMixin:
         logger.info("Retrieved memory context: chars=%s", len(memory_context))
         system_logs.append(f"Memory context chars: {len(memory_context)}")
         system_logs.append(f"Planning mode: {planning_mode.value}")
+        system_logs.append(f"Plan only: {plan_only}")
         system_logs.append(f"Continue plan: {continue_plan}")
         system_logs.append(f"Local only: {local_only}")
         if turn_metadata["selected_tools"]:
@@ -379,7 +391,7 @@ class KernelLifecycleMixin:
         total_usage: dict[str, int] = {}
         self.state = AgentState.PLANNING
         system_logs.append(f"State: {self.state.name}")
-        if local_only and _should_try_direct_memory_answer(user_prompt):
+        if not plan_only and local_only and _should_try_direct_memory_answer(user_prompt):
             direct_response = self._run_local_only_direct_turn(
                 user_prompt=user_prompt,
                 memory_context=memory_context,
@@ -410,7 +422,7 @@ class KernelLifecycleMixin:
                 execution_mode=ExecutionMode.DIRECT_ANSWER.value,
                 tool_policy_events=tool_policy_events,
             )
-        if _should_try_direct_memory_answer(user_prompt):
+        if not plan_only and _should_try_direct_memory_answer(user_prompt):
             direct_memory_answer = self._answer_known_project_question_local(user_prompt, memory_context)
             if direct_memory_answer is None:
                 direct_memory_answer = _answer_from_retrieved_memory(user_prompt, memory_context)
@@ -474,6 +486,7 @@ class KernelLifecycleMixin:
             continue_plan=continue_plan,
             local_only=local_only,
             planning_mode=planning_mode,
+            plan_only=plan_only,
             selected_tools=turn_metadata["selected_tools"],
             steps=steps,
             total_usage=total_usage,
@@ -488,7 +501,7 @@ class KernelLifecycleMixin:
         self.active_plan_prompt = execution_objective
         turn_metadata["original_objective"] = execution_objective
 
-        if planning_mode is PlanningMode.AUTO and self._is_explicit_plan_request(user_prompt):
+        if plan_only or (planning_mode is PlanningMode.AUTO and self._is_explicit_plan_request(user_prompt)):
             if _is_generic_explicit_plan_blueprint(blueprint):
                 blueprint = self._parse_markdown_to_blueprint(
                     self._build_local_plan_markdown(user_prompt),
@@ -505,7 +518,11 @@ class KernelLifecycleMixin:
                 persist_memory=(not incognito) and _should_persist_episodic_response(final_plan_response),
                 persist_working_memory=not incognito,
             )
-            system_logs.append("Explicit planning request returned blueprint without executing checkpoints")
+            system_logs.append(
+                "Plan-only turn returned blueprint without executing checkpoints"
+                if plan_only
+                else "Explicit planning request returned blueprint without executing checkpoints"
+            )
             return self._make_turn_result(
                 final_response=final_plan_response,
                 steps=steps,
@@ -1045,6 +1062,7 @@ class KernelLifecycleMixin:
         continue_plan: bool,
         local_only: bool,
         planning_mode: PlanningMode,
+        plan_only: bool = False,
         selected_tools: list[str] | tuple[str, ...] | set[str] | None = None,
         steps: list[ToolExecutionStep],
         total_usage: dict[str, int],
@@ -1053,7 +1071,11 @@ class KernelLifecycleMixin:
         max_consecutive_tools: int,
         tool_policy_events: list[ToolPolicyEvent],
     ) -> tuple[ExecutionBlueprint, list[dict[str, Any]], StageTrace]:
-        should_resume_plan = planning_mode is not PlanningMode.FORCE_DIRECT and (continue_plan or self._is_plan_continue_request(user_prompt))
+        should_resume_plan = (
+            not plan_only
+            and planning_mode is not PlanningMode.FORCE_DIRECT
+            and (continue_plan or self._is_plan_continue_request(user_prompt))
+        )
         if should_resume_plan and self.active_blueprint is not None and _next_incomplete_task_index(self.active_blueprint) is None:
             trace = StageTrace(
                 stage=ProcessStage.CHECKPOINT_CREATION.value,
@@ -1073,7 +1095,7 @@ class KernelLifecycleMixin:
                 payload={"continued": True},
             )
             return blueprint, [], trace
-        if self._should_update_active_plan_from_follow_up(user_prompt, planning_mode):
+        if not plan_only and self._should_update_active_plan_from_follow_up(user_prompt, planning_mode):
             blueprint = self._build_direct_blueprint(user_prompt)
             trace = StageTrace(
                 stage=ProcessStage.CHECKPOINT_CREATION.value,
@@ -1085,7 +1107,7 @@ class KernelLifecycleMixin:
             return blueprint, [], trace
 
         planning_conversation: list[dict[str, Any]] = []
-        should_plan = self._should_plan(user_prompt, planning_mode, selected_tools=selected_tools)
+        should_plan = plan_only or self._should_plan(user_prompt, planning_mode, selected_tools=selected_tools)
         if should_plan:
             prefer_local_planning = (
                 local_only
@@ -1115,6 +1137,7 @@ class KernelLifecycleMixin:
                     system_logs=system_logs,
                     max_consecutive_tools=max_consecutive_tools,
                     tool_policy_events=tool_policy_events,
+                    allow_tools=plan_only,
                 )
             blueprint = self._parse_markdown_to_blueprint(planning_response or user_prompt, original_objective=user_prompt)
         else:
