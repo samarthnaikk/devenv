@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from core.runtime.mcp_client import MCPToolClient
 from core.runtime.mcp_server import _annotation_for_property, _build_tool_wrapper
+from core.runtime.tooling import build_runtime_tools
 from core.tools.generate_pdf import GeneratePDFTool
 
 
@@ -59,7 +60,8 @@ class MCPRuntimeTest(unittest.TestCase):
         finally:
             client.close()
 
-        self.assertEqual(len(tools), 15)
+        expected = {tool.name for tool in build_runtime_tools(SimpleNamespace())}
+        self.assertEqual(set(tools), expected)
         self.assertIn("read_file", tools)
         self.assertIn("list_directory", tools)
         self.assertEqual(tools["read_file"]["inputSchema"]["required"], ["path"])

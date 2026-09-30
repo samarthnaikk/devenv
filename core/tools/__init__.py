@@ -11,6 +11,7 @@ from .manage_memory import ManageMemoryTool
 from .peek_lines import PeekLinesTool
 from .read_file import ReadFileTool
 from .remove_file import RemoveFileTool
+from .retrieval_search import RetrievalSearchTool
 from .run_shell import RunShellTool
 from .run_diagnostics import RunDiagnosticsTool
 from .search_text import SearchTextTool
@@ -32,6 +33,7 @@ __all__ = [
     "PeekLinesTool",
     "ReadFileTool",
     "RemoveFileTool",
+    "RetrievalSearchTool",
     "RunShellTool",
     "RunDiagnosticsTool",
     "SearchTextTool",

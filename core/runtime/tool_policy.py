@@ -26,6 +26,7 @@ TOOL_POLICY_REGISTRY: dict[str, ToolPolicySpec] = {
     "track_symbol": ToolPolicySpec("track_symbol", "search", plan_allowed=True, verification_allowed=True, retry_safe=True),
     "web_search": ToolPolicySpec("web_search", "web", plan_allowed=True, verification_allowed=False, retry_safe=True),
     "knowledge_search": ToolPolicySpec("knowledge_search", "knowledge", plan_allowed=True, verification_allowed=False, retry_safe=True),
+    "retrieval_search": ToolPolicySpec("retrieval_search", "retrieval", plan_allowed=True, verification_allowed=True, retry_safe=True),
     "generate_pdf": ToolPolicySpec("generate_pdf", "artifact", mutable=True, verification_allowed=False, retry_safe=False),
     "generate_prompt": ToolPolicySpec("generate_prompt", "artifact", plan_allowed=True, verification_allowed=False, retry_safe=True),
     "write_file": ToolPolicySpec("write_file", "edit", mutable=True, verification_allowed=False, retry_safe=False),
