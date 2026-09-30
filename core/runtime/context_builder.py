@@ -61,6 +61,8 @@ MAX_CONTEXT_LINES_PER_SESSION = 4
 MAX_SESSION_EMBEDDING_CACHE = 512
 MAX_SESSION_CHUNK_EMBEDDINGS = 96
 MAX_SESSION_CHUNK_HITS = 3
+MAX_DRILL_LINES = 16
+DEFAULT_DEEP_DRILL_CHARS = 2_000_000
 CONTEXT_LINES_FIRST_PASS = 2
 # Per-line cap for context content. 0 disables truncation; default keeps monster
 # tool dumps from dominating a line before the windowing pass runs.
@@ -1267,14 +1269,19 @@ class ContextBuilderService:
     ) -> tuple[str, ...]:
         selected_matches = [match for match, _provider in fused_matches]
         details_by_id: dict[str, ExternalSessionDetail] = {}
+        providers_by_name: dict[str, ExternalSessionProvider] = {}
         for match, provider in fused_matches:
-            session_id = match["summary"].session_id
+            summary = match["summary"]
+            session_id = summary.session_id
+            providers_by_name[getattr(summary, "provider", "")] = provider
             try:
                 details_by_id[session_id] = provider.get_session(session_id)
             except Exception:
                 continue
         details = [details_by_id[match["summary"].session_id] for match, _provider in fused_matches if match["summary"].session_id in details_by_id]
-        return self._context_lines_for_matches(task, selected_matches, details, max_lines=max_lines)
+        return self._context_lines_for_matches(
+            task, selected_matches, details, max_lines=max_lines, providers=providers_by_name
+        )
 
     def _context_lines_for_selected_matches(
         self,
@@ -1285,7 +1292,10 @@ class ContextBuilderService:
         max_lines: int,
     ) -> tuple[str, ...]:
         details = [provider.get_session(match["summary"].session_id) for match in selected_matches]
-        return self._context_lines_for_matches(task, selected_matches, details, max_lines=max_lines)
+        providers_by_name = {getattr(provider, "name", ""): provider}
+        return self._context_lines_for_matches(
+            task, selected_matches, details, max_lines=max_lines, providers=providers_by_name
+        )
 
     def _context_lines_for_matches(
         self,
@@ -1294,18 +1304,101 @@ class ContextBuilderService:
         details: list[ExternalSessionDetail],
         *,
         max_lines: int,
+        providers: dict[str, ExternalSessionProvider] | None = None,
     ) -> tuple[str, ...]:
         has_chunk_text = any(
             match.get("chunks") or isinstance(match.get("semantic_chunk"), ExternalSessionChunkEmbedding)
             for match in selected_matches
         )
         if not has_chunk_text:
-            return _collect_relevant_context_lines(task, details, "detailed")[:max_lines]
-        details_by_id = {detail.summary.session_id: detail for detail in details}
-        lines = _collect_per_session_context_lines(task, selected_matches, details_by_id, max_lines)
-        if lines:
-            return lines
-        return _collect_relevant_context_lines(task, details, "detailed")[:max_lines]
+            base = list(_collect_relevant_context_lines(task, details, "detailed")[:max_lines])
+        else:
+            details_by_id = {detail.summary.session_id: detail for detail in details}
+            lines = _collect_per_session_context_lines(task, selected_matches, details_by_id, max_lines)
+            base = list(lines) if lines else list(_collect_relevant_context_lines(task, details, "detailed")[:max_lines])
+
+        # Deep-session drill: the detail window is truncated to the last
+        # MAX_SESSION_MESSAGES, so a fact buried deep in a long session can be
+        # missed even when the session ranks #1. Scan the full transcript for the
+        # query's terms and fold in the strongest matching lines.
+        if providers and self._deep_drill_enabled():
+            drilled = self._drill_selected_sessions(
+                task,
+                selected_matches,
+                providers,
+                max_lines=max(max_lines, MAX_DRILL_LINES),
+            )
+            if drilled:
+                # A drill line matching a rare/identifier token is much stronger
+                # evidence than a generic base line. When the drill finds such
+                # lines, make them the primary context and use base lines only as
+                # padding, so deep exact answers survive the line budget.
+                distinctive = {
+                    token for token in _focus_tokens(task) if (not token.isalpha()) or len(token) >= 8
+                }
+
+                def has_distinctive(line: str) -> bool:
+                    lowered = line.lower()
+                    return any(token in lowered for token in distinctive)
+
+                promoted = [line for line in drilled if line and has_distinctive(line)]
+                rest = [line for line in drilled if line and not has_distinctive(line)]
+                cap = max(max_lines, MAX_DRILL_LINES)
+                if promoted:
+                    base = _dedupe_lines([*promoted, *base, *rest])[:cap]
+                else:
+                    base = _dedupe_lines([*base, *rest])[:cap]
+        return tuple(base)
+
+    @staticmethod
+    def _deep_drill_enabled() -> bool:
+        return os.getenv("DEVENV_DEEP_DRILL", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+    def _drill_selected_sessions(
+        self,
+        task: str,
+        selected_matches: list[dict[str, Any]],
+        providers: dict[str, ExternalSessionProvider],
+        *,
+        max_lines: int,
+    ) -> list[str]:
+        selected: list[tuple[str, ExternalSessionProvider]] = []
+        # Only drill the strongest sessions; drilling every candidate pulls in
+        # unrelated transcripts and dilutes the context.
+        for match in selected_matches[: self._deep_drill_max_sessions()]:
+            summary = match.get("summary")
+            session_id = getattr(summary, "session_id", "")
+            provider = providers.get(getattr(summary, "provider", ""))
+            if session_id and provider is not None:
+                selected.append((session_id, provider))
+        if not selected:
+            return []
+        try:
+            return drill_session_evidence(
+                task,
+                selected,
+                max_lines=min(max_lines, MAX_DRILL_LINES),
+                char_budget=self._deep_drill_char_budget(),
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("Deep-session drill failed: error=%s", exc)
+            return []
+
+    @staticmethod
+    def _deep_drill_char_budget() -> int:
+        raw = os.getenv("DEVENV_DEEP_DRILL_CHARS", str(DEFAULT_DEEP_DRILL_CHARS)).strip()
+        try:
+            return max(10_000, int(raw))
+        except ValueError:
+            return DEFAULT_DEEP_DRILL_CHARS
+
+    @staticmethod
+    def _deep_drill_max_sessions() -> int:
+        raw = os.getenv("DEVENV_DEEP_DRILL_SESSIONS", "4").strip()
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            return 4
 
     def _candidate_provider_names(self) -> list[str]:
         provider_names = list(self.providers)
@@ -2741,6 +2834,186 @@ def _collect_per_session_context_lines(
 ) -> tuple[str, ...]:
     per_session = _build_session_context_candidates(task, selected_matches, details_by_id)
     return select_context_lines(task, per_session, max_lines=max_lines).kept
+
+
+def _token_jaccard(a: str, b: str) -> float:
+    ta, tb = _tokenize(a), _tokenize(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
+def _dedupe_lines(lines: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for line in lines:
+        if not line or line in seen:
+            continue
+        seen.add(line)
+        out.append(line)
+    return out
+
+
+def _full_session_texts(provider: ExternalSessionProvider, session_id: str) -> list[str]:
+    """Return every text block in a session, bypassing the truncated detail window.
+
+    ``provider.get_session`` truncates to the last ``MAX_SESSION_MESSAGES``, so a
+    fact buried deep in a very long session is unreachable through it. Prefer the
+    provider's full message stream, falling back to the (truncated) detail.
+    """
+
+    texts: list[str] = []
+    full = getattr(provider, "_session_messages", None)
+    if callable(full):
+        try:
+            for message in full(session_id) or ():
+                content = str(getattr(message, "content", "") or "")
+                if content.strip():
+                    texts.append(content)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("Full-session read failed (%s): %s", session_id, exc)
+    if texts:
+        return texts
+
+    # Codex has no _session_messages; use its full transcript parser.
+    parse_full = getattr(provider, "_parse_full_session_messages", None)
+    session_file = getattr(provider, "_find_session_file", None)
+    if callable(parse_full) and callable(session_file):
+        try:
+            path = session_file(session_id)
+            if path is not None:
+                for message in parse_full(path, session_id) or ():
+                    content = str(getattr(message, "content", "") or "")
+                    if content.strip():
+                        texts.append(content)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("Full-session parse failed (%s): %s", session_id, exc)
+        if texts:
+            return texts
+
+    if texts:
+        return texts
+    try:
+        detail = provider.get_session(session_id)
+    except Exception:  # pragma: no cover - defensive
+        return texts
+    for message in getattr(detail, "messages", ()) or ():
+        content = str(getattr(message, "content", "") or "")
+        if content.strip():
+            texts.append(content)
+    return texts
+
+
+def drill_session_evidence(
+    task: str,
+    selected_sessions: list[tuple[str, ExternalSessionProvider]],
+    *,
+    max_lines: int,
+    char_budget: int = 2_000_000,
+) -> list[str]:
+    """Lexically scan the *whole* transcript of each selected session for the query.
+
+    Recovers exact answering lines from very large sessions whose matched chunks
+    (and truncated detail window) do not contain the answer. Bounded by a char
+    budget so a huge session cannot stall retrieval. Shared by the engine context
+    builder and the selector so both paths get deep-session recall.
+    """
+
+    if not selected_sessions or max_lines <= 0:
+        return []
+    tokens = _tokenize(task)
+    if not tokens:
+        return []
+    task_lower = _normalize_whitespace(task).lower()
+    focus = _focus_tokens(task)
+    distinctive = {token for token in focus if (not token.isalpha()) or len(token) >= 8}
+    per_session = max(1, max_lines // max(1, len(selected_sessions)))
+    collected: list[str] = []
+
+    def matched(line: str, pool: set[str]) -> set[str]:
+        lowered = line.lower()
+        return {token for token in pool if token in lowered}
+
+    for session_id, provider in selected_sessions:
+        if not session_id:
+            continue
+        scored: list[tuple[tuple[int, int, int], str]] = []
+        consumed = 0
+        for content in _full_session_texts(provider, session_id):
+            if consumed >= char_budget:
+                break
+            consumed += len(content)
+            for raw_segment in _evidence_segments(content):
+                line = _normalize_whitespace(raw_segment)
+                if len(line) < 20:
+                    continue
+                if _is_noise_message_content(line):
+                    continue
+                lowered = line.lower()
+                distinctive_hits = sum(1 for token in distinctive if token in lowered)
+                focus_hits = sum(1 for token in focus if token in lowered)
+                hits = sum(1 for token in tokens if token in lowered)
+                if not (distinctive_hits or focus_hits or hits):
+                    continue
+                # Skip the question echoed back verbatim (the query text gets
+                # stored in some archives); it is not evidence.
+                if _normalize_whitespace(line).lower() == task_lower or (
+                    len(line) < 200 and _token_jaccard(line, task) >= 0.9
+                ):
+                    continue
+                windowed = _window_context_line(line, tokens, CONTEXT_LINE_WINDOW_CHARS)
+                scored.append(((distinctive_hits, focus_hits, hits), windowed))
+        if not scored:
+            continue
+        scored.sort(key=lambda item: item[0], reverse=True)
+        remaining = list(scored)
+        covered_distinctive: set[str] = set()
+        covered_focus: set[str] = set()
+        taken: list[str] = []
+        while remaining and len(taken) < per_session:
+            best_index = 0
+            best_gain: tuple[int, int, tuple[int, int, int]] | None = None
+            for index, (key, line) in enumerate(remaining):
+                new_distinctive = matched(line, distinctive) - covered_distinctive
+                new_focus = matched(line, focus) - covered_focus
+                gain = (len(new_distinctive), len(new_focus), key)
+                if best_gain is None or gain > best_gain:
+                    best_gain = gain
+                    best_index = index
+                if new_distinctive and len(new_focus) >= 2:
+                    best_index = index
+                    break
+            key, line = remaining.pop(best_index)
+            if key[0] == 0 and key[1] == 0:
+                break
+            covered_distinctive |= matched(line, distinctive)
+            covered_focus |= matched(line, focus)
+            if line not in collected:
+                collected.append(line)
+                taken.append(line)
+        if len(collected) >= max_lines:
+            break
+    return collected[:max_lines]
+
+
+def _evidence_segments(text: str) -> list[str]:
+    """Split raw text into sentence-ish segments, before whitespace collapsing."""
+
+    segments: list[str] = []
+    for block in re.split(r"\n+", str(text)):
+        block = block.strip()
+        if not block:
+            continue
+        for piece in re.split(r"(?<=[.!?;:])\s+", block):
+            piece = piece.strip()
+            if not piece:
+                continue
+            if len(piece) <= CONTEXT_LINE_WINDOW_CHARS:
+                segments.append(piece)
+                continue
+            for start in range(0, len(piece), CONTEXT_LINE_WINDOW_CHARS):
+                segments.append(piece[start : start + CONTEXT_LINE_WINDOW_CHARS])
+    return segments
 
 
 def _build_chunks_from_messages(

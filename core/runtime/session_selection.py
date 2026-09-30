@@ -841,35 +841,6 @@ class SessionSelectionOrchestrator:
                 parts.append(subquestion)
         return "\n".join(dict.fromkeys(part for part in parts if part.strip()))
 
-    def _session_texts(self, provider: Any, session_id: str) -> list[str]:
-        """Return every text block in a session, bypassing the detail window.
-
-        ``provider.get_session`` truncates to the last ``MAX_SESSION_MESSAGES``;
-        the drill-down needs the whole session, so we prefer the provider's full
-        message stream and fall back to the JSONL/raw source when unavailable.
-        """
-        texts: list[str] = []
-        full = getattr(provider, "_session_messages", None)
-        if callable(full):
-            try:
-                for message in full(session_id) or ():
-                    content = str(getattr(message, "content", "") or "")
-                    if content.strip():
-                        texts.append(content)
-            except Exception as exc:  # pragma: no cover - defensive
-                logger.warning("Full-session read failed (%s): %s", session_id, exc)
-        if texts:
-            return texts
-        try:
-            detail = provider.get_session(session_id)
-        except Exception:  # pragma: no cover - defensive
-            return texts
-        for message in getattr(detail, "messages", ()) or ():
-            content = str(getattr(message, "content", "") or "")
-            if content.strip():
-                texts.append(content)
-        return texts
-
     def _drill_evidence(
         self,
         task: str,
@@ -879,100 +850,22 @@ class SessionSelectionOrchestrator:
     ) -> list[str]:
         """Lexically scan the *whole* session for the query's terms.
 
-        This recovers exact answering lines from very large sessions whose
-        retriever-matched chunks (and the truncated detail window) do not contain
-        the answer. Runs only for the selected sessions and is bounded by a char
-        budget so a huge session cannot stall retrieval.
+        Delegates to the shared ``drill_session_evidence`` so the selector and
+        the engine context builder recover deep-session facts identically.
         """
         if not selected_fused or max_lines <= 0:
             return []
         try:
-            from .context_builder import (
-                CONTEXT_LINE_WINDOW_CHARS,
-                _focus_tokens,
-                _normalize_whitespace,
-                _tokenize,
-                _window_context_line,
-            )
+            from .context_builder import drill_session_evidence
         except Exception:  # pragma: no cover - defensive
             return []
-        tokens = _tokenize(task)
-        if not tokens:
-            return []
-        focus = _focus_tokens(task)
-        # Rare/identifier-ish tokens (matQ5, file paths, error strings) are far
-        # more discriminative than common words. Rank by the strongest matching
-        # token first (tier), then by breadth of coverage, so a short line that
-        # contains the exact identifier beats a long line of generic chatter.
-        distinctive = {
-            token
-            for token in focus
-            if (not token.isalpha()) or len(token) >= 8
-        }
-        budget = self.drill_char_budget
-        collected: list[str] = []
-        per_session = max(1, max_lines // max(1, len(selected_fused)))
-        for match, provider in selected_fused:
-            session_id = getattr(match.get("summary"), "session_id", "")
-            if not session_id:
-                continue
-            scored: list[tuple[tuple[int, int, int], str]] = []
-            consumed = 0
-            for content in self._session_texts(provider, session_id):
-                if consumed >= budget:
-                    break
-                consumed += len(content)
-                for raw_segment in _evidence_segments(content):
-                    line = _normalize_whitespace(raw_segment)
-                    if len(line) < 20:
-                        continue
-                    lowered = line.lower()
-                    distinctive_hits = sum(1 for token in distinctive if token in lowered)
-                    focus_hits = sum(1 for token in focus if token in lowered)
-                    hits = sum(1 for token in tokens if token in lowered)
-                    if not (distinctive_hits or focus_hits or hits):
-                        continue
-                    windowed = _window_context_line(line, tokens, CONTEXT_LINE_WINDOW_CHARS)
-                    scored.append(((distinctive_hits, focus_hits, hits), windowed))
-            if not scored:
-                continue
-            # Greedy set-cover over distinctive tokens: prefer lines that match
-            # query tokens not yet covered, so several distinct facts surface
-            # instead of several paraphrases of the same one.
-            scored.sort(key=lambda item: item[0], reverse=True)
-            remaining = list(scored)
-            covered_distinctive: set[str] = set()
-            covered_focus: set[str] = set()
-            taken_lines: list[str] = []
-
-            def matched_tokens(line: str, pool: set[str]) -> set[str]:
-                lowered = line.lower()
-                return {token for token in pool if token in lowered}
-
-            while remaining and len(taken_lines) < per_session:
-                best_index = 0
-                best_gain: tuple[int, int, tuple[int, int, int]] | None = None
-                for index, (key, line) in enumerate(remaining):
-                    new_distinctive = matched_tokens(line, distinctive) - covered_distinctive
-                    new_focus = matched_tokens(line, focus) - covered_focus
-                    gain = (len(new_distinctive), len(new_focus), key)
-                    if best_gain is None or gain > best_gain:
-                        best_gain = gain
-                        best_index = index
-                    if new_distinctive and len(new_focus) >= 2:
-                        best_index = index
-                        break
-                key, line = remaining.pop(best_index)
-                if key[0] == 0 and key[1] == 0:
-                    break
-                covered_distinctive |= matched_tokens(line, distinctive)
-                covered_focus |= matched_tokens(line, focus)
-                if line not in collected:
-                    collected.append(line)
-                    taken_lines.append(line)
-            if len(collected) >= max_lines:
-                break
-        return collected[:max_lines]
+        selected = [
+            (getattr(match.get("summary"), "session_id", ""), provider)
+            for match, provider in selected_fused
+        ]
+        return drill_session_evidence(
+            task, selected, max_lines=max_lines, char_budget=self.drill_char_budget
+        )
 
     def _run_selector(
         self,

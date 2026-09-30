@@ -19,6 +19,65 @@ from core.runtime.models import (
 )
 
 
+class DeepDrillTest(unittest.TestCase):
+    def _provider(self, messages_by_session: dict[str, list[str]]):
+        class _Msg:
+            def __init__(self, content: str) -> None:
+                self.content = content
+
+        class _Provider:
+            name = "codex"
+
+            def __init__(self) -> None:
+                self._messages = messages_by_session
+
+            def _session_messages(self, session_id: str):
+                return [_Msg(c) for c in self._messages.get(session_id, [])]
+
+        return _Provider()
+
+    def test_drill_finds_fact_buried_deep_in_transcript(self) -> None:
+        from core.runtime.context_builder import drill_session_evidence
+
+        filler = [f"Unrelated chatter number {i} about assorted topics." for i in range(300)]
+        deep_fact = 'export const mockCrmProviderValidator = v.union(v.literal("hubspot"), v.literal("salesforce"), v.literal("none"))'
+        provider = self._provider({"sess-1": [*filler, deep_fact, *filler]})
+
+        lines = drill_session_evidence(
+            "what exact values does mockCrmProviderValidator allow",
+            [("sess-1", provider)],
+            max_lines=8,
+        )
+
+        self.assertTrue(any("mockCrmProviderValidator" in line for line in lines), lines)
+        self.assertTrue(any("hubspot" in line for line in lines), lines)
+
+    def test_drill_is_noop_without_tokens_or_sessions(self) -> None:
+        from core.runtime.context_builder import drill_session_evidence
+
+        provider = self._provider({"s": ["something"]})
+        self.assertEqual(drill_session_evidence("", [("s", provider)], max_lines=5), [])
+        self.assertEqual(drill_session_evidence("query", [], max_lines=5), [])
+
+    def test_drill_stops_after_first_message_when_budget_tiny(self) -> None:
+        from core.runtime.context_builder import drill_session_evidence
+
+        # First message consumes the whole budget, so the second is never scanned.
+        provider = self._provider({"s": ["needle " + ("x" * 5000), "needle second message"]})
+        lines = drill_session_evidence(
+            "needle", [("s", provider)], max_lines=5, char_budget=100
+        )
+        self.assertTrue(all("second message" not in line for line in lines), lines)
+
+    def test_drill_skips_query_echo_lines(self) -> None:
+        from core.runtime.context_builder import drill_session_evidence
+
+        question = "what exact values does mockCrmProviderValidator allow"
+        provider = self._provider({"s": [question, "Real evidence line mentioning mockCrmProviderValidator values here."]})
+        lines = drill_session_evidence(question, [("s", provider)], max_lines=5)
+        self.assertFalse(any(line.strip() == question for line in lines), lines)
+
+
 class ContextBuilderServiceTest(unittest.TestCase):
     @staticmethod
     def _create_opencode_db(path: Path) -> None:
