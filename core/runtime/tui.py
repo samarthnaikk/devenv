@@ -18,7 +18,7 @@ from core.ai.model_catalog import OpenCodeModelInfo, discover_opencode_models
 from core.runtime.session_selection import DEFAULT_SELECTOR_MODEL
 from core.logging_utils import configure_logging
 
-from .context_builder import ContextBuilderService
+from .context_builder import ContextBuilderService, _excluded_tags_from_env
 from .kernel import DevenvKernel
 from .models import DEFAULT_MAX_CONSECUTIVE_TOOLS, PlanningMode, RunConfig, RuntimeTurnResult
 from .tooling import build_runtime_tools
@@ -717,11 +717,106 @@ class DevenvTUIController:
         if command == "/clear":
             session_id = self.kernel.reset_conversation()
             return TUICommandResult(f"Started a fresh thread. Session id: {session_id}")
+        if command == "/tag":
+            return TUICommandResult(self._handle_tag_command(args))
+        if command == "/untag":
+            return TUICommandResult(self._handle_untag_command(args))
+        if command in {"/tags", "/tag-filter"}:
+            return TUICommandResult(self.tags_text())
+        if command == "/exclude-tag":
+            return TUICommandResult(self._handle_exclude_tag_command(args))
         if command in {"/exit", "/quit"}:
             return TUICommandResult("Closing Devenv TUI.", should_exit=True)
         return TUICommandResult(
             f"Unknown command `{command}`.\n\n{self.help_text()}"
         )
+
+    def _resolve_session_ref(self, ref: str) -> str:
+        """Resolve a session reference to a unified id.
+
+        Accepts a unified id (``provider:id``), a bare session id, or a unique
+        prefix of a known session in an enabled source.
+        """
+
+        cleaned = str(ref or "").strip()
+        if not cleaned:
+            return ""
+        if ":" in cleaned:
+            return cleaned
+        for provider in SESSION_PROVIDERS:
+            if not self.access_policy.can_access_provider(provider):
+                continue
+            try:
+                for summary in self.context_builder.list_sessions(provider):
+                    if summary.session_id == cleaned:
+                        return summary.unified_session_id
+            except Exception:  # pragma: no cover - defensive
+                continue
+        for provider in SESSION_PROVIDERS:
+            if not self.access_policy.can_access_provider(provider):
+                continue
+            try:
+                matches = [
+                    summary
+                    for summary in self.context_builder.list_sessions(provider)
+                    if summary.session_id.startswith(cleaned)
+                ]
+            except Exception:  # pragma: no cover - defensive
+                continue
+            if len(matches) == 1:
+                return matches[0].unified_session_id
+        return cleaned
+
+    def _handle_tag_command(self, args: list[str]) -> str:
+        if len(args) < 2:
+            return "Usage: /tag <session-id|provider:id> <tag> [tag2 ...]"
+        unified_id = self._resolve_session_ref(args[0])
+        tags = args[1:]
+        for tag in tags:
+            self.context_builder.set_session_tag(unified_id, tag)
+        return f"Tagged `{unified_id}` with: {', '.join(tags)}"
+
+    def _handle_untag_command(self, args: list[str]) -> str:
+        if len(args) < 2:
+            return "Usage: /untag <session-id|provider:id> <tag> [tag2 ...]"
+        unified_id = self._resolve_session_ref(args[0])
+        for tag in args[1:]:
+            self.context_builder.remove_session_tag(unified_id, tag)
+        return f"Removed tags from `{unified_id}`: {', '.join(args[1:])}"
+
+    def _handle_exclude_tag_command(self, args: list[str]) -> str:
+        if not args:
+            current = sorted(_excluded_tags_from_env())
+            return f"Excluded tags: {', '.join(current) or 'none'}\nUsage: /exclude-tag <tag> [tag2 ...]"
+        current = _excluded_tags_from_env()
+        added = [tag.strip().lower() for tag in args if tag.strip()]
+        merged = sorted(current | set(added))
+        os.environ["DEVENV_EXCLUDE_TAGS"] = ",".join(merged)
+        return (
+            f"Excluded tags: {', '.join(merged)}\n"
+            "Applied to retrieval in this session. Persist with DEVENV_EXCLUDE_TAGS."
+        )
+
+    def tags_text(self) -> str:
+        excluded = sorted(_excluded_tags_from_env())
+        lines = ["Session tags and filters", "", f"Excluded tags: {', '.join(excluded) or 'none'}", ""]
+        any_tagged = False
+        for provider in SESSION_PROVIDERS:
+            if not self.access_policy.can_access_provider(provider):
+                continue
+            try:
+                summaries = self.context_builder.list_sessions(provider)
+            except Exception:  # pragma: no cover - defensive
+                continue
+            tagged = [summary for summary in summaries if summary.tags]
+            if tagged:
+                any_tagged = True
+                lines.append(f"{provider}:")
+                for summary in tagged[:20]:
+                    lines.append(f"  {summary.unified_session_id[:28]}  {', '.join(summary.tags)}")
+        if not any_tagged:
+            lines.append("No tagged sessions yet. Use /tag <session-id> <tag>.")
+        return "\n".join(lines)
 
     def help_text(self) -> str:
         return "\n".join(
@@ -730,7 +825,12 @@ class DevenvTUIController:
                 "/status                 Show active backend, model, and permissions",
                 "/mode retrieve|solve    Switch TUI mode (solve is still in progress)",
                 "/retrieve <query>       Retrieve prior sessions and chunks for a query",
+                "/ask <query>            Answer a query from retrieved evidence (no tools)",
                 "/plan <query>           Draft a read-only blueprint for a query (never executes)",
+                "/tag <session> <tag>    Tag a session (session id or provider:id)",
+                "/untag <session> <tag>  Remove a tag from a session",
+                "/tags                   List tagged sessions and active exclusions",
+                "/exclude-tag <tag>      Exclude tagged sessions from retrieval",
                 "/copy                   Copy the last retrieval result to the clipboard",
                 "/enable                 Enable all session sources (codex + opencode)",
                 "/sources                Show session source status",
@@ -1809,12 +1909,14 @@ if TEXTUAL_AVAILABLE:
                     if not self.controller.access_policy.can_access_provider(provider):
                         continue
                     for summary in self.controller.context_builder.list_sessions(provider):
+                        tags = ", ".join(getattr(summary, "tags", ()) or ())
                         rows.append(
                             (
                                 provider,
                                 getattr(summary, "title", "") or getattr(summary, "session_id", ""),
                                 getattr(summary, "message_count", "") or "",
                                 getattr(summary, "updated_at", "") or "",
+                                tags,
                                 getattr(summary, "preview", "") or "",
                             )
                         )

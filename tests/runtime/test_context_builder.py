@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import tempfile
 import time
@@ -1685,6 +1686,31 @@ class ContextBuilderServiceTest(unittest.TestCase):
             scores = service._semantic_session_scores(_Provider(), [summary], ("find the needle",))
 
         self.assertGreater(scores.get("s1", 0.0), 0.9)
+
+    def test_opencode_list_sessions_derives_agent_tags_when_columns_present(self) -> None:
+        from core.runtime.context_builder import _opencode_auto_tags
+
+        class _Row(dict):
+            def keys(self):  # type: ignore[override]
+                return super().keys()
+
+        row = _Row({"agent": "build", "parent_id": None, "time_archived": None})
+        self.assertEqual(_opencode_auto_tags(row), ("agent:build",))
+
+        derived = _Row({"agent": "explore", "parent_id": "parent-1", "time_archived": 123})
+        self.assertEqual(_opencode_auto_tags(derived), ("agent:explore", "derived", "archived"))
+
+    def test_exclude_tags_filters_summaries(self) -> None:
+        from core.runtime.context_builder import _filter_excluded_tag_summaries
+        from core.runtime.models import ExternalSessionSummary
+
+        summaries = [
+            ExternalSessionSummary(provider="opencode", session_id="s1", title="A", updated_at="", tags=("derived",)),
+            ExternalSessionSummary(provider="opencode", session_id="s2", title="B", updated_at="", tags=()),
+        ]
+        with mock.patch.dict(os.environ, {"DEVENV_EXCLUDE_TAGS": "derived"}):
+            filtered = _filter_excluded_tag_summaries(summaries)
+        self.assertEqual([summary.session_id for summary in filtered], ["s2"])
 
     def test_structured_meta_is_noise_not_evidence(self) -> None:
         from core.runtime.context_builder import _is_noise_message_content

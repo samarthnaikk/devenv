@@ -335,6 +335,7 @@ class ExternalSessionSummary:
     preview: str = ""
     unified_session_id: str = ""
     embedding: tuple[float, ...] = ()
+    tags: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -348,6 +349,7 @@ class ExternalSessionSummary:
             "preview": self.preview,
             "unified_session_id": self.unified_session_id or f"{self.provider}:{self.session_id}",
             "embedding": list(self.embedding),
+            "tags": list(self.tags),
         }
 
 

@@ -54,6 +54,7 @@ class ExternalSessionEmbedding:
     updated_at: str = ""
     indexed_at: float = 0.0
     content_text: str = ""
+    tags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

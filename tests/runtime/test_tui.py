@@ -695,6 +695,63 @@ class DevenvTUITest(unittest.TestCase):
 
         self.assertIn("Usage: /ask", result.message)
 
+    def test_tag_and_untag_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+
+            class _TagBuilder:
+                def __init__(self) -> None:
+                    self.tags: dict[str, list[str]] = {}
+
+                def set_session_tag(self, unified_id: str, tag: str) -> None:
+                    self.tags.setdefault(unified_id, []).append(tag.lower())
+
+                def remove_session_tag(self, unified_id: str, tag: str) -> None:
+                    self.tags.get(unified_id, []).remove(tag.lower())
+
+                def list_session_tags(self, unified_id: str):
+                    return [(tag, "user") for tag in self.tags.get(unified_id, [])]
+
+                def list_sessions(self, provider: str):
+                    return []
+
+            builder = _TagBuilder()
+            controller.context_builder = builder
+
+            tagged = controller.handle_command("/tag opencode:s1 deploy")
+            untagged = controller.handle_command("/untag opencode:s1 deploy")
+
+        self.assertIn("Tagged", tagged.message)
+        self.assertEqual(builder.tags["opencode:s1"], [])
+        self.assertIn("Removed", untagged.message)
+
+    def test_tag_command_requires_arguments(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            result = controller.handle_command("/tag opencode:s1")
+
+        self.assertIn("Usage: /tag", result.message)
+
+    def test_exclude_tag_command_sets_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            with mock.patch.dict("os.environ", {}, clear=False):
+                os.environ.pop("DEVENV_EXCLUDE_TAGS", None)
+                result = controller.handle_command("/exclude-tag derived")
+                self.assertIn("derived", os.environ.get("DEVENV_EXCLUDE_TAGS", ""))
+                os.environ.pop("DEVENV_EXCLUDE_TAGS", None)
+
+        self.assertIn("Excluded tags", result.message)
+
     def test_selector_model_persists_across_controller_instances(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             first = DevenvTUIController(

@@ -121,6 +121,7 @@ def _normalize_project_path(path: str | None) -> str:
 
 _PROJECT_GATE_MODES = {"off", "demote", "filter"}
 _RECALL_FLOOR_MODES = {"off", "soft", "hard"}
+_TAG_GATE_MODES = {"off", "demote", "filter"}
 
 
 def project_gate_mode() -> str:
@@ -131,6 +132,50 @@ def project_gate_mode() -> str:
 def recall_floor_mode() -> str:
     mode = os.getenv("DEVENV_SESSION_SELECTOR_RECALL_FLOOR", "hard").strip().lower()
     return mode if mode in _RECALL_FLOOR_MODES else "hard"
+
+
+def tag_gate_mode() -> str:
+    mode = os.getenv("DEVENV_SESSION_TAG_GATE", "off").strip().lower()
+    return mode if mode in _TAG_GATE_MODES else "off"
+
+
+def excluded_tags() -> set[str]:
+    raw = os.getenv("DEVENV_EXCLUDE_TAGS", "").strip()
+    if not raw:
+        return set()
+    return {tag.strip().lower() for tag in raw.split(",") if tag.strip()}
+
+
+def apply_tag_gate(
+    candidates: Sequence[SessionCandidate],
+    *,
+    mode: str | None = None,
+    exclude: set[str] | None = None,
+) -> list[SessionCandidate]:
+    """Hard-filter or demote candidates that carry an excluded tag.
+
+    This is the single choke point for tag-based filtering: it must run *before*
+    any recall floor so an excluded session cannot be reintroduced later.
+    ``mode="off"`` (the default) is a no-op.
+    """
+
+    resolved_mode = mode if mode is not None else tag_gate_mode()
+    if resolved_mode == "off" or not candidates:
+        return list(candidates)
+    blocked = excluded_tags() if exclude is None else {tag.lower() for tag in exclude}
+    if not blocked:
+        return list(candidates)
+    kept: list[SessionCandidate] = []
+    tagged: list[SessionCandidate] = []
+    for candidate in candidates:
+        candidate_tags = {tag.lower() for tag in candidate.tags}
+        if candidate_tags & blocked:
+            tagged.append(candidate)
+        else:
+            kept.append(candidate)
+    if resolved_mode == "filter":
+        return kept
+    return [*kept, *tagged]
 
 
 def apply_project_gate(
@@ -179,6 +224,7 @@ class SessionCandidate:
     score: int
     updated_at: str
     snippet: str = ""
+    tags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -310,16 +356,22 @@ class SessionSelectionOrchestrator:
             return []
         fused = _fuse_provider_session_matches(provider_matches)
         gate_mode = project_gate_mode()
-        if gate_mode != "off":
+        tag_mode = tag_gate_mode()
+        if gate_mode != "off" or (tag_mode != "off" and excluded_tags()):
             workspace_path = getattr(self.context_builder, "workspace_path", "") or ""
             candidates = [
                 self._to_candidate(match, task=task, provider=provider)
                 for match, provider in fused
             ]
-            gated = apply_project_gate(
-                candidates, workspace_path=workspace_path, query=task, mode=gate_mode
-            )
-            order = {candidate.session_id: index for index, candidate in enumerate(gated)}
+            if gate_mode != "off":
+                candidates = apply_project_gate(
+                    candidates, workspace_path=workspace_path, query=task, mode=gate_mode
+                )
+            # Tag exclusion runs before the selector and recall floor so an
+            # excluded session can never be reintroduced downstream.
+            if tag_mode != "off" and excluded_tags():
+                candidates = apply_tag_gate(candidates, mode=tag_mode)
+            order = {candidate.session_id: index for index, candidate in enumerate(candidates)}
             fused = sorted(
                 fused,
                 key=lambda match_provider: order.get(
@@ -455,6 +507,7 @@ class SessionSelectionOrchestrator:
             score=int(match.get("score") or 0),
             updated_at=str(getattr(summary, "updated_at", "") or ""),
             snippet=cls._candidate_snippet(match, task=task, provider=provider),
+            tags=tuple(getattr(summary, "tags", ()) or ()),
         )
 
     def select(

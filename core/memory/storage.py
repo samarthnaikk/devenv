@@ -110,6 +110,17 @@ SCHEMA_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS idx_interaction_cards_provider ON interaction_cards(provider)",
     "CREATE INDEX IF NOT EXISTS idx_interaction_cards_session_id ON interaction_cards(session_id)",
     "CREATE INDEX IF NOT EXISTS idx_external_session_embeddings_session_id ON external_session_embeddings(session_id)",
+    """
+    CREATE TABLE IF NOT EXISTS session_tags (
+        unified_session_id TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'user',
+        created_at REAL NOT NULL,
+        PRIMARY KEY (unified_session_id, tag)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_session_tags_tag ON session_tags(tag)",
+    "CREATE INDEX IF NOT EXISTS idx_session_tags_source ON session_tags(source)",
 )
 
 FTS_SCHEMA_STATEMENTS = (
@@ -304,6 +315,108 @@ class SQLiteMemoryStore:
         with self.transaction() as connection:
             rows = connection.execute(query, params).fetchall()
         return [_row_to_external_session_embedding_vector(row) for row in rows]
+
+    def add_session_tag(self, unified_session_id: str, tag: str, *, source: str = "user", created_at: float = 0.0) -> None:
+        cleaned = str(tag or "").strip().lower()
+        if not unified_session_id or not cleaned:
+            return
+        import time as _time
+
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO session_tags (unified_session_id, tag, source, created_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(unified_session_id, tag) DO UPDATE SET source = excluded.source
+                """,
+                (unified_session_id, cleaned, str(source or "user"), created_at or _time.time()),
+            )
+
+    def remove_session_tag(self, unified_session_id: str, tag: str) -> None:
+        cleaned = str(tag or "").strip().lower()
+        if not unified_session_id or not cleaned:
+            return
+        with self.transaction() as connection:
+            connection.execute(
+                "DELETE FROM session_tags WHERE unified_session_id = ? AND tag = ?",
+                (unified_session_id, cleaned),
+            )
+
+    def set_session_tags(self, unified_session_id: str, tags: list[tuple[str, str]] | list[str]) -> None:
+        """Replace all tags for a session. Accepts ``str`` or ``(tag, source)`` items.
+
+        The ``source='auto'`` tags are retained: they are recomputed from the
+        archive and are not user-editable.
+        """
+
+        normalized: list[tuple[str, str]] = []
+        for item in tags:
+            if isinstance(item, tuple):
+                tag, source = item
+            else:
+                tag, source = item, "user"
+            cleaned = str(tag or "").strip().lower()
+            if cleaned:
+                normalized.append((cleaned, str(source or "user")))
+        import time as _time
+
+        now = _time.time()
+        with self.transaction() as connection:
+            connection.execute(
+                "DELETE FROM session_tags WHERE unified_session_id = ? AND source != 'auto'",
+                (unified_session_id,),
+            )
+            connection.executemany(
+                """
+                INSERT INTO session_tags (unified_session_id, tag, source, created_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(unified_session_id, tag) DO UPDATE SET source = excluded.source
+                """,
+                [(unified_session_id, tag, source, now) for tag, source in normalized],
+            )
+
+    def list_session_tags(self, unified_session_id: str) -> list[tuple[str, str]]:
+        with self.transaction() as connection:
+            rows = connection.execute(
+                "SELECT tag, source FROM session_tags WHERE unified_session_id = ? ORDER BY tag",
+                (unified_session_id,),
+            ).fetchall()
+        return [(str(row["tag"]), str(row["source"])) for row in rows]
+
+    def tags_for_sessions(self, unified_session_ids: list[str]) -> dict[str, list[str]]:
+        """Return ``{unified_session_id: [tag, ...]}`` for the requested ids."""
+
+        if not unified_session_ids:
+            return {}
+        result: dict[str, list[str]] = {sid: [] for sid in unified_session_ids}
+        placeholders = ",".join("?" for _ in unified_session_ids)
+        with self.transaction() as connection:
+            rows = connection.execute(
+                f"SELECT unified_session_id, tag FROM session_tags WHERE unified_session_id IN ({placeholders}) ORDER BY tag",
+                tuple(unified_session_ids),
+            ).fetchall()
+        for row in rows:
+            result.setdefault(str(row["unified_session_id"]), []).append(str(row["tag"]))
+        return result
+
+    def all_session_tags(self) -> dict[str, list[tuple[str, str]]]:
+        with self.transaction() as connection:
+            rows = connection.execute(
+                "SELECT unified_session_id, tag, source FROM session_tags ORDER BY unified_session_id, tag"
+            ).fetchall()
+        result: dict[str, list[tuple[str, str]]] = {}
+        for row in rows:
+            result.setdefault(str(row["unified_session_id"]), []).append(
+                (str(row["tag"]), str(row["source"]))
+            )
+        return result
+
+    def delete_session_tags(self, unified_session_id: str) -> None:
+        with self.transaction() as connection:
+            connection.execute(
+                "DELETE FROM session_tags WHERE unified_session_id = ?",
+                (unified_session_id,),
+            )
 
     def delete_external_session_embedding(self, unified_session_id: str) -> None:
         """Remove a whole-session embedding and its chunk rows."""

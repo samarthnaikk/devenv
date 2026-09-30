@@ -34853,7 +34853,18 @@ function renderSessionRow(provider, label, allowed, visible, state, dispatch2, t
             onClick: () => selectSession(provider, session.session_id)
           },
           import_react20.default.createElement("div", { className: "font-label-caps text-label-caps text-on-surface text-[11px]" }, escapeHtml(session.title || "Untitled session")),
-          import_react20.default.createElement("div", { className: "font-code-sm text-code-sm text-on-surface-variant truncate" }, escapeHtml(session.updated_at || session.workspace_path || ""))
+          import_react20.default.createElement("div", { className: "font-code-sm text-code-sm text-on-surface-variant truncate" }, escapeHtml(session.updated_at || session.workspace_path || "")),
+          Array.isArray(session.tags) && session.tags.length ? import_react20.default.createElement(
+            "div",
+            { className: "flex flex-wrap gap-1 mt-1" },
+            session.tags.map(
+              (tag) => import_react20.default.createElement(
+                "span",
+                { key: tag, className: "px-1.5 py-0.5 rounded bg-surface-variant text-on-surface-variant font-code-sm text-[10px]" },
+                escapeHtml(tag)
+              )
+            )
+          ) : null
         )
       ) : import_react20.default.createElement("div", { className: "font-body-md text-body-md text-on-surface-variant p-2" }, state.sessionLoading ? "Loading..." : "No sessions")
     ) : null

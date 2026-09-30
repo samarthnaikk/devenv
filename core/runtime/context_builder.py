@@ -560,6 +560,7 @@ class CodexSessionProvider(ExternalSessionProvider):
             source_path=detail.summary.source_path,
             message_count=detail.summary.message_count,
             preview=detail.summary.preview,
+            tags=detail.summary.tags or _codex_auto_tags(detail.metadata),
         )
         return ExternalSessionDetail(summary=summary, messages=detail.messages, metadata=detail.metadata)
 
@@ -720,6 +721,7 @@ class CodexSessionProvider(ExternalSessionProvider):
             source_path=str(session_file),
             message_count=len(messages),
             preview=preview,
+            tags=_codex_auto_tags(metadata),
         )
         detail = ExternalSessionDetail(summary=summary, messages=tuple(messages), metadata=metadata)
         self._detail_cache[session_id] = detail
@@ -836,12 +838,18 @@ class OpenCodeSessionProvider(ExternalSessionProvider):
     def list_sessions(self) -> list[ExternalSessionSummary]:
         if not self.config.enabled or not self.root.exists():
             return []
-        derived_filter = "" if self.include_derived else " and parent_id is null"
+        columns = self._session_table_columns()
+        derived_filter = ""
+        if not self.include_derived and "parent_id" in columns:
+            derived_filter = " and parent_id is null"
+        archived_filter = " where time_archived is null" if "time_archived" in columns else ""
+        optional = [name for name in ("agent", "parent_id", "time_archived") if name in columns]
+        selected = ", ".join(["id", "title", "directory", "time_updated", *optional])
         rows = self._query_all(
             f"""
-            select id, title, directory, time_updated
+            select {selected}
             from session
-            where time_archived is null{derived_filter}
+            {archived_filter}{derived_filter}
             order by time_updated desc
             """
         )
@@ -862,6 +870,7 @@ class OpenCodeSessionProvider(ExternalSessionProvider):
                 source_path=str(self.root),
                 message_count=self._message_count_for_session(session_id),
                 preview=preview,
+                tags=_opencode_auto_tags(row),
             )
             self._summary_cache[session_id] = summary
             summaries.append(summary)
@@ -960,6 +969,25 @@ class OpenCodeSessionProvider(ExternalSessionProvider):
         except sqlite3.OperationalError:
             return _fetch_sqlite_rows(self.root, query, parameters, immutable=True)
 
+    def _session_table_columns(self) -> set[str]:
+        """Return the columns present on the ``session`` table.
+
+        OpenCode has added columns (``agent``, ``parent_id``, ``time_archived``)
+        over time; older archives must still be readable, so optional columns are
+        only selected when they exist.
+        """
+
+        cached = getattr(self, "_session_columns_cache", None)
+        if cached is not None:
+            return cached
+        try:
+            rows = self._query_all("PRAGMA table_info(session)")
+        except sqlite3.Error:
+            rows = []
+        columns = {str(row.get("name") or "") for row in rows}
+        self._session_columns_cache = columns
+        return columns
+
 
 class ContextBuilderService:
     def __init__(
@@ -1010,16 +1038,60 @@ class ContextBuilderService:
 
     def list_sessions(self, provider_name: str) -> list[ExternalSessionSummary]:
         provider = self._get_provider(provider_name)
-        return [self._with_session_embedding(provider, summary) for summary in provider.list_sessions()]
+        summaries = [self._with_session_embedding(provider, summary) for summary in provider.list_sessions()]
+        return self._with_tags(summaries)
 
     def get_session(self, provider_name: str, session_id: str) -> ExternalSessionDetail:
         provider = self._get_provider(provider_name)
         detail = provider.get_session(session_id)
         summary = self._with_session_embedding(provider, detail.summary)
+        [summary] = self._with_tags([summary])
         metadata = dict(detail.metadata)
         metadata["unified_session_id"] = summary.unified_session_id
         metadata["embedding"] = list(summary.embedding)
+        metadata["tags"] = list(summary.tags)
         return ExternalSessionDetail(summary=summary, messages=detail.messages, metadata=metadata)
+
+    def _with_tags(self, summaries: list[ExternalSessionSummary]) -> list[ExternalSessionSummary]:
+        """Merge archive-derived auto tags with persisted user tags per session."""
+
+        if not summaries:
+            return summaries
+        store = self._get_session_embedding_store()
+        if store is None:
+            return summaries
+        unified_ids = [
+            summary.unified_session_id or _unified_session_id(summary.provider, summary.session_id)
+            for summary in summaries
+        ]
+        try:
+            persisted = store.tags_for_sessions(unified_ids)
+        except Exception:  # pragma: no cover - defensive
+            persisted = {}
+        merged: list[ExternalSessionSummary] = []
+        for summary, unified_id in zip(summaries, unified_ids, strict=False):
+            user_tags = persisted.get(unified_id, [])
+            combined = list(dict.fromkeys([*summary.tags, *user_tags]))
+            merged.append(replace(summary, unified_session_id=unified_id, tags=tuple(combined)))
+        return merged
+
+    def set_session_tag(self, unified_session_id: str, tag: str) -> None:
+        store = self._get_session_embedding_store()
+        if store is None:
+            raise RuntimeError("Session tag store is unavailable.")
+        store.add_session_tag(unified_session_id, tag, source="user")
+
+    def remove_session_tag(self, unified_session_id: str, tag: str) -> None:
+        store = self._get_session_embedding_store()
+        if store is None:
+            raise RuntimeError("Session tag store is unavailable.")
+        store.remove_session_tag(unified_session_id, tag)
+
+    def session_tags(self, unified_session_id: str) -> list[tuple[str, str]]:
+        store = self._get_session_embedding_store()
+        if store is None:
+            return []
+        return store.list_session_tags(unified_session_id)
 
     def list_session_embeddings(self, provider_name: str | None = None) -> list[ExternalSessionEmbedding]:
         store = self._get_session_embedding_store()
@@ -1604,6 +1676,7 @@ class ContextBuilderService:
         summaries = provider.list_sessions()
         if not summaries:
             return []
+        summaries = _filter_excluded_tag_summaries(summaries)
 
         variants = query_variants or _build_query_variants(task)
         prompt_tokens = set().union(*(_tokenize(variant) for variant in variants))
@@ -3030,6 +3103,65 @@ def _embedder_identifier(embedder: Any) -> str:
 
 def _unified_session_id(provider: str, session_id: str) -> str:
     return f"{provider}:{session_id}"
+
+
+def _clean_auto_tag(value: Any, *, prefix: str = "") -> str:
+    cleaned = str(value or "").strip().lower().replace(" ", "-")
+    cleaned = re.sub(r"[^a-z0-9._-]", "", cleaned)
+    if not cleaned:
+        return ""
+    return f"{prefix}{cleaned}"
+
+
+def _excluded_tags_from_env() -> set[str]:
+    raw = os.getenv("DEVENV_EXCLUDE_TAGS", "").strip()
+    if not raw:
+        return set()
+    return {tag.strip().lower() for tag in raw.split(",") if tag.strip()}
+
+
+def _filter_excluded_tag_summaries(
+    summaries: list[ExternalSessionSummary],
+) -> list[ExternalSessionSummary]:
+    """Drop sessions carrying any tag in ``DEVENV_EXCLUDE_TAGS``."""
+
+    excluded = _excluded_tags_from_env()
+    if not excluded:
+        return summaries
+    return [
+        summary
+        for summary in summaries
+        if not ({tag.lower() for tag in summary.tags} & excluded)
+    ]
+
+
+def _opencode_auto_tags(row: Any) -> tuple[str, ...]:
+    """Derive provenance tags for an OpenCode session row.
+
+    ``agent:<name>`` identifies the agent that owned the session; ``derived``
+    marks subagent/child sessions; ``archived`` marks archived rows.
+    """
+
+    tags: list[str] = []
+    agent = _clean_auto_tag(row["agent"] if "agent" in row.keys() else "", prefix="agent:")
+    if agent:
+        tags.append(agent)
+    parent_id = row["parent_id"] if "parent_id" in row.keys() else None
+    if parent_id:
+        tags.append("derived")
+    archived = row["time_archived"] if "time_archived" in row.keys() else None
+    if archived:
+        tags.append("archived")
+    return tuple(tags)
+
+
+def _codex_auto_tags(metadata: dict[str, Any]) -> tuple[str, ...]:
+    tags: list[str] = []
+    for field, prefix in (("source", "source:"), ("originator", "originator:"), ("model_provider", "model:")):
+        tag = _clean_auto_tag(metadata.get(field), prefix=prefix)
+        if tag:
+            tags.append(tag)
+    return tuple(tags)
 
 
 def _is_tool_output_query(task: str) -> bool:

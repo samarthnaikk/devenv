@@ -62,7 +62,8 @@ class SessionsPane(Vertical):
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        table.add_columns("Provider", "Title", "Msgs", "Updated")
+        # Provider, Title, Msgs, Updated, Tags (preview is stored but not shown)
+        table.add_columns("Provider", "Title", "Msgs", "Updated", "Tags")
 
     def set_sessions(self, rows: Sequence[Sequence[Any]]) -> None:
         table = self.query_one(DataTable)
@@ -70,9 +71,11 @@ class SessionsPane(Vertical):
         self._previews = []
         for row in rows:
             values = list(row)
-            preview = str(values[4]) if len(values) > 4 and values[4] is not None else ""
+            # Expected shape: provider, title, msgs, updated, tags, preview
+            tags = str(values[4]) if len(values) > 4 and values[4] is not None else ""
+            preview = str(values[5]) if len(values) > 5 and values[5] is not None else ""
             self._previews.append(preview)
-            table.add_row(*[("" if value is None else str(value)) for value in values[:4]])
+            table.add_row(*[("" if value is None else str(value)) for value in values[:5]])
         if not rows:
             self._detail.update(
                 "No indexed sessions yet. Enable a source with /enable (F3/F4)."

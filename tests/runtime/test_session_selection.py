@@ -12,10 +12,44 @@ from core.runtime.session_selection import (
     SelectionResult,
     _looks_like_selector_meta,
     apply_project_gate,
+    apply_tag_gate,
     build_session_orchestrator,
     project_gate_mode,
     session_selector_enabled,
 )
+
+
+class TagGateTest(unittest.TestCase):
+    def _candidate(self, session_id: str, *tags: str) -> SessionCandidate:
+        return SessionCandidate(
+            session_id=session_id,
+            provider="opencode",
+            title=session_id,
+            workspace_path="/ws/app",
+            score=5,
+            updated_at="2026-01-01",
+            tags=tags,
+        )
+
+    def test_filter_mode_drops_excluded_tags(self) -> None:
+        candidates = [self._candidate("a", "derived"), self._candidate("b")]
+        gated = apply_tag_gate(candidates, mode="filter", exclude={"derived"})
+        self.assertEqual([c.session_id for c in gated], ["b"])
+
+    def test_demote_mode_keeps_but_reorders(self) -> None:
+        candidates = [self._candidate("a", "derived"), self._candidate("b")]
+        gated = apply_tag_gate(candidates, mode="demote", exclude={"derived"})
+        self.assertEqual([c.session_id for c in gated], ["b", "a"])
+
+    def test_off_mode_is_noop(self) -> None:
+        candidates = [self._candidate("a", "derived")]
+        gated = apply_tag_gate(candidates, mode="off", exclude={"derived"})
+        self.assertEqual([c.session_id for c in gated], ["a"])
+
+    def test_no_excluded_tags_is_noop(self) -> None:
+        candidates = [self._candidate("a", "derived")]
+        gated = apply_tag_gate(candidates, mode="filter", exclude=set())
+        self.assertEqual([c.session_id for c in gated], ["a"])
 
 
 class SelectorMetaFilterTest(unittest.TestCase):

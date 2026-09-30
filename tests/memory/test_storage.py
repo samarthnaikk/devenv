@@ -121,6 +121,33 @@ class SQLiteMemoryStoreTest(unittest.TestCase):
         self.assertEqual(vectors[0].embedding, (0.1, 0.2, 0.3))
         self.assertEqual(vectors[0].content_text, "")
 
+    def test_session_tags_add_list_remove(self) -> None:
+        self.store.add_session_tag("opencode:s1", "deploy", source="user")
+        self.store.add_session_tag("opencode:s1", "bug", source="auto")
+        tags = dict(self.store.list_session_tags("opencode:s1"))
+        self.assertEqual(tags["deploy"], "user")
+        self.assertEqual(tags["bug"], "auto")
+
+        self.store.remove_session_tag("opencode:s1", "deploy")
+        self.assertNotIn("deploy", dict(self.store.list_session_tags("opencode:s1")))
+
+    def test_tags_for_sessions_groups_by_id(self) -> None:
+        self.store.add_session_tag("opencode:a", "one")
+        self.store.add_session_tag("opencode:b", "two")
+        grouped = self.store.tags_for_sessions(["opencode:a", "opencode:b", "opencode:c"])
+        self.assertEqual(grouped["opencode:a"], ["one"])
+        self.assertEqual(grouped["opencode:b"], ["two"])
+        self.assertEqual(grouped["opencode:c"], [])
+
+    def test_set_session_tags_preserves_auto_tags(self) -> None:
+        self.store.add_session_tag("opencode:s1", "derived", source="auto")
+        self.store.add_session_tag("opencode:s1", "old-user", source="user")
+        self.store.set_session_tags("opencode:s1", ["new-user"])
+        tags = dict(self.store.list_session_tags("opencode:s1"))
+        self.assertIn("derived", tags)
+        self.assertNotIn("old-user", tags)
+        self.assertIn("new-user", tags)
+
     def test_prune_external_session_embeddings_removes_stale_rows(self) -> None:
         from core.memory.models import ExternalSessionChunkEmbedding
 
