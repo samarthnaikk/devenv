@@ -25,6 +25,15 @@ try:  # optional acceleration; falls back to the exact pure-Python path when abs
 except ImportError:  # pragma: no cover - numpy ships with the ML stack in practice
     _np = None
 
+from .retrieval_markers import (
+    ISSUE_TERMS,
+    ISSUE_TERMS_BASE,
+    detail_markers,
+    focus_markers,
+    preview_noise_markers,
+    session_focus_markers,
+    session_focus_score_markers,
+)
 from .models import (
     ExternalSessionDetail,
     ExternalSessionMessage,
@@ -1688,19 +1697,8 @@ class ContextBuilderService:
         semantic_ranking = sorted(semantic_scores, key=lambda session_id: semantic_scores[session_id], reverse=True)
         semantic_rank = {session_id: rank for rank, session_id in enumerate(semantic_ranking, start=1)}
         lowered_task = task.lower()
-        issue_recall_prompt = any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews", "issue", "issues"}) or "last time" in lowered_task
-        issue_focus_markers = (
-            "bug list",
-            "exact bugs",
-            "root url redirects",
-            "convex generated imports",
-            "authentication bypass",
-            "open email relay",
-            "create workspace",
-            "pipeline chat",
-            "test/publish",
-            "salesforce being marked as coming soon",
-        )
+        issue_recall_prompt = any(token in prompt_tokens for token in ISSUE_TERMS) or "last time" in lowered_task
+        issue_focus_markers = focus_markers()
         preview_priority = _preview_issue_recall_matches(
             summaries,
             prompt=task,
@@ -1738,7 +1736,7 @@ class ContextBuilderService:
             identity_focus_hits = sum(1 for token in focus_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
             issue_bonus = 0
             if issue_recall_prompt:
-                issue_terms = ("bug", "bugs", "fix", "fixed", "review", "reviews")
+                issue_terms = ISSUE_TERMS_BASE
                 if any(term in summary.title.lower() for term in issue_terms):
                     issue_bonus += 6
                 elif any(term in summary.preview.lower() for term in issue_terms):
@@ -1842,7 +1840,7 @@ class ContextBuilderService:
                 if not issue_recall_prompt and exact_hits == 0 and token_hits < 2:
                     continue
             if issue_recall_prompt:
-                issue_terms = ("bug", "bugs", "fix", "fixed", "review", "reviews")
+                issue_terms = ISSUE_TERMS_BASE
                 if any(term in summary.title.lower() for term in issue_terms):
                     issue_bonus += 10
                 elif any(term in haystack for haystack in haystacks for term in issue_terms):
@@ -2021,19 +2019,8 @@ def _collect_relevant_context_lines(
         if len(token) >= 3
     }
     lowered_task = task.lower()
-    is_issue_prompt = any(token in prompt_tokens for token in {"bug", "bugs", "fix", "fixed", "review", "reviews", "issue", "issues"}) or "last time" in lowered_task
-    issue_detail_markers = (
-        "create workspace",
-        "pipeline chat",
-        "test/publish",
-        "salesforce",
-        "root url redirects",
-        "convex generated imports",
-        "authentication bypass",
-        "open email relay",
-        "bug list",
-        "exact bugs",
-    )
+    is_issue_prompt = any(token in prompt_tokens for token in ISSUE_TERMS) or "last time" in lowered_task
+    issue_detail_markers = detail_markers()
     is_project_recall_prompt = any(marker in lowered_task for marker in ("remember about", "remember the", "what was it about", "what was that about"))
     candidates: list[tuple[str, str, bool]] = []
     seen: set[str] = set()
@@ -2292,7 +2279,7 @@ def _preview_issue_recall_matches(
 ) -> list[tuple[int, ExternalSessionSummary]]:
     prompt_lower = prompt.lower()
     prompt_tokens = _tokenize(prompt)
-    issue_terms = {"bug", "bugs", "fix", "fixed", "issue", "issues", "review", "reviews"}
+    issue_terms = ISSUE_TERMS
     ignored_prompt_tokens = {"did", "last", "time", "while", "working"}
     compound_markers = tuple(
         token
@@ -2344,14 +2331,7 @@ def _preview_issue_recall_matches(
             score += 10
         if "last time" in prompt_lower and "last" in preview:
             score += 8
-        for noise_marker in (
-            "tool exec_command result",
-            "operation not permitted: ps",
-            "pr-review.md",
-            "committed in two atomic commits",
-            "fix(settings): use saved timezone and locale dropdowns",
-            "glob: /users/",
-        ):
+        for noise_marker in preview_noise_markers():
             if noise_marker in preview:
                 score -= 40
         if score > 0:
@@ -2362,17 +2342,7 @@ def _preview_issue_recall_matches(
 
 
 def _session_has_issue_focus(summary: ExternalSessionSummary, detail: ExternalSessionDetail) -> bool:
-    markers = (
-        "bug list",
-        "root url redirects",
-        "convex generated imports",
-        "authentication bypass",
-        "open email relay",
-        "create workspace",
-        "pipeline chat",
-        "test/publish",
-        "salesforce being marked as coming soon",
-    )
+    markers = session_focus_markers()
     preview = (summary.preview or "").lower()
     if any(marker in preview for marker in markers):
         return True
@@ -2384,18 +2354,7 @@ def _session_has_issue_focus(summary: ExternalSessionSummary, detail: ExternalSe
 
 
 def _issue_focus_score(summary: ExternalSessionSummary, detail: ExternalSessionDetail) -> int:
-    markers = (
-        "bug list",
-        "root url redirects",
-        "convex generated imports",
-        "authentication bypass",
-        "open email relay",
-        "create workspace",
-        "pipeline chat",
-        "test/publish",
-        "salesforce being marked as coming soon",
-        "bugs tracked",
-    )
+    markers = session_focus_score_markers()
     score = 0
     preview = (summary.preview or "").lower()
     score += sum(6 for marker in markers if marker in preview)
