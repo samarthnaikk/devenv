@@ -794,31 +794,102 @@ class OpencodeCliOutputTest(unittest.TestCase):
         self.assertNotIn("step_start", content)
 
 
+class ModelIOLoggingTest(unittest.TestCase):
+    def test_request_and_response_are_logged(self) -> None:
+        from core.ai import routing as routing_mod
+
+        with self.assertLogs("core.ai.routing", level="INFO") as logs:
+            started = routing_mod.log_model_request(
+                backend="opencode",
+                transport="server",
+                model="opencode-go/longcat-2.5-preview-free",
+                prompt="hello world",
+                message_count=2,
+                output_schema=True,
+                session_id="ses_1",
+            )
+            routing_mod.log_model_response(
+                backend="opencode",
+                transport="server",
+                model="opencode-go/longcat-2.5-preview-free",
+                started_at=started,
+                content="pong",
+                usage={"total_tokens": 5},
+                finish_reason="stop",
+                session_id="ses_1",
+            )
+        joined = "\n".join(logs.output)
+        self.assertIn("model request:", joined)
+        self.assertIn("model response:", joined)
+        self.assertIn("ses_1", joined)
+        self.assertIn("ms=", joined)
+
+    def test_error_is_logged_with_traceback(self) -> None:
+        from core.ai import routing as routing_mod
+
+        with self.assertLogs("core.ai.routing", level="WARNING") as logs:
+            routing_mod.log_model_error(
+                backend="opencode",
+                transport="server",
+                model="m",
+                started_at=0.0,
+                error=RuntimeError("boom"),
+            )
+        self.assertIn("model error:", "\n".join(logs.output))
+
+    def test_io_bodies_gated_by_env(self) -> None:
+        from core.ai import routing as routing_mod
+
+        with patch.dict(os.environ, {"DEVENV_LOG_MODEL_IO": "1"}):
+            self.assertTrue(routing_mod._model_io_bodies_enabled())
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("DEVENV_LOG_MODEL_IO", None)
+            self.assertFalse(routing_mod._model_io_bodies_enabled())
+
+    def test_prompt_summary_truncates(self) -> None:
+        from core.ai.routing import _summarize_prompt
+
+        summary = _summarize_prompt("x" * 5000, limit=100)
+        self.assertLessEqual(len(summary), 100)
+        self.assertTrue(summary.endswith("..."))
+
+
 class AuthFallbackTest(unittest.TestCase):
-    def test_auth_error_falls_back_to_cli(self) -> None:
+    def test_auth_error_does_not_fall_back_by_default(self) -> None:
         from core.ai.routing import _should_fallback_to_legacy_cli
 
         exc = OpenCodeClientError(
             "Upstream request failed: Invalid credential",
             status_code=401,
         )
-        self.assertTrue(_should_fallback_to_legacy_cli(exc))
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("DEVENV_OPENCODE_ALLOW_CLI_FALLBACK", None)
+            self.assertFalse(_should_fallback_to_legacy_cli(exc))
 
-    def test_unknown_model_falls_back_to_cli(self) -> None:
+    def test_unknown_model_does_not_fall_back_by_default(self) -> None:
         from core.ai.routing import _should_fallback_to_legacy_cli
 
         exc = OpenCodeClientError("No such model: foo", status_code=400)
-        self.assertTrue(_should_fallback_to_legacy_cli(exc))
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("DEVENV_OPENCODE_ALLOW_CLI_FALLBACK", None)
+            self.assertFalse(_should_fallback_to_legacy_cli(exc))
 
-    def test_model_not_found_payload_falls_back(self) -> None:
+    def test_auth_error_never_falls_back_even_when_opted_in(self) -> None:
         from core.ai.routing import _should_fallback_to_legacy_cli
 
-        exc = OpenCodeClientError(
-            "server error",
-            status_code=400,
-            payload={"message": "model not found"},
-        )
-        self.assertTrue(_should_fallback_to_legacy_cli(exc))
+        exc = OpenCodeClientError("Invalid credential", status_code=401)
+        with patch.dict(os.environ, {"DEVENV_OPENCODE_ALLOW_CLI_FALLBACK": "1"}):
+            self.assertFalse(_should_fallback_to_legacy_cli(exc))
+
+    def test_transport_error_falls_back_only_when_opted_in(self) -> None:
+        from core.ai.routing import _should_fallback_to_legacy_cli
+
+        exc = OpenCodeClientError("Connection refused")
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("DEVENV_OPENCODE_ALLOW_CLI_FALLBACK", None)
+            self.assertFalse(_should_fallback_to_legacy_cli(exc))
+        with patch.dict(os.environ, {"DEVENV_OPENCODE_ALLOW_CLI_FALLBACK": "1"}):
+            self.assertTrue(_should_fallback_to_legacy_cli(exc))
 
 
 class ReasoningIsolationTest(unittest.TestCase):

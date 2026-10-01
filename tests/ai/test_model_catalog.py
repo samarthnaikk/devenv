@@ -11,6 +11,7 @@ from core.ai.model_catalog import (
     discover_opencode_models,
     list_opencode_model_ids,
     parse_model_list,
+    resolve_model_id,
 )
 
 PLAIN_OUTPUT = "\n".join(
@@ -206,6 +207,31 @@ class DiscoverModelsTest(unittest.TestCase):
             now=1000.0,
         )
         self.assertEqual(identifiers, ["opencode/claude-sonnet-4", "opencode/gpt-5-codex"])
+
+
+class ResolveModelIdTest(unittest.TestCase):
+    def test_corrects_stale_prefix_to_go(self) -> None:
+        available = ["opencode-go/longcat-2.5-preview-free", "opencode/longcat-2.5-preview-free"]
+        resolved = resolve_model_id("opencode/longcat-2.5-preview-free", available=available)
+        self.assertEqual(resolved, "opencode-go/longcat-2.5-preview-free")
+
+    def test_keeps_valid_id(self) -> None:
+        available = ["opencode-go/longcat-2.5-preview-free"]
+        self.assertEqual(
+            resolve_model_id("opencode-go/longcat-2.5-preview-free", available=available),
+            "opencode-go/longcat-2.5-preview-free",
+        )
+
+    def test_keeps_zen_only_model(self) -> None:
+        available = ["opencode/big-pickle"]
+        self.assertEqual(resolve_model_id("opencode/big-pickle", available=available), "opencode/big-pickle")
+
+    def test_unknown_model_unchanged(self) -> None:
+        self.assertEqual(resolve_model_id("foo/bar", available=["opencode-go/x"]), "foo/bar")
+
+    def test_empty_and_bare_ids(self) -> None:
+        self.assertEqual(resolve_model_id("", available=["opencode-go/x"]), "")
+        self.assertEqual(resolve_model_id("bare-model", available=["opencode-go/x"]), "bare-model")
 
 
 if __name__ == "__main__":

@@ -341,3 +341,61 @@ def list_opencode_model_ids(
         **kwargs,
     )
     return [model.full_id for model in models]
+
+
+def resolve_model_id(
+    model: str,
+    *,
+    available: Sequence[str] | None = None,
+    cache_only: bool = True,
+) -> str:
+    """Return a valid ``provider/model`` id, correcting a stale provider prefix.
+
+    The provider prefix must match the signed-in OpenCode account
+    (``opencode-go/<model>`` for OpenCode Go, ``opencode/<model>`` for Zen). A
+    persisted model id can carry the wrong prefix after the account or provider
+    changes, which then 401s. When ``available`` is given, a model whose
+    ``model_id`` matches an available model's is rewritten to that provider;
+    otherwise the raw id is returned unchanged.
+    """
+
+    cleaned = str(model or "").strip()
+    if not cleaned or "/" not in cleaned:
+        return cleaned
+    prefix, model_only = cleaned.split("/", 1)
+    # Only correct the OpenCode *account* prefix (opencode vs opencode-go). Never
+    # rewrite a genuine cross-provider choice such as anthropic/ or openai/.
+    if prefix not in {"opencode", "opencode-go"}:
+        return cleaned
+    candidates = list(available) if available is not None else list_opencode_model_ids(cache_only=cache_only)
+    if not candidates:
+        return cleaned
+    preferred = _preferred_opencode_provider()
+    if not preferred:
+        return cleaned
+    target = f"{preferred}/{model_only}"
+    if target in candidates:
+        return target
+    # The account's provider does not list this model; keep the original id so an
+    # explicit choice is never silently dropped.
+    return cleaned
+
+
+def _preferred_opencode_provider() -> str:
+    """Return the OpenCode provider prefix for the signed-in account.
+
+    Reads the local auth store: when the account has ``opencode-go`` credentials
+    that prefix wins; otherwise ``opencode`` (Zen). Returns ``""`` when unknown.
+    """
+
+    try:
+        auth_path = Path.home() / ".local" / "share" / "opencode" / "auth.json"
+        if auth_path.exists():
+            data = json.loads(auth_path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and "opencode-go" in data:
+                return "opencode-go"
+            if isinstance(data, dict) and "opencode" in data:
+                return "opencode"
+    except Exception:  # pragma: no cover - defensive
+        return ""
+    return ""

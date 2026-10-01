@@ -302,6 +302,23 @@ Runtime logs go to stderr and, when a workspace is known, to a rotating file at
 turn/session/backend so a single turn can be reconstructed across the
 `core.*` loggers, and secrets are redacted with long payloads truncated.
 
+Every model call is logged with the resolved backend, model, transport
+(`server`/`cli`), OpenCode server session id, the request prompt, the response
+preview, timing, usage, finish reason, and any error — so the Logs tab (or the
+log file) shows exactly what was sent to and returned by the model:
+
+```text
+model request:  backend=opencode transport=server model=opencode-go/longcat-2.5-preview-free session=- messages=1 schema=True prompt=...
+model response: backend=opencode transport=server model=opencode-go/longcat-2.5-preview-free session=ses_... ms=12166 chars=380 finish=stop tools=0
+model error:    backend=opencode transport=server model=... ms=... error=OpenCodeClientError: Invalid credential
+```
+
+Set `DEVENV_LOG_MODEL_IO=1` to also emit the full request/response bodies (still
+redacted) at DEBUG level. The legacy `opencode run` CLI fallback is now opt-in
+(`DEVENV_OPENCODE_ALLOW_CLI_FALLBACK=1`) and never triggers on auth/model errors;
+a stale provider prefix (`opencode/` vs `opencode-go/`) is auto-corrected against
+the discovered catalog so it cannot cause repeated 401s.
+
 ```bash
 export DEVENV_LOG_LEVEL=INFO
 export DEVENV_LOG_JSON=1          # one JSON object per line
@@ -413,6 +430,23 @@ After installation, the package exposes these commands:
 - `devenv-plans`
 
 ## Version History
+
+### v0.1.9
+
+This release fixes a multi-minute retrieval hang and adds deep model-call logging.
+
+- Fixed the `/ask` hang where a stale selector model provider prefix (`opencode/`
+  instead of `opencode-go/`) caused HTTP 401s that triggered the slow (`~70s`)
+  legacy CLI fallback on every selector attempt. Retrieval for the same query
+  dropped from ~266s to ~35s.
+- The TUI now auto-corrects a stale OpenCode account prefix on load and when a
+  model is set, using the discovered catalog and the signed-in account.
+- Auth/model errors (401/403, invalid credential, unknown model) now fail fast
+  and are never retried through the CLI; the legacy CLI fallback is opt-in
+  (`DEVENV_OPENCODE_ALLOW_CLI_FALLBACK=1`).
+- Added per-model-call logging (backend, model, transport, server session,
+  request prompt, response preview, timing, usage, errors) with an optional
+  full-body mode (`DEVENV_LOG_MODEL_IO=1`).
 
 ### v0.1.8
 

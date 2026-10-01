@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -10,6 +11,8 @@ from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from core.ai.codex_backend import CodexAICore
 from core.ai.engine import DEFAULT_SYSTEM_INSTRUCTIONS
@@ -26,6 +29,99 @@ from core.ai.opencode_client import (
 from core.tools.base import BaseTool
 
 DEFAULT_OPENCODE_MODEL = "opencode-go/longcat-2.5-preview-free"
+
+
+def _model_io_bodies_enabled() -> bool:
+    return os.getenv("DEVENV_LOG_MODEL_IO", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _summarize_prompt(prompt: str, *, limit: int = 600) -> str:
+    text = str(prompt or "")
+    flat = " ".join(text.split())
+    if len(flat) <= limit:
+        return flat
+    return f"{flat[: limit - 3].rstrip()}..."
+
+
+def log_model_request(
+    *,
+    backend: str,
+    model: str,
+    transport: str,
+    prompt: str,
+    message_count: int,
+    output_schema: bool,
+    session_id: str = "",
+) -> float:
+    """Log the request sent to a model backend and return the start time."""
+
+    logger.info(
+        "model request: backend=%s transport=%s model=%s session=%s messages=%d schema=%s prompt=%s",
+        backend,
+        transport,
+        model,
+        session_id or "-",
+        message_count,
+        output_schema,
+        _summarize_prompt(prompt),
+    )
+    if _model_io_bodies_enabled():
+        logger.debug("model request body: %s", prompt)
+    return time.perf_counter()
+
+
+def log_model_response(
+    *,
+    backend: str,
+    transport: str,
+    model: str,
+    started_at: float,
+    content: str,
+    usage: Any = None,
+    finish_reason: str = "",
+    tool_calls: int = 0,
+    session_id: str = "",
+) -> None:
+    """Log the response from a model backend with timing and a content preview."""
+
+    elapsed_ms = int(round((time.perf_counter() - started_at) * 1000))
+    logger.info(
+        "model response: backend=%s transport=%s model=%s session=%s ms=%d chars=%d finish=%s tools=%d usage=%s",
+        backend,
+        transport,
+        model,
+        session_id or "-",
+        elapsed_ms,
+        len(content or ""),
+        finish_reason or "-",
+        tool_calls,
+        json.dumps(usage) if isinstance(usage, (dict, list)) else (usage or "-"),
+    )
+    if _model_io_bodies_enabled():
+        logger.debug("model response body: %s", content)
+
+
+def log_model_error(
+    *,
+    backend: str,
+    transport: str,
+    model: str,
+    started_at: float,
+    error: BaseException,
+    fallback: str = "",
+) -> None:
+    elapsed_ms = int(round((time.perf_counter() - started_at) * 1000))
+    logger.warning(
+        "model error: backend=%s transport=%s model=%s ms=%d error=%s: %s fallback=%s",
+        backend,
+        transport,
+        model,
+        elapsed_ms,
+        type(error).__name__,
+        error,
+        fallback or "-",
+        exc_info=True,
+    )
 
 
 def _parse_model_ref(model: str | None) -> OpenCodeModelRef | None:
@@ -183,6 +279,14 @@ class OpenCodeAICore:
             )
         )
         self.last_backend_fallback = ""
+        started_at = log_model_request(
+            backend="opencode",
+            transport="server",
+            model=self.model,
+            prompt=prompt,
+            message_count=len(prompt_messages),
+            output_schema=output_schema is not None,
+        )
         try:
             session_id = self._ensure_session()
             response = self._send_server_message(
@@ -192,6 +296,14 @@ class OpenCodeAICore:
                 output_schema=output_schema,
             )
         except OpenCodeClientError as exc:
+            log_model_error(
+                backend="opencode",
+                transport="server",
+                model=self.model,
+                started_at=started_at,
+                error=exc,
+                fallback="legacy_cli" if _should_fallback_to_legacy_cli(exc) else "none",
+            )
             if _should_fallback_to_legacy_cli(exc):
                 server_failure = str(exc).strip() or "unknown server failure"
                 fallback_note = f"OpenCode server failed ({server_failure}); fell back to CLI transport."
@@ -243,6 +355,17 @@ class OpenCodeAICore:
         reasoning = _extract_reasoning_parts(response)
         if reasoning:
             metadata["reasoning"] = reasoning
+        log_model_response(
+            backend="opencode",
+            transport="server",
+            model=self.model,
+            started_at=started_at,
+            content=content,
+            usage=usage,
+            finish_reason=finish_reason,
+            tool_calls=len(tool_calls or ()),
+            session_id=session_id,
+        )
         return AIResponse(
             content=content,
             tool_calls=tool_calls,
@@ -283,6 +406,14 @@ class OpenCodeAICore:
             command.extend(["--model", self.model])
         command.append(prompt)
 
+        started_at = log_model_request(
+            backend="opencode",
+            transport="cli",
+            model=self.model,
+            prompt=prompt,
+            message_count=len(messages),
+            output_schema=False,
+        )
         try:
             completed = subprocess.run(
                 command,
@@ -292,6 +423,9 @@ class OpenCodeAICore:
                 cwd=self.workspace_path,
             )
         except OSError as exc:
+            log_model_error(
+                backend="opencode", transport="cli", model=self.model, started_at=started_at, error=exc
+            )
             self.last_error = f"OpenCode CLI failed to start: {exc}"
             raise RuntimeError(self.last_error) from exc
 
@@ -300,6 +434,13 @@ class OpenCodeAICore:
                 completed.stderr.strip()
                 or completed.stdout.strip()
                 or f"exit status {completed.returncode}"
+            )
+            log_model_error(
+                backend="opencode",
+                transport="cli",
+                model=self.model,
+                started_at=started_at,
+                error=RuntimeError(detail),
             )
             self.last_error = f"OpenCode CLI failed: {detail}"
             raise RuntimeError(self.last_error)
@@ -311,6 +452,16 @@ class OpenCodeAICore:
         self.last_backend_reason = "OpenCode handled the turn directly."
         self.last_error = ""
         finish_reason = "tool_calls" if tool_calls else "stop"
+        log_model_response(
+            backend="opencode",
+            transport="cli",
+            model=self.model,
+            started_at=started_at,
+            content=content,
+            usage=usage,
+            finish_reason=finish_reason,
+            tool_calls=len(tool_calls or ()),
+        )
         return AIResponse(
             content=content,
             tool_calls=tool_calls,
@@ -824,14 +975,18 @@ def _is_structured_output_retryable(exc: OpenCodeClientError) -> bool:
 
 
 def _should_fallback_to_legacy_cli(exc: OpenCodeClientError) -> bool:
-    explicit = os.getenv("DEVENV_OPENCODE_ALLOW_CLI_FALLBACK", "").strip().lower()
-    if explicit in {"0", "false", "off"}:
+    # The legacy CLI fallback spawns an `opencode run` subprocess that can take
+    # ~70s per call. It is now OPT-IN via DEVENV_OPENCODE_ALLOW_CLI_FALLBACK=1
+    # (default off) and never used for auth/model errors.
+    explicit = os.getenv("DEVENV_OPENCODE_ALLOW_CLI_FALLBACK", "0").strip().lower()
+    if explicit not in {"1", "true", "yes", "on"}:
         return False
-    # Auth/model problems on the server (e.g. the wrong provider account, an
-    # unknown model, or a dead key) are best handled by the CLI transport, which
-    # honors the concrete provider/model from the signed-in account.
+    # Auth/model problems (401/403, invalid credential, unknown model) are NOT
+    # transport failures: retrying them through the slow legacy CLI is both wrong
+    # and very slow, and it fails identically. Fail fast instead so the caller can
+    # surface the real problem immediately (e.g. wrong model prefix).
     if _is_auth_or_model_error(exc):
-        return True
+        return False
     if exc.status_code is None:
         # No HTTP status: only fall back when it looks like a transport problem,
         # not an arbitrary application error.

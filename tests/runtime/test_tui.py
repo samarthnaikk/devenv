@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import logging
 import os
 import queue
@@ -202,6 +203,16 @@ class PromptFeeder:
 
 
 class DevenvTUITest(unittest.TestCase):
+    def setUp(self) -> None:
+        # These tests exercise command wiring with arbitrary model ids; disable
+        # provider-prefix normalization so they do not depend on the machine's
+        # live OpenCode catalog/account. Normalization has its own tests.
+        self._pref_patch = mock.patch(
+            "core.ai.model_catalog._preferred_opencode_provider", lambda: ""
+        )
+        self._pref_patch.start()
+        self.addCleanup(self._pref_patch.stop)
+
     def test_permission_command_updates_runtime_state(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             controller = DevenvTUIController(
@@ -694,6 +705,46 @@ class DevenvTUITest(unittest.TestCase):
             result = controller.handle_command("/ask")
 
         self.assertIn("Usage: /ask", result.message)
+
+    def test_stale_selector_prefix_is_normalized_on_load(self) -> None:
+        catalog = ["opencode-go/longcat-2.5-preview-free", "opencode/longcat-2.5-preview-free"]
+        with tempfile.TemporaryDirectory() as tempdir:
+            state_dir = Path(tempdir) / ".devenv"
+            state_dir.mkdir(parents=True, exist_ok=True)
+            (state_dir / "tui_state.json").write_text(
+                json.dumps({"selector_model": "opencode/longcat-2.5-preview-free"}),
+                encoding="utf-8",
+            )
+            with mock.patch.object(
+                DevenvTUIController,
+                "_available_model_ids",
+                lambda self: catalog,
+            ), mock.patch(
+                "core.ai.model_catalog._preferred_opencode_provider",
+                lambda: "opencode-go",
+            ):
+                controller = DevenvTUIController(
+                    RunConfig(workspace_path=tempdir),
+                    kernel=FakeKernel(),
+                )
+
+        self.assertEqual(controller.selector_model, "opencode-go/longcat-2.5-preview-free")
+
+    def test_normalize_keeps_zen_only_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            with mock.patch.object(
+                DevenvTUIController,
+                "_available_model_ids",
+                lambda self: ["opencode/claude-fable-5"],
+            ):
+                normalized = controller._normalize_model_prefix("opencode/claude-fable-5")
+
+        # claude-fable-5 exists under opencode/ (Zen) only, so it is unchanged.
+        self.assertEqual(normalized, "opencode/claude-fable-5")
 
     def test_plan_is_persisted_and_listed(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

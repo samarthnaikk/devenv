@@ -100,6 +100,8 @@ except Exception:  # pragma: no cover - fallback path for environments without t
     Static = object
     TEXTUAL_AVAILABLE = False
 
+logger = logging.getLogger(__name__)
+
 BACKENDS = ("opencode", "ollama", "llama_cpp", "codex")
 SESSION_PROVIDERS = ("codex", "opencode")
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
@@ -551,7 +553,9 @@ class DevenvTUIController:
 
         Answer model and retrieval-selector model both default to LongCat, and the
         retrieval-selection layer is enabled, unless a persisted state file or an
-        explicit environment variable overrides them.
+        explicit environment variable overrides them. The provider prefix of all
+        model ids is normalized to the signed-in account (opencode-go vs opencode)
+        so a stale prefix cannot cause 401 auth failures.
         """
         if DEFAULT_SELECTOR_ENABLED:
             os.environ.setdefault("DEVENV_SESSION_SELECTOR", "1")
@@ -565,6 +569,38 @@ class DevenvTUIController:
                 setter(DEFAULT_TUI_BACKEND, DEFAULT_ASSISTANT_MODEL)
             except Exception:  # pragma: no cover - backend may reject the id
                 pass
+        self.selector_model = self._normalize_model_prefix(self.selector_model)
+
+    def _available_model_ids(self) -> list[str]:
+        """Best-effort list of valid OpenCode model ids, without blocking startup."""
+
+        catalog = getattr(self, "_model_id_cache", None)
+        if catalog is not None:
+            return catalog
+        try:
+            from core.ai.model_catalog import list_opencode_model_ids
+
+            catalog = list_opencode_model_ids(cache_only=True)
+        except Exception:  # pragma: no cover - defensive
+            catalog = []
+        self._model_id_cache = catalog
+        return catalog
+
+    def _normalize_model_prefix(self, model: str) -> str:
+        """Correct a stale OpenCode provider prefix (Zen vs Go) for a model id."""
+
+        cleaned = str(model or "").strip()
+        if not cleaned or "/" not in cleaned:
+            return cleaned
+        try:
+            from core.ai.model_catalog import resolve_model_id
+
+            resolved = resolve_model_id(cleaned, available=self._available_model_ids())
+        except Exception:  # pragma: no cover - defensive
+            return cleaned
+        if resolved != cleaned:
+            logger.info("Normalized model provider prefix: from=%s to=%s", cleaned, resolved)
+        return resolved
 
     def close(self) -> None:
         self.kernel.close()
@@ -638,7 +674,16 @@ class DevenvTUIController:
                     self.kernel.ai.set_model(model_name)
         selector_model = str(payload.get("selector_model", "") or "").strip()
         if selector_model:
-            self.selector_model = selector_model
+            self.selector_model = self._normalize_model_prefix(selector_model)
+        # Normalize persisted per-backend models too (a stale Zen prefix would 401).
+        for backend in BACKENDS:
+            current = str(self.kernel.ai.backend_models.get(backend, "") or "").strip() if hasattr(self.kernel.ai, "backend_models") else ""
+            if not current:
+                continue
+            normalized = self._normalize_model_prefix(current)
+            if normalized != current and hasattr(self.kernel.ai, "set_backend_model"):
+                self.kernel.ai.set_backend_model(backend, normalized)
+
     def _apply_runtime_preferences(self) -> None:
         allowed_providers = {
             name
@@ -1162,7 +1207,7 @@ class DevenvTUIController:
     def _handle_selector_model_command(self, args: list[str]) -> str:
         if not args:
             return self._interactive_model_picker(role="selector") or "Model selection cancelled."
-        model = " ".join(args).strip()
+        model = self._normalize_model_prefix(" ".join(args).strip())
         if not model:
             return "Model name cannot be empty."
         self.selector_model = model
@@ -1663,6 +1708,16 @@ class DevenvTUIController:
 
     def run_retrieval(self, query: str, *, max_lines: int = 12) -> RetrievalOutcome:
         self._apply_runtime_preferences()
+        try:
+            from core.logging_utils import set_log_context
+
+            set_log_context(
+                session_id=getattr(self.kernel, "session_id", "-"),
+                backend=self.preferred_backend,
+                workspace=self.config.workspace_path,
+            )
+        except Exception:  # pragma: no cover - best effort
+            pass
         started = time.perf_counter()
         orchestrator = self._session_orchestrator()
         selector_active = orchestrator.uses_selector
