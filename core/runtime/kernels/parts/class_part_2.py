@@ -68,7 +68,8 @@ class KernelCheckpointMixin:
 
             route_decision = self.local_router.decide(user_prompt)
             system_logs.append(
-                f"Local route decision: use_local={route_decision.use_local_knowledge} confidence={route_decision.confidence:.3f}"
+                f"Local route decision: use_local={route_decision.use_local_knowledge} "
+                f"confidence={route_decision.confidence:.3f} reason={route_decision.reason}"
             )
             if route_decision.use_local_knowledge and not _is_explicit_live_search_prompt(user_prompt):
                 local_response, handled_locally = self._run_local_knowledge_turn(

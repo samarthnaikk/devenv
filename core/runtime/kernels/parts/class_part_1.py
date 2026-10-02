@@ -27,7 +27,7 @@ class KernelLifecycleMixin:
         self.state = AgentState.PLANNING
         self.active_blueprint: ExecutionBlueprint | None = None
         self.active_plan_prompt: str | None = None
-        self.local_router = LocalIntentRouter()
+        self.local_router = self._build_decision_intent_router()
         self._local_small_model = _LOCAL_MODEL_SENTINEL
         self._provided_tool_client = tool_client
         self._tool_client = _TOOL_CLIENT_SENTINEL
@@ -37,6 +37,32 @@ class KernelLifecycleMixin:
         self.session_usage_totals: dict[str, int] = {}
         self._runtime_state_path = str(Path(self.workspace_path) / ".devenv-runtime-state.json")
         self._load_runtime_state()
+
+    def _build_decision_intent_router(self):
+        """Build the intent router.
+
+        Defaults to the heuristic router (today's behavior). When the decision
+        layer is configured, this returns an orchestrator that can consult a
+        System One provider in shadow/enforce mode and always falls back.
+        """
+
+        try:
+            from core.decisions.config import DecisionConfig
+            from core.decisions.router import build_intent_router
+
+            config = DecisionConfig.from_env()
+            return build_intent_router(config, recorder=self._record_decision)
+        except Exception:
+            logger.debug("Decision intent router unavailable; using heuristic router", exc_info=True)
+            return LocalIntentRouter()
+
+    def _record_decision(self, record: Any) -> None:
+        """Persist a decision record to the audit trail (best effort)."""
+
+        try:
+            self._record_audit("decision.result", record.to_dict())
+        except Exception:
+            logger.debug("Decision record failed", exc_info=True)
 
     def register_tool(self, tool: BaseTool) -> None:
         self.tools[tool.name] = tool
