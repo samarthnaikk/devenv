@@ -39,6 +39,9 @@ class MemoryEngine(MemoryEngineInterface):
         vector_index: VectorIndex | None = None,
         store: SQLiteMemoryStore | None = None,
         extractor: ConsolidationExtractor | None = None,
+        decision_config: Any | None = None,
+        decision_provider: Any | None = None,
+        decision_recorder: Any | None = None,
     ):
         self.db_path = db_path
         self.vector_dir = vector_dir
@@ -52,14 +55,47 @@ class MemoryEngine(MemoryEngineInterface):
             embedder=self.embedder,
             working_memory=self.working_memory,
         )
+        resolved_extractor = self._resolve_extractor(
+            extractor,
+            decision_config=decision_config,
+            decision_provider=decision_provider,
+            decision_recorder=decision_recorder,
+        )
         self.consolidation_service = ConsolidationService(
             store=self.store,
             vector_index=self.vector_index,
             embedder=self.embedder,
-            extractor=extractor,
+            extractor=resolved_extractor,
         )
         self._last_trace = RetrievalTrace()
         self.card_retriever = None
+
+    @staticmethod
+    def _resolve_extractor(
+        extractor: ConsolidationExtractor | None,
+        *,
+        decision_config: Any | None,
+        decision_provider: Any | None,
+        decision_recorder: Any | None,
+    ) -> ConsolidationExtractor | None:
+        """Wrap the extractor in a decision write gate when one is configured."""
+
+        if decision_config is None:
+            return extractor
+        try:
+            from core.decisions.config import GATE_MEMORY_WRITE, DecisionConfig
+            from core.decisions.memory import build_memory_extractor
+
+            if isinstance(decision_config, DecisionConfig) and decision_config.enabled_for(GATE_MEMORY_WRITE):
+                return build_memory_extractor(
+                    decision_config,
+                    inner=extractor,
+                    provider=decision_provider,
+                    recorder=decision_recorder,
+                )
+        except Exception:
+            logger.debug("Decision memory write gate unavailable; using extractor as-is", exc_info=True)
+        return extractor
 
     def add_episodic_log(
         self,

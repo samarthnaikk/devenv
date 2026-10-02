@@ -8,12 +8,18 @@ result the gate can act on. Keep questions atomic and the answer space closed.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Sequence
 
-from .models import DecisionError
+from .models import DecisionError, WriteDecision
 
 INTENT_ROUTES = ("recall", "explain", "inspect", "mutate", "meta")
 _LOCAL_KNOWLEDGE_ROUTES = frozenset({"recall", "explain"})
+
+MEMORY_WRITE_INSTRUCTIONS = (
+    "Does `candidate` contain a durable fact, preference, or decision that will be "
+    "useful in future sessions? Ignore transient status, greetings, restatements of "
+    "code already visible in the workspace, and low-value detail."
+)
 
 
 def build_intent_questions() -> dict[str, Any]:
@@ -89,9 +95,71 @@ def _as_float(value: Any, *, default: float) -> float:
         return default
 
 
+def build_memory_write_questions(candidate_texts: Sequence[str]) -> dict[str, Any]:
+    """One ``noul`` per candidate, each carrying its own candidate in instructions.
+
+    Candidates are embedded per-question so the model evaluates them in isolation
+    (no cross-contamination between candidates in the same batch).
+    """
+
+    questions: dict[str, Any] = {}
+    for index, text in enumerate(candidate_texts):
+        questions[f"write_{index}"] = {
+            "type": "noul",
+            "instructions": {
+                "candidate": str(text or ""),
+                "question": MEMORY_WRITE_INSTRUCTIONS,
+            },
+            "criteria": {
+                "true": "Durable and likely useful in a later session",
+                "false": "Transient, redundant, or low value",
+            },
+        }
+    return questions
+
+
+def parse_memory_write_answers(answers: dict[str, Any], count: int) -> list[WriteDecision]:
+    """Parse one Noul per candidate. Missing/invalid answers fail open (keep)."""
+
+    decisions: list[WriteDecision] = []
+    mapping = answers if isinstance(answers, dict) else {}
+    for index in range(count):
+        answer = mapping.get(f"write_{index}")
+        noul = _optional_float(answer.get("noul")) if isinstance(answer, dict) else None
+        if noul is None:
+            decisions.append(
+                WriteDecision(
+                    should_write=True,
+                    confidence=1.0,
+                    reason="missing memory-write answer; kept",
+                    source="heuristic",
+                )
+            )
+            continue
+        decisions.append(
+            WriteDecision(
+                should_write=noul >= 0.5,
+                confidence=abs(noul - 0.5) * 2.0,
+                reason=f"systemone:noul={noul:.3f}",
+                source="systemone",
+            )
+        )
+    return decisions
+
+
+def _optional_float(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 __all__ = [
     "INTENT_ROUTES",
     "IntentResult",
+    "MEMORY_WRITE_INSTRUCTIONS",
     "build_intent_questions",
+    "build_memory_write_questions",
     "parse_intent_answers",
+    "parse_memory_write_answers",
 ]

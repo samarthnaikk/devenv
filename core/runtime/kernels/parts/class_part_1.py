@@ -17,7 +17,12 @@ class KernelLifecycleMixin:
             vector_dir,
             workspace_path=self.workspace_path,
         )
-        self.memory = memory or _build_memory_engine(resolved_db_path, resolved_vector_dir)
+        self.memory = memory or _build_memory_engine(
+            resolved_db_path,
+            resolved_vector_dir,
+            decision_config=_decision_config_safe(),
+            decision_recorder=self._record_decision,
+        )
         self._ai = ai if ai is not None else _AI_SENTINEL
         self.tools: dict[str, BaseTool] = {}
         self.ephemeral_history: list[dict[str, Any]] = []

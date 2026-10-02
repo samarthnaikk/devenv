@@ -293,19 +293,42 @@ def _compact_conversation(messages: list[dict[str, Any]], max_turns: int) -> lis
     return retained[-(max_turns * 2) :]
 
 
-def _build_memory_engine(db_path: str, vector_dir: str) -> MemoryEngine:
+def _decision_config_safe():
+    """Build the decision config without letting a bad config break startup."""
+
+    try:
+        from core.decisions.config import DecisionConfig
+
+        return DecisionConfig.from_env()
+    except Exception:
+        logger.debug("Decision config unavailable", exc_info=True)
+        return None
+
+
+def _build_memory_engine(
+    db_path: str,
+    vector_dir: str,
+    *,
+    decision_config: Any | None = None,
+    decision_recorder: Any | None = None,
+) -> MemoryEngine:
     if os.getenv("DEVENV_USE_SENTENCE_EMBEDDER") == "0" or os.getenv("DEVENV_DISABLE_SENTENCE_EMBEDDER") == "1":
         embedder: Any = HashingEmbedder(dimension=384)
     else:
         embedder = build_default_embedder()
+    extra: dict[str, Any] = {}
+    if decision_config is not None:
+        extra["decision_config"] = decision_config
+        extra["decision_recorder"] = decision_recorder
     try:
-        return MemoryEngine(db_path=db_path, vector_dir=vector_dir, embedder=embedder)
+        return MemoryEngine(db_path=db_path, vector_dir=vector_dir, embedder=embedder, **extra)
     except Exception as exc:
         logger.warning("Falling back to hashing memory embedder: error=%s", exc)
         return MemoryEngine(
             db_path=db_path,
             vector_dir=vector_dir,
             embedder=HashingEmbedder(dimension=384),
+            **extra,
         )
 
 

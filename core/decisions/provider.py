@@ -73,6 +73,7 @@ class SystemOneDecisionProvider:
     """
 
     name = "systemone"
+    MAX_WRITE_BATCH = 20
 
     def __init__(
         self,
@@ -117,6 +118,50 @@ class SystemOneDecisionProvider:
             reason=intent.reason,
         )
 
+    def judge_writes(
+        self,
+        candidates: Sequence[Any],
+        existing_nodes: Sequence[Any],
+        *,
+        context: dict[str, Any] | None = None,
+    ) -> list[WriteDecision]:
+        from .questions import build_memory_write_questions, parse_memory_write_answers
+
+        del existing_nodes, context
+        candidate_list = list(candidates)
+        if not candidate_list:
+            return []
+
+        self._guard_offline()
+        decisions: list[WriteDecision | None] = [None] * len(candidate_list)
+        sendable: list[tuple[int, str]] = []
+        for index, candidate in enumerate(candidate_list):
+            prepared = prepare_remote_state(_candidate_text(candidate), redact=self.config.redact)
+            if prepared is None:
+                decisions[index] = WriteDecision(
+                    should_write=True,
+                    confidence=1.0,
+                    reason="sensitive candidate kept locally",
+                    source="heuristic",
+                )
+            else:
+                sendable.append((index, prepared))
+
+        for start in range(0, len(sendable), self.MAX_WRITE_BATCH):
+            batch = sendable[start : start + self.MAX_WRITE_BATCH]
+            questions = build_memory_write_questions([text for _, text in batch])
+            result = self._client.evaluate("Memory curation for a local-first coding agent.", questions)
+            parsed = parse_memory_write_answers(result.answers, len(batch))
+            for (index, _), decision in zip(batch, parsed):
+                decisions[index] = decision
+
+        return [
+            decision
+            if decision is not None
+            else WriteDecision(should_write=True, confidence=1.0, reason="unjudged; kept", source="heuristic")
+            for decision in decisions
+        ]
+
 
 def build_decision_provider(
     config: DecisionConfig,
@@ -128,6 +173,20 @@ def build_decision_provider(
     if config.uses_systemone and not (offline and config.is_remote):
         return SystemOneDecisionProvider(config, offline=offline)
     return HeuristicDecisionProvider()
+
+
+def _candidate_text(candidate: Any) -> str:
+    label = str(getattr(candidate, "label", "") or "")
+    category = str(getattr(candidate, "category", "") or "")
+    summary = str(getattr(candidate, "summary", "") or "")
+    parts = []
+    if label:
+        parts.append(f"label: {label}")
+    if category:
+        parts.append(f"category: {category}")
+    if summary:
+        parts.append(f"summary: {summary}")
+    return "\n".join(parts) if parts else str(candidate)
 
 
 __all__ = [
