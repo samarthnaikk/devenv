@@ -38,6 +38,7 @@ SANDBOX_VIOLATION = "sandbox.violation"
 RETRIEVAL_TRACE = "retrieval.trace"
 VERIFICATION = "verification.result"
 BACKEND_ERROR = "backend.error"
+DECISION_RESULT = "decision.result"
 
 
 def audit_enabled() -> bool:
@@ -214,6 +215,7 @@ __all__ = [
     "RETRIEVAL_TRACE",
     "VERIFICATION",
     "BACKEND_ERROR",
+    "DECISION_RESULT",
     "audit_file_reports",
     "read_audit_file",
     "prune_audit_files",
