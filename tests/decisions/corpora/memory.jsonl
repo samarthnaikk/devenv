@@ -1,0 +1,14 @@
+{"label": "Auth storage decision", "category": "decision", "summary": "We chose session cookies over JWT for the auth layer until token rotation lands.", "expected_write": true}
+{"label": "Retrieval latency budget", "category": "decision", "summary": "Retrieval must stay under a 75s budget per turn.", "expected_write": true}
+{"label": "Backend default", "category": "preference", "summary": "The user prefers Ollama for local-only runs.", "expected_write": true}
+{"label": "Compaction rationale", "category": "decision", "summary": "We keep tool results verbatim and only stub low-signal blocks.", "expected_write": true}
+{"label": "Test runner", "category": "preference", "summary": "The project runs tests with pytest from .venv.", "expected_write": true}
+{"label": "Plan directory", "category": "decision", "summary": "Plans are stored under .devenv/plans and are exportable.", "expected_write": true}
+{"label": "Audit chain", "category": "decision", "summary": "Runtime events are hash-chained and tamper-evident.", "expected_write": true}
+{"label": "Memory curation", "category": "decision", "summary": "We only store durable facts, never transient status.", "expected_write": true}
+{"label": "Greeting", "category": "noise", "summary": "The user said hi.", "expected_write": false}
+{"label": "Acknowledgement", "category": "noise", "summary": "The user replied thanks.", "expected_write": false}
+{"label": "Restated code", "category": "noise", "summary": "The assistant repeated the function body verbatim.", "expected_write": false}
+{"label": "Transient status", "category": "noise", "summary": "The build is currently running.", "expected_write": false}
+{"label": "Filler", "category": "noise", "summary": "Let me take a look at that for you.", "expected_write": false}
+{"label": "Duplicate echo", "category": "noise", "summary": "The system echoed the previous answer without adding detail.", "expected_write": false}

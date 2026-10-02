@@ -1,0 +1,24 @@
+{"prompt": "How does the retrieval engine work?", "expected_use_local_knowledge": true, "expected_route": "explain"}
+{"prompt": "What do you remember about this repo?", "expected_use_local_knowledge": true, "expected_route": "recall"}
+{"prompt": "Explain the memory consolidation flow.", "expected_use_local_knowledge": true, "expected_route": "explain"}
+{"prompt": "Why is the backend routed through OpenCode by default?", "expected_use_local_knowledge": true, "expected_route": "explain"}
+{"prompt": "Tell me about the previous project we discussed.", "expected_use_local_knowledge": true, "expected_route": "recall"}
+{"prompt": "How does the session selector decide which sessions to include?", "expected_use_local_knowledge": true, "expected_route": "explain"}
+{"prompt": "What was the decision about auth storage?", "expected_use_local_knowledge": true, "expected_route": "recall"}
+{"prompt": "Summarize this repository.", "expected_use_local_knowledge": true, "expected_route": "explain"}
+{"prompt": "How do plans get persisted under .devenv?", "expected_use_local_knowledge": true, "expected_route": "explain"}
+{"prompt": "What did we decide about the retry policy?", "expected_use_local_knowledge": true, "expected_route": "recall"}
+{"prompt": "Where is the answer formatter wired in?", "expected_use_local_knowledge": false, "expected_route": "inspect"}
+{"prompt": "Read the file core/runtime/audit.py.", "expected_use_local_knowledge": false, "expected_route": "inspect"}
+{"prompt": "Search for decision_config across the codebase.", "expected_use_local_knowledge": false, "expected_route": "inspect"}
+{"prompt": "List the tools registered in core/tools.", "expected_use_local_knowledge": false, "expected_route": "inspect"}
+{"prompt": "Create a new component under calendar/frontend.", "expected_use_local_knowledge": false, "expected_route": "mutate"}
+{"prompt": "Fix the bug in the memory engine and update the tests.", "expected_use_local_knowledge": false, "expected_route": "mutate"}
+{"prompt": "Add a write gate to the consolidation service.", "expected_use_local_knowledge": false, "expected_route": "mutate"}
+{"prompt": "Refactor the retrieval service to stream candidates.", "expected_use_local_knowledge": false, "expected_route": "mutate"}
+{"prompt": "Remove the unused helper in helpers_part_4.py.", "expected_use_local_knowledge": false, "expected_route": "mutate"}
+{"prompt": "Switch the backend to ollama.", "expected_use_local_knowledge": false, "expected_route": "meta"}
+{"prompt": "Set the model to longcat-2.5-preview-free.", "expected_use_local_knowledge": false, "expected_route": "meta"}
+{"prompt": "Exclude the derived tag from retrieval.", "expected_use_local_knowledge": false, "expected_route": "meta"}
+{"prompt": "Enable all session sources.", "expected_use_local_knowledge": false, "expected_route": "meta"}
+{"prompt": "Show me the audit trail for this turn.", "expected_use_local_knowledge": false, "expected_route": "inspect"}

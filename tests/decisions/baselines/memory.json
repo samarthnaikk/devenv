@@ -1,0 +1,16 @@
+{
+  "domain": "memory",
+  "metrics": {
+    "accuracy": 0.5714,
+    "correct": 8,
+    "ece": 0.4286,
+    "errors": 0,
+    "f1": 0.7273,
+    "latency_p50_ms": 0.0,
+    "latency_p95_ms": 0.0,
+    "precision": 0.5714,
+    "recall": 1.0,
+    "total": 14
+  },
+  "provider": "heuristic"
+}
