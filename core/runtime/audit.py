@@ -110,18 +110,31 @@ class AuditRecorder:
             "model": str(model or ""),
             "payload_json": _canonical(payload or {}),
         }
-        if _chain_enabled():
-            event["prev_hash"] = self._prev_hash
-            event["hash"] = _hash_event(event)
-            self._prev_hash = event["hash"]
-        else:
-            event["prev_hash"] = ""
-            event["hash"] = ""
+        db_appended = False
+        if _chain_enabled() and self.store is not None and hasattr(
+            self.store, "append_chained_runtime_event"
+        ):
+            # Serialize tip-read + insert in one transaction so concurrent
+            # writers cannot fork the chain.
+            try:
+                event = self.store.append_chained_runtime_event(event, _hash_event)
+                self._prev_hash = event["hash"]
+                db_appended = True
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("Chained audit append failed; falling back: error=%s", exc)
+        if not db_appended:
+            if _chain_enabled():
+                event["prev_hash"] = self._prev_hash
+                event["hash"] = _hash_event(event)
+                self._prev_hash = event["hash"]
+            else:
+                event["prev_hash"] = ""
+                event["hash"] = ""
         self._seq += 1
 
         if _file_enabled():
             self._write_file(event)
-        if self.store is not None:
+        if self.store is not None and not db_appended:
             try:
                 self.store.append_runtime_event(event)
             except Exception as exc:  # pragma: no cover - defensive
@@ -140,21 +153,36 @@ class AuditRecorder:
             logger.warning("Audit file append failed: error=%s", exc)
 
     @staticmethod
-    def verify_chain(events: list[dict[str, Any]]) -> tuple[bool, str]:
-        """Verify a hash chain over ``events`` in ascending sequence order."""
+    def verify_chain(
+        events: list[dict[str, Any]],
+        *,
+        allow_window_start: bool = False,
+    ) -> tuple[bool, str]:
+        """Verify a hash chain over ``events`` in ascending sequence order.
+
+        When ``allow_window_start`` is set, the first event is treated as the
+        start of a (possibly truncated) window: its ``prev_hash`` is not required
+        to match a predecessor that was excluded from the query. This avoids a
+        false "broken link" when verifying the newest N events. Per-event hashes
+        are still checked, so tampering is still detected.
+        """
 
         previous = ""
+        started = False
         for event in events:
             if not event.get("hash"):
                 continue
             candidate = dict(event)
             candidate.pop("hash", None)
             candidate.pop("seq", None)
-            if candidate.get("prev_hash", "") != previous:
+            stored_prev = candidate.get("prev_hash", "")
+            window_start = (not started) and allow_window_start and stored_prev != ""
+            if not window_start and stored_prev != previous:
                 return False, f"broken link at event {event.get('event_id')}"
             if _hash_event(candidate) != event.get("hash"):
                 return False, f"hash mismatch at event {event.get('event_id')}"
             previous = event["hash"]
+            started = True
         return True, "ok"
 
 

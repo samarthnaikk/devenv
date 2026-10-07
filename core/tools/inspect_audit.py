@@ -56,7 +56,7 @@ class InspectAuditTool(BaseTool):
                 events = list(reversed(self.store.list_runtime_events(limit=100000)))
                 from core.runtime.audit import AuditRecorder
 
-                ok, detail = AuditRecorder.verify_chain(events)
+                ok, detail = AuditRecorder.verify_chain(events, allow_window_start=True)
                 return ToolResult(
                     success=ok,
                     output=f"Audit chain verification: {detail}",

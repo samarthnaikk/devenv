@@ -65,7 +65,7 @@ def main() -> int:
 
     if args.command == "verify":
         events = list(reversed(store.list_runtime_events(limit=1_000_000)))
-        ok, detail = AuditRecorder.verify_chain(events)
+        ok, detail = AuditRecorder.verify_chain(events, allow_window_start=True)
         print(f"chain: {'OK' if ok else 'BROKEN'} ({detail}); events={len(events)}")
         return 0 if ok else 1
 

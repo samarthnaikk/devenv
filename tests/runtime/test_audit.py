@@ -52,6 +52,40 @@ class AuditRecorderTest(unittest.TestCase):
 
         self.assertFalse(ok)
 
+    def test_two_recorders_share_one_chain(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            store = SQLiteMemoryStore(str(workspace / "memory.db"))
+            first = build_recorder(str(workspace), store=store)
+            second = build_recorder(str(workspace), store=store)
+
+            first.record("turn.start", {"writer": 1})
+            second.record("turn.start", {"writer": 2})
+            first.record("turn.end", {"writer": 1})
+            second.record("turn.end", {"writer": 2})
+
+            events = list(reversed(store.list_runtime_events(limit=100)))
+            ok, detail = AuditRecorder.verify_chain(events)
+
+        self.assertEqual(len(events), 4)
+        self.assertTrue(ok, detail)
+
+    def test_verify_window_start_tolerates_truncated_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            store = SQLiteMemoryStore(str(workspace / "memory.db"))
+            recorder = build_recorder(str(workspace), store=store)
+            for index in range(3):
+                recorder.record("turn.start", {"i": index})
+
+            events = list(reversed(store.list_runtime_events(limit=100)))
+            window = events[-2:]
+            ok_strict, _ = AuditRecorder.verify_chain(window)
+            ok_window, detail = AuditRecorder.verify_chain(window, allow_window_start=True)
+
+        self.assertFalse(ok_strict)
+        self.assertTrue(ok_window, detail)
+
     def test_disabled_audit_is_noop(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir)

@@ -993,7 +993,7 @@ class DevenvTUIController:
             from core.runtime.audit import AuditRecorder
 
             events = list(reversed(store.list_runtime_events(limit=1_000_000)))
-            ok, detail = AuditRecorder.verify_chain(events)
+            ok, detail = AuditRecorder.verify_chain(events, allow_window_start=True)
             return f"Audit chain: {'OK' if ok else 'BROKEN'} ({detail}); events={len(events)}"
         try:
             limit = int(args[1]) if len(args) > 1 and args[0].lower() == "tail" else 20

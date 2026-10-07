@@ -464,6 +464,47 @@ class SQLiteMemoryStore:
                 ),
             )
 
+    def append_chained_runtime_event(self, event: dict, hash_event) -> dict:
+        """Append an audit event, chaining it to the current DB tip atomically.
+
+        The tip is read and the new row inserted inside a single ``BEGIN
+        IMMEDIATE`` transaction, so concurrent writers (TUI, CLI, MCP, smoke)
+        cannot fork the chain by both linking to the same predecessor.
+        ``hash_event`` is the canonical hasher from ``core.runtime.audit``.
+        """
+
+        event = dict(event)
+        with self.transaction() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT hash FROM runtime_events ORDER BY seq DESC LIMIT 1"
+            ).fetchone()
+            event["prev_hash"] = str(row["hash"]) if row is not None else ""
+            event["hash"] = hash_event(event)
+            connection.execute(
+                """
+                INSERT INTO runtime_events (
+                    event_id, ts, turn_id, session_id, workspace, event_type,
+                    backend, model, payload_json, prev_hash, hash
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(event.get("event_id") or ""),
+                    float(event.get("ts") or 0.0),
+                    str(event.get("turn_id") or ""),
+                    str(event.get("session_id") or ""),
+                    str(event.get("workspace") or ""),
+                    str(event.get("event_type") or ""),
+                    str(event.get("backend") or ""),
+                    str(event.get("model") or ""),
+                    str(event.get("payload_json") or "{}"),
+                    str(event.get("prev_hash") or ""),
+                    str(event.get("hash") or ""),
+                ),
+            )
+        return event
+
     def list_runtime_events(
         self,
         *,
