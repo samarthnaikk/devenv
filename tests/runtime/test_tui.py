@@ -766,6 +766,20 @@ class DevenvTUITest(unittest.TestCase):
         self.assertTrue(kernel.execute_turn_calls)
         self.assertFalse(kernel.execute_turn_calls[0][1]["plan_only"])
 
+    def test_execute_supports_multiple_turns_on_one_thread(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = FakeKernel()
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=kernel,
+            )
+            controller.context_builder = FakeContextBuilder(outcome=_sample_outcome())
+
+            controller.run_execute("first turn")
+            controller.run_execute("second turn references the first")
+
+        self.assertEqual(len(kernel.execute_turn_calls), 2)
+
     def test_run_verification_reports_pass_fail(self) -> None:
         class _Tool:
             def execute(self, **kwargs):
