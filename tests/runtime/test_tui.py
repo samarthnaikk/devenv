@@ -1419,6 +1419,23 @@ class DevenvTextualAppTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(kernel.execute_turn_calls, [])
 
+    async def test_question_mark_opens_help_with_empty_composer(self) -> None:
+        from core.runtime.tui_widgets import HelpOverlay
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            app = DevenvTextualApp(controller)
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await pilot.press("?")
+                await pilot.pause()
+                opened = isinstance(app.screen, HelpOverlay)
+
+        self.assertTrue(opened)
+
     async def test_plan_command_dispatches_plan_only_turn_from_app(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = FakeKernel()

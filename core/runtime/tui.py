@@ -84,6 +84,19 @@ try:
         AutoComplete = None  # type: ignore[assignment]
         DropdownItem = None  # type: ignore[assignment]
 
+    class ComposerInput(Input):
+        """Composer that opens help on a bare ``?`` without blocking ``?`` in text."""
+
+        async def _on_key(self, event) -> None:  # type: ignore[override]
+            if event.key == "question_mark" and not self.value.strip():
+                event.prevent_default()
+                event.stop()
+                action = getattr(self.app, "action_show_help", None)
+                if callable(action):
+                    action()
+                return
+            await super()._on_key(event)
+
     TEXTUAL_AVAILABLE = True
 except Exception:  # pragma: no cover - fallback path for environments without textual
     work = None
@@ -2221,7 +2234,7 @@ if TEXTUAL_AVAILABLE:
                             yield MemoryPane(id="memory-pane")
                         with TabPane("Logs", id="tab-logs"):
                             yield RichLog(id="log", markup=True, wrap=True)
-            yield Input(placeholder="Ask a question (answer + evidence), or type / for commands…", id="composer")
+            yield ComposerInput(placeholder="Ask a question (answer + evidence), or type / for commands…", id="composer")
             if AUTOCOMPLETE_AVAILABLE:
                 yield AutoComplete("#composer", candidates=self._slash_candidates)
             yield Footer()
