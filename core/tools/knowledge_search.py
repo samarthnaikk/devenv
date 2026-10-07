@@ -4,6 +4,8 @@ import html
 import re
 import urllib.parse
 
+from core.runtime.connectivity import is_offline
+
 from .base import BaseTool, ToolResult
 from .web_search import _fetch_text, search_web
 
@@ -59,6 +61,12 @@ class KnowledgeSearchTool(BaseTool):
         }
 
     def execute(self, **kwargs) -> ToolResult:
+        if is_offline():
+            return ToolResult(
+                success=False,
+                output="Offline mode is active; knowledge_search is disabled.",
+                data={"status": "offline", "resources": []},
+            )
         query = kwargs.get("query")
         if not isinstance(query, str) or not query.strip():
             return ToolResult(success=False, output="Missing required argument: query", data={"status": "invalid_input", "resources": []})

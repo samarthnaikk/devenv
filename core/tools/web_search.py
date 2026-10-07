@@ -7,6 +7,8 @@ import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 
+from core.runtime.connectivity import is_offline
+
 from .base import BaseTool, ToolResult
 
 
@@ -49,6 +51,12 @@ class WebSearchTool(BaseTool):
 
     def execute(self, **kwargs) -> ToolResult:
         mode = kwargs.get("mode")
+        if is_offline():
+            return ToolResult(
+                success=False,
+                output="Offline mode is active; web_search is disabled.",
+                data={"status": "offline", "mode": mode, "results": []},
+            )
         provider = str(kwargs.get("provider") or "duckduckgo").strip().lower()
         if not isinstance(mode, str) or mode not in self.supported_modes:
             return ToolResult(success=False, output="Missing or unsupported argument: mode", data={"status": "invalid_input"})

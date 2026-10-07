@@ -28,6 +28,12 @@ class _FakeResponse:
 
 
 class WebSearchToolTest(unittest.TestCase):
+    def test_offline_mode_short_circuits(self) -> None:
+        with patch("core.tools.web_search.is_offline", return_value=True):
+            result = WebSearchTool().execute(mode="search", query="anything")
+        self.assertFalse(result.success)
+        self.assertEqual(result.data["status"], "offline")
+
     def test_input_schema_exposes_search_and_read_url_modes(self) -> None:
         schema = WebSearchTool().input_schema()
 

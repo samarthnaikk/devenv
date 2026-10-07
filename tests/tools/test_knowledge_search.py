@@ -52,6 +52,12 @@ def _fake_urlopen(request, timeout=10):  # noqa: ARG001
 
 
 class KnowledgeSearchToolTest(unittest.TestCase):
+    def test_offline_mode_short_circuits(self) -> None:
+        with patch("core.tools.knowledge_search.is_offline", return_value=True):
+            result = KnowledgeSearchTool().execute(query="anything")
+        self.assertFalse(result.success)
+        self.assertEqual(result.data["status"], "offline")
+
     def test_execute_requires_query(self) -> None:
         result = KnowledgeSearchTool().execute()
 
