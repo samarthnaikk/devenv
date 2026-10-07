@@ -437,7 +437,7 @@ def _update_index_progress(
     average = elapsed / max(processed, 1)
     remaining = max(total_sessions - processed, 0)
     eta_seconds = int(round(average * remaining)) if remaining else 0
-    percent = int(round((processed / total_sessions) * 100)) if total_sessions else 100
+    percent = round((processed / total_sessions) * 100, 1) if total_sessions else 100
     with lock:
         status.update(
             {
@@ -883,6 +883,11 @@ class OpenCodeSessionProvider(ExternalSessionProvider):
             order by time_updated desc
             """
         )
+        uncached_ids = [str(row["id"]) for row in rows if str(row["id"]) not in self._summary_cache]
+        # Prefetch previews and message counts in two batched queries instead of
+        # two queries per session (the N+1 that stalled large-corpus indexing).
+        previews = self._batch_previews(uncached_ids) if uncached_ids else {}
+        counts = self._batch_message_counts(uncached_ids) if uncached_ids else {}
         summaries: list[ExternalSessionSummary] = []
         for row in rows:
             session_id = str(row["id"])
@@ -890,7 +895,12 @@ class OpenCodeSessionProvider(ExternalSessionProvider):
             if cached is not None:
                 summaries.append(cached)
                 continue
-            preview = self._preview_for_session(session_id)
+            preview = previews.get(session_id)
+            if preview is None:
+                preview = self._preview_for_session(session_id)
+            message_count = counts.get(session_id)
+            if message_count is None:
+                message_count = self._message_count_for_session(session_id)
             summary = ExternalSessionSummary(
                 provider=self.name,
                 session_id=session_id,
@@ -898,13 +908,58 @@ class OpenCodeSessionProvider(ExternalSessionProvider):
                 updated_at=_millis_to_iso(row["time_updated"]),
                 workspace_path=str(row["directory"] or "") or None,
                 source_path=str(self.root),
-                message_count=self._message_count_for_session(session_id),
+                message_count=message_count,
                 preview=preview,
                 tags=_opencode_auto_tags(row),
             )
             self._summary_cache[session_id] = summary
             summaries.append(summary)
         return summaries
+
+    def _batch_message_counts(self, session_ids: list[str]) -> dict[str, int]:
+        if not session_ids:
+            return {}
+        try:
+            rows = self._query_all(
+                "select session_id, count(*) as count from message group by session_id"
+            )
+        except Exception:  # pragma: no cover - defensive: fall back to per-session
+            return {}
+        return {str(row["session_id"]): int(row["count"] or 0) for row in rows}
+
+    def _batch_previews(self, session_ids: list[str]) -> dict[str, str]:
+        if not session_ids:
+            return {}
+        try:
+            rows = self._query_all(
+                """
+                select session_id, part_data, message_data from (
+                    select p.session_id as session_id,
+                           p.data as part_data,
+                           m.data as message_data,
+                           row_number() over (
+                               partition by p.session_id order by p.time_created desc
+                           ) as rn
+                    from part p
+                    join message m on m.id = p.message_id
+                )
+                where rn <= 12
+                """
+            )
+        except Exception:  # pragma: no cover - defensive: fall back to per-session
+            return {}
+        previews: dict[str, str] = {}
+        for row in rows:
+            session_id = str(row["session_id"])
+            if session_id in previews:
+                continue
+            payload = _safe_json_loads(str(row["part_data"] or ""))
+            parent = _safe_json_loads(str(row["message_data"] or ""))
+            role = str(parent.get("role") or "assistant")
+            message = _extract_opencode_message_part(role=role, payload=payload, timestamp=None)
+            if message and message.content.strip():
+                previews[session_id] = message.content[:220]
+        return previews
 
     def get_session(self, session_id: str) -> ExternalSessionDetail:
         cached = self._detail_cache.get(session_id)
