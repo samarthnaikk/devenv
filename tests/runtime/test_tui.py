@@ -809,6 +809,34 @@ class DevenvTUITest(unittest.TestCase):
 
         self.assertEqual(code, 0)
 
+    def test_audit_text_query_export_and_prune(self) -> None:
+        from core.memory.storage import SQLiteMemoryStore
+        from core.runtime.audit import build_recorder
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            store = SQLiteMemoryStore(str(workspace / "memory.db"))
+            recorder = build_recorder(str(workspace), store=store)
+            recorder.record("tool.call", {"tool_name": "read_file"})
+            recorder.record("turn.end", {"ok": True})
+
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            controller.kernel.memory = type("M", (), {"store": store})()
+
+            export_path = workspace / "out.jsonl"
+            query = controller.audit_text(["query", "tool.call", "10"])
+            export = controller.audit_text(["export", str(export_path)])
+            prune = controller.audit_text(["prune", "30"])
+            exported = export_path.exists()
+
+        self.assertIn("tool.call", query)
+        self.assertIn("exported 2 event", export)
+        self.assertIn("pruned", prune)
+        self.assertTrue(exported)
+
     def test_ask_command_requires_query(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             controller = DevenvTUIController(

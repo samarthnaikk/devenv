@@ -1001,6 +1001,43 @@ class DevenvTUIController:
             events = list(reversed(store.list_runtime_events(limit=1_000_000)))
             ok, detail = AuditRecorder.verify_chain(events, allow_window_start=True)
             return f"Audit chain: {'OK' if ok else 'BROKEN'} ({detail}); events={len(events)}"
+        if sub == "query":
+            event_type = None
+            limit = 50
+            for token in args[1:]:
+                if token.isdigit():
+                    limit = int(token)
+                else:
+                    event_type = token
+            events = store.list_runtime_events(event_type=event_type, limit=limit)
+            if not events:
+                return "No audit events matched."
+            lines = [f"Audit query (type={event_type or 'any'}, limit={limit})", ""]
+            for event in reversed(events):
+                turn = str(event.get("turn_id") or "")[:8]
+                lines.append(
+                    f"{str(event.get('event_type')):<20} turn={turn:<8} "
+                    f"backend={str(event.get('backend') or '-'):<10} {str(event.get('payload_json'))[:80]}"
+                )
+            return "\n".join(lines)
+        if sub == "export":
+            out_path = (
+                Path(args[1])
+                if len(args) > 1
+                else Path(self.config.workspace_path) / ".devenv" / "audit" / "audit-export.jsonl"
+            )
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            events = list(reversed(store.list_runtime_events(limit=1_000_000)))
+            with out_path.open("w", encoding="utf-8") as handle:
+                for event in events:
+                    handle.write(json.dumps(event, sort_keys=True) + "\n")
+            return f"exported {len(events)} event(s) to {out_path}"
+        if sub == "prune":
+            from core.runtime.audit import prune_audit_files
+
+            days = int(args[1]) if len(args) > 1 and args[1].isdigit() else 30
+            removed = prune_audit_files(self.config.workspace_path, retention_days=days)
+            return f"pruned {removed} audit file(s) older than {days} day(s)"
         try:
             limit = int(args[1]) if len(args) > 1 and args[0].lower() == "tail" else 20
         except ValueError:
@@ -1016,7 +1053,7 @@ class DevenvTUIController:
                 f"{str(event.get('backend') or '-')}  {str(event.get('payload_json'))[:80]}"
             )
         lines.append("")
-        lines.append("Usage: /audit [tail <n>|verify]")
+        lines.append("Usage: /audit [tail <n>|query [type] [n]|export [path]|prune [days]|verify]")
         return "\n".join(lines)
 
     def tags_text(self) -> str:
@@ -1058,7 +1095,7 @@ class DevenvTUIController:
                 "/tags                   List tagged sessions and active exclusions",
                 "/exclude-tag <tag>      Exclude tagged sessions from retrieval",
                 "/logs clear|level|filter|export  Filter, clear, or export the activity log",
-                "/audit [tail|verify]    Tail or verify the durable runtime audit trail",
+                "/audit [tail|query|export|prune|verify]  Query, export, prune, or verify the runtime audit trail",
                 "/copy                   Copy the last retrieval result to the clipboard",
                 "/enable                 Enable all session sources (codex + opencode)",
                 "/sources                Show session source status",
