@@ -861,7 +861,7 @@ class DevenvTUIController:
             if not self.access_policy.can_access_provider(provider):
                 continue
             try:
-                for summary in self.context_builder.list_sessions(provider):
+                for summary in self.context_builder.list_sessions_light(provider):
                     if summary.session_id == cleaned:
                         return summary.unified_session_id
             except Exception:  # pragma: no cover - defensive
@@ -872,7 +872,7 @@ class DevenvTUIController:
             try:
                 matches = [
                     summary
-                    for summary in self.context_builder.list_sessions(provider)
+                    for summary in self.context_builder.list_sessions_light(provider)
                     if summary.session_id.startswith(cleaned)
                 ]
             except Exception:  # pragma: no cover - defensive
@@ -1021,7 +1021,7 @@ class DevenvTUIController:
             if not self.access_policy.can_access_provider(provider):
                 continue
             try:
-                summaries = self.context_builder.list_sessions(provider)
+                summaries = self.context_builder.list_sessions_light(provider)
             except Exception:  # pragma: no cover - defensive
                 continue
             tagged = [summary for summary in summaries if summary.tags]
@@ -2306,14 +2306,14 @@ if TEXTUAL_AVAILABLE:
             elif pane_id == "tab-memory":
                 self._refresh_memory_pane()
 
-        @work(thread=True)
+        @work(thread=True, exclusive=True, group="load_sessions")
         def _load_sessions(self) -> None:
             rows: list[tuple[Any, ...]] = []
             try:
                 for provider in SESSION_PROVIDERS:
                     if not self.controller.access_policy.can_access_provider(provider):
                         continue
-                    for summary in self.controller.context_builder.list_sessions(provider):
+                    for summary in self.controller.context_builder.list_sessions_light(provider):
                         tags = ", ".join(getattr(summary, "tags", ()) or ())
                         rows.append(
                             (

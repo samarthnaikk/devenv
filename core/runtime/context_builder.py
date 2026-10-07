@@ -1066,10 +1066,21 @@ class ContextBuilderService:
     def indexing_status(self) -> dict[str, Any]:
         return self.index.status()
 
+    def list_sessions_light(self, provider_name: str) -> list[ExternalSessionSummary]:
+        """List sessions with tags but without computing per-session embeddings.
+
+        Browsing the Sessions tab must not trigger the embedding/indexing
+        pipeline for every session in the corpus; embeddings are computed lazily
+        only when retrieval actually needs them.
+        """
+
+        provider = self._get_provider(provider_name)
+        return self._with_tags(provider.list_sessions())
+
     def list_sessions(self, provider_name: str) -> list[ExternalSessionSummary]:
         provider = self._get_provider(provider_name)
-        summaries = [self._with_session_embedding(provider, summary) for summary in provider.list_sessions()]
-        return self._with_tags(summaries)
+        summaries = self._with_tags(provider.list_sessions())
+        return [self._with_session_embedding(provider, summary) for summary in summaries]
 
     def get_session(self, provider_name: str, session_id: str) -> ExternalSessionDetail:
         provider = self._get_provider(provider_name)

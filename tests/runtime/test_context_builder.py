@@ -1977,6 +1977,36 @@ class IndexStrongMatchGateTest(unittest.TestCase):
         self.assertTrue(matches)
 
 
+class LightSessionListingTest(unittest.TestCase):
+    def test_light_listing_skips_embedding_pipeline(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            summary = ExternalSessionSummary(
+                provider="codex",
+                session_id="s1",
+                title="A session",
+                workspace_path=str(workspace),
+                updated_at="",
+            )
+
+            class _Provider:
+                name = "codex"
+
+                def list_sessions(self):
+                    return [summary]
+
+            service = ContextBuilderService(str(workspace), provider_configs=())
+            service.providers = {"codex": _Provider()}
+
+            def boom(*args, **kwargs):
+                raise AssertionError("embedding pipeline must not run for light listing")
+
+            service._with_session_embedding = boom  # type: ignore[method-assign]
+            listed = service.list_sessions_light("codex")
+
+        self.assertEqual([item.session_id for item in listed], ["s1"])
+
+
 class TagExclusionRetrievalTest(unittest.TestCase):
     def test_excluded_user_tag_drops_session_from_retrieval(self) -> None:
         from core.runtime.models import ExternalSessionDetail
