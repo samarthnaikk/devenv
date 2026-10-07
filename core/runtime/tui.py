@@ -808,6 +808,12 @@ class DevenvTUIController:
             if not args:
                 return TUICommandResult("Usage: /plan <query>")
             return TUICommandResult(_plan_plain_text(self.run_plan(" ".join(args))))
+        if command in {"/execute", "/run-plan"}:
+            if not args:
+                return TUICommandResult("Usage: /execute <query>")
+            return TUICommandResult(_plan_plain_text(self.run_execute(" ".join(args))))
+        if command == "/verify":
+            return TUICommandResult(self.run_verification())
         if command == "/copy":
             if not self.last_retrieval_text:
                 return TUICommandResult("Nothing to copy yet. Run /retrieve first.")
@@ -1043,6 +1049,8 @@ class DevenvTUIController:
                 "/retrieve <query>       Retrieve prior sessions and chunks for a query",
                 "/ask <query>            Answer a query from retrieved evidence (no tools)",
                 "/plan <query>           Draft a read-only blueprint for a query (never executes)",
+                "/execute <query>        Plan and execute a multi-step task checkpoint by checkpoint",
+                "/verify                 Run workspace diagnostics and report PASS/FAIL",
                 "/plans list|show|export|delete   Manage saved plans in .devenv/plans/",
                 "/offline status|force|online|auto  Connectivity and offline auto-mode",
                 "/tag <session> <tag>    Tag a session (session id or provider:id)",
@@ -2033,7 +2041,28 @@ class DevenvTUIController:
         self._persist_plan(query, result)
         return result
 
-    def _persist_plan(self, query: str, result: RuntimeTurnResult) -> None:
+    def run_execute(self, query: str) -> RuntimeTurnResult:
+        """Plan and execute a multi-step task, checkpoint by checkpoint."""
+
+        result = self.run_prompt(query, plan_only=False)
+        self._persist_plan(query, result, mode="execute")
+        return result
+
+    def run_verification(self) -> str:
+        """Run workspace diagnostics and surface a pass/fail verdict."""
+
+        tool = getattr(self.kernel, "tools", {}).get("run_diagnostics")
+        if tool is None:
+            return "Verification unavailable: the run_diagnostics tool is not registered."
+        try:
+            result = tool.execute(mode="lint", target_path=self.config.workspace_path)
+        except Exception as exc:  # pragma: no cover - defensive
+            return f"Verification FAIL: {exc}"
+        status = "PASS" if result.success else "FAIL"
+        detail = str(getattr(result, "output", "") or "").strip()
+        return f"Verification {status}: {detail}" if detail else f"Verification {status}."
+
+    def _persist_plan(self, query: str, result: RuntimeTurnResult, *, mode: str = "plan_only") -> None:
         blueprint = getattr(result, "blueprint", None)
         if blueprint is None:
             return
@@ -2045,7 +2074,7 @@ class DevenvTUIController:
                 objective=str(getattr(blueprint, "original_objective", "") or query),
                 raw_plan_markdown=str(getattr(blueprint, "raw_plan_markdown", "") or ""),
                 tasks=[task.to_dict() for task in getattr(blueprint, "tasks", []) or []],
-                mode="plan_only",
+                mode=mode,
                 source="tui",
             )
             result.metadata["plan_id"] = entry.plan_id
@@ -2521,6 +2550,21 @@ if TEXTUAL_AVAILABLE:
                     self._activity(f"planning: {query}")
                     self._run_plan(query)
                     return
+                if command_name in {"/execute", "/run-plan"}:
+                    query = value[len(command_name):].strip()
+                    if not query:
+                        self._mount_command_card(command_name, "Usage: /execute <query>")
+                        return
+                    if self._busy:
+                        self.notify("A turn is already running.", severity="warning")
+                        return
+                    self._set_busy(True, "Executing plan…")
+                    self._activity(f"executing plan: {query}")
+                    self._run_execute(query)
+                    return
+                if command_name == "/verify":
+                    self._mount_command_card(command_name, self.controller.run_verification())
+                    return
                 if command_name in {"/ask", "/answer"}:
                     query = value[len(command_name):].strip()
                     if not query:
@@ -2965,6 +3009,33 @@ if TEXTUAL_AVAILABLE:
                 self._mount_plain_card(["(no answer)"])
             self._set_busy(False)
             self._activity("answered with tools")
+            self._refresh_header()
+            self.query_one("#composer", Input).focus()
+
+        @work(thread=True)
+        def _run_execute(self, query: str) -> None:
+            try:
+                result = self.controller.run_execute(query)
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self.call_from_thread(self._render_plan_failure, str(exc))
+                return
+            self.call_from_thread(self._render_execute, result)
+
+        def _render_execute(self, result: RuntimeTurnResult) -> None:
+            lines = ["**Plan execution**"]
+            blueprint = getattr(result, "blueprint", None)
+            if blueprint is not None:
+                for task in getattr(blueprint, "tasks", []) or []:
+                    mark = "x" if getattr(task, "is_completed", False) else " "
+                    lines.append(f"- [{mark}] {getattr(task, 'description', '')}")
+                verification = "passed" if getattr(blueprint, "verification_passed", False) else "not run"
+                lines.append(f"- verification: {verification}")
+            text = getattr(result, "final_response", "") or ""
+            if text:
+                lines.extend(["", text])
+            self._mount_markdown_card(lines)
+            self._set_busy(False)
+            self._activity("plan executed")
             self._refresh_header()
             self.query_one("#composer", Input).focus()
 

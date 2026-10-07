@@ -752,6 +752,51 @@ class DevenvTUITest(unittest.TestCase):
         self.assertEqual(kernel.execute_turn_calls[0][0], "Read the file t14_probe.txt and tell me the secret")
         self.assertIn("stub response", result.message)
 
+    def test_run_execute_runs_non_plan_turn(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = FakeKernel()
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=kernel,
+            )
+            controller.context_builder = FakeContextBuilder(outcome=_sample_outcome())
+
+            controller.run_execute("add dark mode")
+
+        self.assertTrue(kernel.execute_turn_calls)
+        self.assertFalse(kernel.execute_turn_calls[0][1]["plan_only"])
+
+    def test_run_verification_reports_pass_fail(self) -> None:
+        class _Tool:
+            def execute(self, **kwargs):
+                return type("R", (), {"success": True, "output": "all checks passed"})()
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = FakeKernel()
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=kernel,
+            )
+            kernel.tools["run_diagnostics"] = _Tool()
+
+            verdict = controller.run_verification()
+            result = controller.handle_command("/verify")
+
+        self.assertIn("PASS", verdict)
+        self.assertIn("all checks passed", verdict)
+        self.assertIn("PASS", result.message)
+
+    def test_run_verification_without_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = FakeKernel()
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=kernel,
+            )
+            kernel.tools = {}
+            verdict = controller.run_verification()
+        self.assertIn("unavailable", verdict.lower())
+
     def test_ask_command_requires_query(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             controller = DevenvTUIController(
