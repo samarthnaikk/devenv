@@ -410,15 +410,20 @@ class KernelPlanningMixin:
             logger.info("Skipping episodic persistence for low-signal local summary response")
             return
         logger.info("Recording episodic log for completed turn")
+        final_metadata = {
+            "workspace_path": self.workspace_path,
+            "session_id": self.session_id,
+            **(metadata or {}),
+        }
+        if "memory_entities" not in final_metadata:
+            memory_entities = self._memory_entities_for_turn(user_prompt, sanitized_response)
+            if memory_entities:
+                final_metadata["memory_entities"] = memory_entities
         try:
             log_id = self.memory.add_episodic_log(
                 user_prompt,
                 sanitized_response,
-                metadata={
-                    "workspace_path": self.workspace_path,
-                    "session_id": self.session_id,
-                    **(metadata or {}),
-                },
+                metadata=final_metadata,
             )
             logger.info("Recorded episodic log: log_id=%s", log_id)
             if hasattr(self.memory, "run_consolidation") and self._should_run_consolidation():
@@ -434,6 +439,24 @@ class KernelPlanningMixin:
                 logger.info("Skipping memory consolidation because cooldown has not elapsed")
         except Exception as exc:
             logger.warning("Failed to record episodic log; continuing without persisted memory: error=%s", exc)
+
+    def _memory_entities_for_turn(self, user_prompt: str, response: str) -> list[dict[str, Any]]:
+        """Derive a memory candidate for the turn when the write gate is enabled.
+
+        The decision memory-write gate only sees candidates carried in
+        ``metadata["memory_entities"]``; without a producer the gate is never
+        exercised on real turns. Only emit when the gate is configured, so the
+        default (off) path is unchanged.
+        """
+
+        mode = os.getenv("DEVENV_DECISION_MEMORY_WRITE", "").strip().lower()
+        if mode in {"", "off"}:
+            return []
+        summary = " ".join(str(response or "").split())[:240]
+        if not summary:
+            return []
+        label = Path(self.workspace_path).name or "session"
+        return [{"label": label, "summary": summary, "category": "interaction"}]
 
     def _should_run_consolidation(self) -> bool:
         cooldown = _consolidation_cooldown_seconds()

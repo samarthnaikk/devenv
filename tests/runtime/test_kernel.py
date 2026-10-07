@@ -313,6 +313,20 @@ class DevenvKernelTest(unittest.TestCase):
 
         self.assertFalse(should_plan)
 
+    def test_memory_entities_only_when_write_gate_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
+
+            with mock.patch.dict(os.environ, {"DEVENV_DECISION_MEMORY_WRITE": "off"}):
+                disabled = kernel._memory_entities_for_turn("remember this", "the answer")
+            with mock.patch.dict(os.environ, {"DEVENV_DECISION_MEMORY_WRITE": "enforce"}):
+                enabled = kernel._memory_entities_for_turn("remember this", "the answer")
+
+        self.assertEqual(disabled, [])
+        self.assertTrue(enabled)
+        self.assertIn("label", enabled[0])
+        self.assertIn("summary", enabled[0])
+
     def test_explicit_plan_prompt_returns_blueprint_without_executing_checkpoint(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             kernel = DevenvKernel(tempdir, memory=FakeMemory(), ai=FakeAI([]))
