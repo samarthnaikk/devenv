@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import json
 import tempfile
 import unittest
 from contextlib import asynccontextmanager
@@ -12,7 +13,9 @@ from unittest.mock import patch
 
 from core.runtime.mcp_client import MCPToolClient
 from core.runtime.mcp_server import _annotation_for_property, _build_tool_wrapper
+from core.runtime.sandbox import PathSandbox
 from core.runtime.tooling import build_runtime_tools
+from core.tools import ListDirectoryTool, ReadFileTool, WriteFileTool
 from core.tools.generate_pdf import GeneratePDFTool
 
 
@@ -45,6 +48,48 @@ class MCPServerSchemaTest(unittest.TestCase):
         keep_tex_base = get_args(signature.parameters["keep_tex"].annotation)[0]
         self.assertEqual(str(sections_base), "list[dict[str, typing.Any]]")
         self.assertEqual(str(keep_tex_base), "bool | None")
+
+
+class MCPSandboxTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory(dir=SAMPLE_ROOT)
+        self.workspace = Path(self._tmp.name)
+        (self.workspace / "inside.txt").write_text("inside", encoding="utf-8")
+        self.sandbox = PathSandbox(str(self.workspace))
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_relative_escape_is_denied(self) -> None:
+        wrapper = _build_tool_wrapper(ReadFileTool(), self.sandbox)
+        result = json.loads(wrapper(path="../outside.txt"))
+        self.assertFalse(result["success"])
+        self.assertEqual(result["data"]["status"], "sandbox_violation")
+
+    def test_absolute_escape_is_denied(self) -> None:
+        wrapper = _build_tool_wrapper(WriteFileTool(), self.sandbox)
+        result = json.loads(wrapper(path="/tmp/devenv_mcp_escape.txt", content="x", mode="fresh"))
+        self.assertFalse(result["success"])
+        self.assertEqual(result["data"]["status"], "sandbox_violation")
+
+    def test_symlink_escape_is_denied(self) -> None:
+        link = self.workspace / "escape_link"
+        link.symlink_to("/etc/hosts")
+        wrapper = _build_tool_wrapper(ReadFileTool(), self.sandbox)
+        result = json.loads(wrapper(path="escape_link"))
+        self.assertFalse(result["success"])
+        self.assertEqual(result["data"]["status"], "sandbox_violation")
+
+    def test_list_directory_escape_is_denied(self) -> None:
+        wrapper = _build_tool_wrapper(ListDirectoryTool(), self.sandbox)
+        result = json.loads(wrapper(path="/tmp"))
+        self.assertFalse(result["success"])
+        self.assertEqual(result["data"]["status"], "sandbox_violation")
+
+    def test_inside_path_is_allowed_and_normalized(self) -> None:
+        wrapper = _build_tool_wrapper(ReadFileTool(), self.sandbox)
+        result = json.loads(wrapper(path="inside.txt"))
+        self.assertTrue(result["success"])
 
 
 @unittest.skipIf(importlib.util.find_spec("mcp") is None, "Optional mcp dependency is not installed")

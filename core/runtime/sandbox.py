@@ -19,7 +19,11 @@ class PathSandbox:
             resolved_target = self.resolve_within_root(target_path)
         except Exception:
             return False
-        return self.allowed_root in resolved_target.parents or resolved_target == self.allowed_root
+        try:
+            resolved_target.relative_to(self.allowed_root)
+        except ValueError:
+            return False
+        return True
 
     def violation_message(self, target_path: str) -> str:
         return (

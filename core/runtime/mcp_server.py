@@ -18,6 +18,7 @@ from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.tools.base import BaseTool
 
+from .sandbox import PathSandbox
 from .state import resolve_memory_paths
 from .tooling import build_runtime_tools
 
@@ -33,9 +34,10 @@ def create_mcp_server(*, workspace_path: str, db_path: str = "memory.db", vector
         embedder=HashingEmbedder(dimension=384),
     )
     mcp = fastmcp("Devenv Local Tool Deck")
+    sandbox = PathSandbox(workspace_path)
 
     for tool in build_runtime_tools(memory):
-        wrapper = _build_tool_wrapper(tool)
+        wrapper = _build_tool_wrapper(tool, sandbox)
         mcp.add_tool(
             wrapper,
             name=tool.name,
@@ -46,7 +48,7 @@ def create_mcp_server(*, workspace_path: str, db_path: str = "memory.db", vector
     return mcp
 
 
-def _build_tool_wrapper(tool: BaseTool):
+def _build_tool_wrapper(tool: BaseTool, sandbox: PathSandbox | None = None):
     schema = tool.input_schema()
     properties = schema.get("properties", {})
     required = set(schema.get("required", ()))
@@ -69,6 +71,17 @@ def _build_tool_wrapper(tool: BaseTool):
     signature = inspect.Signature(parameters=parameters, return_annotation=str)
 
     def wrapper(**kwargs) -> str:
+        if sandbox is not None:
+            unsafe_argument = sandbox.find_unsafe_argument(kwargs)
+            if unsafe_argument is not None:
+                _key, value = unsafe_argument
+                payload = {
+                    "success": False,
+                    "output": sandbox.violation_message(value),
+                    "data": {"status": "sandbox_violation", "argument": _key, "path": str(value)},
+                }
+                return json.dumps(payload, sort_keys=True)
+            kwargs = sandbox.normalize_arguments(kwargs)
         result = tool.execute(**kwargs)
         payload = {
             "success": result.success,
