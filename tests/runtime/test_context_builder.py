@@ -1977,5 +1977,29 @@ class IndexStrongMatchGateTest(unittest.TestCase):
         self.assertTrue(matches)
 
 
+class MetaSessionFilterTest(unittest.TestCase):
+    def test_meta_titled_sessions_are_filtered(self) -> None:
+        from core.runtime.context_builder import _filter_meta_sessions
+
+        meta = ExternalSessionSummary(
+            provider="opencode",
+            session_id="meta-1",
+            title="Retrieval engine branch changes review",
+            workspace_path=None,
+            updated_at="",
+        )
+        normal = ExternalSessionSummary(
+            provider="opencode",
+            session_id="work-1",
+            title="Fix login redirect bug",
+            workspace_path=None,
+            updated_at="",
+        )
+
+        kept = _filter_meta_sessions([meta, normal])
+
+        self.assertEqual([summary.session_id for summary in kept], ["work-1"])
+
+
 if __name__ == "__main__":
     unittest.main()

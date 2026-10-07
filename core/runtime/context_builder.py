@@ -328,7 +328,7 @@ class ExternalSessionIndex:
             if provider is None:
                 continue
             try:
-                summaries = provider.list_sessions()
+                summaries = _filter_meta_sessions(provider.list_sessions())
             except Exception:
                 summaries = []
             summaries_by_provider[provider_name] = summaries
@@ -1798,6 +1798,7 @@ class ContextBuilderService:
         if not summaries:
             return []
         summaries = _filter_excluded_tag_summaries(summaries)
+        summaries = _filter_meta_sessions(summaries)
 
         variants = query_variants or _build_query_variants(task)
         prompt_tokens = set().union(*(_tokenize(variant) for variant in variants))
@@ -3434,6 +3435,35 @@ def _filter_excluded_tag_summaries(
         for summary in summaries
         if not ({tag.lower() for tag in summary.tags} & excluded)
     ]
+
+
+# Titles of meta/review/benchmark sessions that must never be surfaced as
+# evidence: they are harness/analysis artifacts, not user work. Mirrors the
+# benchmark filter in scripts/retrieval_eval.py so the product path agrees with
+# the evaluation harness.
+META_SESSION_TITLE_PATTERNS = (
+    "Retrieval engine branch changes review",
+    "Explore retrieval engine code",
+    "Mine ",
+    "sessions (@explore subagent)",
+    "Devenv: devenv",
+    "OpenCode as reasoning layer",
+)
+
+
+def _is_meta_session_summary(summary: ExternalSessionSummary) -> bool:
+    title = str(getattr(summary, "title", "") or "")
+    if not title:
+        return False
+    return any(pattern in title for pattern in META_SESSION_TITLE_PATTERNS)
+
+
+def _filter_meta_sessions(
+    summaries: list[ExternalSessionSummary],
+) -> list[ExternalSessionSummary]:
+    """Drop meta/review/benchmark sessions from retrieval candidates."""
+
+    return [summary for summary in summaries if not _is_meta_session_summary(summary)]
 
 
 def _opencode_auto_tags(row: Any) -> tuple[str, ...]:
