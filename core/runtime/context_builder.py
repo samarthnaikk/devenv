@@ -2001,14 +2001,16 @@ class ContextBuilderService:
                 + min(best_overlap * 2, 8)
                 + int(round(semantic_score * 10))
             )
+            # Require a signal that is robust to phrasing: identity/workspace
+            # match, a distinctive token from the full task, strong semantic
+            # similarity, or a strong whole-message overlap. Counting generic
+            # tokens (or fragment tokens) makes recall wobble between paraphrases.
             strong_match = (
                 identity_exact_hits >= 1
                 or identity_token_hits >= 1
                 or identity_focus_hits >= 1
                 or distinctive_hits >= 1
-                or exact_hits >= 2
                 or best_overlap >= 2
-                or token_hits >= 2
                 or semantic_strong
             )
             scored.append(
