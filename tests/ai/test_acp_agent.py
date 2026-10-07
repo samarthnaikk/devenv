@@ -130,6 +130,19 @@ class ACPAgentSessionTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(any(isinstance(update, AgentMessageChunk) for update in updates))
 
+    async def test_model_is_recorded_and_session_starts(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            session = ACPAgentSession(
+                _fake_spec(_FAKE_AGENT),
+                tempdir,
+                model="opencode-go/longcat-2.5-preview-free",
+            )
+            self.assertEqual(session.model, "opencode-go/longcat-2.5-preview-free")
+
+            info = await session.start()
+            self.assertEqual(info.session_id, "sess-1")
+            await session.close()
+
     async def test_permission_handler_receives_tool_call(self) -> None:
         seen: dict[str, object] = {}
 

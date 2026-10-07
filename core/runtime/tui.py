@@ -1415,7 +1415,11 @@ class DevenvTUIController:
         spec = self.resolve_agent(name)
         if spec is None:
             raise ValueError(f"Unknown AI agent `{name}`.")
-        return ACPAgentSession(spec, self.config.workspace_path)
+        return ACPAgentSession(
+            spec,
+            self.config.workspace_path,
+            model=getattr(self.kernel.ai, "model", None),
+        )
 
     def remember_agent(self, name: str) -> None:
         cleaned = str(name or "").strip().lower()

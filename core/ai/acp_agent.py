@@ -89,10 +89,14 @@ class ACPAgentSession:
         workspace_path: str,
         *,
         permission_handler: PermissionHandler | None = None,
+        model: str | None = None,
     ) -> None:
         self.spec = spec
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
         self.permission_handler = permission_handler
+        # The Devenv-selected model, so the ACP agent answers with the same model
+        # as the rest of the app instead of OpenCode's own persisted default.
+        self.model = str(model or os.getenv("OPENCODE_MODEL", "") or "").strip()
         self.events: asyncio.Queue[Any] = asyncio.Queue()
         self.info: AgentSessionInfo | None = None
 
@@ -120,6 +124,10 @@ class ACPAgentSession:
         env = os.environ.copy()
         for key, value in self.spec.env.items():
             env.setdefault(key, value)
+        if self.model:
+            # Best-effort: some ACP agents honor the model through the env even
+            # though it is not part of the ACP schema.
+            env.setdefault("OPENCODE_MODEL", self.model)
 
         try:
             self._process = await asyncio.create_subprocess_exec(
@@ -163,9 +171,11 @@ class ACPAgentSession:
             )
             auth_methods = list(getattr(initialize, "auth_methods", []) or [])
             await self._authenticate_if_possible(auth_methods)
+            session_meta = {"model": self.model} if self.model else None
             session = await self._connection.new_session(
                 cwd=self.workspace_path,
                 mcp_servers=[],
+                **({"_meta": session_meta} if session_meta else {}),
             )
         except Exception as exc:
             detail = self._stderr_tail()
