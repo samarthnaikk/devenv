@@ -1921,5 +1921,61 @@ class ContextBuilderServiceTest(unittest.TestCase):
         self.assertLessEqual(len(windowed), 2010)
 
 
+class IndexStrongMatchGateTest(unittest.TestCase):
+    def _index_with_chunk(self, *, workspace: str, chunk_text: str):
+        from core.runtime.context_builder import ExternalSessionChunk, ExternalSessionIndex
+
+        index = ExternalSessionIndex({}, performance_mode="medium")
+        summary = ExternalSessionSummary(
+            provider="codex",
+            session_id="s1",
+            title="unrelated title",
+            workspace_path=workspace,
+            updated_at="2026-01-01T00:00:00",
+        )
+        chunk = ExternalSessionChunk(
+            provider="codex",
+            session_id="s1",
+            title="unrelated title",
+            workspace_path=workspace,
+            role="assistant",
+            source="codex",
+            text=chunk_text,
+        )
+        index._summaries_by_provider = {"codex": {"s1": summary}}
+        index._chunks_by_provider = {"codex": {"s1": [chunk]}}
+        return index
+
+    def test_workspace_bonus_alone_is_not_a_strong_match(self) -> None:
+        index = self._index_with_chunk(
+            workspace="/tmp/proj", chunk_text="starter template for the frontend"
+        )
+        matches, _metadata = index.query(
+            "grandmother sourdough starter", provider_name="codex", workspace_path="/tmp/proj"
+        )
+        self.assertEqual(matches, [])
+
+    def test_content_overlap_is_a_strong_match(self) -> None:
+        index = self._index_with_chunk(
+            workspace="/tmp/proj",
+            chunk_text="the auth middleware uses session cookies for login",
+        )
+        matches, _metadata = index.query(
+            "auth middleware login cookies", provider_name="codex", workspace_path="/tmp/proj"
+        )
+        self.assertTrue(matches)
+
+    def test_single_capitalized_proper_noun_is_a_strong_match(self) -> None:
+        index = self._index_with_chunk(
+            workspace="/tmp/proj", chunk_text="Project Chimera needed a scraper retry path."
+        )
+        matches, _metadata = index.query(
+            "Do you know about Project Chimera?",
+            provider_name="codex",
+            workspace_path="/tmp/proj",
+        )
+        self.assertTrue(matches)
+
+
 if __name__ == "__main__":
     unittest.main()

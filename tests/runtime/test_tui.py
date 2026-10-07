@@ -656,7 +656,9 @@ class DevenvTUITest(unittest.TestCase):
         self.assertEqual(answer, "**Answer**\n- formatted from evidence")
         self.assertEqual(controller.last_answer_text, answer)
 
-    def test_run_answer_returns_none_without_evidence(self) -> None:
+    def test_run_answer_abstains_without_evidence(self) -> None:
+        from core.runtime.tui import INSUFFICIENT_EVIDENCE_MESSAGE
+
         with tempfile.TemporaryDirectory() as tempdir:
             controller = DevenvTUIController(
                 RunConfig(workspace_path=tempdir),
@@ -668,7 +670,8 @@ class DevenvTUITest(unittest.TestCase):
 
             answer = controller.run_answer("anything?")
 
-        self.assertIsNone(answer)
+        self.assertEqual(answer, INSUFFICIENT_EVIDENCE_MESSAGE)
+        self.assertEqual(controller.last_answer_text, INSUFFICIENT_EVIDENCE_MESSAGE)
 
     def test_run_answer_from_outcome_reuses_outcome(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

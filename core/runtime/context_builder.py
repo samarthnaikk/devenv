@@ -230,6 +230,7 @@ class ExternalSessionIndex:
         compound_tokens = tuple(token for token in tokens if not _is_ascii_token(token))
         issue_terms_present = bool(tokens & {"bug", "bugs", "fix", "fixed", "review", "reviews"})
         focus_tokens = _focus_tokens(task)
+        distinctive_tokens = _distinctive_tokens(task)
         workspace_name = Path(workspace_path).name.lower()
         workspace_path_lower = workspace_path.lower()
         providers = [provider_name] if provider_name else sorted(self._chunks_by_provider)
@@ -258,11 +259,14 @@ class ExternalSessionIndex:
                 identity_exact_hits = _exact_prompt_hits(tokens, identity_haystacks)
                 identity_focus_hits = sum(1 for token in focus_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
                 session_workspace = (summary.workspace_path or "").lower()
-                top_chunks: list[tuple[int, ExternalSessionChunk, int, int]] = []
+                top_chunks: list[tuple[int, ExternalSessionChunk, int, int, int, int]] = []
                 for chunk in chunks:
                     haystack = chunk.search_text
                     token_hits, exact_hits = _chunk_token_hits(
                         simple_tokens, compound_tokens, chunk.search_words, haystack
+                    )
+                    distinctive_hits = sum(
+                        1 for token in distinctive_tokens if _token_matches(token, haystack)
                     )
                     issue_bonus = 0
                     if issue_terms_present:
@@ -273,16 +277,31 @@ class ExternalSessionIndex:
                         workspace_bonus += 3
                     elif workspace_name and workspace_name in session_workspace:
                         workspace_bonus += 2
-                    score = (exact_hits * 8) + (token_hits * 4) + issue_bonus + workspace_bonus
+                    content_score = (exact_hits * 8) + (token_hits * 4) + issue_bonus
                     if identity_token_hits or identity_exact_hits:
-                        score += (identity_exact_hits * 8) + (identity_token_hits * 4)
+                        content_score += (identity_exact_hits * 8) + (identity_token_hits * 4)
+                    score = content_score + workspace_bonus
                     if score > 0:
-                        top_chunks.append((score, chunk, token_hits, exact_hits))
+                        top_chunks.append(
+                            (score, chunk, token_hits, exact_hits, content_score, distinctive_hits)
+                        )
                 if not top_chunks:
                     continue
                 top_chunks.sort(key=lambda item: item[0], reverse=True)
-                best_score = top_chunks[0][0] + (identity_focus_hits * 4)
-                strong_match = best_score >= MIN_SESSION_CONTENT_SCORE or identity_exact_hits > 0 or identity_focus_hits > 0
+                best = top_chunks[0]
+                best_score = best[0] + (identity_focus_hits * 4)
+                # A workspace-location bonus, or a single generic word, must never
+                # on its own promote an unrelated session to a "strong" match: an
+                # unanswerable query should abstain rather than surface weak
+                # evidence. Require an identity signal, a distinctive (long or
+                # identifier) token, or >= 2 matched content tokens.
+                strong_match = (
+                    identity_exact_hits > 0
+                    or identity_token_hits > 0
+                    or identity_focus_hits > 0
+                    or best[5] > 0
+                    or best[2] >= 2
+                )
                 if not strong_match:
                     continue
                 scored_sessions.append(
@@ -292,7 +311,7 @@ class ExternalSessionIndex:
                         "strong_match": strong_match,
                         "identity_token_hits": identity_token_hits,
                         "identity_focus_hits": identity_focus_hits,
-                        "token_hits": top_chunks[0][2],
+                        "token_hits": best[2],
                         "chunks": [item[1] for item in top_chunks[:3]],
                     }
                 )
@@ -1785,6 +1804,7 @@ class ContextBuilderService:
         if not prompt_tokens:
             return []
         focus_tokens = set().union(*(_focus_tokens(variant) for variant in variants))
+        distinctive_focus_tokens = _distinctive_tokens(task)
         semantic_hits = self._semantic_session_hits(provider, summaries, variants)
         semantic_scores = {session_id: hit["score"] for session_id, hit in semantic_hits.items()}
         semantic_ranking = sorted(semantic_scores, key=lambda session_id: semantic_scores[session_id], reverse=True)
@@ -1914,6 +1934,11 @@ class ContextBuilderService:
             identity_token_hits = sum(1 for token in prompt_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
             identity_exact_hits = _exact_prompt_hits(prompt_tokens, identity_haystacks)
             identity_focus_hits = sum(1 for token in focus_tokens if any(_token_matches(token, haystack) for haystack in identity_haystacks))
+            distinctive_hits = sum(
+                1
+                for token in distinctive_focus_tokens
+                if any(_token_matches(token, haystack) for haystack in haystacks)
+            )
             best_overlap = max(_best_message_overlap(_tokenize(variant), detail) for variant in variants)
             semantic_score = semantic_scores.get(summary.session_id, 0.0)
             semantic_strong = semantic_score >= SEMANTIC_STRONG_THRESHOLD
@@ -1951,7 +1976,9 @@ class ContextBuilderService:
             strong_match = (
                 identity_exact_hits >= 1
                 or identity_token_hits >= 1
-                or exact_hits >= 1
+                or identity_focus_hits >= 1
+                or distinctive_hits >= 1
+                or exact_hits >= 2
                 or best_overlap >= 2
                 or token_hits >= 2
                 or semantic_strong
@@ -1965,6 +1992,7 @@ class ContextBuilderService:
                     "strong_match": strong_match,
                     "exact_hits": exact_hits,
                     "token_hits": token_hits,
+                    "distinctive_hits": distinctive_hits,
                     "identity_exact_hits": identity_exact_hits,
                     "identity_token_hits": identity_token_hits,
                     "identity_focus_hits": identity_focus_hits,
@@ -3142,6 +3170,47 @@ def _focus_tokens(text: str) -> set[str]:
         if Path(match).name and Path(match).name.lower() not in FOCUS_CONTEXT_TOKENS
     }
     return tokens | path_tokens
+
+
+_DISTINCTIVE_GENERIC_WORDS = {
+    "project",
+    "session",
+    "sessions",
+    "memory",
+    "workspace",
+    "codebase",
+    "repository",
+    "repo",
+    "please",
+    "could",
+    "would",
+    "should",
+    "might",
+    "there",
+    "their",
+    "these",
+    "those",
+    "about",
+    "devenv",
+}
+
+
+def _distinctive_tokens(text: str) -> set[str]:
+    """Tokens that are unlikely to match a session by coincidence.
+
+    Identifiers (non-alphabetic), long words, and capitalized proper nouns carry
+    far more signal than a short generic word, so a lone distinctive hit is
+    meaningful while a lone generic hit is not.
+    """
+
+    distinctive = {
+        token for token in _focus_tokens(text) if (not token.isalpha()) or len(token) >= 8
+    }
+    for word in re.findall(r"\b[A-Z][a-z]{2,}\b", text):
+        lowered = word.lower()
+        if lowered not in _DISTINCTIVE_GENERIC_WORDS:
+            distinctive.add(lowered)
+    return distinctive
 
 
 def _is_cleanup_schema_task(task: str) -> bool:

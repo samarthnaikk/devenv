@@ -147,6 +147,11 @@ DEFAULT_ASSISTANT_MODEL = "opencode-go/longcat-2.5-preview-free"
 DEFAULT_TUI_SELECTOR_MODEL = DEFAULT_SELECTOR_MODEL
 DEFAULT_TUI_BACKEND = "opencode"
 DEFAULT_SELECTOR_ENABLED = True
+INSUFFICIENT_EVIDENCE_MESSAGE = (
+    "Insufficient evidence: no prior session matched this query closely enough "
+    "to answer reliably, so I won't guess. Try rephrasing or granting access to "
+    "more session sources."
+)
 LOG_LEVEL_COLORS = {
     logging.DEBUG: TEXT_MUTED,
     logging.INFO: TEAL,
@@ -1830,7 +1835,10 @@ class DevenvTUIController:
         if not isinstance(evidence, dict):
             evidence = _evidence_bundle_from_outcome(outcome)
         if not (evidence.get("lines") or []):
-            return None
+            # No strong prior-session match: abstain explicitly instead of
+            # presenting weak/unrelated sessions as if they were evidence.
+            self.last_answer_text = INSUFFICIENT_EVIDENCE_MESSAGE
+            return INSUFFICIENT_EVIDENCE_MESSAGE
 
         formatted = self._format_multi_session(query, evidence)
         if not formatted:
@@ -2785,17 +2793,20 @@ if TEXTUAL_AVAILABLE:
                 self._mount_result_widget(
                     ResultCard(answer, mode="markdown", open_links=False)
                 )
-                sessions = ", ".join(outcome.session_ids) or "none"
-                self._mount_result_widget(
-                    EvidenceCard(
-                        "\n".join(_format_retrieval_result_lines_plain(outcome)) or "(empty)",
-                        title=f"Evidence · {len(outcome.session_ids)} session(s) · {sessions}",
+                if answer == INSUFFICIENT_EVIDENCE_MESSAGE:
+                    self._activity("abstained: insufficient evidence", logging.WARNING)
+                else:
+                    sessions = ", ".join(outcome.session_ids) or "none"
+                    self._mount_result_widget(
+                        EvidenceCard(
+                            "\n".join(_format_retrieval_result_lines_plain(outcome)) or "(empty)",
+                            title=f"Evidence · {len(outcome.session_ids)} session(s) · {sessions}",
+                        )
                     )
-                )
-                self._activity(
-                    f"answered from {len(outcome.session_ids)} session(s) in {outcome.elapsed_ms} ms",
-                    logging.INFO if outcome.session_ids else logging.WARNING,
-                )
+                    self._activity(
+                        f"answered from {len(outcome.session_ids)} session(s) in {outcome.elapsed_ms} ms",
+                        logging.INFO if outcome.session_ids else logging.WARNING,
+                    )
             else:
                 self._mount_plain_card(_format_retrieval_result_lines_plain(outcome))
                 self._activity(
