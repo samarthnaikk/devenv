@@ -4,6 +4,8 @@ import argparse
 import inspect
 import json
 import logging
+import os
+import secrets
 from pathlib import Path
 from typing import Annotated, Any, Literal, get_args
 
@@ -25,7 +27,16 @@ from .tooling import build_runtime_tools
 logger = logging.getLogger(__name__)
 
 
-def create_mcp_server(*, workspace_path: str, db_path: str = "memory.db", vector_dir: str = "vectors"):
+def create_mcp_server(
+    *,
+    workspace_path: str,
+    db_path: str = "memory.db",
+    vector_dir: str = "vectors",
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    streamable_http_path: str = "/mcp",
+    auth_token: str | None = None,
+):
     fastmcp = _load_fastmcp()
     resolved_db_path, resolved_vector_dir = resolve_memory_paths(db_path, vector_dir)
     memory = MemoryEngine(
@@ -33,7 +44,15 @@ def create_mcp_server(*, workspace_path: str, db_path: str = "memory.db", vector
         vector_dir=resolved_vector_dir,
         embedder=HashingEmbedder(dimension=384),
     )
-    mcp = fastmcp("Devenv Local Tool Deck")
+    server_kwargs: dict[str, Any] = {
+        "host": host,
+        "port": port,
+        "streamable_http_path": streamable_http_path,
+    }
+    if auth_token:
+        server_kwargs["token_verifier"] = _build_static_token_verifier(auth_token)
+        server_kwargs["auth"] = _build_auth_settings(host, port)
+    mcp = fastmcp("Devenv Local Tool Deck", **server_kwargs)
     sandbox = PathSandbox(workspace_path)
 
     for tool in build_runtime_tools(memory):
@@ -46,6 +65,27 @@ def create_mcp_server(*, workspace_path: str, db_path: str = "memory.db", vector
         )
 
     return mcp
+
+
+def _build_static_token_verifier(token: str):
+    """Build a bearer-token verifier that accepts a single static token."""
+
+    from mcp.server.auth.provider import AccessToken
+
+    class _StaticTokenVerifier:
+        async def verify_token(self, candidate: str) -> Any:
+            if candidate and secrets.compare_digest(candidate, token):
+                return AccessToken(token=candidate, client_id="devenv-mcp", scopes=[])
+            return None
+
+    return _StaticTokenVerifier()
+
+
+def _build_auth_settings(host: str, port: int):
+    from mcp.server.auth.settings import AuthSettings
+
+    base_url = f"http://{host}:{port}"
+    return AuthSettings(issuer_url=base_url, resource_server_url=base_url)
 
 
 def _build_tool_wrapper(tool: BaseTool, sandbox: PathSandbox | None = None):
@@ -146,6 +186,10 @@ def main() -> int:
         workspace_path=resolved_workspace,
         db_path=args.db_path,
         vector_dir=args.vector_dir,
+        host=args.host,
+        port=args.port,
+        streamable_http_path=args.path,
+        auth_token=os.getenv("DEVENV_MCP_AUTH_TOKEN") or None,
     )
     logger.info("Starting Devenv MCP server for workspace=%s", args.workspace)
     _run_server(

@@ -12,7 +12,13 @@ from typing import get_args
 from unittest.mock import patch
 
 from core.runtime.mcp_client import MCPToolClient
-from core.runtime.mcp_server import _annotation_for_property, _build_tool_wrapper
+from core.runtime.mcp_server import (
+    _annotation_for_property,
+    _build_auth_settings,
+    _build_static_token_verifier,
+    _build_tool_wrapper,
+    create_mcp_server,
+)
 from core.runtime.sandbox import PathSandbox
 from core.runtime.tooling import build_runtime_tools
 from core.tools import ListDirectoryTool, ReadFileTool, WriteFileTool
@@ -90,6 +96,70 @@ class MCPSandboxTest(unittest.TestCase):
         wrapper = _build_tool_wrapper(ReadFileTool(), self.sandbox)
         result = json.loads(wrapper(path="inside.txt"))
         self.assertTrue(result["success"])
+
+
+@unittest.skipIf(importlib.util.find_spec("mcp") is None, "Optional mcp dependency is not installed")
+class MCPHttpConfigTest(unittest.TestCase):
+    def test_auth_settings_use_host_and_port(self) -> None:
+        settings = _build_auth_settings("127.0.0.1", 8765)
+        self.assertEqual(str(settings.issuer_url).rstrip("/"), "http://127.0.0.1:8765")
+        self.assertEqual(str(settings.resource_server_url).rstrip("/"), "http://127.0.0.1:8765")
+
+    def test_static_token_verifier_accepts_and_rejects(self) -> None:
+        import asyncio
+
+        verifier = _build_static_token_verifier("s3cret")
+        self.assertIsNotNone(asyncio.run(verifier.verify_token("s3cret")))
+        self.assertIsNone(asyncio.run(verifier.verify_token("wrong")))
+
+    def test_create_mcp_server_forwards_http_settings(self) -> None:
+        captured: dict = {}
+
+        class FakeMCP:
+            def __init__(self, name, **kwargs) -> None:
+                captured.update(kwargs)
+
+            def add_tool(self, *args, **kwargs) -> None:
+                return None
+
+        with patch("core.runtime.mcp_server._load_fastmcp", return_value=FakeMCP), patch(
+            "core.runtime.mcp_server.MemoryEngine"
+        ), patch(
+            "core.runtime.mcp_server.resolve_memory_paths", return_value=("memory.db", "vectors")
+        ):
+            create_mcp_server(
+                workspace_path="/tmp/ws",
+                host="127.0.0.1",
+                port=8765,
+                streamable_http_path="/custom",
+                auth_token="tok",
+            )
+
+        self.assertEqual(captured["host"], "127.0.0.1")
+        self.assertEqual(captured["port"], 8765)
+        self.assertEqual(captured["streamable_http_path"], "/custom")
+        self.assertIn("token_verifier", captured)
+        self.assertIn("auth", captured)
+
+    def test_create_mcp_server_omits_auth_without_token(self) -> None:
+        captured: dict = {}
+
+        class FakeMCP:
+            def __init__(self, name, **kwargs) -> None:
+                captured.update(kwargs)
+
+            def add_tool(self, *args, **kwargs) -> None:
+                return None
+
+        with patch("core.runtime.mcp_server._load_fastmcp", return_value=FakeMCP), patch(
+            "core.runtime.mcp_server.MemoryEngine"
+        ), patch(
+            "core.runtime.mcp_server.resolve_memory_paths", return_value=("memory.db", "vectors")
+        ):
+            create_mcp_server(workspace_path="/tmp/ws")
+
+        self.assertNotIn("token_verifier", captured)
+        self.assertNotIn("auth", captured)
 
 
 @unittest.skipIf(importlib.util.find_spec("mcp") is None, "Optional mcp dependency is not installed")
