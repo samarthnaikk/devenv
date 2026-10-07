@@ -3255,9 +3255,15 @@ if TEXTUAL_AVAILABLE:
                 info.update(f"[{TEXT_MUTED}]{message}[/]")
 
 
-def run_tui(config: RunConfig, *, inline: bool = False, mouse: bool = True) -> int:
+def run_tui(
+    config: RunConfig,
+    *,
+    inline: bool = False,
+    mouse: bool = True,
+    plain: bool = False,
+) -> int:
     controller = DevenvTUIController(config)
-    if TEXTUAL_AVAILABLE:
+    if TEXTUAL_AVAILABLE and not plain:
         try:
             app = DevenvTextualApp(controller)
             run_kwargs: dict[str, Any] = {"mouse": mouse}
@@ -3324,6 +3330,11 @@ def main() -> int:
         help="Run inline and preserve native terminal scrollback instead of the alternate screen.",
     )
     parser.add_argument("--no-mouse", action="store_true", help="Disable mouse support.")
+    parser.add_argument(
+        "--plain",
+        action="store_true",
+        help="Run the non-Textual plain-input controller loop instead of the full TUI.",
+    )
     args = parser.parse_args()
 
     resolved_workspace = str(Path(args.workspace).expanduser().resolve())
@@ -3335,7 +3346,12 @@ def main() -> int:
         max_consecutive_tools=args.max_consecutive_tools,
         performance_mode=args.performance_mode,
     )
-    return run_tui(config, inline=args.no_alt_screen, mouse=not args.no_mouse)
+    return run_tui(
+        config,
+        inline=args.no_alt_screen,
+        mouse=not args.no_mouse,
+        plain=args.plain,
+    )
 
 
 if __name__ == "__main__":

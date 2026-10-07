@@ -797,6 +797,18 @@ class DevenvTUITest(unittest.TestCase):
             verdict = controller.run_verification()
         self.assertIn("unavailable", verdict.lower())
 
+    def test_run_tui_plain_mode_uses_plain_loop(self) -> None:
+        from core.runtime import tui as tui_mod
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            config = RunConfig(workspace_path=tempdir)
+            with mock.patch.object(tui_mod, "render_banner"), mock.patch(
+                "builtins.input", side_effect=EOFError
+            ):
+                code = tui_mod.run_tui(config, plain=True)
+
+        self.assertEqual(code, 0)
+
     def test_ask_command_requires_query(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             controller = DevenvTUIController(
