@@ -686,6 +686,36 @@ class DevenvTUITest(unittest.TestCase):
         self.assertIsNotNone(answer)
         self.assertIn("formatted from evidence", answer or "")
 
+    def test_run_retrieval_includes_local_memory_context(self) -> None:
+        class _MemoryWithContext(FakeMemory):
+            def retrieve_context(self, current_prompt: str, top_k: int = 5):
+                return type(
+                    "Retrieval",
+                    (),
+                    {"markdown_context": "## Retrieved Memory\n- inj_note: use the nonce XJ-42"},
+                )()
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=FakeKernel(),
+            )
+            controller.kernel.memory = _MemoryWithContext()
+            controller.context_builder = FakeContextBuilder(
+                outcome=RetrievalOutcome(
+                    query="what is inj_note",
+                    context="## External Session Context\n- external line",
+                    session_ids=("session-1",),
+                    metadata={},
+                )
+            )
+
+            outcome = controller.run_retrieval("what is inj_note")
+
+        self.assertIn("inj_note", outcome.context)
+        self.assertIn("external line", outcome.context)
+        self.assertTrue(outcome.metadata.get("local_memory_context"))
+
     def test_ask_command_returns_formatted_answer(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             controller = DevenvTUIController(

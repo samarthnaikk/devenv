@@ -1716,6 +1716,19 @@ class DevenvTUIController:
                 filtered.append(entry)
         return filtered or entries
 
+    def _local_memory_context(self, query: str) -> str:
+        """Return the local (non-external) memory context for a query."""
+
+        memory = getattr(self.kernel, "memory", None)
+        if memory is None or not hasattr(memory, "retrieve_context"):
+            return ""
+        try:
+            result = memory.retrieve_context(query)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("Local memory retrieval failed: error=%s", exc)
+            return ""
+        return str(getattr(result, "markdown_context", "") or "")
+
     def run_retrieval(self, query: str, *, max_lines: int = 12) -> RetrievalOutcome:
         self._apply_runtime_preferences()
         try:
@@ -1753,6 +1766,17 @@ class DevenvTUIController:
                 query,
                 max_lines=max_lines,
             )
+        # Cross-surface parity: the kernel/smoke path answers from local memory
+        # *and* external sessions. Fold the local-memory lane in here too so TUI
+        # /ask cannot contradict smoke/MCP when the answer lives in local memory.
+        local_context = self._local_memory_context(query)
+        if local_context.strip():
+            context = (
+                f"{local_context.rstrip()}\n\n{context}".strip()
+                if context.strip()
+                else local_context
+            )
+            metadata = {**metadata, "local_memory_context": True}
         if card_context and not context.strip():
             context = card_context
             metadata = {**metadata, **card_metadata}

@@ -2033,7 +2033,7 @@ class ContextBuilderService:
                 selected = issue_rich
         if focus_tokens and any(item["identity_focus_hits"] > 0 for item in selected):
             selected = [item for item in selected if item["identity_focus_hits"] > 0]
-        return selected[:3]
+        return selected[:MAX_PROVIDER_SESSION_MATCHES]
 
     def _selection_metadata(self, selected_matches: list[dict[str, Any]]) -> dict[str, Any]:
         if not selected_matches:
