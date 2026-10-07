@@ -2945,7 +2945,6 @@ if TEXTUAL_AVAILABLE:
             self.query_one("#composer", Input).focus()
 
         @work(thread=True)
-        @work(thread=True)
         def _run_tool_answer(self, query: str) -> None:
             try:
                 result = self.controller.run_tool_answer(query)
@@ -2965,6 +2964,7 @@ if TEXTUAL_AVAILABLE:
             self._refresh_header()
             self.query_one("#composer", Input).focus()
 
+        @work(thread=True)
         def _run_plan(self, query: str) -> None:
             try:
                 result = self.controller.run_plan(query)
