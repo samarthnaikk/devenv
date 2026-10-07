@@ -1105,6 +1105,28 @@ class ContextBuilderService:
             merged.append(replace(summary, unified_session_id=unified_id, tags=tuple(combined)))
         return merged
 
+    def _excluded_session_ids(self, provider_name: str, session_ids: list[str]) -> set[str]:
+        """Return the subset of session ids carrying an env-excluded user tag."""
+
+        excluded = _excluded_tags_from_env()
+        if not excluded or not session_ids:
+            return set()
+        store = self._get_session_embedding_store()
+        if store is None:
+            return set()
+        unified_ids = [
+            _unified_session_id(provider_name, session_id) for session_id in session_ids
+        ]
+        try:
+            persisted = store.tags_for_sessions(unified_ids)
+        except Exception:  # pragma: no cover - defensive
+            return set()
+        return {
+            session_id
+            for session_id, unified_id in zip(session_ids, unified_ids, strict=False)
+            if {str(tag).lower() for tag in persisted.get(unified_id, [])} & excluded
+        }
+
     def set_session_tag(self, unified_session_id: str, tag: str) -> None:
         store = self._get_session_embedding_store()
         if store is None:
@@ -1465,6 +1487,11 @@ class ContextBuilderService:
                         existing_chunks.setdefault(chunk.text, chunk)
                 existing["chunks"] = list(existing_chunks.values())[:3]
 
+        # Persisted user tags live only in the tag store, not in the indexed
+        # provider summaries, so apply env-excluded-tag filtering here too.
+        for excluded_id in self._excluded_session_ids(provider_name, list(aggregated)):
+            aggregated.pop(excluded_id, None)
+
         ranked = sorted(
             aggregated.values(),
             key=lambda item: (
@@ -1794,7 +1821,7 @@ class ContextBuilderService:
         *,
         query_variants: tuple[str, ...] | None = None,
     ) -> list[dict[str, Any]]:
-        summaries = provider.list_sessions()
+        summaries = self._with_tags(provider.list_sessions())
         if not summaries:
             return []
         summaries = _filter_excluded_tag_summaries(summaries)

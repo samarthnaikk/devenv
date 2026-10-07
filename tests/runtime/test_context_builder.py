@@ -1977,6 +1977,47 @@ class IndexStrongMatchGateTest(unittest.TestCase):
         self.assertTrue(matches)
 
 
+class TagExclusionRetrievalTest(unittest.TestCase):
+    def test_excluded_user_tag_drops_session_from_retrieval(self) -> None:
+        from core.runtime.models import ExternalSessionDetail
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            store = SQLiteMemoryStore(str(workspace / "memory.db"))
+            store.add_session_tag("codex:s-tagged", "e2e-excl", source="user")
+            summary = ExternalSessionSummary(
+                provider="codex",
+                session_id="s-tagged",
+                title="Devenv invoke OpenCode live model call",
+                workspace_path=str(workspace),
+                updated_at="",
+            )
+
+            class _Provider:
+                name = "codex"
+
+                def list_sessions(self):
+                    return [summary]
+
+                def get_session(self, session_id: str):
+                    return ExternalSessionDetail(summary=summary, messages=[])
+
+            service = ContextBuilderService(
+                str(workspace),
+                memory=type("M", (), {"store": store})(),
+                provider_configs=(),
+            )
+            service.providers = {"codex": _Provider()}
+            service.set_runtime_allowed_providers({"codex"})
+
+            with mock.patch.dict(os.environ, {"DEVENV_EXCLUDE_TAGS": "e2e-excl"}):
+                matches = service._select_relevant_sessions(
+                    service.providers["codex"], "Devenv invoke OpenCode live model call"
+                )
+
+        self.assertEqual(matches, [])
+
+
 class MetaSessionFilterTest(unittest.TestCase):
     def test_meta_titled_sessions_are_filtered(self) -> None:
         from core.runtime.context_builder import _filter_meta_sessions
