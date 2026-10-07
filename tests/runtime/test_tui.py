@@ -728,6 +728,30 @@ class DevenvTUITest(unittest.TestCase):
 
         self.assertIn("formatted from evidence", result.message)
 
+    def test_prompt_requires_tool_detects_file_requests(self) -> None:
+        from core.runtime.tui import _prompt_requires_tool
+
+        self.assertTrue(_prompt_requires_tool("Read the file t14_probe.txt and tell me the secret"))
+        self.assertTrue(_prompt_requires_tool("run the tests"))
+        self.assertTrue(_prompt_requires_tool("show me the file src/app.py"))
+        self.assertFalse(_prompt_requires_tool("how does the retrieval engine work?"))
+        self.assertFalse(_prompt_requires_tool("what did we decide about auth?"))
+
+    def test_ask_command_routes_file_request_through_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            kernel = FakeKernel()
+            controller = DevenvTUIController(
+                RunConfig(workspace_path=tempdir),
+                kernel=kernel,
+            )
+            controller.context_builder = FakeContextBuilder(outcome=_sample_outcome())
+
+            result = controller.handle_command("/ask Read the file t14_probe.txt and tell me the secret")
+
+        self.assertTrue(kernel.execute_turn_calls)
+        self.assertEqual(kernel.execute_turn_calls[0][0], "Read the file t14_probe.txt and tell me the secret")
+        self.assertIn("stub response", result.message)
+
     def test_ask_command_requires_query(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             controller = DevenvTUIController(

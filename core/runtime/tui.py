@@ -377,6 +377,54 @@ def _retrieval_metrics(outcome: RetrievalOutcome) -> str:
     return "  ·  ".join(parts)
 
 
+_TOOL_INTENT_MARKERS = (
+    "read the file",
+    "read file",
+    "open the file",
+    "open file",
+    "cat the file",
+    "show me the file",
+    "show the contents",
+    "contents of the file",
+    "list the files",
+    "list files",
+    "list the directory",
+    "list directory",
+    "run the command",
+    "run the tests",
+    "execute the command",
+    "run shell",
+    "search the code",
+    "search the repo",
+    "find the file",
+    "locate the file",
+    "write a file",
+    "create a file",
+    "edit the file",
+    "delete the file",
+    "remove the file",
+)
+
+_FILE_REFERENCE_RE = re.compile(
+    r"[\w./-]+\.(?:py|txt|md|json|js|ts|tsx|toml|yaml|yml|cfg|ini|html|css)\b",
+    re.IGNORECASE,
+)
+_FILE_ACTION_RE = re.compile(r"\b(read|open|cat|inspect|show|view|print)\b", re.IGNORECASE)
+
+
+def _prompt_requires_tool(query: str) -> bool:
+    """True when a plain ask clearly needs a tool (file/shell) rather than recall.
+
+    Keeps the safe retrieve+format path for normal questions while routing
+    explicit file/shell requests through the tool-executing kernel turn.
+    """
+
+    lowered = query.lower()
+    if any(marker in lowered for marker in _TOOL_INTENT_MARKERS):
+        return True
+    return bool(_FILE_ACTION_RE.search(lowered) and _FILE_REFERENCE_RE.search(lowered))
+
+
 def _evidence_bundle_from_outcome(outcome: RetrievalOutcome) -> dict[str, Any]:
     """Build a formatter evidence bundle from a plain retrieval outcome.
 
@@ -750,7 +798,11 @@ class DevenvTUIController:
         if command in {"/ask", "/answer"}:
             if not args:
                 return TUICommandResult("Usage: /ask <query>")
-            answer = self.run_answer(" ".join(args))
+            query = " ".join(args)
+            if _prompt_requires_tool(query):
+                result = self.run_tool_answer(query)
+                return TUICommandResult(getattr(result, "final_response", "") or "(no answer)")
+            answer = self.run_answer(query)
             return TUICommandResult(answer or "No answer could be formed from retrieved evidence.")
         if command == "/plan":
             if not args:
@@ -1960,6 +2012,16 @@ class DevenvTUIController:
             incognito=self.config.incognito,
         )
 
+    def run_tool_answer(self, query: str) -> RuntimeTurnResult:
+        """Answer a request that needs tools (read/run/list/...) via the kernel.
+
+        Unlike :meth:`run_answer` (retrieve + format, no tools), this runs a full
+        kernel turn so tool calls execute and are audited with ``tool.call`` rows,
+        then feeds the result back into the answer.
+        """
+
+        return self.run_prompt(query, plan_only=False)
+
     def run_plan(self, query: str) -> RuntimeTurnResult:
         """Run a plan-only turn: produce a blueprint, never execute a checkpoint."""
 
@@ -2408,8 +2470,12 @@ if TEXTUAL_AVAILABLE:
                 self.notify("Solve mode is still in progress. Press F1 for retrieval.", severity="warning")
                 return
             self._set_busy(True, "Answering…")
-            self._activity(f"answering: {value} (retrieve + format, no tools)")
-            self._run_answer(value)
+            if _prompt_requires_tool(value):
+                self._activity(f"answering with tools: {value}")
+                self._run_tool_answer(value)
+            else:
+                self._activity(f"answering: {value} (retrieve + format, no tools)")
+                self._run_answer(value)
 
         def _dispatch_command(self, value: str) -> None:
             command_name = value.split()[0].lower()
@@ -2460,8 +2526,12 @@ if TEXTUAL_AVAILABLE:
                         self.notify("A retrieval is already running.", severity="warning")
                         return
                     self._set_busy(True, "Answering…")
-                    self._activity(f"answering: {query} (retrieve + format, no tools)")
-                    self._run_answer(query)
+                    if _prompt_requires_tool(query):
+                        self._activity(f"answering with tools: {query}")
+                        self._run_tool_answer(query)
+                    else:
+                        self._activity(f"answering: {query} (retrieve + format, no tools)")
+                        self._run_answer(query)
                     return
                 result = self.controller.handle_command(value)
                 if result.message:
@@ -2875,6 +2945,26 @@ if TEXTUAL_AVAILABLE:
             self.query_one("#composer", Input).focus()
 
         @work(thread=True)
+        @work(thread=True)
+        def _run_tool_answer(self, query: str) -> None:
+            try:
+                result = self.controller.run_tool_answer(query)
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self.call_from_thread(self._render_failure, str(exc))
+                return
+            self.call_from_thread(self._render_tool_answer, result)
+
+        def _render_tool_answer(self, result: RuntimeTurnResult) -> None:
+            text = getattr(result, "final_response", "") or ""
+            if text:
+                self._mount_markdown_card([text])
+            else:
+                self._mount_plain_card(["(no answer)"])
+            self._set_busy(False)
+            self._activity("answered with tools")
+            self._refresh_header()
+            self.query_one("#composer", Input).focus()
+
         def _run_plan(self, query: str) -> None:
             try:
                 result = self.controller.run_plan(query)
