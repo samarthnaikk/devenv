@@ -141,6 +141,33 @@ class MCPHttpConfigTest(unittest.TestCase):
         self.assertIn("token_verifier", captured)
         self.assertIn("auth", captured)
 
+    def test_create_mcp_server_wires_context_builder_into_tools(self) -> None:
+        captured: dict = {}
+
+        class FakeMCP:
+            def __init__(self, name, **kwargs) -> None:
+                return None
+
+            def add_tool(self, *args, **kwargs) -> None:
+                return None
+
+        def fake_build(memory, *, context_builder=None):
+            captured["context_builder"] = context_builder
+            return []
+
+        with patch("core.runtime.mcp_server._load_fastmcp", return_value=FakeMCP), patch(
+            "core.runtime.mcp_server.MemoryEngine"
+        ), patch(
+            "core.runtime.mcp_server.resolve_memory_paths", return_value=("memory.db", "vectors")
+        ), patch(
+            "core.runtime.mcp_server.build_runtime_tools", side_effect=fake_build
+        ), patch(
+            "core.runtime.mcp_server.ContextBuilderService"
+        ) as builder_cls:
+            create_mcp_server(workspace_path="/tmp/ws")
+
+        self.assertIs(captured["context_builder"], builder_cls.return_value)
+
     def test_create_mcp_server_omits_auth_without_token(self) -> None:
         captured: dict = {}
 

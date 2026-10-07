@@ -20,6 +20,7 @@ from core.memory import MemoryEngine
 from core.memory.embeddings import HashingEmbedder
 from core.tools.base import BaseTool
 
+from .context_builder import ContextBuilderService
 from .sandbox import PathSandbox
 from .state import resolve_memory_paths
 from .tooling import build_runtime_tools
@@ -54,8 +55,9 @@ def create_mcp_server(
         server_kwargs["auth"] = _build_auth_settings(host, port)
     mcp = fastmcp("Devenv Local Tool Deck", **server_kwargs)
     sandbox = PathSandbox(workspace_path)
+    context_builder = ContextBuilderService(workspace_path, memory=memory)
 
-    for tool in build_runtime_tools(memory):
+    for tool in build_runtime_tools(memory, context_builder=context_builder):
         wrapper = _build_tool_wrapper(tool, sandbox)
         mcp.add_tool(
             wrapper,
