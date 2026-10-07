@@ -4,6 +4,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import urllib.request
@@ -73,6 +74,7 @@ def inspect_setup(
         _build_optional_check("sentence_transformer_cache", _check_sentence_transformer_cache(warm_model_cache=warm_model_cache)),
         _build_optional_check("web_search_prerequisites", _check_web_search_prerequisites()),
         _build_optional_check("latex_pdf_toolchain", _check_latex_pdf_toolchain()),
+        _build_optional_check("env_example_drift", _check_env_example_drift(config.workspace_path)),
     )
     ready = all(check.status == "ready" for check in required_checks)
     summary = "Devenv setup is ready." if ready else "Devenv setup requires attention."
@@ -297,6 +299,54 @@ def _check_web_search_prerequisites() -> tuple[str, str]:
     if not has_urlopen:
         return "failed", "Python HTTP support is unavailable."
     return "ready", "Python HTTP stack is available for the web_search tool."
+
+
+_ENV_USAGE_RE = re.compile(
+    r"""(?:getenv|environ\.get|environ\[)\s*[\(\[]\s*["']([A-Za-z_][A-Za-z0-9_]*)["']"""
+)
+
+
+def _documented_env_keys(example_path: Path) -> list[str]:
+    keys: list[str] = []
+    try:
+        for raw_line in example_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key = line.split("=", 1)[0].strip()
+            if key and key not in keys:
+                keys.append(key)
+    except OSError:
+        return []
+    return keys
+
+
+def _referenced_env_keys() -> set[str]:
+    referenced: set[str] = set()
+    package_root = Path(__file__).resolve().parents[1]
+    for source in package_root.rglob("*.py"):
+        try:
+            text = source.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        referenced.update(_ENV_USAGE_RE.findall(text))
+    return referenced
+
+
+def _check_env_example_drift(workspace_path: str) -> tuple[str, str]:
+    """Report ``.env.example`` variables that are no longer referenced in code."""
+
+    example_path = Path(workspace_path).expanduser() / ".env.example"
+    if not example_path.is_file():
+        return "pending", "No .env.example found to compare against."
+    documented = _documented_env_keys(example_path)
+    if not documented:
+        return "pending", ".env.example does not declare any variables."
+    referenced = _referenced_env_keys()
+    stale = [key for key in documented if key not in referenced]
+    if stale:
+        return "pending", f"Documented env vars no longer referenced in code: {', '.join(stale)}."
+    return "ready", f"All {len(documented)} documented env vars are still referenced in code."
 
 
 def _check_latex_pdf_toolchain() -> tuple[str, str]:

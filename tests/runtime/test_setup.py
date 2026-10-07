@@ -6,7 +6,34 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core.runtime.models import RunConfig
-from core.runtime.setup import _check_codex_backend, _check_llama_cpp_backend, _check_ollama_backend, inspect_setup
+from core.runtime.setup import (
+    _check_codex_backend,
+    _check_env_example_drift,
+    _check_llama_cpp_backend,
+    _check_ollama_backend,
+    inspect_setup,
+)
+
+
+class EnvExampleDriftTest(unittest.TestCase):
+    def test_reports_documented_vars_that_are_no_longer_referenced(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            example = Path(tempdir) / ".env.example"
+            example.write_text(
+                "OPENCODE_MODEL=opencode-go/longcat-2.5-preview-free\nDEVENV_RETIRED_VAR=1\n",
+                encoding="utf-8",
+            )
+
+            status, detail = _check_env_example_drift(tempdir)
+
+        self.assertEqual(status, "pending")
+        self.assertIn("DEVENV_RETIRED_VAR", detail)
+        self.assertNotIn("OPENCODE_MODEL", detail)
+
+    def test_missing_example_is_pending(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            status, _detail = _check_env_example_drift(tempdir)
+        self.assertEqual(status, "pending")
 
 
 class SetupInspectionTest(unittest.TestCase):
