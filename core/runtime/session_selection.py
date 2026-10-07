@@ -952,7 +952,7 @@ def _make_chat_selector(
     timeout = (
         timeout_seconds
         if timeout_seconds is not None
-        else _env_float("DEVENV_SESSION_SELECTOR_TIMEOUT", 300.0)
+        else _env_float("DEVENV_SESSION_SELECTOR_TIMEOUT", 45.0)
     )
     core = None
     if model:
@@ -1002,20 +1002,31 @@ def _run_with_timeout(call: Any, timeout_seconds: float) -> Any:
     The selector is a serial LLM round-trip that has been observed to overrun by
     minutes on large candidate sets. On timeout we raise ``TimeoutError`` so the
     caller degrades to the recall floor instead of hanging retrieval.
+
+    The executor is shut down with ``wait=False`` so a timed-out call returns
+    control immediately instead of joining the still-running (hung) network
+    thread. Using ``with ThreadPoolExecutor(...)`` here would block on
+    ``shutdown(wait=True)`` and defeat the timeout entirely.
     """
     if not timeout_seconds or timeout_seconds <= 0:
         return call()
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(call)
-        try:
-            return future.result(timeout=timeout_seconds)
-        except FuturesTimeoutError as exc:
-            future.cancel()
-            raise TimeoutError(
-                f"selector call exceeded {timeout_seconds:.0f}s"
-            ) from exc
+    pool = ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(call)
+    try:
+        result = future.result(timeout=timeout_seconds)
+    except FuturesTimeoutError as exc:
+        future.cancel()
+        # Do not join the hung thread; it is a daemon-ish orphan that will end
+        # when its socket times out.
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise TimeoutError(f"selector call exceeded {timeout_seconds:.0f}s") from exc
+    except BaseException:
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    pool.shutdown(wait=False)
+    return result
 
 
 def build_session_orchestrator(

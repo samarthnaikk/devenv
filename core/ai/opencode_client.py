@@ -434,7 +434,10 @@ def default_opencode_server_config() -> OpenCodeServerConfig:
     base_url = os.getenv("OPENCODE_SERVER_URL") or "http://127.0.0.1:4096"
     username = os.getenv("OPENCODE_SERVER_USERNAME") or None
     password = os.getenv("OPENCODE_SERVER_PASSWORD") or None
-    timeout_seconds = _float_env("OPENCODE_SERVER_TIMEOUT", 30.0)
+    # This timeout covers the whole round-trip including model generation, which
+    # for large structured prompts on free models can exceed a minute. 30s caused
+    # spurious "timed out" failures and retries; default higher and allow override.
+    timeout_seconds = _float_env("OPENCODE_SERVER_TIMEOUT", 120.0)
     return OpenCodeServerConfig(
         base_url=base_url,
         username=username,

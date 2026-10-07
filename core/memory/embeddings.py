@@ -99,12 +99,24 @@ BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 _CARD_EMBEDDER: Embedder | None = None
 
 
+def _card_network_fallback_enabled() -> bool:
+    return os.getenv("DEVENV_CARD_EMBEDDER_DOWNLOAD", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def build_card_embedder() -> Embedder:
-    """Return the interaction-card embedder, loading from the local cache without HF network calls."""
+    """Return the interaction-card embedder.
+
+    Loads only from the local HF cache by default. A network download of the
+    ``BAAI/bge-small-en-v1.5`` model can block for minutes and otherwise stalls
+    the first ``/ask``; opt in with ``DEVENV_CARD_EMBEDDER_DOWNLOAD=1`` when the
+    model is genuinely absent. Falls back to the shared default embedder (already
+    warmed for memory recall) when BGE is unavailable.
+    """
     global _CARD_EMBEDDER
     if _CARD_EMBEDDER is not None:
         return _CARD_EMBEDDER
-    for local_files_only in (True, False):
+    passes = (True, False) if _card_network_fallback_enabled() else (True,)
+    for local_files_only in passes:
         try:
             embedder: Embedder = BgeSmallEmbedder(local_files_only=local_files_only)
             embedder.embed("warmup")

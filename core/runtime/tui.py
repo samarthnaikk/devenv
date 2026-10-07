@@ -164,6 +164,11 @@ QUIET_LOGGERS = (
     "httpcore",
     "PIL",
     "filelock",
+    "markdown_it",
+    "mdit_py_plugins",
+    "asyncio",
+    "huggingface_hub",
+    "urllib3.connectionpool",
 )
 
 
@@ -1735,7 +1740,9 @@ class DevenvTUIController:
                 elapsed_ms=elapsed_ms,
             )
         if selector_active:
-            context, session_ids, metadata = orchestrator.select(query, max_lines=max_lines)
+            context, session_ids, metadata = self._select_with_budget(
+                orchestrator, query, max_lines=max_lines
+            )
         else:
             context, session_ids, metadata = self.context_builder.build_runtime_memory_context(
                 query,
@@ -1753,6 +1760,47 @@ class DevenvTUIController:
             metadata=dict(metadata),
             elapsed_ms=elapsed_ms,
         )
+
+    @staticmethod
+    def _retrieval_budget_seconds() -> float:
+        raw = os.getenv("DEVENV_RETRIEVAL_BUDGET_SECONDS", "75").strip()
+        try:
+            return max(5.0, float(raw))
+        except ValueError:
+            return 75.0
+
+    def _select_with_budget(
+        self, orchestrator: Any, query: str, *, max_lines: int
+    ) -> tuple[str, tuple[str, ...], dict[str, Any]]:
+        """Run the selector under a hard total wall-clock budget.
+
+        A slow/hung model call must never hang the whole turn: on timeout we fall
+        back to the engine's own context build so the user still gets an answer.
+        """
+
+        budget = self._retrieval_budget_seconds()
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
+        pool = ThreadPoolExecutor(max_workers=1)
+        future = pool.submit(orchestrator.select, query, max_lines=max_lines)
+        try:
+            result = future.result(timeout=budget)
+        except FuturesTimeoutError:
+            future.cancel()
+            pool.shutdown(wait=False, cancel_futures=True)
+            logger.warning(
+                "Session selector exceeded %.0fs budget; falling back to engine retrieval", budget
+            )
+            context, session_ids, metadata = self.context_builder.build_runtime_memory_context(
+                query, max_lines=max_lines
+            )
+            metadata = {**metadata, "selector_budget_exceeded": True}
+            return context, tuple(session_ids), dict(metadata)
+        except BaseException:
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
+        pool.shutdown(wait=False)
+        return result
 
     def run_answer(self, query: str, *, max_lines: int = 20) -> str | None:
         """Answer a query from retrieved evidence without executing any tools.
@@ -2051,10 +2099,19 @@ if TEXTUAL_AVAILABLE:
             self._saved_handlers = [
                 handler for handler in list(root.handlers) if not isinstance(handler, TUILogBridge)
             ]
+            # The root level gates records before they reach any handler, so a
+            # CLI/file level of WARNING would hide INFO model calls from the Logs
+            # tab. Capture everything for the tab and let the saved stderr/file
+            # handlers keep their own thresholds.
+            self._saved_root_level = root.level
             for handler in self._saved_handlers:
                 root.removeHandler(handler)
             self._bridge.setLevel(logging.NOTSET)
             root.addHandler(self._bridge)
+            # Default to INFO so model calls and lifecycle events show without
+            # third-party DEBUG noise; opt into DEBUG for the tab explicitly.
+            debug_tab = os.getenv("DEVENV_TUI_LOG_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+            root.setLevel(logging.DEBUG if debug_tab else logging.INFO)
             for name in QUIET_LOGGERS:
                 logging.getLogger(name).setLevel(logging.WARNING)
 
@@ -2064,6 +2121,7 @@ if TEXTUAL_AVAILABLE:
                 root.removeHandler(self._bridge)
             for handler in self._saved_handlers:
                 root.addHandler(handler)
+            root.setLevel(getattr(self, "_saved_root_level", logging.INFO))
             self._saved_handlers = []
 
         def _activity(self, message: str, levelno: int = logging.INFO, name: str = "devenv") -> None:
@@ -2620,10 +2678,13 @@ if TEXTUAL_AVAILABLE:
         @work(thread=True)
         def _warm_embedder(self) -> None:
             try:
-                from core.memory.embeddings import warm_default_embedder
+                from core.memory.embeddings import build_card_embedder, warm_default_embedder
 
                 memory = getattr(self.controller.kernel, "memory", None)
                 warm_default_embedder(getattr(memory, "embedder", None))
+                # Warm the interaction-card embedder too; otherwise the first
+                # /ask pays a ~20s model-load cost inside card retrieval.
+                build_card_embedder()
             except Exception:  # pragma: no cover - best effort warm-up
                 return
 
