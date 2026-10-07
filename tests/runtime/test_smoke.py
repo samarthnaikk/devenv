@@ -58,6 +58,39 @@ class SmokeCliTest(unittest.TestCase):
             payload = json.loads(stdout.getvalue())
             self.assertEqual(payload["final_response"], "ok")
 
+    def test_smoke_main_emits_classification_when_planning_budget_exceeded(self) -> None:
+        import time
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            workspace = Path(tempdir)
+            (workspace / "README.md").write_text("# Demo\n", encoding="utf-8")
+
+            def slow_execute_turn(self, prompt, **kwargs):
+                time.sleep(5)
+
+                class Result:
+                    final_response = "late"
+                    steps = []
+                    total_usage = {}
+                    metadata = {}
+                    ai_logs = []
+                    system_logs = []
+                    elapsed_ms = 0
+
+                return Result()
+
+            argv = ["smoke.py", str(workspace), "hello", "--planning-mode", "force_plan"]
+            stdout = io.StringIO()
+            with mock.patch("sys.argv", argv), mock.patch("sys.stdout", stdout), mock.patch(
+                "core.runtime.kernel.DevenvKernel.execute_turn", new=slow_execute_turn
+            ), mock.patch.dict("os.environ", {"DEVENV_PLANNING_BUDGET_SECONDS": "1"}):
+                exit_code = smoke.main()
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["metadata"]["planning_budget_exceeded"])
+        self.assertIn("Planning mode: force_plan", payload["system_logs"])
+
     def test_smoke_main_passes_planning_continue_and_selected_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             workspace = Path(tempdir)

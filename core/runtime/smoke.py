@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import threading
 from pathlib import Path
 
 from core.logging_utils import configure_logging
@@ -59,19 +61,56 @@ def main() -> int:
     for tool in build_runtime_tools(kernel.memory, context_builder=context_builder):
         kernel.register_tool(tool)
     planning_mode = PlanningMode(args.planning_mode)
-    result = kernel.execute_turn(
-        args.prompt,
-        max_consecutive_tools=args.max_consecutive_tools,
-        planning_mode=planning_mode,
-        continue_plan=args.continue_plan,
-        local_only=args.local_only,
-        selected_tools=args.selected_tool,
-        backend_preference=args.backend_preference,
-        opencode_enabled=args.enable_opencode_backend,
-        ollama_enabled=args.enable_ollama_backend,
-        codex_enabled=args.enable_codex_backend,
-    )
+    holder: dict[str, object] = {}
+
+    def _run_turn() -> None:
+        try:
+            holder["result"] = kernel.execute_turn(
+                args.prompt,
+                max_consecutive_tools=args.max_consecutive_tools,
+                planning_mode=planning_mode,
+                continue_plan=args.continue_plan,
+                local_only=args.local_only,
+                selected_tools=args.selected_tool,
+                backend_preference=args.backend_preference,
+                opencode_enabled=args.enable_opencode_backend,
+                ollama_enabled=args.enable_ollama_backend,
+                codex_enabled=args.enable_codex_backend,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            holder["error"] = exc
+
+    budget = _planning_budget_seconds()
+    worker = threading.Thread(target=_run_turn, daemon=True)
+    worker.start()
+    worker.join(timeout=budget)
+    if worker.is_alive():
+        # Bounded latency: never hang the single-turn harness on a slow planning
+        # model. Emit the classification so callers can still verify it.
+        print(json.dumps(
+            {
+                "final_response": "",
+                "steps": [],
+                "total_usage": {},
+                "metadata": {"planning_budget_exceeded": True},
+                "ai_logs": [],
+                "system_logs": [
+                    f"Planning mode: {planning_mode.value}",
+                    f"Planning budget exceeded ({budget:.0f}s).",
+                ],
+                "elapsed_ms": int(budget * 1000),
+            },
+            indent=2,
+            sort_keys=True,
+        ))
+        kernel.close()
+        return 0
+
+    result = holder.get("result")
     kernel.close()
+    if result is None:
+        error = holder.get("error")
+        raise SystemExit(f"Turn failed: {error}")
     print(json.dumps(
         {
             "final_response": result.final_response,
@@ -96,6 +135,14 @@ def main() -> int:
         sort_keys=True,
     ))
     return 0
+
+
+def _planning_budget_seconds() -> float:
+    raw = os.getenv("DEVENV_PLANNING_BUDGET_SECONDS", "300").strip()
+    try:
+        return max(5.0, float(raw))
+    except ValueError:
+        return 300.0
 
 
 if __name__ == "__main__":
