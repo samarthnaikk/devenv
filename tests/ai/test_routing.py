@@ -966,6 +966,29 @@ class StatusCacheTest(unittest.TestCase):
         core._codex = codex
         return core
 
+    def test_backend_models_tracks_selection(self) -> None:
+        core = self._core()
+        self.assertEqual(core.backend_models["opencode"], "test-model")
+
+        core.set_backend_model("opencode", "another-model")
+
+        self.assertEqual(core.backend_models["opencode"], "another-model")
+        self.assertEqual(core._opencode.model, "another-model")
+
+    def test_set_model_records_preferred_backend(self) -> None:
+        core = self._core()
+        core.preferred_backend = "opencode"
+
+        core.set_model("preferred-model")
+
+        self.assertEqual(core.backend_models["opencode"], "preferred-model")
+
+    def test_normalize_opencode_model_leaves_other_prefixes(self) -> None:
+        from core.ai.routing import _normalize_opencode_model
+
+        self.assertEqual(_normalize_opencode_model("anthropic/claude-3"), "anthropic/claude-3")
+        self.assertEqual(_normalize_opencode_model("plain-model"), "plain-model")
+
     def test_cached_status_avoids_repeated_probes(self) -> None:
         core = self._core()
         first = core.cached_status(refresh=True)

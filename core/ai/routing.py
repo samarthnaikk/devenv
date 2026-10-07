@@ -160,7 +160,8 @@ class OpenCodeAICore:
     ) -> None:
         self.workspace_path = str(Path(workspace_path).expanduser().resolve())
         self.executable = executable
-        self.model = model or os.getenv("OPENCODE_MODEL") or DEFAULT_OPENCODE_MODEL
+        resolved_model = model or os.getenv("OPENCODE_MODEL") or DEFAULT_OPENCODE_MODEL
+        self.model = _normalize_opencode_model(resolved_model)
         self.system_instructions = system_instructions.strip()
         self.last_backend_used = "opencode"
         self.last_backend_reason = ""
@@ -629,6 +630,25 @@ class OpenCodeAICore:
         return "\n\n".join(section for section in sections if section).strip()
 
 
+def _normalize_opencode_model(model: str) -> str:
+    """Correct a stale opencode/opencode-go account prefix, never blocking.
+
+    Uses the cached model catalog only (no subprocess), so it is safe on the
+    construction path. Falls back to the raw id when discovery is unavailable.
+    """
+
+    cleaned = str(model or "").strip()
+    if "/" not in cleaned:
+        return cleaned
+    try:
+        from core.ai.model_catalog import resolve_model_id
+
+        resolved = resolve_model_id(cleaned, cache_only=True)
+        return resolved or cleaned
+    except Exception:  # pragma: no cover - defensive
+        return cleaned
+
+
 class RoutingAICore:
     provider_label = "OpenCode CLI"
 
@@ -659,6 +679,12 @@ class RoutingAICore:
             system_instructions=DEFAULT_SYSTEM_INSTRUCTIONS,
         )
         self.model = self.opencode_ai.model
+        self.backend_models: dict[str, str] = {
+            "opencode": str(getattr(self.opencode_ai, "model", "") or ""),
+            "ollama": str(getattr(self.ollama_ai, "model", "") or ""),
+            "llama_cpp": str(getattr(self.llama_cpp_ai, "model", "") or ""),
+            "codex": str(getattr(self.codex_ai, "model", "") or ""),
+        }
         self.preferred_backend = "opencode"
         self.opencode_enabled = False
         self.ollama_enabled = False
@@ -798,9 +824,16 @@ class RoutingAICore:
         self._status_cache = None
         self._status_cached_at = 0.0
 
+    def _remember_backend_model(self, backend: str, model: str) -> None:
+        cleaned_backend = str(backend or "").strip().lower()
+        cleaned_model = str(model or "").strip()
+        if cleaned_backend and cleaned_model:
+            self.backend_models[cleaned_backend] = cleaned_model
+
     def set_model(self, model: str) -> None:
-        cleaned = model.strip()
+        cleaned = _normalize_opencode_model(model.strip())
         self.model = cleaned
+        self._remember_backend_model(self.preferred_backend, cleaned)
         if self.preferred_backend == "codex" and self.codex_ai is not None and hasattr(self.codex_ai, "set_model"):
             self.codex_ai.set_model(cleaned)
         elif self.preferred_backend == "llama_cpp":
@@ -814,6 +847,7 @@ class RoutingAICore:
         cleaned_backend = str(backend or "").strip().lower()
         cleaned_model = model.strip()
         if cleaned_backend == "opencode":
+            cleaned_model = _normalize_opencode_model(cleaned_model)
             self.opencode_ai.model = cleaned_model
         elif cleaned_backend == "ollama":
             self.ollama_ai.set_model(cleaned_model)
@@ -823,6 +857,7 @@ class RoutingAICore:
             self.codex_ai.set_model(cleaned_model)
         else:
             raise ValueError("backend must be one of: opencode, ollama, llama_cpp, codex")
+        self._remember_backend_model(cleaned_backend, cleaned_model)
         if self.preferred_backend == cleaned_backend:
             self.model = cleaned_model
 
@@ -894,6 +929,7 @@ class RoutingAICore:
             )
             self.last_backend_fallback = ""
             self.model = getattr(self.codex_ai, "model", self.model)
+            self._remember_backend_model("codex", self.model)
             return response
         if self.preferred_backend == "ollama":
             if not self.ollama_enabled:
@@ -909,6 +945,7 @@ class RoutingAICore:
             self.last_backend_reason = self.ollama_ai.last_backend_reason
             self.last_backend_fallback = ""
             self.model = self.ollama_ai.model
+            self._remember_backend_model("ollama", self.model)
             return response
         if self.preferred_backend == "llama_cpp":
             if not self.llama_cpp_enabled:
@@ -924,6 +961,7 @@ class RoutingAICore:
             self.last_backend_reason = self.llama_cpp_ai.last_backend_reason
             self.last_backend_fallback = ""
             self.model = self.llama_cpp_ai.model
+            self._remember_backend_model("llama_cpp", self.model)
             return response
         if not self.opencode_enabled:
             self.last_backend_fallback = "OpenCode backend access has not been granted."
@@ -939,6 +977,7 @@ class RoutingAICore:
         self.last_backend_reason = self.opencode_ai.last_backend_reason
         self.last_backend_fallback = ""
         self.model = self.opencode_ai.model
+        self._remember_backend_model("opencode", self.model)
         return response
 
 
